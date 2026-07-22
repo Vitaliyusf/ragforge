@@ -1,0 +1,36 @@
+{$APP_DOMAIN} {
+  encode zstd gzip
+
+  # This application has no Next.js Server Actions. Reject their transport
+  # header before it reaches the self-hosted frontend runtime.
+  @server_action header Next-Action *
+  respond @server_action "Not Found" 404
+
+  @socket path /socket.io/*
+  reverse_proxy @socket rag:8004
+
+  # Only the explicitly routed Socket.IO endpoint may upgrade. This prevents
+  # the frontend origin from becoming a generic WebSocket proxy.
+  @unexpected_upgrade {
+    header Connection *Upgrade*
+    not path /socket.io/*
+  }
+  respond @unexpected_upgrade "Unsupported upgrade" 400
+
+  @api path /v1/* /health
+  reverse_proxy @api gateway:8000
+
+  reverse_proxy frontend:3000
+
+  request_header -Content-Security-Policy
+
+  header {
+    Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+    X-Content-Type-Options "nosniff"
+    X-Frame-Options "DENY"
+    Referrer-Policy "strict-origin-when-cross-origin"
+    Permissions-Policy "camera=(), microphone=(), geolocation=()"
+    Content-Security-Policy "default-src 'self'; base-uri 'self'; frame-ancestors 'none'; object-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' wss:; form-action 'self'; upgrade-insecure-requests"
+    -Server
+  }
+}

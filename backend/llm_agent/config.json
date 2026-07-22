@@ -1,0 +1,35 @@
+{
+  "llm_implementation": "vllm",
+  "device": "cuda",
+  "max_concurrent_requests": 3,
+  "ollama_url": "http://host.docker.internal:11434",
+  "llm_timeout": 60.0,
+  "summary_timeout": 120.0,
+  "metadata_timeout": 60.0,
+  "models": {
+    "summary": "Qwen/Qwen2.5-7B-Instruct-GPTQ-Int4",
+    "metadata": "Qwen/Qwen2.5-7B-Instruct-GPTQ-Int4",
+    "rag_chat": "Qwen/Qwen2.5-7B-Instruct-GPTQ-Int4",
+    "default": "Qwen/Qwen2.5-7B-Instruct-GPTQ-Int4"
+  },
+  "generation_params": {
+    "hf_max_length": 512,
+    "hf_temperature": 0.7,
+    "hf_top_p": 0.9,
+    "hf_do_sample": true
+  },
+  "vllm": {
+    "base_url": "http://vllm:8000",
+    "max_tokens": 512,
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "top_k": 50
+  },
+  "timeouts": {
+    "llm": 60.0,
+    "summary": 120.0,
+    "metadata": 60.0
+  },
+  "rag_chat_model": "Qwen/Qwen2.5-7B-Instruct-GPTQ-Int4",
+  "summary_model": "Qwen/Qwen2.5-7B-Instruct-GPTQ-Int4"
+}

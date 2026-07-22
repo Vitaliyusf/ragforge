@@ -1,0 +1,22 @@
+FROM python:3.11-slim
+
+COPY --from=ghcr.io/astral-sh/uv:0.11.5 /uv /usr/local/bin/uv
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+WORKDIR /app
+
+COPY docker/requirements-base.txt /tmp/requirements-base.txt
+COPY backend/embedding/requirements.txt /tmp/requirements.txt
+RUN uv pip install --system --no-cache -r /tmp/requirements-base.txt \
+    && uv pip install --system --no-cache -r /tmp/requirements.txt
+
+COPY backend/shared /app/shared
+COPY backend/embedding /app
+
+RUN chmod +x /app/entrypoint.sh 2>/dev/null || true
+
+EXPOSE 8002
+
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8002"]

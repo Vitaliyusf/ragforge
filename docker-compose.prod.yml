@@ -1,0 +1,48 @@
+services:
+  gateway:
+    ports: !reset []
+    environment:
+      APP_ENV: production
+      SESSION_COOKIE_SECURE: "true"
+      SESSION_COOKIE_NAME: __Host-ragapp_session
+      CSRF_COOKIE_NAME: __Host-ragapp_csrf
+      CORS_ORIGINS: https://${APP_DOMAIN:?Set APP_DOMAIN}
+      TRUSTED_PROXY_CIDRS: 172.30.0.0/24
+
+  rag:
+    ports: !reset []
+    environment:
+      FRONTEND_URL: https://${APP_DOMAIN:?Set APP_DOMAIN}
+
+  frontend:
+    ports: !reset []
+    build:
+      args:
+        NEXT_PUBLIC_API_BASE_URL: https://${APP_DOMAIN:?Set APP_DOMAIN}
+        NEXT_PUBLIC_RAG_WS_URL: https://${APP_DOMAIN:?Set APP_DOMAIN}
+    environment:
+      NEXT_PUBLIC_API_BASE_URL: https://${APP_DOMAIN:?Set APP_DOMAIN}
+      NEXT_PUBLIC_RAG_WS_URL: https://${APP_DOMAIN:?Set APP_DOMAIN}
+
+  caddy:
+    image: caddy:2.11.4-alpine
+    environment:
+      APP_DOMAIN: ${APP_DOMAIN:?Set APP_DOMAIN}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - frontend
+      - gateway
+      - rag
+    restart: unless-stopped
+    networks: [edge]
+
+volumes:
+  caddy_data:
+  caddy_config:

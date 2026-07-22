@@ -1,0 +1,62 @@
+# Node / frontend
+node_modules/
+.next/
+dist/
+coverage/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.uv-cache/
+.venv/
+venv/
+*.egg-info/
+
+# Env and secrets
+.env
+.env.*
+!.env.example
+.envrc
+*.pem
+*.key
+*.crt
+*.p12
+id_rsa*
+*.pfx
+
+# Logs and runtime data
+logs/
+*.log
+uploads/
+qdrant_storage/
+
+# Build output and caches
+*.whl
+*.tar.gz
+.cache/
+.parcel-cache/
+
+# OS/editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Coverage
+.coverage
+coverage.xml
+htmlcov/
+
+# Docker runtime
+*.pid
+
+# Claude / agent tooling
+.claude/
+CLAUDE.md

@@ -1,0 +1,117 @@
+'use client'
+
+/**
+ * App shell — renders the sticky header and the active tab content.
+ * Each tab controls its own padding and layout.
+ */
+
+import { useEffect, useState } from 'react'
+import dynamic from 'next/dynamic'
+import { AnimatePresence, motion } from 'framer-motion'
+import Header from '@/components/layout/Header'
+import TabSkeleton from '@/components/ui/TabSkeleton'
+import ErrorBoundary from '@/components/ErrorBoundary'
+import { config as appConfig } from '@/lib/config'
+import { useAuth } from '@/features/auth'
+
+const ChatTab = dynamic(() => import('@/features/chat/components/ChatTab'), {
+  loading: () => <TabSkeleton />, ssr: false,
+})
+const FilesTab = dynamic(() => import('@/features/files/components/FilesTab'), {
+  loading: () => <TabSkeleton />, ssr: false,
+})
+const LogsTab = dynamic(() => import('@/features/logs/components/LogsTab'), {
+  loading: () => <TabSkeleton />, ssr: false,
+})
+const ModelManagementTab = dynamic(
+  () => import('@/features/models/components/ModelManagementTab'),
+  { loading: () => <TabSkeleton />, ssr: false }
+)
+const ConfigTab = dynamic(() => import('@/features/config/components/ConfigTab'), {
+  loading: () => <TabSkeleton />, ssr: false,
+})
+const LongTermMemoryTab = dynamic(
+  () => import('@/features/memory/components/LongTermMemoryTab'),
+  { loading: () => <TabSkeleton />, ssr: false }
+)
+const HealthDashboard = dynamic(
+  () => import('@/features/health/components/HealthDashboard'),
+  { loading: () => <TabSkeleton />, ssr: false }
+)
+const TrainingTab = dynamic(() => import('@/features/training/components/TrainingTab'), {
+  loading: () => <TabSkeleton />, ssr: false,
+})
+const AdminUsersTab = dynamic(() => import('@/features/admin/components/AdminUsersTab'), {
+  loading: () => <TabSkeleton />, ssr: false,
+})
+const UploadTab = dynamic(() => import('@/features/files/components/UploadTab'), {
+  loading: () => <TabSkeleton />, ssr: false,
+})
+
+const TAB_COMPONENTS = {
+  chat:     ChatTab,
+  files:    FilesTab,
+  logs:     LogsTab,
+  models:   ModelManagementTab,
+  config:   ConfigTab,
+  memory:   LongTermMemoryTab,
+  health:   HealthDashboard,
+  users:    AdminUsersTab,
+  upload:   UploadTab,
+  ...(appConfig.enableTrainingTab ? { training: TrainingTab } : {}),
+}
+
+export default function TabbedPageLayout({ defaultTab = 'chat' }) {
+  const { isAdmin } = useAuth()
+  const [activeTab, setActiveTab] = useState(defaultTab)
+  const allowedTabs = isAdmin
+    ? new Set(['chat', 'files', 'logs', 'models', 'config', 'memory', 'health', 'users', ...(appConfig.enableTrainingTab ? ['training'] : [])])
+    : new Set(['chat', 'upload', 'memory'])
+  const safeActiveTab = allowedTabs.has(activeTab) ? activeTab : 'chat'
+  const TabComponent = TAB_COMPONENTS[safeActiveTab]
+
+  useEffect(() => {
+    if (!allowedTabs.has(activeTab)) setActiveTab('chat')
+  }, [activeTab, isAdmin])
+
+  return (
+    <div
+      className="app-backdrop isolate flex h-[100dvh] flex-col overflow-hidden"
+      style={{ color: 'var(--fg)' }}
+    >
+      <Header activeTab={safeActiveTab} setActiveTab={setActiveTab} />
+
+      <main
+        id="main-content"
+        className="relative z-10 flex min-h-0 flex-1 flex-col overflow-hidden"
+      >
+        <AnimatePresence mode="wait">
+          {TabComponent ? (
+            <motion.div
+              key={safeActiveTab}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{    opacity: 0, y: -8 }}
+              transition={{ type: 'spring', damping: 30, stiffness: 350, mass: 0.8 }}
+              className="flex-1 min-h-0 flex flex-col overflow-hidden"
+            >
+              <ErrorBoundary name={safeActiveTab}>
+                <TabComponent />
+              </ErrorBoundary>
+            </motion.div>
+          ) : (
+            <motion.div
+              key="skeleton"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="flex-1 min-h-0 flex flex-col"
+            >
+              <TabSkeleton />
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </main>
+    </div>
+  )
+}

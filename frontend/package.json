@@ -1,0 +1,46 @@
+{
+  "name": "ragforge",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@radix-ui/react-dialog": "^1.1.15",
+    "@radix-ui/react-select": "^2.2.6",
+    "@reduxjs/toolkit": "^2.11.2",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "framer-motion": "^12.34.0",
+    "geist": "^1.7.0",
+    "lucide-react": "^0.564.0",
+    "next": "^14.0.0",
+    "next-themes": "^0.4.6",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-markdown": "^10.1.0",
+    "react-redux": "^9.2.0",
+    "redux-persist": "^6.0.0",
+    "remark-gfm": "^4.0.1",
+    "socket.io-client": "^4.7.2",
+    "sonner": "^2.0.7",
+    "tailwind-merge": "^3.5.0"
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
+    "@vitejs/plugin-react": "^6.0.1",
+    "autoprefixer": "^10.4.24",
+    "jsdom": "^29.0.0",
+    "msw": "^2.12.11",
+    "postcss": "^8.5.6",
+    "tailwindcss": "^3.4.19",
+    "vitest": "^4.1.0"
+  }
+}

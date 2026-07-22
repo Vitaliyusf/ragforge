@@ -1,0 +1,3 @@
+RabbitMQ handles synchronous request/reply communication between backend services.
+Kafka is reserved for durable document-ingestion events and pipeline stage updates.
+The smoke document confirms that uploaded text is extracted, embedded, and indexed.

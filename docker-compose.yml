@@ -1,0 +1,397 @@
+name: ${COMPOSE_PROJECT_NAME:-ragforge}
+
+services:
+  mongodb:
+    image: ${MONGODB_IMAGE:-mongo:7}
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USERNAME:?Set MONGO_ROOT_USERNAME}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:?Set MONGO_ROOT_PASSWORD}
+      MONGO_GATEWAY_PASSWORD: ${MONGO_GATEWAY_PASSWORD:?Set MONGO_GATEWAY_PASSWORD}
+      MONGO_FILES_PASSWORD: ${MONGO_FILES_PASSWORD:?Set MONGO_FILES_PASSWORD}
+      MONGO_MEMORY_PASSWORD: ${MONGO_MEMORY_PASSWORD:?Set MONGO_MEMORY_PASSWORD}
+      MONGO_RAG_PASSWORD: ${MONGO_RAG_PASSWORD:?Set MONGO_RAG_PASSWORD}
+    volumes:
+      - mongodb_data:/data/db
+      - ./docker/mongo-init.js:/docker-entrypoint-initdb.d/10-app-users.js:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mongosh --quiet --username $$MONGO_INITDB_ROOT_USERNAME --password $$MONGO_INITDB_ROOT_PASSWORD --authenticationDatabase admin --eval 'db.adminCommand({ping:1})' >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+    networks: [data]
+
+  zookeeper:
+    image: ${ZOOKEEPER_IMAGE:-zookeeper:3.9}
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    restart: unless-stopped
+    networks: [messaging]
+
+  kafka:
+    image: ${KAFKA_IMAGE:-confluentinc/cp-kafka:7.5.0}
+    depends_on:
+      - zookeeper
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-topics --bootstrap-server localhost:9092 --list >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 20s
+    restart: unless-stopped
+    networks: [messaging]
+
+  qdrant:
+    image: ${QDRANT_IMAGE:-qdrant/qdrant:v1.18.2-unprivileged}
+    environment:
+      QDRANT__SERVICE__API_KEY: ${QDRANT_API_KEY:?Set QDRANT_API_KEY}
+    volumes:
+      - qdrant_data:/qdrant/storage
+    restart: unless-stopped
+    networks: [data]
+
+  vllm:
+    image: ${VLLM_IMAGE:-vllm/vllm-openai:v0.19.0}
+    volumes:
+      - hf_cache:/root/.cache/huggingface
+    environment:
+      HF_TOKEN: ${HF_TOKEN:-}
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    entrypoint: []
+    command:
+      - vllm
+      - serve
+      - ${VLLM_MODEL:-Qwen/Qwen2.5-7B-Instruct-GPTQ-Int4}
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
+      - --quantization
+      - ${VLLM_QUANTIZATION:-gptq_marlin}
+      - --gpu-memory-utilization
+      - "${VLLM_GPU_MEMORY_UTILIZATION:-0.85}"
+      - --max-model-len
+      - "${VLLM_MAX_MODEL_LEN:-6144}"
+      - --max-num-seqs
+      - "${VLLM_MAX_NUM_SEQS:-4}"
+      - --api-key
+      - ${VLLM_API_KEY:?Set VLLM_API_KEY}
+    restart: unless-stopped
+    networks: [ai, vllm_egress]
+
+  rabbitmq:
+    image: rabbitmq:3.13-management
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:?Set RABBITMQ_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?Set RABBITMQ_PASSWORD}
+    healthcheck:
+      test: rabbitmq-diagnostics check_port_connectivity
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    restart: unless-stopped
+    networks: [messaging]
+
+  llm_agent:
+    build:
+      context: .
+      dockerfile: backend/llm_agent/Dockerfile
+    environment:
+      INTERNAL_AUTH_REQUIRED: "true"
+      INTERNAL_AUTH_SECRET: ${INTERNAL_AUTH_SECRET:?Set INTERNAL_AUTH_SECRET}
+      RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672/
+      LLM_IMPLEMENTATION: ${LLM_IMPLEMENTATION:-vllm}
+      VLLM_BASE_URL: http://vllm:8000
+      VLLM_API_KEY: ${VLLM_API_KEY:?Set VLLM_API_KEY}
+      # Fallback context window used until vLLM can be probed for max_model_len.
+      # Same variable as the vllm service's --max-model-len, so they cannot drift.
+      VLLM_MAX_MODEL_LEN: ${VLLM_MAX_MODEL_LEN:-6144}
+      SUMMARY_MODEL: ${SUMMARY_MODEL:-Qwen/Qwen2.5-7B-Instruct-GPTQ-Int4}
+      METADATA_MODEL: ${METADATA_MODEL:-Qwen/Qwen2.5-7B-Instruct-GPTQ-Int4}
+      RAG_CHAT_MODEL: ${RAG_CHAT_MODEL:-Qwen/Qwen2.5-7B-Instruct-GPTQ-Int4}
+      DEFAULT_MODEL: ${DEFAULT_MODEL:-Qwen/Qwen2.5-7B-Instruct-GPTQ-Int4}
+      MAX_CONCURRENT_REQUESTS: ${MAX_CONCURRENT_REQUESTS:-10}
+      LLM_TIMEOUT: ${LLM_TIMEOUT:-60}
+      SUMMARY_TIMEOUT: ${SUMMARY_TIMEOUT:-120}
+      METADATA_TIMEOUT: ${METADATA_TIMEOUT:-60}
+      LOG_DIR: /app/logs
+      CONFIG_FILE: /app/config.json
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      vllm:
+        condition: service_started
+    restart: unless-stopped
+    volumes:
+      - logs_data:/app/logs
+    networks: [messaging, ai]
+
+  memory:
+    build:
+      context: .
+      dockerfile: backend/memory/Dockerfile
+    environment:
+      INTERNAL_AUTH_REQUIRED: "true"
+      INTERNAL_AUTH_SECRET: ${INTERNAL_AUTH_SECRET:?Set INTERNAL_AUTH_SECRET}
+      RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672/
+      MONGODB_URL: mongodb://memory:${MONGO_MEMORY_PASSWORD}@mongodb:27017/memory?authSource=memory
+      VLLM_BASE_URL: http://vllm:8000
+      VLLM_API_KEY: ${VLLM_API_KEY:-none}
+      DEFAULT_MODEL: ${DEFAULT_MODEL:-Qwen/Qwen2.5-7B-Instruct-GPTQ-Int4}
+      QDRANT_ENABLED: ${MEMORY_QDRANT_ENABLED:-true}
+      QDRANT_URL: http://qdrant:6333
+      QDRANT_API_KEY: ${QDRANT_API_KEY:-}
+      LOG_DIR: /app/logs
+    volumes:
+      - logs_data:/app/logs
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      mongodb:
+        condition: service_healthy
+      qdrant:
+        condition: service_started
+      vllm:
+        condition: service_started
+    restart: unless-stopped
+    networks: [messaging, data, ai]
+
+  files:
+    build:
+      context: .
+      dockerfile: backend/files/Dockerfile
+    environment:
+      INTERNAL_AUTH_REQUIRED: "true"
+      INTERNAL_AUTH_SECRET: ${INTERNAL_AUTH_SECRET:?Set INTERNAL_AUTH_SECRET}
+      RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672/
+      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS:-kafka:9092}
+      FILES_PIPELINE_TOPIC: ${FILES_PIPELINE_TOPIC:-files.requests}
+      EMBEDDING_JOBS_TOPIC: ${EMBEDDING_JOBS_REQUESTED_TOPIC:-embedding.jobs.requested}
+      MONGODB_URL: mongodb://files:${MONGO_FILES_PASSWORD}@mongodb:27017/files?authSource=files
+      UPLOAD_DIR: /app/uploads
+      LOG_DIR: /app/logs
+      MAX_UPLOAD_BYTES: ${MAX_UPLOAD_BYTES:-26214400}
+      GENERATE_QUESTIONS_TOPIC: generate_questions_requests
+      PYTHONPATH: /app
+    volumes:
+      - uploads_data:/app/uploads
+      - logs_data:/app/logs
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      mongodb:
+        condition: service_healthy
+    restart: unless-stopped
+    networks: [messaging, data]
+
+  embedding:
+    build:
+      context: .
+      dockerfile: backend/embedding/Dockerfile
+    environment:
+      INTERNAL_AUTH_REQUIRED: "true"
+      INTERNAL_AUTH_SECRET: ${INTERNAL_AUTH_SECRET:?Set INTERNAL_AUTH_SECRET}
+      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS:-kafka:9092}
+      FILES_TOPIC: ${FILES_PIPELINE_TOPIC:-files.requests}
+      EMBEDDING_JOBS_REQUESTED_TOPIC: ${EMBEDDING_JOBS_REQUESTED_TOPIC:-embedding.jobs.requested}
+      VECTOR_DB_UPSERT_REQUESTED_TOPIC: ${VECTOR_DB_UPSERT_REQUESTED_TOPIC:-vector_db.upsert.requested}
+      EMBEDDING_JOBS_COMPLETED_TOPIC: ${EMBEDDING_JOBS_COMPLETED_TOPIC:-embedding.jobs.completed}
+      RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672/
+      EXTRACT_TOPIC: embedding.requests
+      UPLOAD_DIR: /app/uploads
+      LOG_DIR: /app/logs
+      FILES_SERVICE_URL: http://files:8005
+      METADATA_FETCH_TIMEOUT: ${METADATA_FETCH_TIMEOUT:-5.0}
+    volumes:
+      - uploads_data:/app/uploads
+      - logs_data:/app/logs
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      files:
+        condition: service_started
+    restart: unless-stopped
+    networks: [messaging, embedding_egress]
+
+  vector_db:
+    build:
+      context: .
+      dockerfile: backend/vector_db/Dockerfile
+    environment:
+      INTERNAL_AUTH_REQUIRED: "true"
+      INTERNAL_AUTH_SECRET: ${INTERNAL_AUTH_SECRET:?Set INTERNAL_AUTH_SECRET}
+      RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672/
+      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS:-kafka:9092}
+      KAFKA_UPSERT_REQUESTED_TOPIC: ${VECTOR_DB_UPSERT_REQUESTED_TOPIC:-vector_db.upsert.requested}
+      KAFKA_FILES_TOPIC: ${FILES_PIPELINE_TOPIC:-files.requests}
+      QDRANT_HOST: qdrant
+      QDRANT_PORT: 6333
+      QDRANT_COLLECTION_NAME: ${VECTOR_DB_COLLECTION_NAME:-vectors}
+      QDRANT_VECTOR_SIZE: ${VECTOR_DB_VECTOR_SIZE:-384}
+      QDRANT_API_KEY: ${QDRANT_API_KEY}
+      QDRANT_HTTPS: "false"
+      VECTOR_STORE_TYPE: qdrant
+      LOG_DIR: /app/logs
+    volumes:
+      - logs_data:/app/logs
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      qdrant:
+        condition: service_started
+    restart: unless-stopped
+    networks: [messaging, data]
+
+  rag:
+    build:
+      context: .
+      dockerfile: backend/rag/Dockerfile
+    ports:
+      - "127.0.0.1:${PUBLIC_RAG_PORT:-8004}:8004"
+    environment:
+      INTERNAL_AUTH_REQUIRED: "true"
+      INTERNAL_AUTH_SECRET: ${INTERNAL_AUTH_SECRET:?Set INTERNAL_AUTH_SECRET}
+      RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672/
+      MONGODB_URL: mongodb://rag:${MONGO_RAG_PASSWORD}@mongodb:27017/rag?authSource=rag
+      FRONTEND_URL: ${FRONTEND_PUBLIC_URL:-http://localhost:3000}
+      LOG_DIR: /app/logs
+      RERANKER_ENABLED: ${RERANKER_ENABLED:-false}
+      RERANKER_TOP_K: ${RERANKER_TOP_K:-5}
+      CONVERSATION_STORE_TYPE: ${CONVERSATION_STORE_TYPE:-mongodb}
+      INTERNAL_REQUEST_TIMEOUT: ${RAG_INTERNAL_REQUEST_TIMEOUT:-75}
+      GENERATION_REQUEST_TIMEOUT: ${RAG_GENERATION_REQUEST_TIMEOUT:-120}
+      EVALUATION_REQUEST_TIMEOUT: ${RAG_EVALUATION_REQUEST_TIMEOUT:-75}
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      embedding:
+        condition: service_started
+      vector_db:
+        condition: service_started
+      llm_agent:
+        condition: service_started
+      memory:
+        condition: service_started
+      mongodb:
+        condition: service_healthy
+    volumes:
+      - logs_data:/app/logs
+    restart: unless-stopped
+    networks: [edge, messaging, data]
+
+  gateway:
+    build:
+      context: .
+      dockerfile: backend/gateway/Dockerfile
+    ports:
+      - "127.0.0.1:${PUBLIC_GATEWAY_PORT:-8000}:8000"
+    environment:
+      APP_ENV: ${APP_ENV:-development}
+      AUTH_REQUIRED: "true"
+      INTERNAL_AUTH_REQUIRED: "true"
+      INTERNAL_AUTH_SECRET: ${INTERNAL_AUTH_SECRET:?Set INTERNAL_AUTH_SECRET}
+      BOOTSTRAP_TENANT_ID: ${BOOTSTRAP_TENANT_ID:-default}
+      BOOTSTRAP_TENANT_NAME: ${BOOTSTRAP_TENANT_NAME:-Default Workspace}
+      # Leave both empty to create the first administrator in the browser on first run.
+      BOOTSTRAP_ADMIN_EMAIL: ${BOOTSTRAP_ADMIN_EMAIL:-}
+      BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD:-}
+      PASSWORD_PEPPER: ${PASSWORD_PEPPER:?Set PASSWORD_PEPPER}
+      SESSION_PEPPER: ${SESSION_PEPPER:?Set SESSION_PEPPER}
+      SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-false}
+      CORS_ORIGINS: ${FRONTEND_PUBLIC_URL:-http://localhost:3000}
+      TRUSTED_PROXY_CIDRS: ${TRUSTED_PROXY_CIDRS:-127.0.0.1/32,::1/128}
+      RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672/
+      MONGO_CONNECTION_STRING: mongodb://gateway:${MONGO_GATEWAY_PASSWORD}@mongodb:27017/gateway?authSource=gateway
+      LOG_DIR: /app/logs
+      PYTHONPATH: /app
+      DEFAULT_TIMEOUT: ${GATEWAY_DEFAULT_TIMEOUT:-120}
+      SHORT_TIMEOUT: ${GATEWAY_SHORT_TIMEOUT:-30}
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      llm_agent:
+        condition: service_started
+      memory:
+        condition: service_started
+      files:
+        condition: service_started
+      rag:
+        condition: service_started
+      mongodb:
+        condition: service_healthy
+    volumes:
+      - logs_data:/app/logs
+    restart: unless-stopped
+    networks: [edge, messaging, data]
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+      args:
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8000}
+        NEXT_PUBLIC_RAG_WS_URL: ${NEXT_PUBLIC_RAG_WS_URL:-http://localhost:8004}
+        NEXT_PUBLIC_TRAINING_API_BASE_URL: ${NEXT_PUBLIC_TRAINING_API_BASE_URL:-http://localhost:8009/v1/training}
+        NEXT_PUBLIC_VLLM_BASE_URL: ${NEXT_PUBLIC_VLLM_BASE_URL:-http://localhost:8008}
+        NEXT_PUBLIC_ENABLE_TRAINING_TAB: ${NEXT_PUBLIC_ENABLE_TRAINING_TAB:-false}
+    ports:
+      - "127.0.0.1:${PUBLIC_FRONTEND_PORT:-3000}:3000"
+    environment:
+      NODE_ENV: production
+      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8000}
+      NEXT_PUBLIC_RAG_WS_URL: ${NEXT_PUBLIC_RAG_WS_URL:-http://localhost:8004}
+      NEXT_PUBLIC_TRAINING_API_BASE_URL: ${NEXT_PUBLIC_TRAINING_API_BASE_URL:-http://localhost:8009/v1/training}
+      NEXT_PUBLIC_VLLM_BASE_URL: ${NEXT_PUBLIC_VLLM_BASE_URL:-http://localhost:8008}
+      NEXT_PUBLIC_ENABLE_TRAINING_TAB: ${NEXT_PUBLIC_ENABLE_TRAINING_TAB:-false}
+    depends_on:
+      - gateway
+      - rag
+    restart: unless-stopped
+    networks: [edge]
+
+volumes:
+  mongodb_data:
+  qdrant_data:
+  uploads_data:
+  hf_cache:
+  rabbitmq_data:
+  logs_data:
+
+networks:
+  edge:
+    ipam:
+      config:
+        - subnet: 172.30.0.0/24
+  messaging:
+    internal: true
+  data:
+    internal: true
+  ai:
+    internal: true
+  vllm_egress:
+  embedding_egress:

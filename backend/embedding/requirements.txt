@@ -1,0 +1,15 @@
+fastapi==0.115.12
+uvicorn==0.34.0
+sentence-transformers==3.4.1
+langchain-huggingface==0.1.2
+numpy==1.24.3
+huggingface_hub==0.28.1
+kafka-python==2.0.2
+pymupdf==1.24.14
+python-docx==1.1.2
+docx2txt==0.8
+prometheus-client==0.21.1
+prometheus-fastapi-instrumentator==7.1.0
+langsmith==0.3.13
+pymongo==4.10.1
+aio-pika>=9.4,<10.0

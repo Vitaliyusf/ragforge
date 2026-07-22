@@ -1,0 +1,8 @@
+# Lint configuration for `ruff check backend/`.
+
+[lint.per-file-ignores]
+# Compatibility shims that must extend sys.path before importing `shared`.
+"backend/*/app/core/errors.py" = ["E402"]
+"backend/*/app/core/logging_config.py" = ["E402"]
+"backend/*/app/core/exceptions.py" = ["E402"]
+"backend/*/app/core/request_context.py" = ["E402"]

@@ -1,0 +1,1071 @@
+"""LangGraph-backed conversation orchestration for the `rag` service."""
+from __future__ import annotations
+
+import copy
+import re
+import time
+from typing import Any, Dict, List, Optional
+from uuid import uuid4
+
+from app.core.config import RAGConfig
+from app.services.conversation_events import BaseConversationEmitter
+from app.services.conversation_backend_client import ConversationBackendClient
+from app.services.conversation_persistence import BaseConversationStore, make_json_safe
+from app.services.conversation_tracing import ConversationTracer
+from app.services.conversation_types import (
+    ConversationRequest,
+    ConversationState,
+    build_initial_state,
+    utc_now_iso,
+)
+
+try:  # pragma: no cover
+    from langgraph.graph import END, StateGraph
+
+    _HAS_LANGGRAPH = True
+except ImportError:  # pragma: no cover
+    END = "__end__"
+    StateGraph = None
+    _HAS_LANGGRAPH = False
+
+
+class ConversationGraphRunner:
+    """Orchestrates regular and extended chat flows using LangGraph when available."""
+
+    def __init__(
+        self,
+        config: RAGConfig,
+        backend_client: ConversationBackendClient,
+        store: BaseConversationStore,
+        tracer: ConversationTracer,
+        logger: Any,
+    ):
+        self.config = config
+        self.backend_client = backend_client
+        self.store = store
+        self.tracer = tracer
+        self.logger = logger
+        self._secret_key_pattern = re.compile(r"(secret|token|password|auth|credential|bootstrap|mongodb)", re.IGNORECASE)
+        self._secret_string_patterns = [
+            re.compile(r"mongodb:\/\/[^\s]+", re.IGNORECASE),
+            re.compile(r"\b(api[_-]?key|token|secret|password)\b\s*[:=]\s*[^\s,;]+", re.IGNORECASE),
+            re.compile(r":\/\/[^\/\s:@]+:[^@\s]+@", re.IGNORECASE),
+        ]
+
+    def _public_review(self, review: Dict[str, Any]) -> Dict[str, Any]:
+        """Return the frontend-safe review subset."""
+        if not review:
+            return {}
+        return {
+            "review_id": review.get("review_id"),
+            "verdict": review.get("verdict"),
+            "groundedness_score": review.get("groundedness_score"),
+            "completeness_score": review.get("completeness_score"),
+            "safety_score": review.get("safety_score"),
+            "issues": review.get("issues", []),
+            "revision_applied": bool(review.get("revision_applied", False)),
+            "model_name": review.get("model_name"),
+            "created_at": review.get("created_at"),
+        }
+
+    async def run(
+        self,
+        request: ConversationRequest,
+        emitter: BaseConversationEmitter,
+        resume: bool = False,
+    ) -> Dict[str, Any]:
+        """Run the conversation graph and return a normalized result."""
+        runtime = {"request": request, "emitter": emitter, "current_node": "graph_start"}
+        state = build_initial_state(request)
+        checkpoint = None
+        if resume:
+            checkpoint = self.store.get_latest_checkpoint(request.conversation_id, request.request_id)
+            if checkpoint and checkpoint.get("state"):
+                state = checkpoint["state"]
+            if checkpoint and checkpoint.get("graph_run_id"):
+                request.graph_run_id = checkpoint["graph_run_id"]
+            if (
+                checkpoint
+                and checkpoint.get("owner_id")
+                and (request.owner_id == request.conversation_id or not request.owner_id)
+            ):
+                request.owner_id = checkpoint["owner_id"]
+            if (
+                checkpoint
+                and checkpoint.get("owner_type")
+                and request.owner_type in {None, "conversation"}
+            ):
+                request.owner_type = checkpoint["owner_type"]
+        if checkpoint is None:
+            self.backend_client.publish_turn_started(request)
+
+        metadata = {
+            "service": "rag",
+            "conversation_id": request.conversation_id,
+            "turn_id": request.turn_id,
+            "mode": request.mode,
+            "trace_id": request.trace_id,
+            "request_id": request.request_id,
+            "correlation_id": request.correlation_id,
+            "graph_run_id": request.graph_run_id,
+            "chunk_count": len(state["retrieved_chunks"]),
+            "model_name": request.model or "default",
+        }
+
+        try:
+            with self.tracer.run("rag_conversation_graph", metadata) as trace_metadata:
+                if checkpoint and checkpoint.get("stage"):
+                    final_state = await self._resume_from_checkpoint(state, runtime, checkpoint["stage"])
+                elif _HAS_LANGGRAPH:
+                    graph = self._build_graph(runtime)
+                    final_state = await graph.ainvoke(state)
+                else:
+                    final_state = await self._run_fallback_graph(state, runtime)
+                trace_metadata["chunk_count"] = len(final_state.get("retrieved_chunks", []))
+            return self._build_result(final_state)
+        except Exception as exc:
+            failed_node = runtime.get("current_node", "unknown")
+            self._save_checkpoint(request, state, failed_node, "error", "error", {"error": str(exc)})
+            if not emitter.terminal_sent:
+                await emitter.emit(
+                    "error",
+                    {
+                        "code": "graph_execution_error",
+                        "failed_node": failed_node,
+                        "retryable": True,
+                        "message": str(exc),
+                    },
+                )
+            return {"answer": "", "sources": [], "review": {}, "error": str(exc)}
+
+    def _build_graph(self, runtime: Dict[str, Any]):
+        workflow = StateGraph(ConversationState)
+        for name, func in self._node_map().items():
+            workflow.add_node(name, self._wrap_node(name, func, runtime))
+
+        workflow.set_entry_point("input_guardrails")
+        workflow.add_edge("input_guardrails", "load_short_term_context")
+        workflow.add_conditional_edges(
+            "load_short_term_context",
+            self._select_mode,
+            {"regular": "load_memory_light", "extended": "load_memory_deep"},
+        )
+        workflow.add_edge("load_memory_light", "retrieve_chunks_once")
+        workflow.add_edge("retrieve_chunks_once", "generate_answer")
+        workflow.add_edge("generate_answer", "evaluate_answer_light")
+        workflow.add_edge("evaluate_answer_light", "output_guardrails")
+        workflow.add_edge("load_memory_deep", "rewrite_or_decompose_query")
+        workflow.add_edge("rewrite_or_decompose_query", "retrieve_pass_one")
+        workflow.add_edge("retrieve_pass_one", "rerank_and_merge")
+        workflow.add_edge("rerank_and_merge", "retrieve_pass_two_if_needed")
+        workflow.add_edge("retrieve_pass_two_if_needed", "generate_draft_answer")
+        workflow.add_edge("generate_draft_answer", "evaluate_answer_deep")
+        workflow.add_edge("evaluate_answer_deep", "revise_once_if_needed")
+        workflow.add_edge("revise_once_if_needed", "output_guardrails")
+        workflow.add_edge("output_guardrails", "persist_turn")
+        workflow.add_edge("persist_turn", "stream_done")
+        workflow.add_edge("stream_done", END)
+        return workflow.compile()
+
+    async def _run_fallback_graph(self, state: ConversationState, runtime: Dict[str, Any]) -> ConversationState:
+        state = await self._wrap_node("input_guardrails", self._input_guardrails, runtime)(state)
+        state = await self._wrap_node("load_short_term_context", self._load_short_term_context, runtime)(state)
+        if self._select_mode(state) == "regular":
+            names = [
+                "load_memory_light",
+                "retrieve_chunks_once",
+                "generate_answer",
+                "evaluate_answer_light",
+            ]
+        else:
+            names = [
+                "load_memory_deep",
+                "rewrite_or_decompose_query",
+                "retrieve_pass_one",
+                "rerank_and_merge",
+                "retrieve_pass_two_if_needed",
+                "generate_draft_answer",
+                "evaluate_answer_deep",
+                "revise_once_if_needed",
+            ]
+        mapping = self._node_map()
+        for name in names:
+            state = await self._wrap_node(name, mapping[name], runtime)(state)
+        state = await self._wrap_node("output_guardrails", self._output_guardrails, runtime)(state)
+        state = await self._wrap_node("persist_turn", self._persist_turn, runtime)(state)
+        state = await self._wrap_node("stream_done", self._stream_done, runtime)(state)
+        return state
+
+    async def _resume_from_checkpoint(
+        self,
+        state: ConversationState,
+        runtime: Dict[str, Any],
+        stage: str,
+    ) -> ConversationState:
+        """Resume from the closest configured checkpoint stage."""
+        regular_remaining = {
+            "graph_start": [
+                "input_guardrails",
+                "load_short_term_context",
+                "load_memory_light",
+                "retrieve_chunks_once",
+                "generate_answer",
+                "evaluate_answer_light",
+                "output_guardrails",
+                "persist_turn",
+                "stream_done",
+            ],
+            "after_context_load": [
+                "load_memory_light",
+                "retrieve_chunks_once",
+                "generate_answer",
+                "evaluate_answer_light",
+                "output_guardrails",
+                "persist_turn",
+                "stream_done",
+            ],
+            "after_retrieval": [
+                "generate_answer",
+                "evaluate_answer_light",
+                "output_guardrails",
+                "persist_turn",
+                "stream_done",
+            ],
+            "after_generation": [
+                "evaluate_answer_light",
+                "output_guardrails",
+                "persist_turn",
+                "stream_done",
+            ],
+            "after_evaluation": [
+                "output_guardrails",
+                "persist_turn",
+                "stream_done",
+            ],
+            "after_persistence": ["stream_done"],
+        }
+        extended_remaining = {
+            "graph_start": [
+                "input_guardrails",
+                "load_short_term_context",
+                "load_memory_deep",
+                "rewrite_or_decompose_query",
+                "retrieve_pass_one",
+                "rerank_and_merge",
+                "retrieve_pass_two_if_needed",
+                "generate_draft_answer",
+                "evaluate_answer_deep",
+                "revise_once_if_needed",
+                "output_guardrails",
+                "persist_turn",
+                "stream_done",
+            ],
+            "after_context_load": [
+                "load_memory_deep",
+                "rewrite_or_decompose_query",
+                "retrieve_pass_one",
+                "rerank_and_merge",
+                "retrieve_pass_two_if_needed",
+                "generate_draft_answer",
+                "evaluate_answer_deep",
+                "revise_once_if_needed",
+                "output_guardrails",
+                "persist_turn",
+                "stream_done",
+            ],
+            "after_retrieval": [
+                "generate_draft_answer",
+                "evaluate_answer_deep",
+                "revise_once_if_needed",
+                "output_guardrails",
+                "persist_turn",
+                "stream_done",
+            ],
+            "after_generation": [
+                "evaluate_answer_deep",
+                "revise_once_if_needed",
+                "output_guardrails",
+                "persist_turn",
+                "stream_done",
+            ],
+            "after_evaluation": [
+                "revise_once_if_needed",
+                "output_guardrails",
+                "persist_turn",
+                "stream_done",
+            ],
+            "after_persistence": ["stream_done"],
+        }
+        mapping = self._node_map()
+        remaining = (regular_remaining if self._select_mode(state) == "regular" else extended_remaining).get(stage)
+        if not remaining:
+            return await self._run_fallback_graph(state, runtime)
+        for name in remaining:
+            state = await self._wrap_node(name, mapping[name], runtime)(state)
+        return state
+
+    def _node_map(self) -> Dict[str, Any]:
+        return {
+            "input_guardrails": self._input_guardrails,
+            "load_short_term_context": self._load_short_term_context,
+            "load_memory_light": self._load_memory_light,
+            "retrieve_chunks_once": self._retrieve_chunks_once,
+            "generate_answer": self._generate_answer,
+            "evaluate_answer_light": self._evaluate_answer_light,
+            "load_memory_deep": self._load_memory_deep,
+            "rewrite_or_decompose_query": self._rewrite_or_decompose_query,
+            "retrieve_pass_one": self._retrieve_pass_one,
+            "rerank_and_merge": self._rerank_and_merge,
+            "retrieve_pass_two_if_needed": self._retrieve_pass_two_if_needed,
+            "generate_draft_answer": self._generate_draft_answer,
+            "evaluate_answer_deep": self._evaluate_answer_deep,
+            "revise_once_if_needed": self._revise_once_if_needed,
+            "output_guardrails": self._output_guardrails,
+            "persist_turn": self._persist_turn,
+            "stream_done": self._stream_done,
+        }
+
+    def _wrap_node(self, name: str, func, runtime: Dict[str, Any]):
+        async def node(state: ConversationState) -> ConversationState:
+            runtime["current_node"] = name
+            emitter: BaseConversationEmitter = runtime["emitter"]
+            request: ConversationRequest = runtime["request"]
+            started = time.monotonic()
+            span_name = {
+                "load_memory_light": "load_memory",
+                "load_memory_deep": "load_memory",
+                "retrieve_chunks_once": "retrieve_chunks",
+                "retrieve_pass_one": "retrieve_chunks",
+                "retrieve_pass_two_if_needed": "retrieve_chunks",
+                "rerank_and_merge": "rerank",
+                "generate_draft_answer": "generate_answer",
+                "evaluate_answer_light": "evaluate_answer",
+                "evaluate_answer_deep": "evaluate_answer",
+                "revise_once_if_needed": "revise_if_needed",
+            }.get(name, name)
+            await emitter.emit("status", {"node": name, "phase": "started", "message": f"{name} started", "mode": request.mode})
+            with self.tracer.span(
+                span_name,
+                {
+                    "conversation_id": request.conversation_id,
+                    "turn_id": request.turn_id,
+                    "request_id": request.request_id,
+                    "trace_id": request.trace_id,
+                    "correlation_id": request.correlation_id,
+                    "graph_run_id": request.graph_run_id,
+                    "mode": request.mode,
+                },
+            ):
+                update = await func(copy.deepcopy(state), runtime)
+            meta = update.pop("_meta", {})
+            phase = meta.get("phase", "completed")
+            trace_payload = {
+                "node": name,
+                "event": phase,
+                "decision": meta.get("decision", phase),
+                "counters": meta.get("counters", {}),
+                "latency": round((time.monotonic() - started) * 1000, 2),
+            }
+            if meta.get("debug_excerpt"):
+                trace_payload["debug_excerpt"] = self._truncate(meta["debug_excerpt"])
+            trace_events = list(update.get("trace_events", state.get("trace_events", [])))
+            trace_events.append(trace_payload)
+            update["trace_events"] = trace_events
+            next_state = copy.deepcopy(state)
+            next_state.update(update)
+            if name == "stream_done" and emitter.terminal_sent:
+                return next_state
+            await emitter.emit(
+                "status",
+                {
+                    "node": name,
+                    "phase": phase,
+                    "message": meta.get("message", f"{name} {phase}"),
+                    "progress": meta.get("progress"),
+                    "mode": request.mode,
+                },
+            )
+            await emitter.emit("trace", trace_payload)
+            return next_state
+
+        return node
+
+    def _select_mode(self, state: ConversationState) -> str:
+        return state.get("mode", "regular")
+
+    def _truncate(self, value: Any) -> Any:
+        safe = self._sanitize_debug_value(make_json_safe(value))
+        if isinstance(safe, str):
+            return safe[: self.config.debug_payload_max_chars]
+        if isinstance(safe, list):
+            return safe[: self.config.debug_payload_max_items]
+        if isinstance(safe, dict):
+            trimmed: Dict[str, Any] = {}
+            for index, (key, item) in enumerate(safe.items()):
+                if index >= self.config.debug_payload_max_items:
+                    break
+                trimmed[key] = self._truncate(item)
+            return trimmed
+        return safe
+
+    def _sanitize_debug_value(self, value: Any) -> Any:
+        """Redact obvious secrets from debug-visible payloads."""
+        if isinstance(value, dict):
+            sanitized: Dict[str, Any] = {}
+            for key, item in value.items():
+                if self._secret_key_pattern.search(str(key)):
+                    sanitized[str(key)] = "[redacted]"
+                else:
+                    sanitized[str(key)] = self._sanitize_debug_value(item)
+            return sanitized
+        if isinstance(value, list):
+            return [self._sanitize_debug_value(item) for item in value]
+        if isinstance(value, str):
+            sanitized = value
+            for pattern in self._secret_string_patterns:
+                sanitized = pattern.sub("[redacted]", sanitized)
+            return sanitized
+        return value
+
+    def _append_debug(self, state: ConversationState, **payloads: Any) -> Dict[str, Any]:
+        if not self.config.allow_debug_payloads:
+            return {}
+        debug_payloads = dict(state.get("debug_payloads", {}))
+        for key, value in payloads.items():
+            debug_payloads[key] = self._truncate(value)
+        return debug_payloads
+
+    def _structured_output_debug_payloads(self, response: Dict[str, Any], prefix: str) -> Dict[str, Any]:
+        metadata = response.get("_structured_output_debug")
+        if not isinstance(metadata, dict):
+            return {}
+        return {
+            f"{prefix}_structured_output_candidates": metadata.get("candidates", []),
+            f"{prefix}_structured_output_selected_index": metadata.get("selected_payload_index"),
+            f"{prefix}_structured_output_selection_policy": metadata.get("selection_policy"),
+            f"{prefix}_structured_output_extraction_mode": metadata.get("extraction_mode"),
+            f"{prefix}_raw_output": response.get("raw_output"),
+        }
+
+    def _normalize_chunks(self, payload: Dict[str, Any]) -> List[Dict[str, Any]]:
+        chunks = payload.get("chunks") or payload.get("results") or []
+        normalized = []
+        for item in chunks:
+            # Qdrant returns fields nested under "payload"; support both flat and nested shapes
+            qdrant_payload = item.get("payload", {}) or {}
+            metadata = item.get("metadata", {}) or qdrant_payload.get("metadata", {}) or {}
+            text = (
+                item.get("text")
+                or item.get("chunk")
+                or item.get("content")
+                or qdrant_payload.get("text")
+                or metadata.get("text", "")
+            )
+            if not text:
+                continue
+            review_status = item.get("review_status") or qdrant_payload.get("review_status") or metadata.get("review_status") or "clean"
+            retrieval_allowed = bool(item.get("retrieval_allowed", qdrant_payload.get("retrieval_allowed", metadata.get("retrieval_allowed", True))))
+            if not retrieval_allowed or review_status == "removed":
+                continue
+            chunk_index = item.get("chunk_index") or qdrant_payload.get("chunk_index") or metadata.get("chunk_index") or len(normalized)
+            chunk_version = item.get("chunk_version") or qdrant_payload.get("chunk_version") or metadata.get("chunk_version") or 1
+            source_name = (
+                item.get("source_name")
+                or item.get("source")
+                or qdrant_payload.get("source_name")
+                or metadata.get("filename")
+                or metadata.get("source_name")
+                or ""
+            )
+            document_id = (
+                item.get("document_id")
+                or item.get("file_id")
+                or qdrant_payload.get("document_id")
+                or qdrant_payload.get("file_id")
+                or metadata.get("document_id")
+                or metadata.get("file_id")
+                or source_name
+                or item.get("chunk_id")
+                or qdrant_payload.get("chunk_id")
+                or item.get("id")
+                or f"document-{chunk_index}"
+            )
+            file_id = item.get("file_id") or qdrant_payload.get("file_id") or metadata.get("file_id") or document_id
+            normalized.append(
+                {
+                    "file_id": file_id,
+                    "document_id": document_id,
+                    "chunk_id": (
+                        item.get("chunk_id")
+                        or qdrant_payload.get("chunk_id")
+                        or item.get("id")
+                        or f"{document_id or 'document'}__v{chunk_version}__c{chunk_index}"
+                    ),
+                    "chunk_index": chunk_index,
+                    "chunk_version": chunk_version,
+                    "text": text,
+                    "text_preview": (item.get("text_preview") or qdrant_payload.get("text_preview") or text[:240]),
+                    "source_name": source_name,
+                    "page": item.get("page") or qdrant_payload.get("page") or metadata.get("page"),
+                    "section": item.get("section") or qdrant_payload.get("section") or metadata.get("section"),
+                    "retrieval_allowed": retrieval_allowed,
+                    "review_status": review_status,
+                    "issue_flags": self._truncate(item.get("issue_flags") or qdrant_payload.get("issue_flags") or metadata.get("issue_flags") or []),
+                    "created_at": item.get("created_at") or qdrant_payload.get("created_at") or metadata.get("created_at") or utc_now_iso(),
+                    "score": item.get("score", item.get("similarity", 0.0)),
+                    "source": source_name,
+                    "metadata": self._truncate(metadata),
+                }
+            )
+        return normalized
+
+    def _build_prompt(
+        self,
+        state: ConversationState,
+        request: ConversationRequest,
+        mode: str,
+        review_issues: Optional[List[str]] = None,
+    ) -> Dict[str, Any]:
+        retrieved_context = [
+            chunk["text"]
+            for chunk in state.get("retrieved_chunks", [])[: self.config.top_k_documents]
+            if chunk.get("text")
+        ]
+        memory_context = "\n".join(item.get("content", "") for item in state.get("memory_hits", []))
+        parts = [f"Mode: {mode}", f"Conversation summary:\n{state.get('short_term_summary', '')}"]
+        if state.get("recent_messages"):
+            history_lines = []
+            for msg in state["recent_messages"]:
+                role = "User" if msg.get("role") == "user" else "Assistant"
+                history_lines.append(f"{role}: {msg.get('content', '')}")
+            parts.append("Recent messages:\n" + "\n".join(history_lines))
+        if memory_context:
+            parts.append(f"Relevant memory:\n{memory_context}")
+        if state.get("retrieval_plan"):
+            parts.append(f"Retrieval plan:\n{state['retrieval_plan']}")
+        if retrieved_context:
+            parts.append(f"Retrieved context:\n{retrieved_context}")
+        if review_issues:
+            parts.append(f"Fix these issues:\n{review_issues}")
+        parts.append(
+            "Answer grounded in the retrieved context when relevant. Be helpful, clear, and explicit about uncertainty. "
+            "Return the answer only."
+        )
+        return {
+            "instructions": "\n\n".join(parts),
+            "retrieved_context": retrieved_context,
+            "recent_messages": state.get("recent_messages", []),
+            "revision_attempted": bool(review_issues),
+        }
+
+    def _build_review(self, payload: Dict[str, Any], request: ConversationRequest) -> Dict[str, Any]:
+        return {
+            "review_id": payload.get("review_id") or str(uuid4()),
+            "verdict": payload.get("verdict", "pass"),
+            "groundedness_score": float(payload.get("groundedness_score") or 0.0),
+            "completeness_score": float(payload.get("completeness_score") or 0.0),
+            "safety_score": float(payload.get("safety_score") or 0.0),
+            "issues": payload.get("issues", []),
+            "revision_applied": bool(payload.get("revision_applied", False)),
+            "model_name": payload.get("model_name") or request.model or "default",
+            "created_at": payload.get("created_at") or utc_now_iso(),
+            "should_revise": bool(payload.get("should_revise", False)),
+        }
+
+    def _summarize_turn(self, state: ConversationState) -> str:
+        existing = state.get("short_term_summary", "").strip()
+        snippet = f"User: {state.get('user_message', '')} Assistant: {state.get('draft_answer', {}).get('text', '')}"
+        return f"{existing} {snippet}".strip()[: self.config.debug_payload_max_chars]
+
+    def _save_checkpoint(
+        self,
+        request: ConversationRequest,
+        state: ConversationState,
+        node: str,
+        stage: str,
+        status: str,
+        extra: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        payload = {
+            "conversation_id": request.conversation_id,
+            "turn_id": request.turn_id,
+            "request_id": request.request_id,
+            "trace_id": request.trace_id,
+            "graph_run_id": request.graph_run_id,
+            "correlation_id": request.correlation_id,
+            "owner_id": request.owner_id,
+            "owner_type": request.owner_type,
+            "node": node,
+            "stage": stage,
+            "status": status,
+            "state": make_json_safe(state),
+            "created_at": utc_now_iso(),
+        }
+        if extra:
+            payload.update(make_json_safe(extra))
+        self.store.save_checkpoint(payload)
+
+    def _build_result(self, state: ConversationState) -> Dict[str, Any]:
+        return {
+            "answer": state.get("draft_answer", {}).get("text", ""),
+            "sources": state.get("retrieved_chunks", []),
+            "review": self._public_review(state.get("answer_review", {})),
+            "trace_events": state.get("trace_events", []),
+            "debug_payloads": state.get("debug_payloads", {}),
+        }
+
+    async def _input_guardrails(self, state: ConversationState, runtime: Dict[str, Any]) -> Dict[str, Any]:
+        request: ConversationRequest = runtime["request"]
+        user_message = request.user_message.strip()
+        if not user_message:
+            raise ValueError("Question is required")
+        scan = await self.backend_client.risk_scan(request, user_message, stage="input")
+        debug_payloads = self._append_debug(state, input_safety_flags=scan)
+        if scan.get("blocked"):
+            raise ValueError(scan.get("message", "Input blocked by guardrails"))
+        snapshot = copy.deepcopy(state)
+        snapshot["user_message"] = user_message
+        snapshot["debug_payloads"] = debug_payloads
+        self._save_checkpoint(request, snapshot, "input_guardrails", "graph_start", "started")
+        return {
+            "mode": request.mode,
+            "user_message": user_message,
+            "debug_payloads": debug_payloads,
+            "_meta": {"message": "Input validated", "debug_excerpt": scan.get("message") or "input accepted"},
+        }
+
+    async def _load_short_term_context(self, state: ConversationState, runtime: Dict[str, Any]) -> Dict[str, Any]:
+        request: ConversationRequest = runtime["request"]
+        context = self.store.load_context(request.conversation_id, self.config.max_recent_messages)
+        summary = context.get("summary") or state.get("short_term_summary", "")
+        recent_messages = context.get("recent_messages") or state.get("recent_messages", [])
+        snapshot = copy.deepcopy(state)
+        snapshot["short_term_summary"] = summary
+        snapshot["recent_messages"] = recent_messages
+        self._save_checkpoint(request, snapshot, "load_short_term_context", "after_context_load", "ok")
+        return {
+            "short_term_summary": summary,
+            "recent_messages": recent_messages,
+            "_meta": {
+                "message": "Short-term context loaded",
+                "counters": {"recent_messages": len(recent_messages)},
+                "debug_excerpt": (summary or "")[:120],
+            },
+        }
+
+    async def _load_memory_light(self, state: ConversationState, runtime: Dict[str, Any]) -> Dict[str, Any]:
+        request: ConversationRequest = runtime["request"]
+        response = await self.backend_client.get_relevant_memories(request, depth="light")
+        memories = response.get("memories") or response.get("items") or []
+        return {
+            "memory_hits": self._truncate(memories[: self.config.max_memory_hits]),
+            "_meta": {
+                "message": "Light memory loaded",
+                "counters": {"memory_hits": len(memories)},
+                "debug_excerpt": str(memories[:1])[:120],
+            },
+        }
+
+    async def _load_memory_deep(self, state: ConversationState, runtime: Dict[str, Any]) -> Dict[str, Any]:
+        request: ConversationRequest = runtime["request"]
+        response = await self.backend_client.get_relevant_memories(request, depth="deep")
+        memories = response.get("memories") or response.get("items") or []
+        return {
+            "memory_hits": self._truncate(memories[: self.config.max_memory_hits]),
+            "_meta": {
+                "message": "Deep memory loaded",
+                "counters": {"memory_hits": len(memories)},
+                "debug_excerpt": str(memories[:1])[:120],
+            },
+        }
+
+    async def _retrieve_chunks_once(self, state: ConversationState, runtime: Dict[str, Any]) -> Dict[str, Any]:
+        request: ConversationRequest = runtime["request"]
+        response = await self.backend_client.search_chunks(request, request.user_message, state.get("retrieval_plan", {}), "regular")
+        chunks = self._normalize_chunks(response)
+        snapshot = copy.deepcopy(state)
+        snapshot["retrieved_chunks"] = chunks
+        self._save_checkpoint(request, snapshot, "retrieve_chunks_once", "after_retrieval", "ok")
+        return {
+            "retrieved_chunks": chunks,
+            "_meta": {
+                "message": "Chunks retrieved",
+                "counters": {"chunk_count": len(chunks)},
+                "debug_excerpt": (chunks[0]["text"][:120] if chunks else "no chunks"),
+            },
+        }
+
+    async def _rewrite_or_decompose_query(self, state: ConversationState, runtime: Dict[str, Any]) -> Dict[str, Any]:
+        request: ConversationRequest = runtime["request"]
+        response = await self.backend_client.query_rewrite(
+            request,
+            {
+                "summary": state.get("short_term_summary", ""),
+                "recent_messages": state.get("recent_messages", []),
+                "memory_hits": state.get("memory_hits", []),
+            },
+        )
+        plan = {
+            "rewritten_query": response.get("rewritten_query") or request.user_message,
+            "subqueries": response.get("subqueries") or [],
+            "pass_two_hints": response.get("pass_two_hints") or [],
+            "decision": response.get("decision", "rewrite"),
+        }
+        return {
+            "retrieval_plan": self._truncate(plan),
+            "debug_payloads": self._append_debug(state, rewrite_response=response),
+            "_meta": {
+                "message": "Query rewrite complete",
+                "debug_excerpt": (plan.get("rewritten_query") or request.user_message)[:120],
+            },
+        }
+
+    async def _retrieve_pass_one(self, state: ConversationState, runtime: Dict[str, Any]) -> Dict[str, Any]:
+        request: ConversationRequest = runtime["request"]
+        plan = state.get("retrieval_plan", {})
+        queries = [plan.get("rewritten_query") or request.user_message]
+        queries.extend(plan.get("subqueries") or [])
+        chunks: List[Dict[str, Any]] = []
+        for query in queries[: self.config.debug_payload_max_items]:
+            response = await self.backend_client.search_chunks(request, query, plan, "pass_one")
+            chunks.extend(self._normalize_chunks(response))
+        snapshot = copy.deepcopy(state)
+        snapshot["retrieved_chunks"] = chunks
+        self._save_checkpoint(request, snapshot, "retrieve_pass_one", "after_retrieval", "ok")
+        return {
+            "retrieved_chunks": chunks,
+            "_meta": {
+                "message": "Pass one retrieval complete",
+                "counters": {"chunk_count": len(chunks)},
+                "debug_excerpt": (chunks[0]["text"][:120] if chunks else "no chunks"),
+            },
+        }
+
+    async def _rerank_and_merge(self, state: ConversationState, runtime: Dict[str, Any]) -> Dict[str, Any]:
+        merged: Dict[str, Dict[str, Any]] = {}
+        for chunk in state.get("retrieved_chunks", []):
+            chunk_id = chunk["chunk_id"]
+            current = merged.get(chunk_id)
+            if current is None or chunk.get("score", 0.0) > current.get("score", 0.0):
+                merged[chunk_id] = chunk
+        reranked = sorted(merged.values(), key=lambda item: item.get("score", 0.0), reverse=True)
+        return {
+            "retrieved_chunks": reranked[: self.config.top_k_documents * 2],
+            "_meta": {
+                "message": "Chunks reranked and merged",
+                "counters": {"chunk_count": len(reranked)},
+                "debug_excerpt": f"top_score={reranked[0]['score']:.3f}" if reranked else "no reranked chunks",
+            },
+        }
+
+    async def _retrieve_pass_two_if_needed(self, state: ConversationState, runtime: Dict[str, Any]) -> Dict[str, Any]:
+        request: ConversationRequest = runtime["request"]
+        chunks = list(state.get("retrieved_chunks", []))
+        top_score = chunks[0].get("score", 0.0) if chunks else 0.0
+        should_run = (
+            len(chunks) < self.config.pass_two_chunk_threshold
+            or top_score < self.config.pass_two_score_threshold
+            or bool(state.get("retrieval_plan", {}).get("pass_two_hints"))
+        )
+        if not should_run:
+            return {
+                "_meta": {
+                    "phase": "skipped",
+                    "decision": "sufficient_pass_one",
+                    "message": "Second retrieval skipped",
+                    "debug_excerpt": f"top_score={top_score:.3f}",
+                }
+            }
+        alt_query = (
+            (state.get("retrieval_plan", {}).get("pass_two_hints") or [None])[0]
+            or state.get("retrieval_plan", {}).get("rewritten_query")
+            or request.user_message
+        )
+        response = await self.backend_client.search_chunks(request, alt_query, state.get("retrieval_plan", {}), "pass_two")
+        merged = chunks + self._normalize_chunks(response)
+        snapshot = copy.deepcopy(state)
+        snapshot["retrieved_chunks"] = merged
+        self._save_checkpoint(request, snapshot, "retrieve_pass_two_if_needed", "after_retrieval", "ok")
+        return {
+            "retrieved_chunks": merged,
+            "_meta": {
+                "message": "Second retrieval complete",
+                "counters": {"chunk_count": len(merged)},
+                "debug_excerpt": (merged[0]["text"][:120] if merged else "no chunks"),
+            },
+        }
+
+    async def _generate_answer(self, state: ConversationState, runtime: Dict[str, Any]) -> Dict[str, Any]:
+        return await self._generate_common(
+            state,
+            runtime,
+            source="final",
+            mode="regular",
+            checkpoint_node="generate_answer",
+        )
+
+    async def _generate_draft_answer(self, state: ConversationState, runtime: Dict[str, Any]) -> Dict[str, Any]:
+        return await self._generate_common(
+            state,
+            runtime,
+            source="draft",
+            mode="extended",
+            checkpoint_node="generate_draft_answer",
+        )
+
+    async def _generate_common(
+        self,
+        state: ConversationState,
+        runtime: Dict[str, Any],
+        source: str,
+        mode: str,
+        checkpoint_node: str,
+        review_issues: Optional[List[str]] = None,
+        is_revision: bool = False,
+    ) -> Dict[str, Any]:
+        request: ConversationRequest = runtime["request"]
+        emitter: BaseConversationEmitter = runtime["emitter"]
+        prompt = self._build_prompt(state, request, mode, review_issues=review_issues)
+
+        async def on_token(text_delta: str, token_index: int) -> None:
+            await emitter.emit(
+                "token",
+                {"text_delta": text_delta, "token_index": token_index, "source": source},
+            )
+
+        response = await self.backend_client.generate_answer(
+            request,
+            prompt=prompt,
+            stream_request_id=request.request_id,
+            token_callback=on_token,
+        )
+        answer_text = response.get("answer", "")
+        draft_answer = {
+            "text": answer_text,
+            "sources": state.get("retrieved_chunks", []),
+            "model_name": response.get("model_name") or request.model or "default",
+            "created_at": utc_now_iso(),
+            "source": source,
+            "revision_attempted": bool(is_revision or state.get("draft_answer", {}).get("revision_attempted", False)),
+        }
+        debug_payloads = self._append_debug(
+            state,
+            generation_instructions=prompt.get("instructions"),
+            generation_context=prompt.get("retrieved_context"),
+            raw_output=response.get("raw_output") or answer_text,
+            visible_reasoning_summary=response.get("visible_reasoning_summary"),
+            raw_prompt=response.get("raw_prompt") or "",
+            system_prompt=response.get("system_prompt") or "",
+        )
+        snapshot = copy.deepcopy(state)
+        snapshot["draft_answer"] = draft_answer
+        snapshot["debug_payloads"] = debug_payloads
+        self._save_checkpoint(request, snapshot, checkpoint_node, "after_generation", "ok")
+        return {
+            "draft_answer": draft_answer,
+            "debug_payloads": debug_payloads,
+            "_meta": {
+                "message": "Answer generated",
+                "counters": {"chunk_count": len(state.get("retrieved_chunks", []))},
+                "debug_excerpt": answer_text[:120],
+            },
+        }
+
+    async def _evaluate_answer_light(self, state: ConversationState, runtime: Dict[str, Any]) -> Dict[str, Any]:
+        return await self._evaluate_common(state, runtime, mode="regular")
+
+    async def _evaluate_answer_deep(self, state: ConversationState, runtime: Dict[str, Any]) -> Dict[str, Any]:
+        return await self._evaluate_common(state, runtime, mode="extended")
+
+    async def _evaluate_common(self, state: ConversationState, runtime: Dict[str, Any], mode: str) -> Dict[str, Any]:
+        request: ConversationRequest = runtime["request"]
+        emitter: BaseConversationEmitter = runtime["emitter"]
+        response = await self.backend_client.evaluate_answer(
+            request,
+            state.get("draft_answer", {}).get("text", ""),
+            state.get("retrieved_chunks", []),
+            mode,
+        )
+        review = self._build_review(response, request)
+        if state.get("draft_answer", {}).get("revision_attempted"):
+            review["revision_applied"] = True
+        await emitter.emit("answer_review", self._public_review(review))
+        debug_payloads = self._append_debug(
+            state,
+            **self._structured_output_debug_payloads(response, "answer_review"),
+        )
+        snapshot = copy.deepcopy(state)
+        snapshot["answer_review"] = review
+        snapshot["debug_payloads"] = debug_payloads
+        self._save_checkpoint(request, snapshot, "evaluate_answer", "after_evaluation", "ok")
+        return {
+            "answer_review": review,
+            "debug_payloads": debug_payloads,
+            "_meta": {
+                "message": "Answer evaluated",
+                "counters": {"issues": len(review.get("issues", []))},
+                "debug_excerpt": f"verdict={review.get('verdict', 'unknown')}",
+            },
+        }
+
+    async def _revise_once_if_needed(self, state: ConversationState, runtime: Dict[str, Any]) -> Dict[str, Any]:
+        emitter: BaseConversationEmitter = runtime["emitter"]
+        review = dict(state.get("answer_review", {}))
+        if (
+            not review.get("should_revise")
+            or review.get("revision_applied")
+            or state.get("draft_answer", {}).get("revision_attempted")
+        ):
+            return {
+                "_meta": {
+                    "phase": "skipped",
+                    "decision": "no_revision_needed",
+                    "message": "Revision skipped",
+                    "debug_excerpt": f"revision_applied={review.get('revision_applied', False)}",
+                }
+            }
+        updated = await self._generate_common(
+            state,
+            runtime,
+            source="final",
+            mode="extended",
+            checkpoint_node="revise_once_if_needed",
+            review_issues=review.get("issues", []),
+            is_revision=True,
+        )
+        review["revision_applied"] = True
+        await emitter.emit("answer_review", self._public_review(review))
+        updated["answer_review"] = review
+        updated["_meta"] = {"message": "Revision applied", "debug_excerpt": "single revision applied"}
+        return updated
+
+    async def _output_guardrails(self, state: ConversationState, runtime: Dict[str, Any]) -> Dict[str, Any]:
+        request: ConversationRequest = runtime["request"]
+        answer_text = state.get("draft_answer", {}).get("text", "")
+        response = await self.backend_client.risk_scan(request, answer_text, stage="output")
+        draft_answer = dict(state.get("draft_answer", {}))
+        if response.get("blocked"):
+            draft_answer["text"] = response.get("safe_output") or "I can't help with that request."
+        debug_payloads = self._append_debug(
+            state,
+            output_safety_flags=response,
+            **self._structured_output_debug_payloads(response, "output_safety"),
+        )
+        return {
+            "draft_answer": draft_answer,
+            "debug_payloads": debug_payloads,
+            "_meta": {
+                "message": "Output guardrails completed",
+                "debug_excerpt": response.get("message") or ("blocked" if response.get("blocked") else "clear"),
+            },
+        }
+
+    async def _persist_turn(self, state: ConversationState, runtime: Dict[str, Any]) -> Dict[str, Any]:
+        request: ConversationRequest = runtime["request"]
+        review = state.get("answer_review", {})
+        summary = self._summarize_turn(state)
+        try:
+            return await self._do_persist_turn(state, runtime, request, review, summary)
+        except Exception as exc:
+            self.logger.exception(
+                "persist_turn failed — conversation history will NOT be saved",
+                error=str(exc),
+                data={"conversation_id": request.conversation_id, "turn_id": request.turn_id},
+            )
+            return {
+                "short_term_summary": summary,
+                "_meta": {"message": f"Turn persist FAILED: {exc}", "debug_excerpt": request.turn_id},
+            }
+
+    async def _do_persist_turn(self, state: ConversationState, runtime: Dict[str, Any], request, review, summary) -> Dict[str, Any]:
+        self.store.save_thread(
+            {
+                "conversation_id": request.conversation_id,
+                "owner_id": request.owner_id,
+                "owner_type": request.owner_type,
+                "session_id": request.session_id,
+                "connection_id": request.connection_id,
+                "latest_turn_id": request.turn_id,
+                "latest_mode": request.mode,
+                "graph_run_id": request.graph_run_id,
+                "request_id": request.request_id,
+                "trace_id": request.trace_id,
+                "updated_at": utc_now_iso(),
+            }
+        )
+        self.store.save_turn(
+            {
+                "conversation_id": request.conversation_id,
+                "turn_id": request.turn_id,
+                "request_id": request.request_id,
+                "trace_id": request.trace_id,
+                "graph_run_id": request.graph_run_id,
+                "correlation_id": request.correlation_id,
+                "owner_id": request.owner_id,
+                "owner_type": request.owner_type,
+                "mode": request.mode,
+                "user_message": request.user_message,
+                "final_answer": state.get("draft_answer", {}).get("text", ""),
+                "retrieved_chunks": state.get("retrieved_chunks", []),
+                "review_id": review.get("review_id"),
+                "created_at": utc_now_iso(),
+            }
+        )
+        self.store.save_summary(
+            {
+                "conversation_id": request.conversation_id,
+                "graph_run_id": request.graph_run_id,
+                "request_id": request.request_id,
+                "trace_id": request.trace_id,
+                "owner_id": request.owner_id,
+                "owner_type": request.owner_type,
+                "summary": summary,
+                "updated_at": utc_now_iso(),
+            }
+        )
+        if review:
+            self.store.save_answer_review(
+                {
+                    **review,
+                    "conversation_id": request.conversation_id,
+                    "turn_id": request.turn_id,
+                    "request_id": request.request_id,
+                    "trace_id": request.trace_id,
+                    "graph_run_id": request.graph_run_id,
+                    "correlation_id": request.correlation_id,
+                    "owner_id": request.owner_id,
+                    "owner_type": request.owner_type,
+                }
+            )
+        snapshot = copy.deepcopy(state)
+        snapshot["short_term_summary"] = summary
+        self._save_checkpoint(request, snapshot, "persist_turn", "after_persistence", "persisted")
+        self.backend_client.publish_answer_generated(request, len(state.get("retrieved_chunks", [])))
+        self.backend_client.publish_answer_evaluated(request, review.get("verdict", "unknown"))
+        self.logger.info(
+            "persist_turn success",
+            conversation_id=request.conversation_id,
+            turn_id=request.turn_id,
+        )
+        return {
+            "short_term_summary": summary,
+            "_meta": {"message": "Turn persisted", "debug_excerpt": request.turn_id},
+        }
+
+    async def _stream_done(self, state: ConversationState, runtime: Dict[str, Any]) -> Dict[str, Any]:
+        emitter: BaseConversationEmitter = runtime["emitter"]
+        await emitter.emit(
+            "done",
+            {
+                "final_answer": state.get("draft_answer", {}).get("text", ""),
+                "sources": state.get("retrieved_chunks", []),
+                "review_summary": self._public_review(state.get("answer_review", {})),
+                "retrieval_summary": {
+                    "chunk_count": len(state.get("retrieved_chunks", [])),
+                    "plan": state.get("retrieval_plan", {}),
+                },
+                "trace_summary": state.get("trace_events", []),
+                "safe_debug_payloads": state.get("debug_payloads", {}),
+            },
+        )
+        return {"_meta": {"message": "Done emitted"}}
