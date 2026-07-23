@@ -1,5 +1,7 @@
 # RAGForge
 
+[![CI](https://github.com/Vitaliyusf/ragforge/actions/workflows/ci.yml/badge.svg)](https://github.com/Vitaliyusf/ragforge/actions/workflows/ci.yml)
+
 Production-grade Retrieval-Augmented Generation platform with distributed microservices, event-driven messaging, and real-time document chat.
 
 ## Problem
@@ -108,6 +110,14 @@ cp .env.example .env
 docker compose --env-file .env up --build
 ```
 
+On Windows, steps 1-2 can be done for you — the script creates `.env` from the
+template with an independent cryptographically random value per secret, and
+leaves an existing `.env` untouched:
+
+```powershell
+pwsh ./scripts/initialize_docker_env.ps1
+```
+
 First run takes 3-5 minutes for vLLM to download the model. Watch with:
 ```bash
 docker compose logs -f vllm   # ready when "Application startup complete" appears
@@ -123,7 +133,7 @@ docker compose logs -f vllm   # ready when "Application startup complete" appear
 
 MongoDB, RabbitMQ, Kafka, Qdrant, vLLM and all worker APIs are intentionally not bound to a host port. Access them with `docker compose exec` only when operationally necessary.
 
-On first run the UI shows a one-time setup screen: the first account you register becomes the workspace administrator, and the setup endpoint closes permanently once any user exists. For non-interactive (scripted) deployments you can instead pre-seed the admin by setting `BOOTSTRAP_ADMIN_EMAIL` and `BOOTSTRAP_ADMIN_PASSWORD` in `.env`. See [the multi-tenancy and security runbook](docs/multi-tenancy-security-and-migration.md) for user management, additional tenant provisioning, legacy migration, production TLS, and release gates.
+On first run the UI shows a one-time setup screen: the first account you register becomes the workspace administrator, and the setup endpoint closes permanently once any user exists. For non-interactive (scripted) deployments you can instead pre-seed the admin by setting `BOOTSTRAP_ADMIN_EMAIL` and `BOOTSTRAP_ADMIN_PASSWORD` in `.env`. See [the multi-tenancy and security runbook](docs/multi-tenancy-security.md) for user management, additional tenant provisioning, production TLS, and release gates.
 
 ## Project Structure
 
@@ -136,15 +146,19 @@ backend/
   files/        File ingestion, review workflow, audit trail
   vector_db/    Qdrant vector storage and retrieval gating
   memory/       Chat persistence + long-term memory (LangChain tool-calling agent)
+  logs/         Centralized structured log collection
   shared/       Cross-cutting: metrics, retry, circuit breaker, prompt guard, rate limiter
 docker/
   requirements-base.txt   Shared Python dependency layer
 frontend/                 Next.js 14 app — chat, files, logs, models, config, health, memory
+scripts/                  Operator tooling (see Development)
+deploy/Caddyfile          TLS terminating reverse proxy for the production overlay
 tests/                    Repo guardrails plus chat and ingestion smoke fixtures
+.github/workflows/ci.yml  Lint, type-check, and test matrix
 docker-compose.yml        Full stack definition
 docker-compose.prod.yml   HTTPS/same-origin production ingress overlay
 .env.example              All configuration variables with safe defaults
-docs/multi-tenancy-security-and-migration.md  RBAC, security and migration runbook
+docs/multi-tenancy-security.md  RBAC, tenant isolation, and security runbook
 ```
 
 ## Development
@@ -158,10 +172,35 @@ mypy backend/shared backend/gateway/app --config-file mypy.ini
 
 # Lint
 ruff check backend/
-
-# Run unit tests
-pytest backend/
 ```
+
+Backend tests run per service. Each service imports its own code as `app.*` and
+the vendored library as `shared.*` — the layout its image gets by copying both
+into `/app` — so outside a container those two roots go on the path explicitly:
+
+```bash
+# One service
+(cd backend/gateway && PYTHONPATH="$PWD:$PWD/.." pytest app/tests -q)
+
+# All of them
+for svc in embedding files gateway llm_agent memory rag vector_db; do
+  (cd "backend/$svc" && PYTHONPATH="$PWD:$PWD/.." pytest app/tests -q) || break
+done
+
+# Shared library — from backend/, not backend/shared/, whose logging.py
+# would otherwise shadow the standard library module of the same name.
+(cd backend && PYTHONPATH="$PWD" pytest shared/tests -q)
+
+# Frontend
+(cd frontend && npm ci && npm test)
+
+# Repo hygiene: secrets, stray caches, compose drift
+pytest tests/test_public_repo_guardrails.py -q
+```
+
+Each service needs its own `requirements.txt` installed for its tests to
+import; [the CI workflow](.github/workflows/ci.yml) does this per service and is
+the authoritative reference for a working setup.
 
 ### Compose smoke checks
 

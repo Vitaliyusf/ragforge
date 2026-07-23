@@ -123,48 +123,7 @@ Remove-Item Env:PROVISION_ADMIN_PASSWORD
 
 The command creates the tenant and its first admin atomically at the application level, relies on unique indexes against races, and returns only public data.
 
-## 8. Migration from an existing single-user deployment
-
-### 8.1 Before the window
-
-1. Stop uploads, chat writes, and background ingestion.
-2. Take a full snapshot of MongoDB, Qdrant, and the uploads volume.
-3. Store a hash/manifest of the backup and perform a restore rehearsal in a separate environment.
-4. Create the tenant and admin with the provisioning command.
-5. Create the user that the legacy data will be assigned to and record the exact `tenant_id`, `admin_id`, `user_id`.
-6. Do not attempt to guess ownership if the old deployment had more than one user. In that case prepare an explicit mapping and adapt the migration script.
-
-### 8.2 Mandatory dry-run
-
-```powershell
-$env:MIGRATION_MONGODB_URL = 'mongodb://root:<password>@localhost:27017/?authSource=admin'
-$env:QDRANT_API_KEY = '<qdrant key>'
-python scripts/backfill_legacy_tenant.py `
-  --tenant-id acme `
-  --admin-id '<admin uuid>' `
-  --user-id '<legacy owner uuid>' `
-  --upload-dir '<mounted uploads path>' `
-  --qdrant-url 'http://localhost:6333' `
-  --qdrant-collection vectors `
-  --qdrant-collection memory_items_v1
-```
-
-Check that the report matches the expected record and file counts exactly. The default mode changes nothing.
-
-### 8.3 Apply and verification
-
-Run again with `--apply`, then:
-
-1. Verify that no document lacks `tenant_id`, `owner_user_id`, `owner_admin_id` in any collection from the report.
-2. Verify that no Qdrant point lacks the same payload fields.
-3. Verify that every legacy upload moved to `uploads/<tenant_id>/...` with no collisions.
-4. Enable `INTERNAL_AUTH_REQUIRED=true` and all new secrets.
-5. Run smoke tests with two tenants and two different users; searching for known IDs of the other tenant must return 404/empty/403, never data.
-6. Resume paused ingestion items only after the isolation check.
-
-Rollback is a restore of all three snapshots together. Never roll back Mongo alone, because Mongo/Qdrant/filesystem must remain in the same ownership epoch.
-
-## 9. Production deployment
+## 8. Production deployment
 
 The production overlay provides HTTPS via Caddy, HSTS, CSP, protective headers, secure `__Host-` cookies, and same-origin API/socket routing. Data, messaging, AI, and malware-scanning services are separated into internal Docker networks; only the ingress is exposed.
 
@@ -188,7 +147,7 @@ Every placeholder in `.env.example` must be replaced with a separately generated
 - SCA, image scanning, SBOM, patch cadence, and image signature verification.
 - An external penetration test and a restore/DR drill before go-live.
 
-## 10. Verification commands
+## 9. Verification commands
 
 ```powershell
 # Python syntax/import compilation
@@ -215,7 +174,7 @@ docker compose --env-file .env.example -f docker-compose.yml -f docker-compose.p
 
 The security test suite covers password hashing, ticket tampering/audience/expiry, missing-identity fail-closed behavior, file repository scoping, vector scoping, admin review RBAC, CSRF/origin, socket debug filtering, UI debug hiding, and vLLM bearer authentication.
 
-## 11. Standards baseline
+## 10. Standards baseline
 
 The controls were built against:
 
