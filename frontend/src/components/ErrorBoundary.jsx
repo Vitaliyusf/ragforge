@@ -50,6 +50,11 @@ export default class ErrorBoundary extends Component {
               <pre className="text-xs text-text-muted bg-bg-tertiary rounded-lg p-3 text-left overflow-auto max-h-32">
                 {this.state.error.message}
                 {this.state.error.code ? `\ncode: ${this.state.error.code}` : ''}
+                {/* Surface the correlation ids the boundary already logs, so a
+                    user can quote them in a bug report and they can be matched
+                    against the gateway logs. */}
+                {this.state.error.request_id ? `\nrequest: ${this.state.error.request_id}` : ''}
+                {this.state.error.trace_id ? `\ntrace: ${this.state.error.trace_id}` : ''}
               </pre>
             )}
             <Button variant="primary" size="sm" onClick={this.handleRetry} className="gap-1.5">

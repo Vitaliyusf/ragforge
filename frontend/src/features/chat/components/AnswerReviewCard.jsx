@@ -34,8 +34,9 @@ export default function AnswerReviewCard({ review }) {
         )}
       </div>
 
-      {(review.model_name || review.created_at) ? (
+      {(review.review_id || review.model_name || review.created_at) ? (
         <div className="mb-3 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-text-muted">
+          {review.review_id ? <span>Review: <span className="font-mono text-text-secondary">{review.review_id}</span></span> : null}
           {review.model_name ? <span>Model: <span className="font-mono text-text-secondary">{review.model_name}</span></span> : null}
           {review.created_at ? <span>Created: {review.created_at}</span> : null}
         </div>

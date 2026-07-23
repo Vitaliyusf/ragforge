@@ -35,8 +35,17 @@ class DummyProducer:
 
 
 @pytest.fixture(autouse=True)
-def authenticated_request_context():
-    """Give direct handler tests the identity normally verified at the RPC boundary."""
+def authenticated_request_context(monkeypatch):
+    """Give direct handler tests the identity normally verified at the RPC boundary.
+
+    ``INTERNAL_AUTH_REQUIRED`` is cleared explicitly: these tests call handlers
+    directly rather than through the signed RPC envelope, and leaving the
+    variable ambient makes results depend on the shell. Inside a service
+    container it is set to "true", which turns unrelated assertions into
+    "signed authentication context is required" failures. Tests that do want
+    the check enabled set it themselves (see test_tenant_scope.py).
+    """
+    monkeypatch.delenv("INTERNAL_AUTH_REQUIRED", raising=False)
     with bound_context(
         user_id="test-admin",
         tenant_id="test-tenant",
@@ -740,7 +749,9 @@ def test_start_file_ingestion_publishes_enveloped_extract_command(config):
     assert command_message["action"] == "extract"
     assert command_message["source_service"] == "files"
     assert command_message["target_service"] == "embedding"
-    assert command_message["payload"]["path"].endswith("file-2/report.txt")
+    # Normalize separators: the path is built with os.path.join, so it is
+    # backslash-delimited when the suite runs on Windows.
+    assert command_message["payload"]["path"].replace("\\", "/").endswith("file-2/report.txt")
     assert reply_message["message_type"] == "reply"
     assert reply_message["success"] is True
 

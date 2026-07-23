@@ -294,6 +294,10 @@ function FileCard({
               {file.owner_display_name || file.owner_email ? (
                 <DetailRow label="Owner" value={file.owner_display_name || file.owner_email} />
               ) : null}
+              <DetailRow label="File ID" value={file.file_id} mono />
+              {file.current_task_id ? (
+                <DetailRow label="Task ID" value={file.current_task_id} mono />
+              ) : null}
             </div>
           </motion.div>
         ) : null}
@@ -861,6 +865,13 @@ export default function FilesTab() {
                   className="rounded-xl border border-border bg-bg-tertiary/40 px-3 py-2.5"
                 >
                   <div className="truncate text-xs font-semibold text-text-primary">{upload.filename}</div>
+                  {/* The id returned by the upload call — the handle to quote
+                      when asking an administrator about this file. */}
+                  {upload.file_id ? (
+                    <div className="mt-0.5 truncate font-mono text-[10px] text-text-muted" title={upload.file_id}>
+                      {upload.file_id}
+                    </div>
+                  ) : null}
                   <div className="mt-1.5 flex flex-wrap gap-1.5">
                     <Badge variant={getFileStatusBadgeVariant(upload.status)} size="sm">
                       {getFileStatusLabel(upload.status)}

@@ -82,7 +82,7 @@ describe('ChatTab', () => {
     chatService.processChatExit.mockResolvedValue({})
   })
 
-  it('handles direct chat streaming, renders answer review, opens trace panel, and sends feedback', async () => {
+  it('handles direct chat streaming, renders answer review, and opens the trace panel', async () => {
     const answerReview = {
       review_id: 'review-1',
       verdict: 'pass',
@@ -192,31 +192,11 @@ describe('ChatTab', () => {
     await user.click(screen.getByRole('button', { name: /Structured Output Candidates/i }))
     expect(screen.getByText(/"selected_payload_index": 1/i)).toBeInTheDocument()
 
-    await user.click(screen.getByRole('button', { name: 'Helpful' }))
-    await user.click(screen.getByRole('button', { name: 'Clear flow' }))
-
-    await waitFor(() => {
-      expect(socketService.sendFeedback).toHaveBeenCalledTimes(2)
-    })
-
-    expect(socketService.sendFeedback).toHaveBeenCalledWith(
-      'answer_feedback',
-      expect.objectContaining({
-        conversation_id: 'chat-1',
-        mode: 'regular',
-        label: 'helpful',
-        rating: 'positive',
-      })
-    )
-    expect(socketService.sendFeedback).toHaveBeenCalledWith(
-      'flow_feedback',
-      expect.objectContaining({
-        conversation_id: 'chat-1',
-        mode: 'regular',
-        category: 'flow_clear',
-        label: 'clear',
-      })
-    )
+    // Answer/flow feedback is deliberately not asserted here: FeedbackControls
+    // is currently commented out of MessageList ("feedback UI temporarily
+    // hidden"). The transport, the RAG Socket.IO handlers, and the component
+    // itself all still exist, so re-enabling that import is the only step
+    // needed to bring these assertions back.
   })
 
   it('sends extended mode requests', async () => {

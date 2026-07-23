@@ -65,6 +65,16 @@ export default function AuditTrailPanel({
                 <AuditMeta label="To status" value={event.to_status} />
                 <AuditMeta label="Actor" value={event.actor?.display_name} />
                 <AuditMeta label="Reason" value={event.reason} />
+                {/* Identifiers that make an audit entry cross-referenceable
+                    against the file task and review records it came from. */}
+                <AuditMeta label="Event ID" value={event.event_id} />
+                <AuditMeta label="Task ID" value={event.task_id} />
+                {event.review_case_id ? (
+                  <AuditMeta label="Review case ID" value={event.review_case_id} />
+                ) : null}
+                {event.decision_id ? (
+                  <AuditMeta label="Decision ID" value={event.decision_id} />
+                ) : null}
               </div>
 
               <div className="mt-3 space-y-2">

@@ -410,6 +410,18 @@ export default function TraceDebugPanel({ message, turn, onClose }) {
   const retrievalSummary = metadata.retrievalSummary || turn?.retrievalSummary || null
   const debugPayloads   = metadata.debugPayloads || turn?.debugPayloads || {}
 
+  // Correlation ids for matching this turn against gateway/service logs. Kept
+  // outside the tab strip so they stay readable whichever tab is open.
+  const identifiers = useMemo(() => ([
+    ['Conversation ID', metadata.conversationId || turn?.conversationId],
+    ['Turn ID',         metadata.turnId         || turn?.turnId],
+    ['Request ID',      metadata.requestId      || turn?.requestId],
+    ['Trace ID',        metadata.traceId        || turn?.traceId],
+  ].filter(([, value]) => Boolean(value))
+    .map(([label, value]) => ({ label, value: String(value) }))
+  ), [metadata.conversationId, metadata.turnId, metadata.requestId, metadata.traceId,
+      turn?.conversationId, turn?.turnId, turn?.requestId, turn?.traceId])
+
   const tabBadge = {
     pipeline: traceEvents.length || null,
     sources:  sources.length || null,
@@ -429,6 +441,20 @@ export default function TraceDebugPanel({ message, turn, onClose }) {
           <X size={15} />
         </Button>
       </div>
+
+      {/* Correlation identifiers */}
+      {identifiers.length > 0 ? (
+        <div className="grid grid-cols-2 gap-x-3 gap-y-2 border-b border-border px-4 py-2.5">
+          {identifiers.map(({ label, value }) => (
+            <div key={label} className="min-w-0">
+              <div className="text-[10px] uppercase tracking-wide text-text-muted">{label}</div>
+              <div className="truncate font-mono text-[11px] text-text-secondary" title={value}>
+                {value}
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : null}
 
       {/* Tabs */}
       <div className="flex border-b border-border">

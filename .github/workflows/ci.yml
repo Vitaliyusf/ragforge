@@ -1,0 +1,119 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# A newer push to the same branch makes the in-flight run redundant.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: '3.11'   # matches python:3.11-slim in every service image
+  NODE_VERSION: '20'       # matches node:20-alpine in the frontend image
+
+jobs:
+  lint:
+    name: Lint and type-check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - name: Install tooling and gateway deps
+        # mypy resolves gateway imports, so its runtime deps must be present.
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r backend/requirements-dev.txt \
+                      -r docker/requirements-base.txt \
+                      -r backend/gateway/requirements.txt
+      - name: ruff
+        run: ruff check backend/
+      - name: mypy (strict)
+        run: mypy backend/shared backend/gateway/app --config-file mypy.ini
+
+  backend:
+    name: "Tests: ${{ matrix.service }}"
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [embedding, files, gateway, llm_agent, memory, rag, vector_db]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - name: Install CPU-only torch
+        # llm_agent pins torch, whose default wheel carries the full CUDA
+        # runtime (~2 GB). The CPU build satisfies `torch==2.0.0` and is a
+        # fraction of the size; nothing under test needs a GPU.
+        if: matrix.service == 'llm_agent'
+        run: pip install torch==2.0.0 --index-url https://download.pytorch.org/whl/cpu
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r docker/requirements-base.txt \
+                      -r backend/${{ matrix.service }}/requirements.txt \
+                      -r backend/requirements-dev.txt
+      - name: pytest
+        working-directory: backend/${{ matrix.service }}
+        # Services import their own code as `app.*` and the vendored library as
+        # `shared.*`, which the images provide by copying both to /app. Outside
+        # a container the same two roots have to go on the path explicitly.
+        run: PYTHONPATH="$PWD:$PWD/.." pytest app/tests -q
+
+  shared:
+    name: "Tests: shared"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r docker/requirements-base.txt -r backend/requirements-dev.txt
+      - name: pytest
+        working-directory: backend
+        # Run from backend/, never from backend/shared/: that directory holds a
+        # logging.py which would shadow the standard library on sys.path.
+        run: PYTHONPATH="$PWD" pytest shared/tests -q
+
+  frontend:
+    name: "Tests: frontend"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci --no-audit --no-fund
+      - name: vitest
+        working-directory: frontend
+        run: npm test
+
+  guardrails:
+    name: Repo guardrails
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - name: Install pytest
+        run: pip install -r backend/requirements-dev.txt
+      - name: Scan for secrets, stray caches, and compose drift
+        run: pytest tests/test_public_repo_guardrails.py -q
