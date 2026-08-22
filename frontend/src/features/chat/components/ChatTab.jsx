@@ -1,11 +1,12 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { PanelLeftOpen, PanelLeftClose, Sparkles } from 'lucide-react'
+import { PanelLeftOpen, PanelLeftClose, Sparkles, Loader2, ServerCrash } from 'lucide-react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useChat } from '@/features/chat'
 import { useAuth } from '@/features/auth'
 import { useChatInit } from '@/features/chat/hooks/useChatInit'
+import { useLlmReadiness } from '@/features/chat/hooks/useLlmReadiness'
 import MessageList from './MessageList'
 import ChatInput from './ChatInput'
 import ChatSidebar from './ChatSidebar'
@@ -24,6 +25,7 @@ export default function ChatTab() {
   } = useChat()
 
   const { suggestedPrompts } = useChatInit()
+  const { llmReady, llmChecked } = useLlmReadiness()
 
   const [inputValue, setInputValue] = useState('')
   const [deleteModalOpen, setDeleteModalOpen] = useState(false)
@@ -43,7 +45,20 @@ export default function ChatTab() {
     [chats, currentChatId]
   )
 
+  // The LLM readiness gate takes priority over the WebSocket transport status:
+  // there's no point advertising "Live" if vLLM can't answer yet.
+  const statusPill = !llmReady
+    ? (llmChecked
+        ? { label: 'LLM not available', tone: 'error' }
+        : { label: 'Checking LLM…', tone: 'neutral' })
+    : wsConnectionStatus === 'connected'
+      ? { label: 'Live', tone: 'success' }
+      : wsConnectionStatus === 'connecting'
+        ? { label: 'Connecting', tone: 'neutral' }
+        : { label: 'Offline', tone: 'neutral' }
+
   const handleSend = (text) => {
+    if (!llmReady) return
     const nextText = text ?? inputValue.trim()
     if (!nextText) return
     setInputValue('')
@@ -181,24 +196,52 @@ export default function ChatTab() {
           <div
             className="hidden items-center gap-2 rounded-full border px-2.5 py-1.5 text-[10px] font-medium sm:flex"
             style={{
-              background: wsConnectionStatus === 'connected' ? 'var(--success-soft)' : 'var(--surface-hover)',
-              borderColor: wsConnectionStatus === 'connected' ? 'rgba(34,197,94,0.22)' : 'var(--border)',
-              color: wsConnectionStatus === 'connected' ? 'var(--success)' : 'var(--fg-soft)',
+              background: statusPill.tone === 'success'
+                ? 'var(--success-soft)'
+                : statusPill.tone === 'error'
+                  ? 'var(--danger-soft)'
+                  : 'var(--surface-hover)',
+              borderColor: statusPill.tone === 'success'
+                ? 'rgba(34,197,94,0.22)'
+                : statusPill.tone === 'error'
+                  ? 'rgba(239,68,68,0.22)'
+                  : 'var(--border)',
+              color: statusPill.tone === 'success'
+                ? 'var(--success)'
+                : statusPill.tone === 'error'
+                  ? 'var(--danger)'
+                  : 'var(--fg-soft)',
             }}
           >
             <span
-              className={wsConnectionStatus === 'connecting'
+              className={statusPill.label === 'Checking LLM…'
                 ? 'h-1.5 w-1.5 animate-pulse rounded-full'
                 : 'h-1.5 w-1.5 rounded-full'}
               style={{ background: 'currentColor' }}
             />
-            {wsConnectionStatus === 'connected'
-              ? 'Live'
-              : wsConnectionStatus === 'connecting'
-                ? 'Connecting'
-                : 'Offline'}
+            {statusPill.label}
           </div>
         </div>
+
+        {!llmReady && (
+          <div
+            className="flex shrink-0 items-center gap-2.5 border-b px-4 py-2.5 text-xs"
+            style={{
+              borderColor: 'var(--border)',
+              background: llmChecked ? 'var(--danger-soft)' : 'var(--surface-hover)',
+              color: llmChecked ? 'var(--danger)' : 'var(--fg-muted)',
+            }}
+          >
+            {llmChecked
+              ? <ServerCrash size={14} className="shrink-0" />
+              : <Loader2 size={14} className="shrink-0 animate-spin" />}
+            <span>
+              {llmChecked
+                ? 'The language model isn’t available yet — it’s still starting up. Chat will enable automatically once it’s ready.'
+                : 'Checking whether the language model is available…'}
+            </span>
+          </div>
+        )}
 
         <MessageList
           messages={messages}
@@ -220,6 +263,8 @@ export default function ChatTab() {
           answerMode={answerMode}
           onAnswerModeChange={setAnswerMode}
           wsConnectionStatus={wsConnectionStatus}
+          llmReady={llmReady}
+          llmChecked={llmChecked}
         />
       </section>
 

@@ -11,6 +11,22 @@ from app.services.base import BaseRPCService
 class ModelManagementService(BaseRPCService):
     """RabbitMQ-backed facade for LLM implementation and model management."""
 
+    async def llm_ready(self) -> Dict[str, Any]:
+        """Report whether the LLM backend (e.g. vLLM) has finished starting.
+
+        Backs the public readiness probe the chat UI polls to gate its input.
+        Returns ``{"ready": False}`` when RabbitMQ or the llm_agent service is
+        unavailable, so "not reachable yet" reads as "not ready" rather than an
+        error the frontend has to special-case.
+        """
+        try:
+            return await self._send(
+                self.config.request_topics["model_management"],
+                {"action": ModelManagementAction.LLM_READY},
+            )
+        except (RPCTimeoutError, RPCConnectionError):
+            return {"ready": False}
+
     async def list_implementations(self) -> Dict[str, Any]:
         """List available LLM implementations.
 

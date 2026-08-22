@@ -1,7 +1,7 @@
 """REST API routes configuration."""
 from fastapi import FastAPI
 
-from app.rest.v1 import admin_users, auth, chat, chat_history, config, files, health, logs, long_term_memory, models, models_legacy, rag
+from app.rest.v1 import admin_users, auth, chat, chat_history, config, files, health, llm, logs, long_term_memory, models, models_legacy, rag
 from app.utils.common import setup_cors
 
 
@@ -14,6 +14,7 @@ def setup_routes(app: FastAPI) -> None:
     app.include_router(auth.router, prefix="/v1")
     app.include_router(admin_users.router, prefix="/v1")
     app.include_router(chat.router, prefix="/v1")
+    app.include_router(llm.router, prefix="/v1")
     app.include_router(files.router, prefix="/v1")
     app.include_router(chat_history.router, prefix="/v1")
     app.include_router(models.router, prefix="/v1")
