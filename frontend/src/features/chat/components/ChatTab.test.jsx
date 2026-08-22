@@ -17,6 +17,16 @@ vi.mock('@/features/chat/hooks/useChatInit', () => ({
   }),
 }))
 
+// Controllable LLM readiness so tests can drive the "starting" gate. Defaults to
+// ready in beforeEach; a dedicated test flips it to exercise the disabled state.
+const { llmReadinessState } = vi.hoisted(() => ({
+  llmReadinessState: { value: { llmReady: true, llmChecked: true } },
+}))
+
+vi.mock('@/features/chat/hooks/useLlmReadiness', () => ({
+  useLlmReadiness: () => llmReadinessState.value,
+}))
+
 vi.mock('@/features/auth', () => ({
   useAuth: () => ({ isAdmin: true }),
 }))
@@ -64,6 +74,7 @@ function renderChatTab() {
 
 describe('ChatTab', () => {
   beforeEach(() => {
+    llmReadinessState.value = { llmReady: true, llmChecked: true }
     socketService.onStatusChange.mockImplementation((callback) => {
       callback('connected', true)
       return () => {}
@@ -241,5 +252,18 @@ describe('ChatTab', () => {
     )
 
     expect(await screen.findByText(/Extended answer complete/i)).toBeInTheDocument()
+  })
+
+  it('disables the composer and shows a notice while the LLM is not available', async () => {
+    llmReadinessState.value = { llmReady: false, llmChecked: true }
+
+    renderChatTab()
+
+    expect(screen.getByLabelText(/Chat message/i)).toBeDisabled()
+    expect(screen.getByLabelText(/Send message/i)).toBeDisabled()
+    expect(await screen.findByText(/isn.t available yet/i)).toBeInTheDocument()
+    // The marker appears in both the header pill and the composer badge.
+    expect(screen.getAllByText(/LLM not available/i).length).toBeGreaterThan(0)
+    expect(socketService.askQuestion).not.toHaveBeenCalled()
   })
 })

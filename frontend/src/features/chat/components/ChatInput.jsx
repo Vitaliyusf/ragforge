@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef } from 'react'
-import { ArrowUp, Loader2, Wifi, WifiOff } from 'lucide-react'
+import { ArrowUp, Loader2, Wifi, WifiOff, ServerCrash } from 'lucide-react'
 import Badge from '@/components/ui/Badge'
 import Select, { SelectItem } from '@/components/ui/Select'
 
@@ -11,6 +11,10 @@ const WS_STATUS_CONFIG = {
   failed: { variant: 'error', label: 'Offline', icon: WifiOff, iconSpin: false },
   disconnected: { variant: 'default', label: 'Disconnected', icon: WifiOff, iconSpin: false },
 }
+
+// Shown in place of the transport badge while the LLM backend isn't ready.
+const LLM_STARTING_CONFIG = { variant: 'warning', label: 'LLM starting...', icon: Loader2, iconSpin: true }
+const LLM_UNAVAILABLE_CONFIG = { variant: 'error', label: 'LLM not available', icon: ServerCrash, iconSpin: false }
 
 const MAX_TEXTAREA_HEIGHT = 160
 
@@ -22,10 +26,23 @@ export default function ChatInput({
   answerMode,
   onAnswerModeChange,
   wsConnectionStatus,
+  llmReady = true,
+  llmChecked = true,
 }) {
   const textareaRef = useRef(null)
-  const wsConfig = WS_STATUS_CONFIG[wsConnectionStatus] ?? WS_STATUS_CONFIG.disconnected
-  const canSend = !sendingMessage && value.trim().length > 0
+  // Until the LLM backend is ready the badge reflects LLM availability rather
+  // than the WebSocket transport — a "Live" socket is meaningless if vLLM
+  // can't answer yet.
+  const statusConfig = llmReady
+    ? (WS_STATUS_CONFIG[wsConnectionStatus] ?? WS_STATUS_CONFIG.disconnected)
+    : (llmChecked ? LLM_UNAVAILABLE_CONFIG : LLM_STARTING_CONFIG)
+  const canSend = llmReady && !sendingMessage && value.trim().length > 0
+  const inputDisabled = sendingMessage || !llmReady
+  const placeholder = llmReady
+    ? 'Ask anything about your knowledge base...'
+    : (llmChecked
+        ? 'The language model is starting up — chat will enable when it’s ready'
+        : 'Checking whether the language model is available…')
 
   useEffect(() => {
     const element = textareaRef.current
@@ -56,10 +73,10 @@ export default function ChatInput({
             value={value}
             onChange={onChange}
             onKeyDown={handleKeyDown}
-            placeholder="Ask anything about your knowledge base..."
+            placeholder={placeholder}
             rows={1}
             aria-label="Chat message"
-            disabled={sendingMessage}
+            disabled={inputDisabled}
             className="min-h-7 min-w-0 flex-1 resize-none overflow-y-auto bg-transparent py-1 text-sm leading-relaxed text-[var(--fg)] outline-none placeholder:text-[var(--fg-soft)] disabled:opacity-60 scrollbar-none"
             style={{ maxHeight: MAX_TEXTAREA_HEIGHT }}
           />
@@ -97,13 +114,13 @@ export default function ChatInput({
           <div className="h-3.5 w-px shrink-0 bg-[var(--border)]" />
 
           <Badge
-            variant={wsConfig.variant}
-            icon={wsConfig.icon}
-            spin={wsConfig.iconSpin}
+            variant={statusConfig.variant}
+            icon={statusConfig.icon}
+            spin={statusConfig.iconSpin}
             size="xs"
-            aria-label={`Connection: ${wsConfig.label}`}
+            aria-label={`Status: ${statusConfig.label}`}
           >
-            {wsConfig.label}
+            {statusConfig.label}
           </Badge>
 
           <span className="ml-auto hidden text-[10px] text-[var(--fg-soft)] sm:block">

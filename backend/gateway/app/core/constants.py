@@ -115,6 +115,7 @@ class ConfigManagementAction(str, Enum):
 
 class ModelManagementAction(str, Enum):
     """Action strings routed to the model management service."""
+    LLM_READY = "llm_ready"
     LIST_IMPLEMENTATIONS = "list_implementations"
     GET_IMPLEMENTATION_INFO = "get_implementation_info"
     LIST_MODELS = "list_models"

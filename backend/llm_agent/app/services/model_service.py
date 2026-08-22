@@ -81,6 +81,25 @@ class ModelService(BaseService):
             )
             raise ServiceException(f"Failed to list models: {str(e)}", original_exception=e)
     
+    def llm_ready(self) -> Dict[str, Any]:
+        """Report whether the active LLM backend is reachable and ready to serve.
+
+        Backs the gateway's public readiness probe so the chat UI can gate input
+        until vLLM has finished starting. Never raises — any error reads as
+        "not ready" rather than surfacing an exception to the caller.
+        """
+        try:
+            ready = bool(self.llm_client and self.llm_client.is_available())
+        except Exception as e:
+            self.logger.log(
+                "service:model",
+                "LLM readiness probe failed",
+                {"error": str(e)},
+                hypothesis_id="W",
+            )
+            ready = False
+        return {"ready": ready, "implementation": self.config.llm_implementation}
+
     def get_model_info(self, model: str) -> Dict[str, Any]:
         """
         Get information about a specific model.
