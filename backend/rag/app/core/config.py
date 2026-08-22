@@ -38,7 +38,7 @@ class RAGConfig(BaseSettings):
     internal_request_timeout: float = 75.0
     generation_request_timeout: float = 120.0
     evaluation_request_timeout: float = 75.0
-    top_k_documents: int = 8
+    top_k_documents: int = 6
     max_recent_messages: int = 6
     max_memory_hits: int = 6
     min_similarity_threshold: float = 0.4

@@ -44,7 +44,7 @@ class MemoryAgent:
         memory_service: LongTermMemoryService,
         logger: ServiceLogger,
         vllm_base_url: str = "http://vllm:8000/v1",
-        model: str = "Qwen/Qwen2.5-7B-Instruct-GPTQ-Int4",
+        model: str = "RedHatAI/Qwen3.5-4B-quantized.w4a16",
     ) -> None:
         self.memory_service = memory_service
         self.logger = logger

@@ -125,6 +125,16 @@ class ConversationGraphRunner:
             return self._build_result(final_state)
         except Exception as exc:
             failed_node = runtime.get("current_node", "unknown")
+            self.logger.exception(
+                "conversation graph execution failed",
+                error=str(exc),
+                data={
+                    "failed_node": failed_node,
+                    "conversation_id": request.conversation_id,
+                    "turn_id": request.turn_id,
+                    "request_id": request.request_id,
+                },
+            )
             self._save_checkpoint(request, state, failed_node, "error", "error", {"error": str(exc)})
             if not emitter.terminal_sent:
                 await emitter.emit(
@@ -531,7 +541,7 @@ class ConversationGraphRunner:
             for chunk in state.get("retrieved_chunks", [])[: self.config.top_k_documents]
             if chunk.get("text")
         ]
-        memory_context = "\n".join(item.get("content", "") for item in state.get("memory_hits", []))
+        memory_context = "\n".join(str(item.get("content", "")) for item in state.get("memory_hits", []))
         parts = [f"Mode: {mode}", f"Conversation summary:\n{state.get('short_term_summary', '')}"]
         if state.get("recent_messages"):
             history_lines = []
