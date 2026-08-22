@@ -62,11 +62,16 @@ services:
     networks: [data]
 
   vllm:
-    image: ${VLLM_IMAGE:-vllm/vllm-openai:v0.19.0}
+    image: ${VLLM_IMAGE:-vllm/vllm-openai:v0.27.1}
     volumes:
       - hf_cache:/root/.cache/huggingface
     environment:
       HF_TOKEN: ${HF_TOKEN:-}
+      # vLLM 0.27's default "V2 model runner" requires CUDA UVA, which WSL2 /
+      # Docker Desktop doesn't expose ("RuntimeError: UVA is not available").
+      # Force the V1 runner by default so it boots everywhere; set to 1 on a
+      # native-Linux GPU host to opt back into the V2 runner.
+      VLLM_USE_V2_MODEL_RUNNER: ${VLLM_USE_V2_MODEL_RUNNER:-0}
     deploy:
       resources:
         reservations:
