@@ -7,10 +7,10 @@
   "summary_timeout": 120.0,
   "metadata_timeout": 60.0,
   "models": {
-    "summary": "Qwen/Qwen2.5-7B-Instruct-GPTQ-Int4",
-    "metadata": "Qwen/Qwen2.5-7B-Instruct-GPTQ-Int4",
-    "rag_chat": "Qwen/Qwen2.5-7B-Instruct-GPTQ-Int4",
-    "default": "Qwen/Qwen2.5-7B-Instruct-GPTQ-Int4"
+    "summary": "RedHatAI/Qwen3.5-4B-quantized.w4a16",
+    "metadata": "RedHatAI/Qwen3.5-4B-quantized.w4a16",
+    "rag_chat": "RedHatAI/Qwen3.5-4B-quantized.w4a16",
+    "default": "RedHatAI/Qwen3.5-4B-quantized.w4a16"
   },
   "generation_params": {
     "hf_max_length": 512,
@@ -30,6 +30,6 @@
     "summary": 120.0,
     "metadata": 60.0
   },
-  "rag_chat_model": "Qwen/Qwen2.5-7B-Instruct-GPTQ-Int4",
-  "summary_model": "Qwen/Qwen2.5-7B-Instruct-GPTQ-Int4"
+  "rag_chat_model": "RedHatAI/Qwen3.5-4B-quantized.w4a16",
+  "summary_model": "RedHatAI/Qwen3.5-4B-quantized.w4a16"
 }

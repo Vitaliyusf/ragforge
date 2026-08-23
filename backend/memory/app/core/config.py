@@ -42,7 +42,7 @@ class Settings(BaseSettings):
     # Direct vLLM access for chat exit and agent flows
     vllm_base_url: str = "http://vllm:8000"
     vllm_api_key: str = "none"
-    default_model: str = "Qwen/Qwen2.5-7B-Instruct-GPTQ-Int4"
+    default_model: str = "RedHatAI/Qwen3.5-4B-quantized.w4a16"
     chat_exit_llm_timeout_seconds: float = 30.0
     chat_exit_headline_timeout_seconds: float = 15.0
     chat_exit_summary_timeout_seconds: float = 20.0

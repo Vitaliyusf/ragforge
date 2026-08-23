@@ -83,19 +83,26 @@ services:
     command:
       - vllm
       - serve
-      - ${VLLM_MODEL:-Qwen/Qwen2.5-7B-Instruct-GPTQ-Int4}
+      - ${VLLM_MODEL:-RedHatAI/Qwen3.5-4B-quantized.w4a16}
       - --host
       - 0.0.0.0
       - --port
       - "8000"
+      - --language-model-only
       - --quantization
-      - ${VLLM_QUANTIZATION:-gptq_marlin}
-      - --gpu-memory-utilization
-      - "${VLLM_GPU_MEMORY_UTILIZATION:-0.85}"
+      - ${VLLM_QUANTIZATION:-compressed-tensors}
       - --max-model-len
-      - "${VLLM_MAX_MODEL_LEN:-6144}"
+      - "${VLLM_MAX_MODEL_LEN:-10240}"
+      - --gpu-memory-utilization
+      - "${VLLM_GPU_MEMORY_UTILIZATION:-0.80}"
       - --max-num-seqs
-      - "${VLLM_MAX_NUM_SEQS:-4}"
+      - "${VLLM_MAX_NUM_SEQS:-2}"
+      - --enable-prefix-caching
+      - --reasoning-parser
+      - qwen3
+      - --enable-auto-tool-choice
+      - --tool-call-parser
+      - qwen3_coder
       - --api-key
       - ${VLLM_API_KEY:?Set VLLM_API_KEY}
     restart: unless-stopped
@@ -129,11 +136,11 @@ services:
       VLLM_API_KEY: ${VLLM_API_KEY:?Set VLLM_API_KEY}
       # Fallback context window used until vLLM can be probed for max_model_len.
       # Same variable as the vllm service's --max-model-len, so they cannot drift.
-      VLLM_MAX_MODEL_LEN: ${VLLM_MAX_MODEL_LEN:-6144}
-      SUMMARY_MODEL: ${SUMMARY_MODEL:-Qwen/Qwen2.5-7B-Instruct-GPTQ-Int4}
-      METADATA_MODEL: ${METADATA_MODEL:-Qwen/Qwen2.5-7B-Instruct-GPTQ-Int4}
-      RAG_CHAT_MODEL: ${RAG_CHAT_MODEL:-Qwen/Qwen2.5-7B-Instruct-GPTQ-Int4}
-      DEFAULT_MODEL: ${DEFAULT_MODEL:-Qwen/Qwen2.5-7B-Instruct-GPTQ-Int4}
+      VLLM_MAX_MODEL_LEN: ${VLLM_MAX_MODEL_LEN:-10240}
+      SUMMARY_MODEL: ${SUMMARY_MODEL:-RedHatAI/Qwen3.5-4B-quantized.w4a16}
+      METADATA_MODEL: ${METADATA_MODEL:-RedHatAI/Qwen3.5-4B-quantized.w4a16}
+      RAG_CHAT_MODEL: ${RAG_CHAT_MODEL:-RedHatAI/Qwen3.5-4B-quantized.w4a16}
+      DEFAULT_MODEL: ${DEFAULT_MODEL:-RedHatAI/Qwen3.5-4B-quantized.w4a16}
       MAX_CONCURRENT_REQUESTS: ${MAX_CONCURRENT_REQUESTS:-10}
       LLM_TIMEOUT: ${LLM_TIMEOUT:-60}
       SUMMARY_TIMEOUT: ${SUMMARY_TIMEOUT:-120}
@@ -161,7 +168,7 @@ services:
       MONGODB_URL: mongodb://memory:${MONGO_MEMORY_PASSWORD}@mongodb:27017/memory?authSource=memory
       VLLM_BASE_URL: http://vllm:8000
       VLLM_API_KEY: ${VLLM_API_KEY:-none}
-      DEFAULT_MODEL: ${DEFAULT_MODEL:-Qwen/Qwen2.5-7B-Instruct-GPTQ-Int4}
+      DEFAULT_MODEL: ${DEFAULT_MODEL:-RedHatAI/Qwen3.5-4B-quantized.w4a16}
       QDRANT_ENABLED: ${MEMORY_QDRANT_ENABLED:-true}
       QDRANT_URL: http://qdrant:6333
       QDRANT_API_KEY: ${QDRANT_API_KEY:-}
@@ -287,6 +294,10 @@ services:
       LOG_DIR: /app/logs
       RERANKER_ENABLED: ${RERANKER_ENABLED:-false}
       RERANKER_TOP_K: ${RERANKER_TOP_K:-5}
+      # Chunks fed into the answer prompt. With the reranker disabled this is the
+      # effective context-size knob; kept modest so the RAG prompt fits the vLLM
+      # context window alongside the reserved output tokens.
+      TOP_K_DOCUMENTS: ${TOP_K_DOCUMENTS:-6}
       CONVERSATION_STORE_TYPE: ${CONVERSATION_STORE_TYPE:-mongodb}
       INTERNAL_REQUEST_TIMEOUT: ${RAG_INTERNAL_REQUEST_TIMEOUT:-75}
       GENERATION_REQUEST_TIMEOUT: ${RAG_GENERATION_REQUEST_TIMEOUT:-120}

@@ -48,9 +48,9 @@ class Settings(BaseSettings):
     llm_implementation: str = Field(default="huggingface", description="LLM implementation (huggingface, vllm, ollama)")
     
     # Model configuration
-    summary_model: str = Field(default="mistralai/Mistral-7B-Instruct-v0.3", description="Summary model")
-    metadata_model: str = Field(default="mistralai/Mistral-7B-Instruct-v0.3", description="Metadata extraction model")
-    rag_chat_model: str = Field(default="mistralai/Mistral-7B-Instruct-v0.3", description="RAG chat model")
+    summary_model: str = Field(default="RedHatAI/Qwen3.5-4B-quantized.w4a16", description="Summary model")
+    metadata_model: str = Field(default="RedHatAI/Qwen3.5-4B-quantized.w4a16", description="Metadata extraction model")
+    rag_chat_model: str = Field(default="RedHatAI/Qwen3.5-4B-quantized.w4a16", description="RAG chat model")
     default_model: Optional[str] = Field(default=None, description="Default model (falls back to rag_chat_model)")
     
     # Device configuration
@@ -153,15 +153,15 @@ class Settings(BaseSettings):
         merged.update(kwargs)
         
         # Validate summary_model
-        summary_model_val = merged.get("summary_model", file_config.get("summary_model", "mistralai/Mistral-7B-Instruct-v0.3"))
+        summary_model_val = merged.get("summary_model", file_config.get("summary_model", "RedHatAI/Qwen3.5-4B-quantized.w4a16"))
         if self._is_mbart_model(summary_model_val):
-            logger.error("Model %s is a translation model (mbart), not suitable for summarization. Correcting to: mistralai/Mistral-7B-Instruct-v0.3", summary_model_val)
-            merged["summary_model"] = "mistralai/Mistral-7B-Instruct-v0.3"
-            summary_model_val = "mistralai/Mistral-7B-Instruct-v0.3"
+            logger.error("Model %s is a translation model (mbart), not suitable for summarization. Correcting to: RedHatAI/Qwen3.5-4B-quantized.w4a16", summary_model_val)
+            merged["summary_model"] = "RedHatAI/Qwen3.5-4B-quantized.w4a16"
+            summary_model_val = "RedHatAI/Qwen3.5-4B-quantized.w4a16"
         
         # Set default_model if not provided
         if not merged.get("default_model") and not file_config.get("default_model"):
-            merged["default_model"] = merged.get("rag_chat_model", file_config.get("rag_chat_model", "mistralai/Mistral-7B-Instruct-v0.3"))
+            merged["default_model"] = merged.get("rag_chat_model", file_config.get("rag_chat_model", "RedHatAI/Qwen3.5-4B-quantized.w4a16"))
         
         super().__init__(**merged)
     

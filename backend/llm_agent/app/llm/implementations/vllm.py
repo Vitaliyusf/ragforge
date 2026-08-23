@@ -11,6 +11,14 @@ from app.core.config import Settings
 from app.llm.interfaces import ILLMClient, LLMGenerationResult, LLMInvocation, LLMUsage
 
 
+# Qwen3 is a reasoning model: over raw /v1/completions it emits a <think>…</think>
+# block before its answer. That breaks JSON-only steps (thinking exhausts the token
+# budget before any JSON) and leaks reasoning into chat answers. Prefilling the
+# assistant turn with an already-closed, empty think block signals "reasoning done",
+# so the model generates the final content directly — no thinking, no leaked tags.
+_NO_THINK_SUFFIX = "\n\nAssistant:\n<think>\n\n</think>\n\n"
+
+
 class VLLMClient(ILLMClient):
     """vLLM client for high-performance concurrent inference."""
 
@@ -38,19 +46,22 @@ class VLLMClient(ILLMClient):
         request_type = invocation.metadata.get("request_type")
         payload = {
             "model": invocation.model,
-            "prompt": invocation.to_prompt(),
+            "prompt": f"{invocation.to_prompt()}{_NO_THINK_SUFFIX}",
             "max_tokens": self.default_max_tokens,
             "temperature": self.default_temperature,
             "top_p": self.default_top_p,
             "top_k": self.default_top_k,
             "stream": invocation.streaming,
         }
-        if invocation.metadata.get("structured_output_hint") == "json_object" and request_type in {
-            "answer_evaluation",
-            "content_risk_scan",
-        }:
+        if invocation.metadata.get("structured_output_hint") == "json_object":
             payload["temperature"] = 0.0
             payload["stop"] = ["```"]
+            # Grammar-constrain the output to a JSON object. Reasoning models
+            # (e.g. Qwen3) otherwise emit <think>/prose around — or instead of —
+            # the JSON the structured-output parsers require, which breaks
+            # extraction. guided_json enforces this token-by-token so no
+            # thinking/prose can precede the object.
+            payload["guided_json"] = {"type": "object"}
 
         try:
             if invocation.streaming:

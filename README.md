@@ -94,7 +94,7 @@ These are repository and runtime metrics, not benchmark claims.
 
 - Docker and Docker Compose
 - NVIDIA GPU with CUDA drivers (for vLLM model serving)
-- ~8 GB VRAM minimum (default model: Qwen2.5-7B-Instruct-GPTQ-Int4)
+- ~6 GB VRAM minimum (default model: RedHatAI/Qwen3.5-4B-quantized.w4a16)
 
 ### Run
 

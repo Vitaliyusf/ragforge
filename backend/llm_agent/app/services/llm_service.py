@@ -188,7 +188,7 @@ class LLMService(BaseService):
                     "correlation_id": request_message.correlation_id,
                     "structured_output_hint": (
                         "json_object"
-                        if request.request_type in {"answer_evaluation", "content_risk_scan"}
+                        if request.request_type in {"answer_evaluation", "content_risk_scan", "memory_extraction"}
                         else None
                     ),
                 },
