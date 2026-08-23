@@ -8,11 +8,15 @@ from app.llm.prompts._base import PromptRenderResult, _format_context, _format_h
 
 
 def build_prompt(request: AnswerGenerationRequest) -> PromptRenderResult:
-    instructions = request.input.instructions or "Answer directly and clearly. Use the supplied context when relevant."
+    instructions = request.input.instructions or (
+        "Answer briefly and professionally in at most 1-3 short sentences, using the "
+        "supplied context when relevant. No filler, no preamble."
+    )
     return PromptRenderResult(
         system_prompt=(
-            "You are the llm_agent execution layer. Produce a concise, factual answer. "
-            "Do not reveal hidden reasoning. If the context is insufficient, say so plainly."
+            "You are a professional assistant. Answer briefly and professionally in at "
+            "most 1-3 short sentences. No filler, no preamble, no hidden reasoning. "
+            "If the context is insufficient, say so plainly."
         ),
         raw_prompt=(
             f"Instructions:\n{instructions}\n\n"
