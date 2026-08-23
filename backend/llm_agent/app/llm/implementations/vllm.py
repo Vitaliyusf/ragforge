@@ -47,7 +47,7 @@ class VLLMClient(ILLMClient):
         payload = {
             "model": invocation.model,
             "prompt": f"{invocation.to_prompt()}{_NO_THINK_SUFFIX}",
-            "max_tokens": self.default_max_tokens,
+            "max_tokens": invocation.max_tokens or self.default_max_tokens,
             "temperature": self.default_temperature,
             "top_p": self.default_top_p,
             "top_k": self.default_top_k,

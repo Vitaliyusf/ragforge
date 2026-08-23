@@ -23,14 +23,20 @@ class FakeLogger:
 class RecordingClient(ILLMClient):
     """Record every prompt sent so context growth can be asserted on."""
 
-    def __init__(self, window=6144, reply="This is a generated summary of the section."):
+    def __init__(self, window=6144, reply="This is a generated summary of the section.", unique_replies=False):
         self.window = window
         self.reply = reply
+        self.unique_replies = unique_replies
         self.prompts = []
+        self.outputs = []
+        self.invocations = []
 
     def generate(self, invocation: LLMInvocation) -> LLMGenerationResult:
         self.prompts.append(invocation.to_prompt())
-        return LLMGenerationResult(raw_output=self.reply, usage=LLMUsage(provider="fake"))
+        self.invocations.append(invocation)
+        output = f"{self.reply} [{len(self.outputs)}]" if self.unique_replies else self.reply
+        self.outputs.append(output)
+        return LLMGenerationResult(raw_output=output, usage=LLMUsage(provider="fake"))
 
     def list_models(self):
         return ["fake-model"]
@@ -55,7 +61,7 @@ def build_config(**overrides):
 
 
 class SummaryChunkingTests(unittest.TestCase):
-    """Long documents are summarized in pieces, then folded into one summary."""
+    """Long documents are summarized in pieces, then joined into one summary."""
 
     def setUp(self):
         self.config = build_config()
@@ -69,15 +75,16 @@ class SummaryChunkingTests(unittest.TestCase):
 
         self.assertEqual(len(client.prompts), 1)
 
-    def test_long_text_is_split_then_combined(self):
-        client = RecordingClient()
+    def test_long_text_sections_are_concatenated(self):
+        client = RecordingClient(unique_replies=True)
         service = SummaryService(client, self.logger, self.config)
 
         summary = service.generate_summary("word " * 40000)
 
-        # N section calls plus at least one combine call.
-        self.assertGreater(len(client.prompts), 2)
-        self.assertTrue(summary.strip())
+        # Every call summarizes one section; there is no separate combine pass.
+        self.assertGreater(len(client.prompts), 1)
+        # The final summary is each section summary joined as continuous prose.
+        self.assertEqual(summary, "\n\n".join(client.outputs))
 
     def test_no_prompt_exceeds_the_context_window(self):
         client = RecordingClient(window=6144)
@@ -86,8 +93,32 @@ class SummaryChunkingTests(unittest.TestCase):
         service.generate_summary("word " * 40000)
 
         for prompt in client.prompts:
-            # Prompt tokens plus the reserved output must fit the window.
-            self.assertLess(estimate_tokens(prompt) + 512, 6144)
+            # Prompt tokens plus the reserved (larger) summary output must fit.
+            self.assertLess(estimate_tokens(prompt) + self.config.summary_max_tokens, 6144)
+
+    def test_summary_calls_request_the_larger_token_budget(self):
+        client = RecordingClient()
+        service = SummaryService(client, self.logger, self.config)
+
+        service.generate_summary("A short document about widgets.")
+
+        # Summaries must not inherit the small chat default, or they truncate
+        # mid-sentence; every call asks for the summary budget.
+        self.assertTrue(client.invocations)
+        for invocation in client.invocations:
+            self.assertEqual(invocation.max_tokens, self.config.summary_max_tokens)
+
+    def test_single_document_is_framed_as_a_summarization_task(self):
+        client = RecordingClient()
+        service = SummaryService(client, self.logger, self.config)
+
+        # The legacy "TL;DR" prompt made the model continue the document as
+        # chat; it must be replaced with an explicit summarize instruction.
+        service.generate_summary("A short document about widgets.", prompt_prefix="TL;DR")
+
+        prompt = client.prompts[0]
+        self.assertIn("Summarize the following document", prompt)
+        self.assertNotEqual(prompt.split("\n\n")[0].strip(), "TL;DR")
 
     def test_all_source_text_reaches_the_model(self):
         client = RecordingClient()

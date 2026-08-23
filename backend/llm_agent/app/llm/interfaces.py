@@ -38,6 +38,10 @@ class LLMInvocation:
     timeout: float = 60.0
     on_token: Optional[TokenCallback] = None
     metadata: Dict[str, Any] = field(default_factory=dict)
+    # Per-call output-token cap. When None the provider falls back to its
+    # configured default. Summarization raises this so long summaries are not
+    # truncated mid-sentence at the small chat default.
+    max_tokens: Optional[int] = None
 
     @property
     def streaming(self) -> bool:

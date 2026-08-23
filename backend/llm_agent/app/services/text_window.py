@@ -125,9 +125,17 @@ class ContextWindowResolver:
         self._log("Resolved context window", {"model": model, "context_tokens": window})
         return window
 
-    def input_budget_chars(self, model: str, reserved_tokens: int = 0) -> int:
-        """Characters of source text that fit alongside the prompt and output."""
-        output_tokens = int(getattr(self.config, "vllm_max_tokens", 512) or 512)
+    def input_budget_chars(
+        self, model: str, reserved_tokens: int = 0, output_tokens: Optional[int] = None
+    ) -> int:
+        """Characters of source text that fit alongside the prompt and output.
+
+        ``output_tokens`` is how many tokens the response is allowed to consume;
+        it must match the ``max_tokens`` the caller will request so input and
+        output together stay inside the window. Defaults to the chat cap.
+        """
+        if output_tokens is None:
+            output_tokens = int(getattr(self.config, "vllm_max_tokens", 512) or 512)
         available = (
             self.context_tokens(model)
             - output_tokens

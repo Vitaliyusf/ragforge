@@ -10,24 +10,24 @@ from app.core.errors import TimeoutException, ServiceException
 from app.services.base import BaseService
 from app.services.text_window import ContextWindowResolver, estimate_tokens, split_text
 
+# Instruction for a document that fits the window in one piece. Framed as an
+# explicit task because the raw text is otherwise continued as a conversation
+# (the model replies to the document instead of summarizing it).
+DOCUMENT_PROMPT = (
+    "Summarize the following document. Cover all of its main points and keep the "
+    "key facts, names, and figures. Write plain prose, no preamble. Do not reply "
+    "to the document or add commentary of your own — only summarize it."
+)
+
 # Instructions used when a document does not fit the window in one piece.
 SECTION_PROMPT = (
     "Summarize this section of a longer document. Keep the key facts, names, and "
     "figures. Write plain prose, no preamble."
 )
-COMBINE_PROMPT = (
-    "The following are summaries of consecutive sections of one document, in order. "
-    "Write a single coherent summary of the whole document from them. Do not mention "
-    "that it was assembled from sections."
-)
 
 # Fraction of a section carried into the next one so a sentence spanning a
 # boundary is still intelligible somewhere.
 SECTION_OVERLAP_RATIO = 0.06
-
-# Folding shrinks the text each round; this only guards against a model that
-# refuses to compress, so it can stay small.
-MAX_FOLD_ROUNDS = 3
 
 
 class SummaryService(BaseService):
@@ -112,7 +112,13 @@ class SummaryService(BaseService):
                 {"model": model, "timeout": timeout}
             )
         
-        budget = self._budget_chars(model, prompt_prefix)
+        # A caller-supplied prompt overrides the default; the legacy "TL;DR"
+        # sentinel is treated as "use the standard summarization instruction",
+        # which the small model follows far better than a bare "TL;DR".
+        instruction = DOCUMENT_PROMPT if prompt_prefix in ("", "TL;DR") else prompt_prefix
+        max_tokens = self.config.summary_max_tokens
+
+        budget = self._budget_chars(model, instruction, max_tokens)
         sections = split_text(text, budget, int(budget * SECTION_OVERLAP_RATIO))
 
         self.logger.log(
@@ -124,13 +130,16 @@ class SummaryService(BaseService):
                 "timeout": timeout,
                 "budget_chars": budget,
                 "sections": len(sections),
+                "max_tokens": max_tokens,
             }
         )
 
         if len(sections) <= 1:
-            summary = self._generate_with_retry(f"{prompt_prefix}\n\n{text}", model, timeout)
+            summary = self._generate_with_retry(
+                f"{instruction}\n\n{text}", model, timeout, max_tokens
+            )
         else:
-            summary = self._map_reduce(sections, model, timeout, budget)
+            summary = self._summarize_sections(sections, model, timeout, max_tokens)
 
         if not summary or len(summary.strip()) <= 10:
             raise ServiceException("Generated summary is too short or empty")
@@ -143,24 +152,38 @@ class SummaryService(BaseService):
 
         return summary
 
-    def _budget_chars(self, model: str, prompt_prefix: str) -> int:
-        """Characters of source text that fit in one call for this model."""
+    def _budget_chars(self, model: str, instruction: str, max_tokens: int) -> int:
+        """Characters of source text that fit in one call for this model.
+
+        Reserves ``max_tokens`` for the response so that a section plus its
+        (now much larger) summary still fit inside the context window.
+        """
         # Reserve room for whichever instruction block is longest, so the same
-        # budget is safe for both the section and the combine pass.
+        # budget is safe for the single-shot and per-section prompts alike.
         overhead = max(
-            estimate_tokens(prompt_prefix),
+            estimate_tokens(instruction),
             estimate_tokens(SECTION_PROMPT),
-            estimate_tokens(COMBINE_PROMPT),
         )
-        budget = self.window.input_budget_chars(model, reserved_tokens=overhead)
+        budget = self.window.input_budget_chars(
+            model, reserved_tokens=overhead, output_tokens=max_tokens
+        )
 
         # Ollama has no reliable window probe; keep the historical conservative cap.
         if self.config.llm_implementation == LLMImplementation.OLLAMA:
             budget = min(budget, 3000)
         return budget
 
-    def _map_reduce(self, sections: list, model: str, timeout: float, budget: int) -> str:
-        """Summarize each section, then fold the pieces into one summary."""
+    def _summarize_sections(
+        self, sections: list, model: str, timeout: float, max_tokens: int
+    ) -> str:
+        """Summarize each section, then join the pieces into one summary.
+
+        The per-section summaries are concatenated as continuous prose rather
+        than folded through a single combine pass. A combine pass would re-squeeze
+        the whole document back into one ``vllm_max_tokens``-capped response,
+        truncating long documents; concatenation lets the summary length grow
+        with the document so nothing is dropped.
+        """
         partials = []
         for index, section in enumerate(sections):
             self.logger.log(
@@ -169,34 +192,16 @@ class SummaryService(BaseService):
                 {"section": index + 1, "of": len(sections), "chars": len(section)},
             )
             partials.append(
-                self._generate_with_retry(f"{SECTION_PROMPT}\n\n{section}", model, timeout)
-            )
-
-        for _ in range(MAX_FOLD_ROUNDS):
-            combined = "\n\n".join(part for part in partials if part)
-            if len(combined) <= budget:
-                return self._generate_with_retry(
-                    f"{COMBINE_PROMPT}\n\n{combined}", model, timeout
+                self._generate_with_retry(
+                    f"{SECTION_PROMPT}\n\n{section}", model, timeout, max_tokens
                 )
-            # Too many partials to combine in one call: summarize them in
-            # groups and fold again.
-            groups = split_text(combined, budget)
-            self.logger.log(
-                "service:summary",
-                "Folding partial summaries",
-                {"partials": len(partials), "groups": len(groups)},
-                hypothesis_id="W",
             )
-            partials = [
-                self._generate_with_retry(f"{COMBINE_PROMPT}\n\n{group}", model, timeout)
-                for group in groups
-            ]
 
-        # Compression stalled; combine what fits rather than failing the file.
-        combined = "\n\n".join(part for part in partials if part)[:budget]
-        return self._generate_with_retry(f"{COMBINE_PROMPT}\n\n{combined}", model, timeout)
+        return "\n\n".join(part for part in partials if part)
 
-    def _generate_with_retry(self, full_prompt: str, model: str, timeout: float) -> str:
+    def _generate_with_retry(
+        self, full_prompt: str, model: str, timeout: float, max_tokens: Optional[int] = None
+    ) -> str:
         """Run one generation, retrying once on a fallback model."""
         summary = None
         max_retries = 1
@@ -222,6 +227,7 @@ class SummaryService(BaseService):
                         raw_prompt=full_prompt,
                         model=current_model,
                         timeout=timeout,
+                        max_tokens=max_tokens,
                     )
                 ).raw_output
                 
