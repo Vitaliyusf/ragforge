@@ -65,6 +65,10 @@ class Settings(BaseSettings):
     
     # vLLM generation parameters
     vllm_max_tokens: int = Field(default=512, description="vLLM max tokens")
+    # Summaries need far more room than the chat default: a truncation at 512
+    # tokens cuts a document summary off mid-sentence (and non-Latin scripts such
+    # as Hebrew burn ~2 tokens/char, so 512 tokens is only ~1k characters).
+    summary_max_tokens: int = Field(default=2048, description="Max output tokens for summarization")
     vllm_temperature: float = Field(default=0.7, description="vLLM temperature")
     vllm_top_p: float = Field(default=0.9, description="vLLM top-p")
     vllm_top_k: int = Field(default=50, description="vLLM top-k")
