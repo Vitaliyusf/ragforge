@@ -83,6 +83,15 @@ class ChatService {
   }
 
   /**
+   * Generate a title for an untitled chat from its transcript (idempotent).
+   * @param {string} chatId - Chat ID
+   * @returns {Promise<Object>} Response data (includes the resolved title)
+   */
+  async generateTitle(chatId) {
+    return await post(`/v1/chats/${chatId}/generate-title`)
+  }
+
+  /**
    * Update chat title
    * @param {string} chatId - Chat ID
    * @param {string} title - New title

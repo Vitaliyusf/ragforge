@@ -65,6 +65,7 @@ class MemoryAction(str, Enum):
     ADD_MESSAGE = "add_message"
     DELETE_CHAT = "delete_chat"
     PROCESS_CHAT_EXIT = "process_chat_exit"
+    GENERATE_TITLE = "generate_title"
     UPDATE_CHAT_TITLE = "update_chat_title"
     GET_COMPRESSED_HISTORY = "get_compressed_history"
     GET_USER_INSIGHT = "get_user_insight"

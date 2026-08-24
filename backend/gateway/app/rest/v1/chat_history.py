@@ -82,6 +82,18 @@ async def process_chat_exit(
         raise handle_exception(e)
 
 
+@router.post("/{chat_id}/generate-title")
+async def generate_chat_title(
+    chat_id: str,
+    service: ChatHistoryService = Depends(get_chat_history_service)
+):
+    """Generate and persist a title for an untitled chat from its transcript."""
+    try:
+        return await service.generate_title(chat_id)
+    except Exception as e:
+        raise handle_exception(e)
+
+
 @router.patch("/{chat_id}/title")
 async def update_chat_title(
     chat_id: str,

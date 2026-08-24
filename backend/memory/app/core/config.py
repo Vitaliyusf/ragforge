@@ -20,7 +20,12 @@ class Settings(BaseSettings):
     rabbitmq_url: str = "amqp://guest:guest@localhost:5672/"
     rabbitmq_exchange: str = "ragapp.requests"
     rabbitmq_queue: str = "memory"
-    rabbitmq_prefetch_count: int = 1
+    # Process several requests concurrently so fast CRUD (get_messages/get_chats)
+    # is never stuck behind a slow LLM-backed job on this same queue — chat-exit
+    # curation/summarisation can take ~20s and would otherwise stall history
+    # loads with prefetch_count=1. Dependent writes are ordered by the caller,
+    # which awaits each add_message before sending the next.
+    rabbitmq_prefetch_count: int = 10
 
     # MongoDB configuration
     mongodb_url: str = "mongodb://localhost:27017/"
