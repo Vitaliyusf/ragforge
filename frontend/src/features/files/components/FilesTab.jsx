@@ -3,12 +3,9 @@
 import { useCallback, useMemo, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
-  AlertTriangle,
-  CheckCircle,
   ChevronDown,
   File,
   FolderOpen,
-  FileStack,
   FileText,
   Image,
   Loader2,
@@ -17,7 +14,6 @@ import {
   ShieldAlert,
   Trash2,
   Upload,
-  XCircle,
   History,
 } from 'lucide-react'
 import { toast } from 'sonner'
@@ -27,7 +23,7 @@ import Card from '@/components/ui/Card'
 import Badge from '@/components/ui/Badge'
 import Input from '@/components/ui/Input'
 import PageHeader from '@/components/ui/PageHeader'
-import { ConfirmModal } from '@/components/ui/Modal'
+import Modal, { ConfirmModal } from '@/components/ui/Modal'
 import FileReviewDrawer from './FileReviewDrawer'
 import AuditTrailPanel from './AuditTrailPanel'
 import fileService from '@/features/files/services/fileService'
@@ -54,58 +50,82 @@ const PIPELINE_STAGES = [
 ]
 
 const FILE_FILTERS = [
-  { id: 'all', label: 'All files' },
-  { id: 'processing', label: 'Processing' },
-  { id: 'awaiting_review', label: 'Needs review' },
-  { id: 'complete', label: 'Ready' },
-  { id: 'error', label: 'Errors' },
+  { id: 'all', label: 'All files', countKey: 'totalFiles' },
+  { id: 'processing', label: 'Processing', countKey: 'processingCount' },
+  { id: 'awaiting_review', label: 'Needs review', countKey: 'awaitingReviewCount' },
+  { id: 'complete', label: 'Ready', countKey: 'completedCount' },
+  { id: 'error', label: 'Errors', countKey: 'errorCount' },
 ]
 
-function getStageDotClass(value) {
-  switch (value) {
-    case 'done':
-    case 'complete':
-    case 'completed':
-    case 'ready':
-    case 'skipped':
-    case 'not_required':
-      return 'bg-emerald-500'
-    case 'running':
-    case 'processing':
-      return 'bg-amber-400 animate-pulse'
-    case 'error':
-      return 'bg-red-500'
-    default:
-      return 'bg-bg-tertiary border border-border'
-  }
+const STAGE_DONE_VALUES = new Set(['done', 'complete', 'completed', 'ready', 'skipped', 'not_required'])
+const STAGE_RUNNING_VALUES = new Set(['running', 'processing'])
+
+function normalizeStageValue(value) {
+  const normalized = String(value ?? 'waiting').toLowerCase()
+  if (STAGE_DONE_VALUES.has(normalized)) return 'done'
+  if (STAGE_RUNNING_VALUES.has(normalized)) return 'running'
+  if (normalized === 'error') return 'error'
+  return 'waiting'
+}
+
+// Each state carries a texture as well as a colour — solid, pulsing, striped,
+// or hollow — so the pipeline stays readable without colour perception.
+const STAGE_SEGMENT_STYLES = {
+  done: { className: 'bg-success' },
+  running: { className: 'bg-warning animate-pulse' },
+  error: {
+    className: 'bg-danger',
+    style: {
+      backgroundImage:
+        'repeating-linear-gradient(45deg, transparent 0 2px, rgba(255,255,255,0.55) 2px 4px)',
+    },
+  },
+  waiting: { className: 'bg-bg-tertiary border border-border' },
 }
 
 function PipelineBar({ stage }) {
   if (!stage || typeof stage !== 'object') return null
+
+  const stages = PIPELINE_STAGES.map(({ key, label }) => ({
+    key,
+    label,
+    value: stage[key] ?? 'waiting',
+    state: normalizeStageValue(stage[key]),
+  }))
+
+  const doneCount = stages.filter((entry) => entry.state === 'done').length
+  const running = stages.find((entry) => entry.state === 'running')
+  const failed = stages.filter((entry) => entry.state === 'error')
+
+  // Read out in place of the eight individual segments, which carry no text.
+  const summary = [
+    `Pipeline: ${doneCount} of ${stages.length} stages complete`,
+    running ? `${running.label.toLowerCase()} running` : null,
+    failed.length ? `${failed.map((entry) => entry.label.toLowerCase()).join(', ')} failed` : null,
+  ]
+    .filter(Boolean)
+    .join(', ')
+
   return (
     <div className="mt-3">
       <div className="mb-1.5 flex items-center justify-between">
-        <span className="text-[10px] font-medium uppercase tracking-wider text-text-muted">Pipeline</span>
+        <span className="text-[11px] font-medium text-text-secondary">Pipeline</span>
+        <span className="text-[11px] tabular-nums text-text-secondary">
+          {doneCount}/{stages.length}
+        </span>
       </div>
-      <div className="flex gap-1">
-        {PIPELINE_STAGES.map(({ key, label }) => {
-          const val = stage[key] ?? 'waiting'
+      <div className="flex gap-1" role="img" aria-label={summary}>
+        {stages.map(({ key, label, value, state }) => {
+          const segment = STAGE_SEGMENT_STYLES[state]
           return (
             <div key={key} className="group relative flex-1">
-              <div className={`h-1.5 rounded-full ${getStageDotClass(val)}`} />
-              <div className="pointer-events-none absolute bottom-3 left-1/2 z-10 -translate-x-1/2 whitespace-nowrap rounded-lg border border-border bg-bg-elevated px-2 py-1 text-[10px] font-medium text-text-secondary opacity-0 shadow-lg transition-opacity group-hover:opacity-100">
-                {label}: <span className="capitalize text-text-primary">{val}</span>
+              <div className={`h-2 rounded-full ${segment.className}`} style={segment.style} />
+              <div className="pointer-events-none absolute bottom-3.5 left-1/2 z-10 -translate-x-1/2 whitespace-nowrap rounded-lg border border-border bg-bg-elevated px-2 py-1 text-[11px] font-medium text-text-secondary opacity-0 shadow-lg transition-opacity group-hover:opacity-100">
+                {label}: <span className="capitalize text-text-primary">{value}</span>
               </div>
             </div>
           )
         })}
-      </div>
-      <div className="mt-1 flex gap-1">
-        {PIPELINE_STAGES.map(({ key, label }) => (
-          <div key={key} className="flex-1 truncate text-center text-[9px] text-text-muted">
-            {label}
-          </div>
-        ))}
       </div>
     </div>
   )
@@ -118,6 +138,14 @@ function getFileTypeIcon(contentType, filename) {
   if (type.includes('pdf') || type.startsWith('text/') || ['pdf', 'txt', 'md', 'doc', 'docx'].includes(ext))
     return FileText
   return File
+}
+
+// Status is signalled exactly twice per card: this icon chip, and the badge
+// beneath it. Anything more turns a single fact into visual noise.
+const STATUS_CHIP_STYLES = {
+  complete: 'bg-success-soft text-success',
+  error: 'bg-danger-soft text-danger',
+  awaiting_review: 'bg-warning-soft text-warning',
 }
 
 function FileCard({
@@ -138,13 +166,7 @@ function FileCard({
   const effectiveStatus = computeEffectiveStatus(file)
   const statusLabel = getEffectiveStatusLabel(file)
   const statusVariant = getEffectiveStatusBadgeVariant(file)
-  const statusColor = effectiveStatus === 'complete'
-    ? 'var(--success)'
-    : effectiveStatus === 'error'
-      ? 'var(--danger)'
-      : effectiveStatus === 'awaiting_review'
-        ? 'var(--warning)'
-        : 'var(--primary)'
+  const statusChipClass = STATUS_CHIP_STYLES[effectiveStatus] || 'bg-bg-tertiary text-accent'
 
   return (
     <motion.div
@@ -152,44 +174,14 @@ function FileCard({
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.96 }}
-      className={`relative overflow-hidden rounded-2xl border bg-bg-elevated transition-all duration-200 ${
-        isDeleting
-          ? 'border-border opacity-50'
-          : effectiveStatus === 'error'
-            ? 'border-red-500/30 hover:border-red-500/50 hover:shadow-lg hover:shadow-red-500/5'
-            : effectiveStatus === 'awaiting_review'
-              ? 'border-amber-500/30 hover:border-amber-500/50 hover:shadow-lg'
-              : effectiveStatus === 'complete'
-                ? 'border-emerald-500/20 hover:border-emerald-500/40 hover:shadow-lg hover:shadow-emerald-500/5'
-                : 'border-border hover:border-accent/30 hover:shadow-lg hover:shadow-accent/5'
+      className={`relative overflow-hidden rounded-2xl border border-border bg-bg-elevated transition-all duration-200 ${
+        isDeleting ? 'opacity-50' : 'hover:border-border-hover hover:shadow-lg'
       }`}
     >
-      <div className="absolute inset-x-0 top-0 h-0.5" style={{ background: statusColor }} />
       {/* Card header */}
       <div className="flex items-start gap-3 p-4">
-        <div
-          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${
-            effectiveStatus === 'complete'
-              ? 'bg-emerald-500/10'
-              : effectiveStatus === 'error'
-                ? 'bg-red-500/10'
-                : effectiveStatus === 'awaiting_review'
-                  ? 'bg-amber-500/10'
-                  : 'bg-bg-tertiary'
-          }`}
-        >
-          <FileIcon
-            size={18}
-            className={
-              effectiveStatus === 'complete'
-                ? 'text-emerald-500'
-                : effectiveStatus === 'error'
-                  ? 'text-red-500'
-                  : effectiveStatus === 'awaiting_review'
-                    ? 'text-amber-500'
-                    : 'text-accent'
-            }
-          />
+        <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${statusChipClass}`}>
+          <FileIcon size={18} />
         </div>
 
         <div className="min-w-0 flex-1">
@@ -197,11 +189,11 @@ function FileCard({
             <div className="min-w-0">
               <div className="truncate text-sm font-semibold text-text-primary">{file.filename || 'Unknown'}</div>
               <div className="mt-0.5 flex items-center gap-2">
-                <span className="text-xs text-text-muted">{formatFileSize(file.size)}</span>
+                <span className="text-xs text-text-secondary">{formatFileSize(file.size)}</span>
                 {file.content_type ? (
                   <>
-                    <span className="text-text-muted opacity-40">·</span>
-                    <span className="truncate text-xs text-text-muted">{file.content_type}</span>
+                    <span className="text-text-muted">·</span>
+                    <span className="truncate text-xs text-text-secondary">{file.content_type}</span>
                   </>
                 ) : null}
               </div>
@@ -209,7 +201,7 @@ function FileCard({
             <button
               onClick={() => onDeleteClick(file)}
               disabled={isDeleting}
-              className="shrink-0 rounded-lg p-1.5 text-text-muted transition hover:bg-red-500/10 hover:text-red-500 disabled:opacity-40"
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-text-secondary transition hover:bg-danger-soft hover:text-danger disabled:opacity-40"
               aria-label="Delete file"
             >
               {isDeleting ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
@@ -242,7 +234,7 @@ function FileCard({
           <button
             onClick={() => onOpenReview(file.file_id)}
             aria-label="Review file"
-            className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-amber-500 transition hover:bg-amber-500/10"
+            className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-warning transition hover:bg-warning-soft"
           >
             <ShieldAlert size={13} />
             Review
@@ -273,7 +265,8 @@ function FileCard({
         </button>
         <button
           onClick={() => setExpanded((v) => !v)}
-          className="ml-auto flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs text-text-muted transition hover:bg-bg-tertiary hover:text-text-secondary"
+          aria-expanded={expanded}
+          className="ml-auto flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs text-text-secondary transition hover:bg-bg-tertiary hover:text-text-primary"
         >
           <ChevronDown size={13} className={`transition-transform ${expanded ? 'rotate-180' : ''}`} />
           Details
@@ -309,7 +302,7 @@ function FileCard({
 function DetailRow({ label, value, mono }) {
   return (
     <div className="flex items-start gap-2 rounded-xl bg-bg-tertiary/60 px-3 py-2 text-xs">
-      <span className="shrink-0 font-medium text-text-muted">{label}:</span>
+      <span className="shrink-0 font-medium text-text-secondary">{label}:</span>
       <span className={`min-w-0 break-all text-text-secondary ${mono ? 'font-mono' : ''}`}>{value}</span>
     </div>
   )
@@ -318,58 +311,30 @@ function DetailRow({ label, value, mono }) {
 // ─── Summary modal ────────────────────────────────────────────────────────────
 
 function SummaryModal({ open, onClose, file, summary }) {
-  if (!open) return null
-
   const text =
     typeof summary === 'string'
       ? summary
-      : summary?.summary || summary?.text || summary?.content || JSON.stringify(summary, null, 2)
+      : summary?.summary
+        || summary?.text
+        || summary?.content
+        || (summary ? JSON.stringify(summary, null, 2) : '')
 
   return (
-    <AnimatePresence>
-      {open ? (
-        <motion.div
-          key="summary-backdrop"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
-          onClick={onClose}
-        >
-          <motion.div
-            key="summary-panel"
-            initial={{ opacity: 0, scale: 0.95, y: 8 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95, y: 8 }}
-            transition={{ duration: 0.18 }}
-            className="w-full max-w-2xl rounded-2xl border border-border bg-bg-elevated shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between border-b border-border px-5 py-4">
-              <div>
-                <h3 className="text-sm font-semibold text-text-primary">Summary</h3>
-                {file?.filename ? (
-                  <p className="mt-0.5 truncate text-xs text-text-muted">{file.filename}</p>
-                ) : null}
-              </div>
-              <button
-                onClick={onClose}
-                className="rounded-lg p-1.5 text-text-muted transition hover:bg-bg-tertiary hover:text-text-primary"
-              >
-                <XCircle size={16} />
-              </button>
-            </div>
-            <div className="max-h-[60vh] overflow-y-auto px-5 py-4 scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent">
-              {text ? (
-                <p className="whitespace-pre-wrap text-sm leading-relaxed text-text-secondary">{text}</p>
-              ) : (
-                <p className="text-sm text-text-muted">No summary available for this file.</p>
-              )}
-            </div>
-          </motion.div>
-        </motion.div>
+    <Modal
+      open={open}
+      onOpenChange={(next) => { if (!next) onClose() }}
+      title="Summary"
+      size="lg"
+    >
+      {file?.filename ? (
+        <p className="-mt-2 mb-3 truncate text-xs text-text-secondary">{file.filename}</p>
       ) : null}
-    </AnimatePresence>
+      <div className="max-h-[60vh] overflow-y-auto scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent">
+        <p className="whitespace-pre-wrap text-sm leading-relaxed text-text-secondary">
+          {text || 'No summary available for this file.'}
+        </p>
+      </div>
+    </Modal>
   )
 }
 
@@ -615,41 +580,48 @@ export default function FilesTab() {
 
       <div className="flex min-h-0 flex-1 flex-col gap-4 xl:flex-row xl:overflow-hidden">
       {/* Main panel */}
-      <div className="flex min-h-[560px] min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border border-border bg-bg-elevated shadow-sm xl:min-h-0">
+      <div
+        className="relative flex min-h-[560px] min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border border-border bg-bg-elevated shadow-sm xl:min-h-0"
+        onDragEnter={handleDrag}
+        onDragLeave={handleDrag}
+        onDragOver={handleDrag}
+        onDrop={handleDrop}
+      >
+        {/* Drop target — claims space only while a drag is in progress */}
+        <AnimatePresence>
+          {dragActive ? (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.12 }}
+              className="pointer-events-none absolute inset-2 z-20 flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-primary bg-primary-soft backdrop-blur-sm"
+            >
+              <Upload size={26} className="text-primary" />
+              <p className="mt-2 text-sm font-medium text-primary">Drop to upload</p>
+              <p className="mt-1 text-[11px] text-text-secondary">PDF · DOCX · TXT · MD — up to 50 MB</p>
+            </motion.div>
+          ) : null}
+        </AnimatePresence>
+
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-border px-4 py-4 md:px-6">
-          <div className="flex items-center gap-3">
-            <div>
-              <div className="flex items-center gap-2">
-                <h2 className="text-base font-semibold text-text-primary">Document library</h2>
-                <Badge variant="default" size="xs">{visibleFiles.length} shown</Badge>
-              </div>
-              <p className="mt-0.5 text-xs text-text-muted">
-                Search, filter, and track every ingestion stage.
-              </p>
+        <div className="flex items-center gap-3 border-b border-border px-4 py-4 md:px-6">
+          <div>
+            <div className="flex items-center gap-2">
+              <h2 className="text-base font-semibold text-text-primary">Document library</h2>
+              <Badge variant="default" size="xs">{visibleFiles.length} shown</Badge>
             </div>
-            {/* Refresh indicator — visible only when refetching with existing data */}
-            {loading && files.length > 0 ? (
-              <div className="flex items-center gap-1.5 rounded-lg border border-border bg-bg-tertiary/60 px-2.5 py-1 text-[11px] text-text-muted">
-                <Loader2 size={11} className="animate-spin" />
-                Refreshing
-              </div>
-            ) : null}
+            <p className="mt-0.5 text-xs text-text-secondary">
+              Search, filter, and track every ingestion stage. Drag files here to upload.
+            </p>
           </div>
-          <label
-            role="button"
-            aria-label="Legacy upload control"
-            aria-hidden="true"
-            className={`hidden cursor-pointer items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium transition-all duration-200 ${
-              uploading
-                ? 'cursor-not-allowed bg-bg-tertiary text-text-muted opacity-60'
-                : 'bg-gradient-accent text-white hover:shadow-lg hover:shadow-accent/20 hover:scale-[1.02] active:scale-[0.98]'
-            }`}
-          >
-            {uploading ? <Loader2 size={15} className="animate-spin" /> : <Upload size={15} />}
-            {uploading ? 'Uploading…' : 'Upload'}
-            <input type="file" multiple onChange={handleInputUpload} disabled={uploading} className="hidden" />
-          </label>
+          {/* Refresh indicator — visible only when refetching with existing data */}
+          {loading && files.length > 0 ? (
+            <div className="flex items-center gap-1.5 rounded-lg border border-border bg-bg-tertiary/60 px-2.5 py-1 text-[11px] text-text-secondary">
+              <Loader2 size={11} className="animate-spin" />
+              Refreshing
+            </div>
+          ) : null}
         </div>
 
         <div className="border-b border-border px-4 py-3 md:px-6">
@@ -662,32 +634,29 @@ export default function FilesTab() {
               size="sm"
               containerClassName="w-full lg:w-72"
             />
-            <div className="flex min-w-0 flex-1 gap-1.5 overflow-x-auto pb-0.5 scrollbar-none">
+            <div
+              role="group"
+              aria-label="Filter files by status"
+              className="flex min-w-0 flex-1 gap-1.5 overflow-x-auto pb-0.5 scrollbar-none"
+            >
               {FILE_FILTERS.map((filter) => {
                 const active = statusFilter === filter.id
-                const count = filter.id === 'all'
-                  ? stats.totalFiles
-                  : filter.id === 'processing'
-                    ? stats.processingCount
-                    : filter.id === 'awaiting_review'
-                      ? stats.awaitingReviewCount
-                      : filter.id === 'complete'
-                        ? stats.completedCount
-                        : stats.errorCount
                 return (
                   <button
                     key={filter.id}
                     type="button"
+                    aria-pressed={active}
                     onClick={() => setStatusFilter(filter.id)}
-                    className="flex shrink-0 items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[11px] font-medium transition-colors"
-                    style={{
-                      background: active ? 'var(--primary-soft)' : 'var(--surface-hover)',
-                      borderColor: active ? 'var(--border-focus)' : 'var(--border)',
-                      color: active ? 'var(--primary)' : 'var(--fg-muted)',
-                    }}
+                    className={`flex shrink-0 items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[11px] font-medium transition-colors ${
+                      active
+                        ? 'border-border-focus bg-primary-soft text-primary'
+                        : 'border-border bg-bg-muted text-text-secondary hover:text-text-primary'
+                    }`}
                   >
                     {filter.label}
-                    <span className="rounded-md bg-bg-elevated px-1.5 py-0.5 text-[9px] tabular-nums">{count}</span>
+                    <span className="rounded-md bg-bg-elevated px-1.5 py-0.5 text-[11px] tabular-nums">
+                      {stats[filter.countKey]}
+                    </span>
                   </button>
                 )
               })}
@@ -695,40 +664,11 @@ export default function FilesTab() {
           </div>
         </div>
 
-        {/* Drop zone */}
-        <div className="border-b border-border px-4 py-4 md:px-6">
-          <div
-            className={`rounded-2xl border-2 border-dashed px-5 py-5 text-center transition-all duration-200 ${
-              dragActive ? 'scale-[1.005] border-primary bg-primary-soft shadow-glow' : 'border-border bg-gradient-subtle'
-            }`}
-            onDragEnter={handleDrag}
-            onDragLeave={handleDrag}
-            onDragOver={handleDrag}
-            onDrop={handleDrop}
-          >
-            <Upload size={18} className={`mx-auto mb-2 ${dragActive ? 'text-accent' : 'text-text-muted'}`} />
-            <p className="text-xs text-text-muted">
-              {dragActive ? (
-                <span className="font-medium text-accent">Drop to upload</span>
-              ) : (
-                <>
-                  Drag & drop files here, or{' '}
-                  <label className="cursor-pointer font-medium text-accent hover:underline">
-                    browse
-                    <input type="file" multiple onChange={handleInputUpload} disabled={uploading} className="hidden" />
-                  </label>
-                </>
-              )}
-            </p>
-            <p className="mt-1 text-[10px] text-text-muted opacity-60">PDF · DOCX · TXT · MD — up to 50 MB</p>
-          </div>
-        </div>
-
         {/* File list */}
         <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5 md:px-6">
           {/* Initial loading spinner — only when no cached data yet */}
           {loading && files.length === 0 ? (
-            <div className="flex items-center gap-2 text-sm text-text-muted">
+            <div className="flex items-center gap-2 text-sm text-text-secondary">
               <Loader2 size={14} className="animate-spin" />
               Loading files…
             </div>
@@ -745,7 +685,7 @@ export default function FilesTab() {
                 <Upload className="text-white" size={28} />
               </div>
               <h3 className="mt-5 text-sm font-semibold text-text-primary">No files uploaded yet</h3>
-              <p className="mt-1.5 max-w-xs text-center text-xs text-text-muted">
+              <p className="mt-1.5 max-w-xs text-center text-xs text-text-secondary">
                 Upload a document to start the ingestion pipeline. Each stage is tracked individually.
               </p>
             </motion.div>
@@ -757,7 +697,7 @@ export default function FilesTab() {
                 <Search size={19} />
               </span>
               <h3 className="mt-4 text-sm font-semibold text-text-primary">No matching documents</h3>
-              <p className="mt-1 text-xs text-text-muted">Try another search or choose a different status.</p>
+              <p className="mt-1 text-xs text-text-secondary">Try another search or choose a different status.</p>
               <button
                 type="button"
                 onClick={() => { setQuery(''); setStatusFilter('all') }}
@@ -795,15 +735,21 @@ export default function FilesTab() {
 
       {/* Sidebar */}
       <div className="grid w-full shrink-0 gap-4 md:grid-cols-2 xl:flex xl:w-[300px] xl:grid-cols-none xl:flex-col">
-        {/* Stats */}
+        {/* Readiness — the per-status counts live on the filter chips, not here */}
         <Card variant="elevated" className="p-5">
-          <div className="mb-4 flex items-center justify-between">
+          <div className="flex items-center justify-between">
             <div>
               <div className="text-sm font-semibold text-text-primary">Library readiness</div>
-              <div className="mt-0.5 text-[10px] text-text-muted">Documents ready for retrieval</div>
+              <div className="mt-0.5 text-[11px] text-text-secondary">
+                {stats.completedCount} of {stats.totalFiles} ready for retrieval
+              </div>
             </div>
             {stats.totalFiles > 0 ? (
-              <div className="relative h-10 w-10">
+              <div
+                className="relative h-12 w-12"
+                role="img"
+                aria-label={`${stats.progressPercent}% of documents ready for retrieval`}
+              >
                 <svg className="h-full w-full -rotate-90" viewBox="0 0 36 36">
                   <path
                     d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
@@ -814,7 +760,7 @@ export default function FilesTab() {
                   <path
                     d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
                     fill="none"
-                    stroke="#10b981"
+                    stroke="var(--success)"
                     strokeWidth="3.5"
                     strokeDasharray={`${stats.progressPercent}, 100`}
                     strokeLinecap="round"
@@ -822,41 +768,21 @@ export default function FilesTab() {
                   />
                 </svg>
                 <div className="absolute inset-0 flex items-center justify-center">
-                  <span className="text-[10px] font-bold text-emerald-500">{stats.progressPercent}%</span>
+                  <span className="text-[11px] font-bold tabular-nums text-success">{stats.progressPercent}%</span>
                 </div>
               </div>
             ) : null}
           </div>
-
-          <div className="space-y-2">
-            <StatRow icon={FileStack} label="Total" value={stats.totalFiles} colorClass="text-accent" />
-            <StatRow icon={CheckCircle} label="Complete" value={stats.completedCount} colorClass="text-emerald-500" />
-            <StatRow icon={Loader2} label="Processing" value={stats.processingCount} colorClass="text-amber-500" spinning={stats.processingCount > 0} />
-            <StatRow icon={AlertTriangle} label="Awaiting review" value={stats.awaitingReviewCount} colorClass="text-amber-500" />
-            {stats.errorCount > 0 ? (
-              <StatRow icon={XCircle} label="Errors" value={stats.errorCount} colorClass="text-red-500" />
-            ) : null}
-          </div>
-
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={loadFiles}
-            className="mt-4 w-full text-text-muted hover:text-text-primary"
-            leftIcon={<RefreshCw size={13} />}
-          >
-            Refresh
-          </Button>
         </Card>
 
         {/* Recent uploads */}
         <Card variant="elevated" className="flex min-h-0 flex-1 flex-col p-5">
           <div className="mb-3">
             <div className="text-sm font-semibold text-text-primary">Latest activity</div>
-            <div className="mt-0.5 text-[10px] text-text-muted">Recent upload responses</div>
+            <div className="mt-0.5 text-[11px] text-text-secondary">Recent upload responses</div>
           </div>
           {recentUploads.length === 0 ? (
-            <p className="text-xs text-text-muted">Upload responses will appear here.</p>
+            <p className="text-xs text-text-secondary">Upload responses will appear here.</p>
           ) : (
             <div className="flex-1 min-h-0 space-y-2 overflow-y-auto">
               {recentUploads.map((upload) => (
@@ -868,7 +794,7 @@ export default function FilesTab() {
                   {/* The id returned by the upload call — the handle to quote
                       when asking an administrator about this file. */}
                   {upload.file_id ? (
-                    <div className="mt-0.5 truncate font-mono text-[10px] text-text-muted" title={upload.file_id}>
+                    <div className="mt-0.5 truncate font-mono text-[11px] text-text-secondary" title={upload.file_id}>
                       {upload.file_id}
                     </div>
                   ) : null}
@@ -922,18 +848,6 @@ export default function FilesTab() {
         variant="danger"
         loading={fileToDelete ? deletingFileIds.has(fileToDelete.file_id) : false}
       />
-    </div>
-  )
-}
-
-function StatRow({ icon: Icon, label, value, colorClass, spinning }) {
-  return (
-    <div className="flex items-center justify-between rounded-lg bg-bg-tertiary/60 px-3 py-2">
-      <span className="flex items-center gap-2 text-xs text-text-secondary">
-        <Icon size={13} className={`${colorClass} ${spinning ? 'animate-spin' : ''}`} />
-        {label}
-      </span>
-      <span className={`text-sm font-semibold ${colorClass}`}>{value}</span>
     </div>
   )
 }
