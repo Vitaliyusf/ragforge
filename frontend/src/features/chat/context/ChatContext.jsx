@@ -17,7 +17,7 @@ import {
   useRef,
   useState,
 } from 'react'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { useDispatch } from 'react-redux'
 import { chatDeleted as chatDeletedAction } from '@/store/slices/eventsSlice'
 import chatService from '@/features/chat/services/chatService'
@@ -319,6 +319,7 @@ function chatRuntimeReducer(state, action) {
 
 export function ChatProvider({ children }) {
   const pathname = usePathname()
+  const router = useRouter()
   const dispatch = useDispatch()
   const [runtimeState, dispatchRuntime] = useReducer(chatRuntimeReducer, initialRuntimeState)
   const messagesRef = useRef(runtimeState.messages)
@@ -478,9 +479,11 @@ export function ChatProvider({ children }) {
 
       const title = data.title || 'New Chat'
       setChats((prev) => [{ id: chatId, title, updated_at: new Date().toISOString() }, ...prev])
+      // The new chat starts empty, so skip the message reload the pathname
+      // effect would otherwise trigger once the URL lands on this id.
       skipNextMessageLoadRef.current = chatId
-      setCurrentChatId(chatId)
       dispatchRuntime({ type: 'RESET' })
+      router.push(`/chat/${chatId}`)
       return chatId
     } catch (error) {
       console.error('Create chat error:', error)
@@ -488,7 +491,14 @@ export function ChatProvider({ children }) {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [router])
+
+  // Selection is navigation: the pathname effect is the single writer of
+  // currentChatId, so switching chats can never desync the URL from state.
+  const selectChat = useCallback((chatId) => {
+    if (!chatId || chatId === currentChatId) return
+    router.push(`/chat/${chatId}`)
+  }, [currentChatId, router])
 
   const refreshChatsAfterPersist = useCallback(async (chatId) => {
     try {
@@ -727,8 +737,8 @@ export function ChatProvider({ children }) {
       await chatService.deleteChat(chatId)
       setChats((prev) => prev.filter((chat) => chat.id !== chatId))
       if (currentChatId === chatId) {
-        setCurrentChatId(null)
         dispatchRuntime({ type: 'RESET' })
+        router.push('/')
       }
       dispatch(chatDeletedAction())
     } catch (error) {
@@ -740,7 +750,7 @@ export function ChatProvider({ children }) {
         return next
       })
     }
-  }, [currentChatId, dispatch])
+  }, [currentChatId, dispatch, router])
 
   const activeTurn = runtimeState.activeTurnId ? runtimeState.turnsById[runtimeState.activeTurnId] : null
   const extendedProgress = useMemo(() => {
@@ -767,7 +777,7 @@ export function ChatProvider({ children }) {
     deletingChatIds,
     generatingTitleChatIds,
     extendedProgress,
-    setCurrentChatId,
+    selectChat,
     setSelectedModel,
     setAnswerMode,
     createNewChat,
@@ -794,6 +804,7 @@ export function ChatProvider({ children }) {
     deletingChatIds,
     generatingTitleChatIds,
     extendedProgress,
+    selectChat,
     setAnswerMode,
     createNewChat,
     sendMessage,
