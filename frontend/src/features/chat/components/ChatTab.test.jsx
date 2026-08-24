@@ -7,8 +7,15 @@ import ChatTab from './ChatTab'
 import chatService from '@/features/chat/services/chatService'
 import socketService from '@/features/websocket/services/socketService'
 
+// Controllable router so tests can assert URL-driven navigation and set the
+// active chat via the pathname (the single source of truth for currentChatId).
+const { navState } = vi.hoisted(() => ({
+  navState: { pathname: '/chat/chat-1', push: () => {} },
+}))
+
 vi.mock('next/navigation', () => ({
-  usePathname: () => '/chat/chat-1',
+  usePathname: () => navState.pathname,
+  useRouter: () => ({ push: navState.push }),
 }))
 
 vi.mock('@/features/chat/hooks/useChatInit', () => ({
@@ -74,6 +81,8 @@ function renderChatTab() {
 
 describe('ChatTab', () => {
   beforeEach(() => {
+    navState.pathname = '/chat/chat-1'
+    navState.push = vi.fn((path) => { navState.pathname = path })
     llmReadinessState.value = { llmReady: true, llmChecked: true }
     socketService.onStatusChange.mockImplementation((callback) => {
       callback('connected', true)
@@ -265,5 +274,54 @@ describe('ChatTab', () => {
     // The marker appears in both the header pill and the composer badge.
     expect(screen.getAllByText(/LLM not available/i).length).toBeGreaterThan(0)
     expect(socketService.askQuestion).not.toHaveBeenCalled()
+  })
+
+  it('navigates to the new chat URL when starting a conversation', async () => {
+    navState.pathname = '/'
+    chatService.getChats.mockResolvedValue({ chats: [] })
+    chatService.createChat.mockResolvedValueOnce({ chat_id: 'new-chat-42', title: 'New Chat' })
+
+    const user = userEvent.setup()
+    renderChatTab()
+
+    await user.click(screen.getByRole('button', { name: /New chat/i }))
+
+    await waitFor(() => {
+      expect(navState.push).toHaveBeenCalledWith('/chat/new-chat-42')
+    })
+  })
+
+  it('navigates to an existing chat URL when it is selected', async () => {
+    navState.pathname = '/'
+    chatService.getChats.mockResolvedValue({
+      chats: [
+        { id: 'chat-1', title: 'First Chat', updated_at: '2026-03-17T00:00:00Z' },
+        { id: 'chat-2', title: 'Second Chat', updated_at: '2026-03-17T00:00:00Z' },
+      ],
+    })
+
+    const user = userEvent.setup()
+    renderChatTab()
+
+    await user.click(await screen.findByRole('button', { name: /Select chat: Second Chat/i }))
+
+    expect(navState.push).toHaveBeenCalledWith('/chat/chat-2')
+  })
+
+  it('navigates home after deleting the active chat', async () => {
+    navState.pathname = '/chat/chat-1'
+    chatService.getChats.mockResolvedValue({
+      chats: [{ id: 'chat-1', title: 'Doomed Chat', updated_at: '2026-03-17T00:00:00Z' }],
+    })
+
+    const user = userEvent.setup()
+    renderChatTab()
+
+    await user.click(await screen.findByRole('button', { name: /Delete Doomed Chat/i }))
+    await user.click(await screen.findByRole('button', { name: /^Delete$/i }))
+
+    await waitFor(() => {
+      expect(navState.push).toHaveBeenCalledWith('/')
+    })
   })
 })

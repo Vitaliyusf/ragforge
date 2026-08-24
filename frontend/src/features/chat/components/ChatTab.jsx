@@ -20,7 +20,7 @@ export default function ChatTab() {
     messages, turnsById, chats, currentChatId, loading, chatsLoading, chatsError,
     models, selectedModel, defaultModel, wsConnectionStatus, answerMode,
     sendingMessage, deletingChatIds, generatingTitleChatIds, extendedProgress,
-    setCurrentChatId, setSelectedModel, setAnswerMode, createNewChat,
+    selectChat, setSelectedModel, setAnswerMode, createNewChat,
     sendMessage, sendAnswerFeedback, sendFlowFeedback, deleteChat, loadChats,
   } = useChat()
 
@@ -88,7 +88,7 @@ export default function ChatTab() {
         deletingChatIds={deletingChatIds}
         generatingTitleChatIds={generatingTitleChatIds}
         onSetCurrentChatId={(id) => {
-          setCurrentChatId(id)
+          selectChat(id)
           if (mobile) setSidebarOpen(false)
         }}
         onCreateNewChat={() => {
