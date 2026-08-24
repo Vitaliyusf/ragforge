@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
 from app.core.config import settings
-from app.core.errors import ServiceException
+from app.core.errors import ChatNotFoundError, ServiceException
 from app.core.logging_config import ServiceLogger
 from app.services.chat_exit_service import ChatExitService
 from app.services.chat_service import ChatService
@@ -455,13 +455,48 @@ class MemoryHandlerService:
         return self._send_response(request, {"status": "success", "messages": messages})
 
     def _handle_delete_chat(self, request: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        """Handle delete_chat action."""
+        """Handle delete_chat action.
+
+        Deleting the chat itself is the user's goal, so ancillary cleanup
+        (long-term memories, messages) is best-effort: a failure there — for
+        example an unavailable Qdrant index backend — must not abort the whole
+        request and leave the chat undeletable. The chat delete is also
+        idempotent: a chat that is already gone counts as a successful delete.
+        """
         chat_id = request.get("chat_id")
         if not chat_id:
             return self._send_error(request, "chat_id is required")
-        memories_deleted = self.memory_service.delete_memories_by_chat_id(chat_id)
-        self.message_service.delete_messages_by_chat(chat_id)
-        self.chat_service.delete_chat(chat_id)
+
+        memories_deleted = 0
+        try:
+            memories_deleted = self.memory_service.delete_memories_by_chat_id(chat_id)
+        except Exception as exc:
+            self.logger.log(
+                "handler:delete_chat",
+                "Memory cleanup failed; continuing with chat deletion",
+                {"chat_id": chat_id, "error": str(exc)},
+                "E",
+            )
+
+        try:
+            self.message_service.delete_messages_by_chat(chat_id)
+        except Exception as exc:
+            self.logger.log(
+                "handler:delete_chat",
+                "Message cleanup failed; continuing with chat deletion",
+                {"chat_id": chat_id, "error": str(exc)},
+                "E",
+            )
+
+        try:
+            self.chat_service.delete_chat(chat_id)
+        except ChatNotFoundError:
+            self.logger.log(
+                "handler:delete_chat",
+                "Chat already absent; treating delete as successful",
+                {"chat_id": chat_id},
+            )
+
         return self._send_response(
             request,
             {"status": "success", "message": "Chat deleted", "memories_deleted": memories_deleted},
