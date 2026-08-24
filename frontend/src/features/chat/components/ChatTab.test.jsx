@@ -308,6 +308,54 @@ describe('ChatTab', () => {
     expect(navState.push).toHaveBeenCalledWith('/chat/chat-2')
   })
 
+  it('keeps a streaming answer in the chat that requested it when switching windows', async () => {
+    navState.pathname = '/chat/A'
+    chatService.getChats.mockResolvedValue({
+      chats: [
+        { id: 'A', title: 'Chat A', updated_at: '2026-03-17T00:00:00Z' },
+        { id: 'B', title: 'Chat B', updated_at: '2026-03-17T00:00:00Z' },
+      ],
+    })
+    chatService.getMessages.mockResolvedValue({ messages: [] })
+    // The turn streams a token and then stays open (never resolves), so we can
+    // observe the in-flight answer as we switch away and back.
+    socketService.askQuestion.mockImplementation(async (payload, handlers) => {
+      handlers.onToken?.(createEnvelope('token', { text_delta: 'Answer for A' }, {
+        conversation_id: payload.conversation_id,
+        turn_id: payload.turn_id,
+        request_id: payload.request_id,
+        trace_id: payload.trace_id,
+      }))
+      return new Promise(() => {})
+    })
+
+    const user = userEvent.setup()
+    // A fresh element per render so React re-reads the mocked pathname instead of
+    // bailing out on an identical element reference.
+    const renderUi = () => (
+      <ChatProvider>
+        <ChatTab />
+      </ChatProvider>
+    )
+    const { rerender } = renderWithProviders(renderUi())
+
+    await user.type(screen.getByLabelText(/Chat message/i), 'Question in A')
+    await user.click(screen.getByLabelText(/Send message/i))
+    expect(await screen.findByText('Answer for A')).toBeInTheDocument()
+
+    // Switch to B mid-stream: A's answer must not leak into B's window.
+    navState.pathname = '/chat/B'
+    rerender(renderUi())
+    await waitFor(() => {
+      expect(screen.queryByText('Answer for A')).not.toBeInTheDocument()
+    })
+
+    // Switch back to A: its in-flight answer is preserved in its own bucket.
+    navState.pathname = '/chat/A'
+    rerender(renderUi())
+    expect(await screen.findByText('Answer for A')).toBeInTheDocument()
+  })
+
   it('navigates home after deleting the active chat', async () => {
     navState.pathname = '/chat/chat-1'
     chatService.getChats.mockResolvedValue({

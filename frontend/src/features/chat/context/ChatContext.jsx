@@ -29,12 +29,21 @@ const ChatContext = createContext(null)
 const HISTORY_MESSAGE_LIMIT = 10
 const CHAT_MODE_STORAGE_KEY = 'ragforge-chat-mode'
 
-const initialRuntimeState = {
+// Runtime state for a single conversation. Turns and their streamed messages
+// live here so that switching the visible chat never disturbs another chat's
+// in-flight answer.
+const initialConversationState = {
   messages: [],
   turnsById: {},
   turnOrder: [],
   chatState: 'idle',
   activeTurnId: null,
+}
+
+// Top-level runtime state: a map of conversation id -> conversation bucket. The
+// visible chat is derived from the URL-driven currentChatId, not stored here.
+export const initialRuntimeState = {
+  conversations: {},
 }
 
 function createId(prefix) {
@@ -106,17 +115,10 @@ function updateTurn(state, turnId, updater, nextChatState = state.chatState) {
   }
 }
 
-function chatRuntimeReducer(state, action) {
+// Reducer for a single conversation bucket. Every case operates purely on that
+// bucket's { messages, turnsById, ... } — it never reaches across conversations.
+function conversationReducer(state, action) {
   switch (action.type) {
-    case 'RESET':
-      return initialRuntimeState
-
-    case 'HISTORY_LOADED':
-      return {
-        ...initialRuntimeState,
-        messages: action.messages,
-      }
-
     case 'TURN_STARTED': {
       const { turn, userMessage, assistantMessage } = action
       return {
@@ -317,12 +319,52 @@ function chatRuntimeReducer(state, action) {
   }
 }
 
+// Top-level reducer: routes each action to its conversation's bucket by
+// `conversationId`, so a turn can only ever mutate the chat that owns it.
+export function chatRuntimeReducer(state, action) {
+  switch (action.type) {
+    case 'HISTORY_LOADED': {
+      // Never overwrite a bucket that is mid-stream — a late history fetch for a
+      // chat you returned to must not wipe its in-flight answer.
+      const existing = state.conversations[action.conversationId]
+      if (existing && existing.activeTurnId) return state
+      return {
+        ...state,
+        conversations: {
+          ...state.conversations,
+          [action.conversationId]: { ...initialConversationState, messages: action.messages },
+        },
+      }
+    }
+
+    case 'REMOVE_CONVERSATION': {
+      if (!state.conversations[action.conversationId]) return state
+      const nextConversations = { ...state.conversations }
+      delete nextConversations[action.conversationId]
+      return { ...state, conversations: nextConversations }
+    }
+
+    default: {
+      const { conversationId } = action
+      if (!conversationId) return state
+      const current = state.conversations[conversationId] || initialConversationState
+      const updated = conversationReducer(current, action)
+      if (updated === current) return state
+      return {
+        ...state,
+        conversations: { ...state.conversations, [conversationId]: updated },
+      }
+    }
+  }
+}
+
 export function ChatProvider({ children }) {
   const pathname = usePathname()
   const router = useRouter()
   const dispatch = useDispatch()
   const [runtimeState, dispatchRuntime] = useReducer(chatRuntimeReducer, initialRuntimeState)
-  const messagesRef = useRef(runtimeState.messages)
+  const messagesRef = useRef(initialConversationState.messages)
+  const conversationsRef = useRef(runtimeState.conversations)
   const skipNextMessageLoadRef = useRef(null)
 
   const [chats, setChats] = useState([])
@@ -338,9 +380,17 @@ export function ChatProvider({ children }) {
   const [deletingChatIds, setDeletingChatIds] = useState(new Set())
   const [generatingTitleChatIds, setGeneratingTitleChatIds] = useState(new Set())
 
+  // The visible chat is whichever conversation the URL points at. Everything the
+  // UI reads (messages, turns, chatState) is derived from that one bucket.
+  const activeConversation = runtimeState.conversations[currentChatId] || initialConversationState
+
   useEffect(() => {
-    messagesRef.current = runtimeState.messages
-  }, [runtimeState.messages])
+    messagesRef.current = activeConversation.messages
+  }, [activeConversation.messages])
+
+  useEffect(() => {
+    conversationsRef.current = runtimeState.conversations
+  }, [runtimeState.conversations])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -396,17 +446,14 @@ export function ChatProvider({ children }) {
   }, [])
 
   const loadMessages = useCallback(async (chatId) => {
-    if (!chatId) {
-      dispatchRuntime({ type: 'RESET' })
-      return
-    }
+    if (!chatId) return
 
     setLoading(true)
     try {
       const data = await chatService.getMessages(chatId)
       const messageList = data.messages || data.data?.messages || []
       const formatted = (Array.isArray(messageList) ? messageList : []).map(mapGatewayMessage)
-      dispatchRuntime({ type: 'HISTORY_LOADED', messages: formatted })
+      dispatchRuntime({ type: 'HISTORY_LOADED', conversationId: chatId, messages: formatted })
     } catch (error) {
       const is504 =
         error?.status === 504 ||
@@ -416,7 +463,7 @@ export function ChatProvider({ children }) {
       if (is504) {
         setChatsError('Chat history is unavailable. Please ensure the gateway and memory services are running.')
       }
-      dispatchRuntime({ type: 'HISTORY_LOADED', messages: [] })
+      dispatchRuntime({ type: 'HISTORY_LOADED', conversationId: chatId, messages: [] })
     } finally {
       setLoading(false)
     }
@@ -428,13 +475,7 @@ export function ChatProvider({ children }) {
 
   useEffect(() => {
     const chatIdFromPath = pathname?.match(/\/chat\/([^/]+)/)?.[1]
-    if (chatIdFromPath) {
-      setCurrentChatId(chatIdFromPath)
-      return
-    }
-
-    setCurrentChatId(null)
-    dispatchRuntime({ type: 'RESET' })
+    setCurrentChatId(chatIdFromPath || null)
   }, [pathname])
 
   useEffect(() => {
@@ -444,6 +485,10 @@ export function ChatProvider({ children }) {
       skipNextMessageLoadRef.current = null
       return
     }
+
+    // A conversation already has a bucket once it has been loaded or has streamed
+    // this session — reusing it preserves an in-flight answer and skips a refetch.
+    if (conversationsRef.current[currentChatId]) return
 
     loadMessages(currentChatId)
   }, [currentChatId, loadMessages])
@@ -479,10 +524,10 @@ export function ChatProvider({ children }) {
 
       const title = data.title || 'New Chat'
       setChats((prev) => [{ id: chatId, title, updated_at: new Date().toISOString() }, ...prev])
-      // The new chat starts empty, so skip the message reload the pathname
-      // effect would otherwise trigger once the URL lands on this id.
+      // Seed an empty bucket so the new chat renders immediately, and skip the
+      // message reload the pathname effect would otherwise trigger for it.
       skipNextMessageLoadRef.current = chatId
-      dispatchRuntime({ type: 'RESET' })
+      dispatchRuntime({ type: 'HISTORY_LOADED', conversationId: chatId, messages: [] })
       router.push(`/chat/${chatId}`)
       return chatId
     } catch (error) {
@@ -621,6 +666,7 @@ export function ChatProvider({ children }) {
 
     dispatchRuntime({
       type: 'TURN_STARTED',
+      conversationId: chatId,
       turn,
       userMessage,
       assistantMessage,
@@ -640,8 +686,8 @@ export function ChatProvider({ children }) {
           debug: true,
         },
         {
-          onStatus: (event) => dispatchRuntime({ type: 'TURN_STATUS', turnId, event }),
-          onTrace: (event) => dispatchRuntime({ type: 'TURN_TRACE', turnId, event }),
+          onStatus: (event) => dispatchRuntime({ type: 'TURN_STATUS', conversationId: chatId, turnId, event }),
+          onTrace: (event) => dispatchRuntime({ type: 'TURN_TRACE', conversationId: chatId, turnId, event }),
           onToken: (event) => {
             const delta =
               event?.data?.text_delta ||
@@ -649,12 +695,12 @@ export function ChatProvider({ children }) {
               event?.data?.text ||
               ''
             if (delta) {
-              dispatchRuntime({ type: 'TURN_TOKEN', turnId, delta })
+              dispatchRuntime({ type: 'TURN_TOKEN', conversationId: chatId, turnId, delta })
             }
           },
-          onAnswerReview: (event) => dispatchRuntime({ type: 'TURN_ANSWER_REVIEW', turnId, event }),
-          onDone: (event) => dispatchRuntime({ type: 'TURN_DONE', turnId, event }),
-          onError: (event) => dispatchRuntime({ type: 'TURN_ERROR', turnId, event }),
+          onAnswerReview: (event) => dispatchRuntime({ type: 'TURN_ANSWER_REVIEW', conversationId: chatId, turnId, event }),
+          onDone: (event) => dispatchRuntime({ type: 'TURN_DONE', conversationId: chatId, turnId, event }),
+          onError: (event) => dispatchRuntime({ type: 'TURN_ERROR', conversationId: chatId, turnId, event }),
         }
       )
 
@@ -668,6 +714,7 @@ export function ChatProvider({ children }) {
       if (!error?.runtimeHandled) {
         dispatchRuntime({
           type: 'TURN_ERROR',
+          conversationId: chatId,
           turnId,
           event: error?.runtimeEvent || null,
           errorMessage: error?.message || 'Error sending message',
@@ -678,14 +725,16 @@ export function ChatProvider({ children }) {
   }, [answerMode, clearGeneratingTitle, createNewChat, currentChatId, defaultModel, persistTurn, selectedModel])
 
   const sendFeedback = useCallback(async (turnId, feedbackType, payload = {}) => {
-    const turn = runtimeState.turnsById[turnId]
+    const turn = activeConversation.turnsById[turnId]
     if (!turn) {
       throw new Error('Turn not found')
     }
 
+    const conversationId = turn.conversationId
     const feedbackKey = feedbackType === 'answer_feedback' ? 'answer' : 'flow'
     dispatchRuntime({
       type: 'TURN_FEEDBACK_STATE',
+      conversationId,
       turnId,
       feedbackKey,
       status: 'sending',
@@ -704,6 +753,7 @@ export function ChatProvider({ children }) {
 
       dispatchRuntime({
         type: 'TURN_FEEDBACK_STATE',
+        conversationId,
         turnId,
         feedbackKey,
         status: 'sent',
@@ -713,6 +763,7 @@ export function ChatProvider({ children }) {
     } catch (error) {
       dispatchRuntime({
         type: 'TURN_FEEDBACK_STATE',
+        conversationId,
         turnId,
         feedbackKey,
         status: 'error',
@@ -721,7 +772,7 @@ export function ChatProvider({ children }) {
       })
       throw error
     }
-  }, [runtimeState.turnsById])
+  }, [activeConversation.turnsById])
 
   const sendAnswerFeedback = useCallback((turnId, payload) => {
     return sendFeedback(turnId, 'answer_feedback', payload)
@@ -736,8 +787,8 @@ export function ChatProvider({ children }) {
     try {
       await chatService.deleteChat(chatId)
       setChats((prev) => prev.filter((chat) => chat.id !== chatId))
+      dispatchRuntime({ type: 'REMOVE_CONVERSATION', conversationId: chatId })
       if (currentChatId === chatId) {
-        dispatchRuntime({ type: 'RESET' })
         router.push('/')
       }
       dispatch(chatDeletedAction())
@@ -752,17 +803,19 @@ export function ChatProvider({ children }) {
     }
   }, [currentChatId, dispatch, router])
 
-  const activeTurn = runtimeState.activeTurnId ? runtimeState.turnsById[runtimeState.activeTurnId] : null
+  const activeTurn = activeConversation.activeTurnId
+    ? activeConversation.turnsById[activeConversation.activeTurnId]
+    : null
   const extendedProgress = useMemo(() => {
     if (!activeTurn || activeTurn.mode !== 'extended') return null
     return activeTurn.latestStatus
   }, [activeTurn])
 
   const value = useMemo(() => ({
-    messages: runtimeState.messages,
-    turnsById: runtimeState.turnsById,
-    turnOrder: runtimeState.turnOrder,
-    chatState: runtimeState.chatState,
+    messages: activeConversation.messages,
+    turnsById: activeConversation.turnsById,
+    turnOrder: activeConversation.turnOrder,
+    chatState: activeConversation.chatState,
     chats,
     currentChatId,
     loading,
@@ -773,7 +826,7 @@ export function ChatProvider({ children }) {
     defaultModel,
     wsConnectionStatus,
     answerMode,
-    sendingMessage: runtimeState.chatState === 'connecting' || runtimeState.chatState === 'streaming',
+    sendingMessage: activeConversation.chatState === 'connecting' || activeConversation.chatState === 'streaming',
     deletingChatIds,
     generatingTitleChatIds,
     extendedProgress,
@@ -787,10 +840,10 @@ export function ChatProvider({ children }) {
     deleteChat,
     loadChats,
   }), [
-    runtimeState.messages,
-    runtimeState.turnsById,
-    runtimeState.turnOrder,
-    runtimeState.chatState,
+    activeConversation.messages,
+    activeConversation.turnsById,
+    activeConversation.turnOrder,
+    activeConversation.chatState,
     chats,
     currentChatId,
     loading,
