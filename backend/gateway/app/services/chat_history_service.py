@@ -60,6 +60,13 @@ class ChatHistoryService(BaseRPCService):
             {"action": MemoryAction.PROCESS_CHAT_EXIT, "chat_id": chat_id},
         )
 
+    async def generate_title(self, chat_id: str) -> Dict[str, Any]:
+        """Idempotently name an untitled chat from its transcript (LLM-backed)."""
+        return await self._send_long(
+            self.config.request_topics["memory"],
+            {"action": MemoryAction.GENERATE_TITLE, "chat_id": chat_id},
+        )
+
     async def update_chat_title(self, chat_id: str, title: str) -> Dict[str, Any]:
         """Update the title of an existing chat."""
         return await self._send(

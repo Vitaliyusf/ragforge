@@ -1,9 +1,17 @@
 """Chat-exit orchestration for titles, memory curation, and compressed history."""
 from __future__ import annotations
 
+import re
 from typing import Any, Dict, List, Optional
 
 import httpx
+
+# Qwen3-style reasoning models emit a <think>…</think> block before their answer.
+# On a small token budget the thinking exhausts the allowance and the model
+# returns null content, so titles/summaries silently fall back to "New Chat".
+# Utility calls don't need reasoning, so we turn it off at the chat template.
+_DISABLE_REASONING_KWARGS = {"enable_thinking": False}
+_THINK_BLOCK = re.compile(r"<think>.*?</think>", re.DOTALL)
 
 from app.agent.memory_agent import MemoryAgent
 from app.core.config import settings
@@ -78,6 +86,7 @@ class ChatExitService:
             "messages": [{"role": "user", "content": prompt}],
             "temperature": 0.2,
             "max_tokens": max_tokens or settings.chat_exit_summary_max_tokens,
+            "chat_template_kwargs": _DISABLE_REASONING_KWARGS,
         }
         headers = {
             "Content-Type": "application/json",
@@ -109,12 +118,12 @@ class ChatExitService:
         message = choices[0].get("message") or {}
         content = message.get("content", "")
         if isinstance(content, list):
-            return "".join(
+            content = "".join(
                 part.get("text", "")
                 for part in content
                 if isinstance(part, dict)
-            ).strip()
-        return str(content or "").strip()
+            )
+        return _THINK_BLOCK.sub("", str(content or "")).strip()
 
     def _generate_headline(self, messages: List[Dict[str, Any]]) -> str:
         """Generate a short title from the first ten messages of the conversation."""
@@ -139,6 +148,41 @@ class ChatExitService:
         except Exception as exc:
             self.logger.log("chat_exit_service:_generate_headline", "Error", {"error": str(exc)}, "E")
             return "New Chat"
+
+    def generate_title(self, chat_id: str) -> Dict[str, Any]:
+        """Name an untitled chat from its transcript, idempotently.
+
+        This is the lightweight counterpart to ``process_chat_exit`` used mid-
+        conversation (e.g. after the third user message): it only touches the
+        title and does no memory curation or summarization.
+
+        Parameters:
+            chat_id: Identifier of the chat to title.
+
+        Returns:
+            A response with ``status`` and the chat's ``title`` — the freshly
+            generated one, the existing title if already named, or ``None`` when
+            there is nothing to title yet.
+        """
+        try:
+            current_chat = self.chat_service.get_chat(chat_id)
+            current_title = current_chat.get("title", "New Chat")
+        except Exception:
+            current_title = "New Chat"
+
+        # Only ever replace the placeholder title; never overwrite a real one.
+        if current_title != "New Chat":
+            return {"status": "success", "title": current_title}
+
+        messages = self.message_service.get_messages(chat_id)
+        if not messages:
+            return {"status": "success", "title": None}
+
+        headline = self._generate_headline(messages)
+        if headline and headline != "New Chat":
+            self.chat_service.update_title(chat_id, headline)
+            return {"status": "success", "title": headline}
+        return {"status": "success", "title": None}
 
     def _curate_memories(self, messages: List[Dict[str, Any]], chat_id: str) -> None:
         """Run the direct memory curator against the full chat transcript."""

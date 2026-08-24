@@ -47,6 +47,7 @@ vi.mock('@/features/chat/services/chatService', () => ({
     addMessage: vi.fn(),
     deleteChat: vi.fn(),
     processChatExit: vi.fn(),
+    generateTitle: vi.fn(),
   },
 }))
 
@@ -100,6 +101,7 @@ describe('ChatTab', () => {
     chatService.addMessage.mockResolvedValue({})
     chatService.deleteChat.mockResolvedValue({})
     chatService.processChatExit.mockResolvedValue({})
+    chatService.generateTitle.mockResolvedValue({ title: 'Generated title' })
   })
 
   it('handles direct chat streaming, renders answer review, and opens the trace panel', async () => {
@@ -354,6 +356,115 @@ describe('ChatTab', () => {
     navState.pathname = '/chat/A'
     rerender(renderUi())
     expect(await screen.findByText('Answer for A')).toBeInTheDocument()
+  })
+
+  it('auto-titles an untitled chat as soon as the first LLM reply arrives', async () => {
+    navState.pathname = '/chat/chat-1'
+    chatService.getChats.mockResolvedValue({
+      chats: [{ id: 'chat-1', title: 'New Chat', updated_at: '2026-03-17T00:00:00Z' }],
+    })
+    chatService.generateTitle.mockResolvedValue({ title: 'Rotating signing keys' })
+    socketService.askQuestion.mockImplementation(async (payload, handlers) => {
+      const done = createEnvelope('done', { final_answer: 'ok' }, {
+        conversation_id: payload.conversation_id,
+        turn_id: payload.turn_id,
+      })
+      handlers.onDone?.(done)
+      return done
+    })
+
+    const user = userEvent.setup()
+    renderChatTab()
+
+    await user.type(screen.getByLabelText(/Chat message/i), 'first question')
+    await user.click(screen.getByLabelText(/Send message/i))
+
+    await waitFor(() => {
+      expect(chatService.generateTitle).toHaveBeenCalledWith('chat-1')
+    })
+    // The resolved title lands in both the sidebar item and the header.
+    expect((await screen.findAllByText('Rotating signing keys')).length).toBeGreaterThan(0)
+  })
+
+  it('processes chat exit when the user leaves a chat they used', async () => {
+    navState.pathname = '/chat/A'
+    chatService.getChats.mockResolvedValue({
+      chats: [
+        { id: 'A', title: 'New Chat', updated_at: '2026-03-17T00:00:00Z' },
+        { id: 'B', title: 'New Chat', updated_at: '2026-03-17T00:00:00Z' },
+      ],
+    })
+    chatService.getMessages.mockResolvedValue({ messages: [] })
+    chatService.processChatExit.mockResolvedValue({ headline: 'Handled on leave' })
+    socketService.askQuestion.mockImplementation(async (payload, handlers) => {
+      const done = createEnvelope('done', { final_answer: 'ok' }, {
+        conversation_id: payload.conversation_id,
+        turn_id: payload.turn_id,
+      })
+      handlers.onDone?.(done)
+      return done
+    })
+
+    const user = userEvent.setup()
+    const renderUi = () => (
+      <ChatProvider>
+        <ChatTab />
+      </ChatProvider>
+    )
+    const { rerender } = renderWithProviders(renderUi())
+
+    await user.type(screen.getByLabelText(/Chat message/i), 'a question in A')
+    await user.click(screen.getByLabelText(/Send message/i))
+    await waitFor(() => expect(chatService.addMessage).toHaveBeenCalled())
+
+    // Leaving A for B must curate/title A exactly once.
+    navState.pathname = '/chat/B'
+    rerender(renderUi())
+
+    await waitFor(() => {
+      expect(chatService.processChatExit).toHaveBeenCalledWith('A')
+    })
+  })
+
+  it('recovers chat history after a transient load failure instead of staying blank', async () => {
+    navState.pathname = '/chat/A'
+    chatService.getChats.mockResolvedValue({
+      chats: [
+        { id: 'A', title: 'Chat A', updated_at: '2026-03-17T00:00:00Z' },
+        { id: 'B', title: 'Chat B', updated_at: '2026-03-17T00:00:00Z' },
+      ],
+    })
+    // First load of A fails; a later load succeeds. The failure must not poison
+    // A's bucket into a permanently empty thread.
+    chatService.getMessages.mockImplementation((chatId) => {
+      if (chatId === 'A' && chatService.getMessages.mock.calls.filter((c) => c[0] === 'A').length === 1) {
+        return Promise.reject(new Error('boom'))
+      }
+      if (chatId === 'A') {
+        return Promise.resolve({ messages: [{ id: 'ma', sender: 'Assistant', message: 'Recovered history' }] })
+      }
+      return Promise.resolve({ messages: [] })
+    })
+
+    const user = userEvent.setup()
+    const renderUi = () => (
+      <ChatProvider>
+        <ChatTab />
+      </ChatProvider>
+    )
+    const { rerender } = renderWithProviders(renderUi())
+
+    // Initial load of A failed → thread is blank (no crash).
+    await waitFor(() => expect(chatService.getMessages).toHaveBeenCalledWith('A'))
+    expect(screen.queryByText('Recovered history')).not.toBeInTheDocument()
+
+    // Leave A, then come back: the load must be retried, not skipped.
+    navState.pathname = '/chat/B'
+    rerender(renderUi())
+    navState.pathname = '/chat/A'
+    rerender(renderUi())
+
+    expect(await screen.findByText('Recovered history')).toBeInTheDocument()
   })
 
   it('navigates home after deleting the active chat', async () => {

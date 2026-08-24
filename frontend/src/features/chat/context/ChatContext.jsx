@@ -28,6 +28,10 @@ const ChatContext = createContext(null)
 
 const HISTORY_MESSAGE_LIMIT = 10
 const CHAT_MODE_STORAGE_KEY = 'ragforge-chat-mode'
+// Auto-title a still-"New Chat" conversation as soon as the first LLM reply
+// arrives (i.e. after the user's first message); leaving the chat re-titles as
+// a fallback via process-exit.
+const AUTO_TITLE_USER_MESSAGE_THRESHOLD = 1
 
 // Runtime state for a single conversation. Turns and their streamed messages
 // live here so that switching the visible chat never disturbs another chat's
@@ -59,6 +63,12 @@ function formatHistoryForPrompt(messages) {
     .filter((message) => (message.text || '').trim().length > 0)
     .slice(-HISTORY_MESSAGE_LIMIT)
   return recent.map((message) => `[${message.sender}]: ${message.text || ''}`).join('\n')
+}
+
+// RPC replies reach the browser either flat or nested under `data`/`payload`;
+// read a field from whichever shape it arrives in.
+function readReplyField(data, key) {
+  return data?.[key] || data?.data?.[key] || data?.payload?.[key] || null
 }
 
 function mapGatewayMessage(message) {
@@ -366,6 +376,12 @@ export function ChatProvider({ children }) {
   const messagesRef = useRef(initialConversationState.messages)
   const conversationsRef = useRef(runtimeState.conversations)
   const skipNextMessageLoadRef = useRef(null)
+  const chatsRef = useRef([])
+  const generatingTitleRef = useRef(new Set())
+  // Chats that gained a completed turn since their last exit-processing — the
+  // only ones worth curating/titling when the user leaves them.
+  const dirtyChatIdsRef = useRef(new Set())
+  const previousChatIdRef = useRef(null)
 
   const [chats, setChats] = useState([])
   const [currentChatId, setCurrentChatId] = useState(null)
@@ -391,6 +407,14 @@ export function ChatProvider({ children }) {
   useEffect(() => {
     conversationsRef.current = runtimeState.conversations
   }, [runtimeState.conversations])
+
+  useEffect(() => {
+    chatsRef.current = chats
+  }, [chats])
+
+  useEffect(() => {
+    generatingTitleRef.current = generatingTitleChatIds
+  }, [generatingTitleChatIds])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -445,7 +469,7 @@ export function ChatProvider({ children }) {
     }
   }, [])
 
-  const loadMessages = useCallback(async (chatId) => {
+  const loadMessages = useCallback(async (chatId, isRetry = false) => {
     if (!chatId) return
 
     setLoading(true)
@@ -454,16 +478,27 @@ export function ChatProvider({ children }) {
       const messageList = data.messages || data.data?.messages || []
       const formatted = (Array.isArray(messageList) ? messageList : []).map(mapGatewayMessage)
       dispatchRuntime({ type: 'HISTORY_LOADED', conversationId: chatId, messages: formatted })
+      setChatsError(null)
     } catch (error) {
-      const is504 =
+      const isTransient =
         error?.status === 504 ||
         error?.statusCode === 504 ||
+        error?.type === 'timeout' ||
         (typeof error?.message === 'string' &&
-          (error.message.includes('504') || error.message.toLowerCase().includes('gateway timeout')))
-      if (is504) {
-        setChatsError('Chat history is unavailable. Please ensure the gateway and memory services are running.')
+          (error.message.includes('504') ||
+            error.message.toLowerCase().includes('timeout') ||
+            error.message.toLowerCase().includes('gateway timeout')))
+      // A slow memory service can briefly stall history; retry once before giving up.
+      if (isTransient && !isRetry) {
+        setLoading(false)
+        await new Promise((resolve) => setTimeout(resolve, 2500))
+        return loadMessages(chatId, true)
       }
-      dispatchRuntime({ type: 'HISTORY_LOADED', conversationId: chatId, messages: [] })
+      // Crucially, do NOT seed an empty bucket on failure: leaving the chat
+      // unloaded lets a later visit retry instead of showing a permanently
+      // blank thread (the message-load effect skips chats that already have a
+      // bucket).
+      setChatsError('Chat history is unavailable. Please ensure the gateway and memory services are running.')
     } finally {
       setLoading(false)
     }
@@ -545,18 +580,30 @@ export function ChatProvider({ children }) {
     router.push(`/chat/${chatId}`)
   }, [currentChatId, router])
 
-  const refreshChatsAfterPersist = useCallback(async (chatId) => {
+  // Write a resolved title straight into the sidebar; never downgrade a real
+  // title back to the "New Chat" placeholder.
+  const applyTitle = useCallback((chatId, title) => {
+    if (!chatId || !title || title === 'New Chat') return
+    setChats((prev) => prev.map((chat) => (
+      chat.id === chatId ? { ...chat, title } : chat
+    )))
+  }, [])
+
+  // Trigger A — name a still-untitled chat from its transcript once it is
+  // substantial enough. The backend is idempotent; the local guards just avoid
+  // redundant calls on chats that are already named or in flight.
+  const maybeAutoTitle = useCallback(async (chatId) => {
+    if (!chatId) return
+    const chat = chatsRef.current.find((item) => item.id === chatId)
+    if (chat && chat.title !== 'New Chat') return
+    if (generatingTitleRef.current.has(chatId)) return
+
+    setGeneratingTitleChatIds((prev) => new Set(prev).add(chatId))
     try {
-      const updated = await chatService.getChats()
-      const chatList = updated.chats || updated.data?.chats || []
-      setChats(Array.isArray(chatList) ? chatList : [])
+      const data = await chatService.generateTitle(chatId)
+      applyTitle(chatId, readReplyField(data, 'title'))
     } catch (error) {
-      console.error('Failed to refresh chats:', error)
-      setChats((prev) => prev.map((chat) => (
-        chat.id === chatId
-          ? { ...chat, updated_at: new Date().toISOString() }
-          : chat
-      )))
+      console.error('Auto-title error:', error)
     } finally {
       setGeneratingTitleChatIds((prev) => {
         const next = new Set(prev)
@@ -564,28 +611,51 @@ export function ChatProvider({ children }) {
         return next
       })
     }
-  }, [])
+  }, [applyTitle])
 
-  const clearGeneratingTitle = useCallback((chatId) => {
-    if (!chatId) return
-    setGeneratingTitleChatIds((prev) => {
-      const next = new Set(prev)
-      next.delete(chatId)
-      return next
-    })
-  }, [])
+  // Trigger B — when the user leaves a chat they actually used, curate memory,
+  // store a summary, and title it if still unnamed (all via process-exit).
+  const processChatExitOnLeave = useCallback((chatId) => {
+    if (!chatId || !dirtyChatIdsRef.current.has(chatId)) return
+    dirtyChatIdsRef.current.delete(chatId)
+    chatService.processChatExit(chatId)
+      .then((data) => applyTitle(chatId, readReplyField(data, 'headline')))
+      .catch(() => {})
+  }, [applyTitle])
 
   const persistTurn = useCallback(async (chatId, text, finalAnswer) => {
     try {
       await chatService.addMessage(chatId, 'User', text)
       await chatService.addMessage(chatId, 'Assistant', finalAnswer)
-      chatService.processChatExit(chatId).catch(() => {})
-      await refreshChatsAfterPersist(chatId)
+      setChats((prev) => prev.map((chat) => (
+        chat.id === chatId ? { ...chat, updated_at: new Date().toISOString() } : chat
+      )))
     } catch (error) {
       console.error('Background persist error:', error)
-      clearGeneratingTitle(chatId)
     }
-  }, [clearGeneratingTitle, refreshChatsAfterPersist])
+  }, [])
+
+  // Leaving a chat = the active chat changes (navigation) — curate + title the
+  // one we just left. Tracked via a ref so this fires exactly on the transition.
+  useEffect(() => {
+    const previous = previousChatIdRef.current
+    if (previous && previous !== currentChatId) {
+      processChatExitOnLeave(previous)
+    }
+    previousChatIdRef.current = currentChatId
+  }, [currentChatId, processChatExitOnLeave])
+
+  // Best-effort: leaving the browser tab is also "leaving the chat".
+  useEffect(() => {
+    if (typeof document === 'undefined') return undefined
+    const handleHidden = () => {
+      if (document.visibilityState === 'hidden') {
+        processChatExitOnLeave(previousChatIdRef.current)
+      }
+    }
+    document.addEventListener('visibilitychange', handleHidden)
+    return () => document.removeEventListener('visibilitychange', handleHidden)
+  }, [processChatExitOnLeave])
 
   const sendMessage = useCallback(async (text) => {
     const trimmed = text?.trim()
@@ -596,10 +666,14 @@ export function ChatProvider({ children }) {
       const createdChatId = await createNewChat()
       if (!createdChatId) return
       chatId = createdChatId
-      setGeneratingTitleChatIds((prev) => new Set(prev).add(createdChatId))
     }
 
     const existingMessages = messagesRef.current
+    // Runtime messages are tagged "You"; history reloaded from the server uses
+    // "User" — count both so a reopened chat still titles on the 3rd message.
+    const userMessageCount = existingMessages.filter(
+      (message) => message.sender === 'You' || message.sender === 'User'
+    ).length + 1
     const historyToSend = formatHistoryForPrompt(existingMessages)
     const mode = normalizeChatMode(answerMode)
     const turnId = createId('turn')
@@ -706,9 +780,12 @@ export function ChatProvider({ children }) {
 
       const finalAnswer = doneEvent?.data?.final_answer || ''
       if (chatId && finalAnswer) {
+        // The chat now has a completed turn worth curating when the user leaves.
+        dirtyChatIdsRef.current.add(chatId)
         persistTurn(chatId, trimmed, finalAnswer)
-      } else {
-        clearGeneratingTitle(chatId)
+        if (userMessageCount >= AUTO_TITLE_USER_MESSAGE_THRESHOLD) {
+          maybeAutoTitle(chatId)
+        }
       }
     } catch (error) {
       if (!error?.runtimeHandled) {
@@ -720,9 +797,8 @@ export function ChatProvider({ children }) {
           errorMessage: error?.message || 'Error sending message',
         })
       }
-      clearGeneratingTitle(chatId)
     }
-  }, [answerMode, clearGeneratingTitle, createNewChat, currentChatId, defaultModel, persistTurn, selectedModel])
+  }, [answerMode, createNewChat, currentChatId, defaultModel, maybeAutoTitle, persistTurn, selectedModel])
 
   const sendFeedback = useCallback(async (turnId, feedbackType, payload = {}) => {
     const turn = activeConversation.turnsById[turnId]
@@ -786,6 +862,7 @@ export function ChatProvider({ children }) {
     setDeletingChatIds((prev) => new Set(prev).add(chatId))
     try {
       await chatService.deleteChat(chatId)
+      dirtyChatIdsRef.current.delete(chatId)
       setChats((prev) => prev.filter((chat) => chat.id !== chatId))
       dispatchRuntime({ type: 'REMOVE_CONVERSATION', conversationId: chatId })
       if (currentChatId === chatId) {

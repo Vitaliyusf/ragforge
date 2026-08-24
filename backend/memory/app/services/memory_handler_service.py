@@ -313,6 +313,8 @@ class MemoryHandlerService:
                 return self._handle_delete_chat(request)
             elif action == "process_chat_exit":
                 return self._handle_process_chat_exit(request)
+            elif action == "generate_title":
+                return self._handle_generate_title(request)
             elif action == "update_chat_title":
                 return self._handle_update_chat_title(request)
             elif action == "get_long_term_memories":
@@ -508,6 +510,14 @@ class MemoryHandlerService:
         if not chat_id:
             return self._send_error(request, "chat_id is required")
         result = self.chat_exit_service.process_chat_exit(chat_id)
+        return self._send_response(request, result)
+
+    def _handle_generate_title(self, request: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Handle generate_title action — idempotently name an untitled chat."""
+        chat_id = request.get("chat_id")
+        if not chat_id:
+            return self._send_error(request, "chat_id is required")
+        result = self.chat_exit_service.generate_title(chat_id)
         return self._send_response(request, result)
 
     def _handle_update_chat_title(self, request: Dict[str, Any]) -> Optional[Dict[str, Any]]:
