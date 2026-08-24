@@ -121,9 +121,9 @@ const MessageBubble = React.memo(function MessageBubble({
       <div className={`flex flex-col ${isUser ? 'max-w-[78%] items-end' : 'max-w-[88%] items-start'}`}>
         {/* Header row */}
         <div className={`mb-1 flex items-center gap-1.5 ${isUser ? 'flex-row-reverse' : ''}`}>
-          <span className="text-[11px] font-semibold text-primary">{isUser ? 'You' : message.sender}</span>
+          <span className="text-xs font-semibold text-primary">{isUser ? 'You' : message.sender}</span>
           {message.timestamp ? (
-            <span className="text-[11px] text-text-muted">{formatMessageTime(message.timestamp)}</span>
+            <span className="text-xs text-text-muted">{formatMessageTime(message.timestamp)}</span>
           ) : null}
           {canViewDebug ? (
             <button
@@ -151,9 +151,9 @@ const MessageBubble = React.memo(function MessageBubble({
         <div
           dir={hasHebrew ? textDir : 'ltr'}
           lang={hasHebrew ? 'he' : undefined}
-          className={`break-words px-4 py-3 text-sm leading-relaxed ${
+          className={`break-words px-4 py-3 text-[15px] leading-relaxed ${
             isUser
-              ? 'rounded-2xl rounded-tr-md bg-gradient-accent text-white shadow-md whitespace-pre-wrap'
+              ? 'rounded-2xl rounded-tr-md bg-primary text-[var(--primary-fg)] shadow-sm whitespace-pre-wrap'
               : 'rounded-2xl rounded-tl-md border border-border bg-bg-elevated text-text-secondary shadow-sm'
           } ${hasHebrew && textDir === 'rtl' ? 'text-right' : 'text-left'}`}
           style={hasHebrew ? { unicodeBidi: 'plaintext' } : undefined}
@@ -175,7 +175,7 @@ const MessageBubble = React.memo(function MessageBubble({
           <button
             type="button"
             onClick={() => setExpanded((v) => !v)}
-            className="mt-1.5 flex items-center gap-1 text-[11px] text-text-muted transition-colors hover:text-accent focus-visible:outline-none"
+            className="mt-1.5 flex items-center gap-1 text-xs text-text-muted transition-colors hover:text-accent focus-visible:outline-none"
           >
             {expanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
             {expanded ? 'Hide full prompt' : 'Show full prompt'}
@@ -218,7 +218,7 @@ function PromptViewer({ systemPrompt, rawPrompt }) {
   const content = activeSection === 'system' ? systemPrompt : rawPrompt
 
   return (
-    <div className="rounded-xl border border-border bg-bg-tertiary overflow-hidden text-xs">
+    <div className="rounded-xl border border-border bg-bg-tertiary overflow-hidden text-[13px]">
       {/* Section tabs */}
       <div className="flex border-b border-border">
         {sections.map((s) => (
@@ -226,7 +226,7 @@ function PromptViewer({ systemPrompt, rawPrompt }) {
             key={s.id}
             type="button"
             onClick={() => setActiveSection(s.id)}
-            className={`px-3 py-1.5 text-[11px] font-medium transition-colors ${
+            className={`px-3 py-1.5 text-xs font-medium transition-colors ${
               activeSection === s.id
                 ? 'text-accent border-b-2 border-accent -mb-px'
                 : 'text-text-muted hover:text-text-secondary'
@@ -236,11 +236,11 @@ function PromptViewer({ systemPrompt, rawPrompt }) {
           </button>
         ))}
         <div className="flex-1" />
-        <span className="self-center pr-3 text-[10px] text-text-muted">LLM input</span>
+        <span className="self-center pr-3 text-xs text-text-muted">LLM input</span>
       </div>
 
       {/* Content */}
-      <pre className="max-h-80 overflow-auto p-3 text-[11px] leading-relaxed text-text-muted whitespace-pre-wrap break-words scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent">
+      <pre className="max-h-80 overflow-auto p-3 text-xs leading-relaxed text-text-muted whitespace-pre-wrap break-words scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent">
         {content || '—'}
       </pre>
     </div>
@@ -257,7 +257,7 @@ function EmptyState({ suggestedPrompts, onSuggestedPrompt }) {
       className="mx-auto flex min-h-[380px] max-w-3xl flex-col items-center justify-center py-10 text-center"
     >
       <div
-        className="mb-6 inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-[11px] font-medium text-primary"
+        className="mb-6 inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium text-primary"
         style={{ background: 'var(--primary-soft)', borderColor: 'rgba(var(--primary-rgb) / 0.18)' }}
       >
         <span className="h-1.5 w-1.5 rounded-full bg-primary" />
@@ -265,8 +265,8 @@ function EmptyState({ suggestedPrompts, onSuggestedPrompt }) {
       </div>
 
       <div className="relative mb-5">
-        <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-accent shadow-glow">
-          <Sparkles className="text-white" size={27} />
+        <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-primary-soft">
+          <Sparkles className="text-primary" size={27} />
         </div>
         <div className="absolute -right-2 -top-2 h-5 w-5 rounded-full border-4 border-[var(--surface)] bg-accent animate-float" />
       </div>
@@ -274,7 +274,7 @@ function EmptyState({ suggestedPrompts, onSuggestedPrompt }) {
       <h2 className="text-2xl font-semibold tracking-tight text-text-primary md:text-3xl">
         What can I help you explore?
       </h2>
-      <p className="mb-7 mt-2 max-w-lg text-sm leading-relaxed text-text-muted">
+      <p className="mb-7 mt-2 max-w-lg text-[15px] leading-relaxed text-text-muted">
         Ask a question, analyze your documents, or choose a starting point below.
       </p>
 
@@ -286,10 +286,10 @@ function EmptyState({ suggestedPrompts, onSuggestedPrompt }) {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.08 * index }}
             onClick={() => onSuggestedPrompt(prompt)}
-            className="group flex min-h-14 items-center justify-between gap-3 rounded-2xl border border-border bg-bg-elevated px-4 py-3 text-left text-sm font-medium text-text-secondary shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-border-hover hover:text-text-primary hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+            className="group flex min-h-14 items-center justify-between gap-3 rounded-2xl border border-border bg-bg-elevated px-4 py-3 text-left text-[15px] font-medium text-text-secondary shadow-sm transition-all duration-200 hover:border-border-hover hover:text-text-primary hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
           >
             <span>{prompt}</span>
-            <ArrowUpRight size={15} className="shrink-0 text-text-muted transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-primary" />
+            <ArrowUpRight size={15} className="shrink-0 text-text-muted transition-transform group-group-hover:translate-x-0.5 group-hover:text-primary" />
           </motion.button>
         ))}
       </div>
@@ -315,14 +315,14 @@ function ExtendedProgressIndicator({ progress }) {
       <div className="max-w-[82%] flex-1">
         <div className="rounded-2xl border border-border bg-bg-elevated px-3.5 py-2.5">
           <div className="mb-1.5 flex items-center gap-2">
-            <span className="text-xs font-semibold text-accent">{label}</span>
-            {percent != null ? <span className="text-[11px] text-text-muted">{percent}%</span> : null}
+            <span className="text-[13px] font-semibold text-accent">{label}</span>
+            {percent != null ? <span className="text-xs text-text-muted">{percent}%</span> : null}
           </div>
-          <p className="mb-2 text-xs text-text-muted">{progress?.message || 'Processing...'}</p>
+          <p className="mb-2 text-[13px] text-text-muted">{progress?.message || 'Processing...'}</p>
           {percent != null ? (
             <div className="h-1.5 w-full overflow-hidden rounded-full bg-bg-tertiary">
               <motion.div
-                className="h-full rounded-full bg-gradient-accent"
+                className="h-full rounded-full bg-primary"
                 initial={{ width: 0 }}
                 animate={{ width: `${percent}%` }}
                 transition={{ duration: 0.4, ease: 'easeOut' }}
@@ -339,19 +339,19 @@ function ExtendedProgressIndicator({ progress }) {
 
 const markdownComponents = {
   p:          ({ children }) => <p className="mb-2 leading-relaxed last:mb-0">{children}</p>,
-  pre:        ({ children }) => <pre className="my-2 overflow-x-auto rounded-xl bg-bg-tertiary p-3 text-xs font-mono">{children}</pre>,
+  pre:        ({ children }) => <pre className="my-2 overflow-x-auto rounded-xl bg-bg-tertiary p-3 text-[13px] font-mono">{children}</pre>,
   code:       ({ inline, children }) => inline
-                ? <code className="rounded bg-bg-tertiary px-1.5 py-0.5 font-mono text-xs text-accent">{children}</code>
+                ? <code className="rounded bg-bg-tertiary px-1.5 py-0.5 font-mono text-[13px] text-accent">{children}</code>
                 : <code>{children}</code>,
   ul:         ({ children }) => <ul className="mb-2 list-disc space-y-0.5 pl-4">{children}</ul>,
   ol:         ({ children }) => <ol className="mb-2 list-decimal space-y-0.5 pl-4">{children}</ol>,
   li:         ({ children }) => <li className="leading-relaxed">{children}</li>,
-  h1:         ({ children }) => <h1 className="mb-1 text-base font-bold">{children}</h1>,
-  h2:         ({ children }) => <h2 className="mb-1 text-sm font-bold">{children}</h2>,
-  h3:         ({ children }) => <h3 className="mb-1 text-sm font-semibold">{children}</h3>,
+  h1:         ({ children }) => <h1 className="mb-1 text-lg font-bold">{children}</h1>,
+  h2:         ({ children }) => <h2 className="mb-1 text-[15px] font-bold">{children}</h2>,
+  h3:         ({ children }) => <h3 className="mb-1 text-[15px] font-semibold">{children}</h3>,
   blockquote: ({ children }) => <blockquote className="my-2 border-l-2 border-accent pl-3 italic text-text-muted">{children}</blockquote>,
   a:          ({ href, children }) => <a href={href} target="_blank" rel="noopener noreferrer" className="text-accent underline underline-offset-2 hover:text-accent/80">{children}</a>,
-  table:      ({ children }) => <div className="my-2 overflow-x-auto"><table className="w-full border-collapse text-xs">{children}</table></div>,
+  table:      ({ children }) => <div className="my-2 overflow-x-auto"><table className="w-full border-collapse text-[13px]">{children}</table></div>,
   th:         ({ children }) => <th className="border border-border bg-bg-tertiary px-2 py-1 text-left font-semibold">{children}</th>,
   td:         ({ children }) => <td className="border border-border px-2 py-1">{children}</td>,
   hr:         () => <hr className="my-3 border-border" />,

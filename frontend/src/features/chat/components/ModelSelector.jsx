@@ -26,8 +26,8 @@ export default function ModelSelector({ models, selectedModel, defaultModel, onS
           <Cpu size={13} />
         </span>
         <div className="min-w-0">
-          <div className="text-xs font-semibold text-text-primary">Response model</div>
-          <div className="text-[10px] text-text-muted">Used for this conversation</div>
+          <div className="text-[13px] font-semibold text-text-primary">Response model</div>
+          <div className="text-xs text-text-muted">Used for this conversation</div>
         </div>
       </div>
 
@@ -37,7 +37,7 @@ export default function ModelSelector({ models, selectedModel, defaultModel, onS
           value={String(selectedModel || defaultModel)}
           onValueChange={onSelectModel}
           placeholder="Select model"
-          className="h-9 w-full text-xs"
+          className="h-9 w-full text-[13px]"
           aria-label="Select LLM model"
         >
           {modelOptions.map((opt) => (
@@ -48,7 +48,7 @@ export default function ModelSelector({ models, selectedModel, defaultModel, onS
         </Select>
 
         {models.length === 0 && (
-          <p className="rounded-lg bg-warning-soft px-2.5 py-2 text-[10px] leading-relaxed text-warning">
+          <p className="rounded-lg bg-warning-soft px-2.5 py-2 text-xs leading-relaxed text-warning">
             Model list unavailable. Using {defaultModel}.
           </p>
         )}

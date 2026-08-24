@@ -77,7 +77,7 @@ export default function ChatInput({
             rows={1}
             aria-label="Chat message"
             disabled={inputDisabled}
-            className="min-h-7 min-w-0 flex-1 resize-none overflow-y-auto bg-transparent py-1 text-sm leading-relaxed text-[var(--fg)] outline-none placeholder:text-[var(--fg-soft)] disabled:opacity-60 scrollbar-none"
+            className="min-h-7 min-w-0 flex-1 resize-none overflow-y-auto bg-transparent py-1 text-[15px] leading-relaxed text-[var(--fg)] outline-none placeholder:text-[var(--fg-soft)] disabled:opacity-60 scrollbar-none"
             style={{ maxHeight: MAX_TEXTAREA_HEIGHT }}
           />
 
@@ -86,7 +86,7 @@ export default function ChatInput({
             onClick={onSend}
             disabled={!canSend}
             aria-label="Send message"
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-white outline-none transition-all duration-200 enabled:hover:-translate-y-0.5 enabled:hover:shadow-glow disabled:cursor-not-allowed focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-white outline-none transition-all duration-200 enabled:hover:brightness-110 disabled:cursor-not-allowed focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
             style={{
               background: canSend ? 'var(--gradient-primary)' : 'var(--surface-active)',
               color: canSend ? 'white' : 'var(--fg-soft)',
@@ -104,7 +104,7 @@ export default function ChatInput({
             value={answerMode}
             onValueChange={onAnswerModeChange}
             placeholder="Mode"
-            className="h-7 min-w-[108px] max-w-[126px] border-transparent px-2.5 py-0 text-[11px]"
+            className="h-7 min-w-[108px] max-w-[126px] border-transparent px-2.5 py-0 text-xs"
             aria-label="Answer mode"
           >
             <SelectItem value="regular">Quick answer</SelectItem>
@@ -123,7 +123,7 @@ export default function ChatInput({
             {statusConfig.label}
           </Badge>
 
-          <span className="ml-auto hidden text-[10px] text-[var(--fg-soft)] sm:block">
+          <span className="ml-auto hidden text-xs text-[var(--fg-soft)] sm:block">
             Enter to send · Shift+Enter for a new line
           </span>
         </div>

@@ -45,9 +45,9 @@ function MetricTile({ icon: Icon, label, value, tone = 'primary', hint }) {
         <Icon size={17} />
       </span>
       <div className="min-w-0">
-        <div className="text-[10px] font-semibold uppercase tracking-[0.09em] text-text-muted">{label}</div>
-        <div className="mt-0.5 truncate text-base font-semibold text-text-primary">{value}</div>
-        {hint ? <div className="mt-0.5 truncate text-[10px] text-text-muted">{hint}</div> : null}
+        <div className="text-xs font-semibold uppercase tracking-[0.09em] text-text-muted">{label}</div>
+        <div className="mt-0.5 truncate text-lg font-semibold text-text-primary">{value}</div>
+        {hint ? <div className="mt-0.5 truncate text-xs text-text-muted">{hint}</div> : null}
       </div>
     </div>
   )
@@ -212,8 +212,8 @@ export default function ModelManagementTab() {
                 <Server size={16} />
               </span>
               <div>
-                <h2 className="text-sm font-semibold text-text-primary">Inference runtime</h2>
-                <p className="mt-0.5 text-[11px] text-text-muted">Select the engine used to serve models.</p>
+                <h2 className="text-[15px] font-semibold text-text-primary">Inference runtime</h2>
+                <p className="mt-0.5 text-xs text-text-muted">Select the engine used to serve models.</p>
               </div>
             </div>
           </div>
@@ -241,8 +241,8 @@ export default function ModelManagementTab() {
                     <Icon size={16} />
                   </span>
                   <span className="min-w-0 flex-1">
-                    <span className="block text-sm font-semibold text-text-primary">{safeRender(implementation.display_name)}</span>
-                    <span className="mt-0.5 block truncate text-[11px] text-text-muted">{safeRender(implementation.description)}</span>
+                    <span className="block text-[15px] font-semibold text-text-primary">{safeRender(implementation.display_name)}</span>
+                    <span className="mt-0.5 block truncate text-xs text-text-muted">{safeRender(implementation.description)}</span>
                   </span>
                   {isActive ? <CheckCircle size={16} className="shrink-0 text-primary" /> : null}
                 </motion.button>
@@ -250,7 +250,7 @@ export default function ModelManagementTab() {
             })}
 
             {!loading && implementations.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-border px-3 py-8 text-center text-xs text-text-muted">
+              <div className="rounded-xl border border-dashed border-border px-3 py-8 text-center text-[13px] text-text-muted">
                 No runtimes are currently available.
               </div>
             ) : null}
@@ -265,7 +265,7 @@ export default function ModelManagementTab() {
                 className="overflow-hidden border-t border-border"
               >
                 <div className="p-4">
-                  <div className="mb-2 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-text-muted">
+                  <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-text-muted">
                     <Sparkles size={11} className="text-primary" /> Capabilities
                   </div>
                   <div className="flex flex-wrap gap-1.5">
@@ -283,10 +283,10 @@ export default function ModelManagementTab() {
           <div className="flex flex-col gap-3 border-b border-border p-4 sm:flex-row sm:items-center">
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
-                <h2 className="text-sm font-semibold text-text-primary">Model catalog</h2>
+                <h2 className="text-[15px] font-semibold text-text-primary">Model catalog</h2>
                 <Badge variant="default" size="xs">{filteredModels.length}</Badge>
               </div>
-              <p className="mt-0.5 text-[11px] text-text-muted">Select a model to inspect its runtime details.</p>
+              <p className="mt-0.5 text-xs text-text-muted">Select a model to inspect its runtime details.</p>
             </div>
             <Input
               value={modelQuery}
@@ -309,8 +309,8 @@ export default function ModelManagementTab() {
                   <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary-soft text-primary">
                     <Search size={19} />
                   </span>
-                  <h3 className="mt-4 text-sm font-semibold text-text-primary">No matching models</h3>
-                  <p className="mt-1 text-xs text-text-muted">Try a different name or refresh the catalog.</p>
+                  <h3 className="mt-4 text-[15px] font-semibold text-text-primary">No matching models</h3>
+                  <p className="mt-1 text-[13px] text-text-muted">Try a different name or refresh the catalog.</p>
                 </div>
               ) : (
                 <div className="space-y-2">
@@ -343,7 +343,7 @@ export default function ModelManagementTab() {
                         </span>
                         <span className="min-w-0 flex-1">
                           <span className="block truncate text-[13px] font-semibold text-text-primary">{name}</span>
-                          <span className="mt-0.5 block text-[10px] capitalize text-text-muted">
+                          <span className="mt-0.5 block text-xs capitalize text-text-muted">
                             {currentDownload?.status ? `Download ${currentDownload.status}` : status}
                           </span>
                         </span>
@@ -370,7 +370,7 @@ export default function ModelManagementTab() {
                       <Package size={19} />
                     </div>
                     <div className="label-xs mb-1.5">Selected model</div>
-                    <h3 className="break-words text-sm font-semibold text-text-primary">
+                    <h3 className="break-words text-[15px] font-semibold text-text-primary">
                       {safeRender(modelInfo?.name || selectedModel?.name || selectedModel)}
                     </h3>
                     <div className="mt-4 space-y-2.5">
@@ -379,7 +379,7 @@ export default function ModelManagementTab() {
                         ['Status', safeRender(modelInfo?.status || selectedModel?.status || 'available')],
                         modelInfo?.downloaded !== undefined ? ['Local', modelInfo.downloaded ? 'Yes' : 'No'] : null,
                       ].filter(Boolean).map(([label, value]) => (
-                        <div key={label} className="flex items-center justify-between gap-3 border-b border-border/70 pb-2 text-xs last:border-0">
+                        <div key={label} className="flex items-center justify-between gap-3 border-b border-border/70 pb-2 text-[13px] last:border-0">
                           <span className="text-text-muted">{label}</span>
                           <span className="max-w-[65%] truncate font-medium text-text-primary">{value}</span>
                         </div>
@@ -411,8 +411,8 @@ export default function ModelManagementTab() {
                   <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-bg-tertiary text-text-muted">
                     <Package size={19} />
                   </span>
-                  <h3 className="mt-4 text-sm font-semibold text-text-primary">Choose a model</h3>
-                  <p className="mt-1 text-xs leading-relaxed text-text-muted">Details and download actions will appear here.</p>
+                  <h3 className="mt-4 text-[15px] font-semibold text-text-primary">Choose a model</h3>
+                  <p className="mt-1 text-[13px] leading-relaxed text-text-muted">Details and download actions will appear here.</p>
                 </div>
               )}
             </div>

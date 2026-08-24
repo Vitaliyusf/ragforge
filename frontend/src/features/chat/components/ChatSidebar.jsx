@@ -57,7 +57,7 @@ export default function ChatSidebar({
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Search conversations"
-            className="h-9 w-full rounded-xl border bg-transparent pl-9 pr-3 text-xs text-[var(--fg)] outline-none transition-all placeholder:text-[var(--fg-soft)] focus:border-[var(--border-focus)] focus:ring-2 focus:ring-[var(--ring)]"
+            className="h-9 w-full rounded-xl border bg-transparent pl-9 pr-3 text-[13px] text-[var(--fg)] outline-none transition-all placeholder:text-[var(--fg-soft)] focus:border-[var(--border-focus)] focus:ring-2 focus:ring-[var(--ring)]"
             style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}
           />
         </label>
@@ -66,7 +66,7 @@ export default function ChatSidebar({
       <div className="flex shrink-0 items-center justify-between px-3 pb-1 pt-3">
         <span className="label-xs">Recent chats</span>
         {!chatsLoading && (
-          <span className="text-[10px] tabular-nums text-[var(--fg-soft)]">{filteredChats.length}</span>
+          <span className="text-xs tabular-nums text-[var(--fg-soft)]">{filteredChats.length}</span>
         )}
       </div>
 
@@ -82,7 +82,7 @@ export default function ChatSidebar({
             <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--danger-soft)] text-[var(--danger)]">
               <AlertCircle size={18} />
             </span>
-            <p className="text-xs leading-relaxed text-[var(--fg-muted)]">{chatsError}</p>
+            <p className="text-[13px] leading-relaxed text-[var(--fg-muted)]">{chatsError}</p>
             <Button onClick={onLoadChats} variant="secondary" size="xs">Try again</Button>
           </div>
         ) : chats.length === 0 ? (
@@ -94,19 +94,19 @@ export default function ChatSidebar({
               <MessageSquare size={19} />
             </span>
             <div>
-              <p className="text-xs font-medium text-[var(--fg)]">No conversations yet</p>
-              <p className="mt-1 text-[11px] leading-relaxed text-[var(--fg-soft)]">
+              <p className="text-[13px] font-medium text-[var(--fg)]">No conversations yet</p>
+              <p className="mt-1 text-xs leading-relaxed text-[var(--fg-soft)]">
                 Start a chat and it will appear here.
               </p>
             </div>
           </div>
         ) : filteredChats.length === 0 ? (
           <div className="px-4 py-8 text-center">
-            <p className="text-xs font-medium text-[var(--fg)]">No matching chats</p>
+            <p className="text-[13px] font-medium text-[var(--fg)]">No matching chats</p>
             <button
               type="button"
               onClick={() => setQuery('')}
-              className="mt-2 text-[11px] font-medium text-[var(--primary)] hover:underline"
+              className="mt-2 text-xs font-medium text-[var(--primary)] hover:underline"
             >
               Clear search
             </button>
@@ -172,12 +172,12 @@ function ChatItem({ chat, isActive, isDeleting, isGeneratingTitle, onSelect, onD
 
       <div className="min-w-0 flex-1">
         <span
-          className="block truncate text-xs font-medium"
+          className="block truncate text-[13px] font-medium"
           style={{ color: isActive ? 'var(--fg)' : 'var(--fg-muted)' }}
         >
           {chat.title}
         </span>
-        <span className="mt-0.5 block text-[10px] text-[var(--fg-soft)]">
+        <span className="mt-0.5 block text-xs text-[var(--fg-soft)]">
           {formatChatDate(chat.updated_at)}
         </span>
       </div>

@@ -89,13 +89,13 @@ export default function FileReviewDrawer({
       size="xl"
     >
       {!reviewCase && !reviewError ? (
-        <div className="rounded-2xl border border-border bg-bg-tertiary px-4 py-3 text-sm text-text-secondary">
+        <div className="rounded-2xl border border-border bg-bg-tertiary px-4 py-3 text-[15px] text-text-secondary">
           Loading review case...
         </div>
       ) : null}
 
       {reviewError ? (
-        <div className="rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-500">
+        <div className="rounded-2xl border border-danger bg-danger-soft px-4 py-3 text-[15px] text-danger">
           {reviewError}
         </div>
       ) : null}
@@ -110,26 +110,26 @@ export default function FileReviewDrawer({
           </div>
 
           <section className="space-y-2 rounded-2xl border border-border bg-bg-tertiary/70 p-4">
-            <div className="flex items-center gap-2 text-sm font-semibold text-text-primary">
-              <FileWarning size={16} className="text-amber-500" />
+            <div className="flex items-center gap-2 text-[15px] font-semibold text-text-primary">
+              <FileWarning size={16} className="text-warning" />
               Problem Description
             </div>
-            <p className="text-sm text-text-secondary">{reviewCase.problem_description || 'Not provided'}</p>
+            <p className="text-[15px] text-text-secondary">{reviewCase.problem_description || 'Not provided'}</p>
           </section>
 
           <section className="space-y-2 rounded-2xl border border-border bg-bg-tertiary/70 p-4">
-            <div className="flex items-center gap-2 text-sm font-semibold text-text-primary">
-              <AlertTriangle size={16} className="text-red-500" />
+            <div className="flex items-center gap-2 text-[15px] font-semibold text-text-primary">
+              <AlertTriangle size={16} className="text-danger" />
               Problematic Text Snippet
             </div>
-            <pre className="whitespace-pre-wrap break-words rounded-xl border border-border bg-bg-elevated p-3 text-sm text-text-secondary">
+            <pre className="whitespace-pre-wrap break-words rounded-xl border border-border bg-bg-elevated p-3 text-[15px] text-text-secondary">
               {reviewCase.problematic_text || 'Not provided'}
             </pre>
           </section>
 
           <section className="space-y-2 rounded-2xl border border-border bg-bg-tertiary/70 p-4">
-            <div className="text-sm font-semibold text-text-primary">Why Problematic</div>
-            <p className="text-sm text-text-secondary">{reviewCase.why_problematic || 'Not provided'}</p>
+            <div className="text-[15px] font-semibold text-text-primary">Why Problematic</div>
+            <p className="text-[15px] text-text-secondary">{reviewCase.why_problematic || 'Not provided'}</p>
             {Array.isArray(reviewCase.issue_categories) && reviewCase.issue_categories.length > 0 ? (
               <div className="flex flex-wrap gap-2 pt-1">
                 {reviewCase.issue_categories.map((issue, index) => (
@@ -142,7 +142,7 @@ export default function FileReviewDrawer({
           </section>
 
           <section className="space-y-3 rounded-2xl border border-border bg-bg-tertiary/70 p-4">
-            <div className="text-sm font-semibold text-text-primary">Allowed Actions</div>
+            <div className="text-[15px] font-semibold text-text-primary">Allowed Actions</div>
             <div className="grid gap-3">
               {actions.map((action) => {
                 const config = ACTION_CONFIG[action] || {
@@ -164,11 +164,11 @@ export default function FileReviewDrawer({
                         : 'border-border bg-bg-elevated hover:border-border-hover hover:bg-bg-secondary'
                     }`}
                   >
-                    <div className="flex items-center gap-2 text-sm font-semibold text-text-primary">
+                    <div className="flex items-center gap-2 text-[15px] font-semibold text-text-primary">
                       <Icon size={15} className={active ? 'text-accent' : 'text-text-muted'} />
                       {config.label}
                     </div>
-                    <p className="mt-1 text-sm text-text-secondary">{config.description}</p>
+                    <p className="mt-1 text-[15px] text-text-secondary">{config.description}</p>
                   </button>
                 )
               })}
@@ -176,11 +176,11 @@ export default function FileReviewDrawer({
           </section>
 
           <section className="space-y-2 rounded-2xl border border-border bg-bg-tertiary/70 p-4">
-            <div className="text-sm font-semibold text-text-primary">Patch Map Preview</div>
+            <div className="text-[15px] font-semibold text-text-primary">Patch Map Preview</div>
             {patchMap.length > 0 ? (
               <div className="space-y-2">
                 {patchMap.map((patch) => (
-                  <div key={patch.patch_id || `${patch.start}-${patch.end}`} className="rounded-xl border border-border bg-bg-elevated p-3 text-xs text-text-secondary">
+                  <div key={patch.patch_id || `${patch.start}-${patch.end}`} className="rounded-xl border border-border bg-bg-elevated p-3 text-[13px] text-text-secondary">
                     <div className="font-medium text-text-primary">
                       {patch.patch_id || 'patch'} - {patch.action || 'replace'}
                     </div>
@@ -191,7 +191,7 @@ export default function FileReviewDrawer({
                 ))}
               </div>
             ) : (
-              <div className="rounded-xl border border-border bg-bg-elevated px-3 py-2 text-sm text-text-secondary">
+              <div className="rounded-xl border border-border bg-bg-elevated px-3 py-2 text-[15px] text-text-secondary">
                 No patch map was provided for this review case.
               </div>
             )}
@@ -199,18 +199,18 @@ export default function FileReviewDrawer({
 
           <section>
             <label className="block">
-              <span className="mb-1 block text-xs font-medium text-text-muted">Notes</span>
+              <span className="mb-1 block text-[13px] font-medium text-text-muted">Notes</span>
               <input
                 value={notes}
                 onChange={(event) => setNotes(event.target.value)}
                 placeholder="Optional decision note"
-                className="w-full rounded-xl border border-border bg-bg-elevated px-3 py-2 text-sm text-text-primary outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/20"
+                className="w-full rounded-xl border border-border bg-bg-elevated px-3 py-2 text-[15px] text-text-primary outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/20"
               />
             </label>
           </section>
 
           {helperMessage ? (
-            <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-600 dark:text-amber-400">
+            <div className="rounded-2xl border border-warning bg-warning-soft px-4 py-3 text-[15px] text-warning dark:text-warning">
               {helperMessage}
             </div>
           ) : null}
@@ -236,8 +236,8 @@ export default function FileReviewDrawer({
 function MetaCard({ label, value }) {
   return (
     <div className="rounded-2xl border border-border bg-bg-tertiary px-3 py-2">
-      <div className="text-[11px] uppercase tracking-wide text-text-muted">{label}</div>
-      <div className="mt-1 break-all text-sm text-text-primary">{value || '-'}</div>
+      <div className="text-xs uppercase tracking-wide text-text-muted">{label}</div>
+      <div className="mt-1 break-all text-[15px] text-text-primary">{value || '-'}</div>
     </div>
   )
 }

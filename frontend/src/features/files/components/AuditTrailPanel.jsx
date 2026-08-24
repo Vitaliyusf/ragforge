@@ -31,19 +31,19 @@ export default function AuditTrailPanel({
       size="xl"
     >
       {auditState?.loading ? (
-        <div className="rounded-2xl border border-border bg-bg-tertiary px-4 py-3 text-sm text-text-secondary">
+        <div className="rounded-2xl border border-border bg-bg-tertiary px-4 py-3 text-[15px] text-text-secondary">
           Loading audit trail...
         </div>
       ) : null}
 
       {auditState?.error ? (
-        <div className="rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-500">
+        <div className="rounded-2xl border border-danger bg-danger-soft px-4 py-3 text-[15px] text-danger">
           {auditState.error}
         </div>
       ) : null}
 
       {!auditState?.loading && events.length === 0 ? (
-        <div className="rounded-2xl border border-border bg-bg-tertiary px-4 py-3 text-sm text-text-secondary">
+        <div className="rounded-2xl border border-border bg-bg-tertiary px-4 py-3 text-[15px] text-text-secondary">
           No audit events found for this file yet.
         </div>
       ) : null}
@@ -52,10 +52,10 @@ export default function AuditTrailPanel({
         <div className="space-y-3">
           {events.map((event, index) => (
             <div key={event.event_id || `${event.event_type || 'event'}-${event.created_at || index}`} className="rounded-2xl border border-border bg-bg-tertiary/70 p-4">
-              <div className="flex flex-wrap items-center gap-2 text-sm font-semibold text-text-primary">
+              <div className="flex flex-wrap items-center gap-2 text-[15px] font-semibold text-text-primary">
                 <History size={15} className="text-accent" />
                 <span>{event.event_type}</span>
-                <span className="rounded-full bg-bg-elevated px-2 py-0.5 text-[11px] font-medium text-text-secondary">
+                <span className="rounded-full bg-bg-elevated px-2 py-0.5 text-xs font-medium text-text-secondary">
                   {formatDate(event.created_at)}
                 </span>
               </div>
@@ -104,8 +104,8 @@ export default function AuditTrailPanel({
 function AuditMeta({ label, value }) {
   return (
     <div className="rounded-xl border border-border bg-bg-elevated px-3 py-2">
-      <div className="text-[11px] uppercase tracking-wide text-text-muted">{label}</div>
-      <div className="mt-1 break-all text-sm text-text-primary">{value || '-'}</div>
+      <div className="text-xs uppercase tracking-wide text-text-muted">{label}</div>
+      <div className="mt-1 break-all text-[15px] text-text-primary">{value || '-'}</div>
     </div>
   )
 }
@@ -113,8 +113,8 @@ function AuditMeta({ label, value }) {
 function AuditBlock({ label, value }) {
   return (
     <div>
-      <div className="mb-1 text-xs font-medium text-text-muted">{label}</div>
-      <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-xl border border-border bg-bg-elevated p-3 text-xs text-text-secondary">
+      <div className="mb-1 text-[13px] font-medium text-text-muted">{label}</div>
+      <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-xl border border-border bg-bg-elevated p-3 text-[13px] text-text-secondary">
         {value ? JSON.stringify(value, null, 2) : 'Not available'}
       </pre>
     </div>

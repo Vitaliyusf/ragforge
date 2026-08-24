@@ -8,7 +8,7 @@ import Button from '@/components/ui/Button'
 // ─── Node styling ──────────────────────────────────────────────────────────────
 
 const NODE_STYLE = {
-  load_history:              { color: '#6b7280', label: 'History' },
+  load_history:              { color: 'var(--fg-soft)', label: 'History' },
   load_memory_light:         { color: '#8b5cf6', label: 'Memory' },
   load_memory_deep:          { color: '#8b5cf6', label: 'Memory (deep)' },
   rewrite_query:             { color: '#3b82f6', label: 'Query Rewrite' },
@@ -19,16 +19,16 @@ const NODE_STYLE = {
   retrieve_pass_one:         { color: '#14b8a6', label: 'Retrieve P1' },
   retrieve_pass_two_if_needed: { color: '#06b6d4', label: 'Retrieve P2' },
   rerank_and_merge:          { color: '#6366f1', label: 'Rerank & Merge' },
-  generate_answer:           { color: '#22c55e', label: 'Generate' },
-  generate_draft_answer:     { color: '#22c55e', label: 'Draft Answer' },
-  evaluate_answer_light:     { color: '#eab308', label: 'Evaluate' },
-  evaluate_answer_deep:      { color: '#eab308', label: 'Evaluate (deep)' },
-  revise_once_if_needed:     { color: '#f97316', label: 'Revise' },
-  stream_done:               { color: '#6b7280', label: 'Done' },
+  generate_answer:           { color: 'var(--success)', label: 'Generate' },
+  generate_draft_answer:     { color: 'var(--success)', label: 'Draft Answer' },
+  evaluate_answer_light:     { color: 'var(--warning)', label: 'Evaluate' },
+  evaluate_answer_deep:      { color: 'var(--warning)', label: 'Evaluate (deep)' },
+  revise_once_if_needed:     { color: 'var(--warning)', label: 'Revise' },
+  stream_done:               { color: 'var(--fg-soft)', label: 'Done' },
 }
 
 function nodeStyle(name) {
-  return NODE_STYLE[name] || { color: '#6b7280', label: name || 'unknown' }
+  return NODE_STYLE[name] || { color: 'var(--fg-soft)', label: name || 'unknown' }
 }
 
 // ─── Tabs ──────────────────────────────────────────────────────────────────────
@@ -42,13 +42,13 @@ const TABS = [
 
 // ─── Score bar ─────────────────────────────────────────────────────────────────
 
-function ScoreBar({ label, value, color = '#22c55e' }) {
+function ScoreBar({ label, value, color = 'var(--success)' }) {
   const pct = value != null ? Math.round(value * 100) : null
   return (
     <div>
-      <div className="mb-1 flex items-center justify-between text-xs">
+      <div className="mb-1 flex items-center justify-between text-[13px]">
         <span className="text-text-muted">{label}</span>
-        <span className="font-mono font-semibold" style={{ color: pct != null ? color : '#6b7280' }}>
+        <span className="font-mono font-semibold" style={{ color: pct != null ? color : 'var(--fg-soft)' }}>
           {pct != null ? `${pct}%` : 'n/a'}
         </span>
       </div>
@@ -68,10 +68,10 @@ function ScoreBar({ label, value, color = '#22c55e' }) {
 }
 
 function scoreColor(value) {
-  if (value == null) return '#6b7280'
-  if (value >= 0.75) return '#22c55e'
-  if (value >= 0.5)  return '#eab308'
-  return '#ef4444'
+  if (value == null) return 'var(--fg-soft)'
+  if (value >= 0.75) return 'var(--success)'
+  if (value >= 0.5)  return 'var(--warning)'
+  return 'var(--danger)'
 }
 
 // ─── Pipeline tab ──────────────────────────────────────────────────────────────
@@ -111,14 +111,14 @@ function PipelineTab({ traceEvents, retrievalSummary }) {
                     className="h-2 w-2 shrink-0 rounded-full"
                     style={{ backgroundColor: color }}
                   />
-                  <span className="truncate text-xs font-medium text-text-primary">{label}</span>
+                  <span className="truncate text-[13px] font-medium text-text-primary">{label}</span>
                   {trace.decision && trace.decision !== 'completed' && trace.decision !== trace.node ? (
-                    <span className="shrink-0 rounded-full bg-bg-elevated px-1.5 py-0.5 text-[10px] text-text-muted">
+                    <span className="shrink-0 rounded-full bg-bg-elevated px-1.5 py-0.5 text-xs text-text-muted">
                       Decision: {trace.decision}
                     </span>
                   ) : null}
                 </div>
-                <span className="shrink-0 font-mono text-[11px] text-text-muted">
+                <span className="shrink-0 font-mono text-xs text-text-muted">
                   {trace.latency != null ? `${trace.latency} ms` : '—'}
                 </span>
               </div>
@@ -136,7 +136,7 @@ function PipelineTab({ traceEvents, retrievalSummary }) {
               {counters ? (
                 <div className="flex flex-wrap gap-x-3 gap-y-0.5 pt-0.5">
                   {counters.map(([k, v]) => (
-                    <span key={k} className="text-[10px] text-text-muted">
+                    <span key={k} className="text-xs text-text-muted">
                       <span className="text-text-secondary">{v}</span> {k.replace(/_/g, ' ')}
                     </span>
                   ))}
@@ -174,7 +174,7 @@ function SourcesTab({ sources, retrievalSummary }) {
         {sources.map((src, index) => {
           const score  = src.score ?? src.similarity ?? null
           const pct    = score != null ? score * 100 : null
-          const color  = score != null ? scoreColor(score) : '#6b7280'
+          const color  = score != null ? scoreColor(score) : 'var(--fg-soft)'
           const name   = src.source_name || src.source || src.filename || `chunk-${index + 1}`
           const isOpen = expandedIndex === index
 
@@ -186,13 +186,13 @@ function SourcesTab({ sources, retrievalSummary }) {
                 className="flex w-full items-start gap-2.5 px-3 py-2.5 text-left hover:bg-bg-elevated transition-colors"
               >
                 <div
-                  className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded text-[10px] font-bold text-white"
+                  className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded text-xs font-bold text-white"
                   style={{ backgroundColor: color }}
                 >
                   {index + 1}
                 </div>
                 <div className="min-w-0 flex-1">
-                  <div className="truncate text-xs font-medium text-text-primary">{name}</div>
+                  <div className="truncate text-[13px] font-medium text-text-primary">{name}</div>
                   <div className="mt-1 h-1 w-full overflow-hidden rounded-full bg-bg-elevated">
                     {pct != null ? (
                       <motion.div
@@ -204,7 +204,7 @@ function SourcesTab({ sources, retrievalSummary }) {
                       />
                     ) : null}
                   </div>
-                  <div className="mt-0.5 flex items-center gap-2 text-[10px] text-text-muted">
+                  <div className="mt-0.5 flex items-center gap-2 text-xs text-text-muted">
                     {pct != null ? (
                       <span style={{ color }} className="font-mono font-semibold">{pct.toFixed(1)}%</span>
                     ) : null}
@@ -226,7 +226,7 @@ function SourcesTab({ sources, retrievalSummary }) {
                     className="overflow-hidden"
                   >
                     <div className="border-t border-border px-3 pb-3 pt-2">
-                      <p className="text-[11px] leading-relaxed text-text-muted line-clamp-6">
+                      <p className="text-xs leading-relaxed text-text-muted line-clamp-6">
                         {src.text_preview || src.text || 'No preview available'}
                       </p>
                     </div>
@@ -249,14 +249,14 @@ function QualityTab({ answerReview }) {
   }
 
   const verdict = answerReview.verdict || 'unknown'
-  const verdictColor = verdict === 'pass' ? '#22c55e' : verdict === 'revise' ? '#f97316' : verdict === 'unavailable' ? '#6b7280' : '#ef4444'
+  const verdictColor = verdict === 'pass' ? 'var(--success)' : verdict === 'revise' ? 'var(--warning)' : verdict === 'unavailable' ? 'var(--fg-soft)' : 'var(--danger)'
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between rounded-lg border border-border bg-bg-tertiary px-3 py-2.5">
-        <span className="text-xs text-text-muted">Verdict</span>
+        <span className="text-[13px] text-text-muted">Verdict</span>
         <span
-          className="rounded-full px-2.5 py-0.5 text-xs font-semibold capitalize"
+          className="rounded-full px-2.5 py-0.5 text-[13px] font-semibold capitalize"
           style={{ backgroundColor: `${verdictColor}20`, color: verdictColor }}
         >
           {verdict}
@@ -283,22 +283,22 @@ function QualityTab({ answerReview }) {
 
       {answerReview.issues?.length > 0 ? (
         <div>
-          <div className="mb-1.5 text-xs font-medium text-text-muted">Issues</div>
+          <div className="mb-1.5 text-[13px] font-medium text-text-muted">Issues</div>
           <div className="space-y-1">
             {answerReview.issues.map((issue, i) => (
-              <div key={i} className="flex items-start gap-2 rounded-lg bg-bg-tertiary px-2.5 py-1.5 text-xs text-text-secondary">
-                <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-orange-400" />
+              <div key={i} className="flex items-start gap-2 rounded-lg bg-bg-tertiary px-2.5 py-1.5 text-[13px] text-text-secondary">
+                <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-warning" />
                 {issue}
               </div>
             ))}
           </div>
         </div>
       ) : (
-        <div className="rounded-lg bg-bg-tertiary px-3 py-2 text-xs text-text-muted">No issues flagged</div>
+        <div className="rounded-lg bg-bg-tertiary px-3 py-2 text-[13px] text-text-muted">No issues flagged</div>
       )}
 
       {answerReview.revision_applied ? (
-        <div className="flex items-center gap-2 rounded-lg border border-border bg-bg-tertiary px-3 py-2 text-xs text-text-muted">
+        <div className="flex items-center gap-2 rounded-lg border border-border bg-bg-tertiary px-3 py-2 text-[13px] text-text-muted">
           <span className="h-1.5 w-1.5 rounded-full bg-accent" />
           Answer was revised
         </div>
@@ -353,7 +353,7 @@ function PromptTab({ debugPayloads, metadata }) {
               onClick={() => setOpenBlock(isOpen ? null : block.id)}
               className="flex w-full items-center justify-between px-3 py-2.5 text-left hover:bg-bg-tertiary transition-colors"
             >
-              <span className="text-xs font-medium text-text-secondary">{block.label}</span>
+              <span className="text-[13px] font-medium text-text-secondary">{block.label}</span>
               {isOpen ? <ChevronUp size={12} className="text-text-muted" /> : <ChevronDown size={12} className="text-text-muted" />}
             </button>
             <AnimatePresence initial={false}>
@@ -366,7 +366,7 @@ function PromptTab({ debugPayloads, metadata }) {
                   transition={{ duration: 0.2 }}
                   className="overflow-hidden"
                 >
-                  <pre className="max-h-56 overflow-auto border-t border-border bg-bg-tertiary p-3 text-[11px] leading-relaxed text-text-muted whitespace-pre-wrap break-words">
+                  <pre className="max-h-56 overflow-auto border-t border-border bg-bg-tertiary p-3 text-xs leading-relaxed text-text-muted whitespace-pre-wrap break-words">
                     {typeof block.content === 'string' ? block.content : JSON.stringify(block.content, null, 2)}
                   </pre>
                 </motion.div>
@@ -384,8 +384,8 @@ function PromptTab({ debugPayloads, metadata }) {
 function Stat({ label, value }) {
   return (
     <div className="rounded-lg border border-border bg-bg-tertiary px-2.5 py-2 text-center">
-      <div className="font-mono text-sm font-bold text-text-primary">{value}</div>
-      <div className="mt-0.5 text-[10px] text-text-muted">{label}</div>
+      <div className="font-mono text-[15px] font-bold text-text-primary">{value}</div>
+      <div className="mt-0.5 text-xs text-text-muted">{label}</div>
     </div>
   )
 }
@@ -393,7 +393,7 @@ function Stat({ label, value }) {
 function Empty({ label }) {
   return (
     <div className="flex h-24 items-center justify-center rounded-lg border border-border bg-bg-tertiary">
-      <span className="text-xs text-text-muted">{label}</span>
+      <span className="text-[13px] text-text-muted">{label}</span>
     </div>
   )
 }
@@ -434,8 +434,8 @@ export default function TraceDebugPanel({ message, turn, onClose }) {
       {/* Header */}
       <div className="flex items-center justify-between border-b border-border px-4 py-3">
         <div>
-          <div className="text-[11px] font-semibold uppercase tracking-wider text-text-muted">Trace / Debug</div>
-          <div className="text-sm font-semibold text-text-primary">Turn Metrics</div>
+          <div className="text-xs font-semibold uppercase tracking-wider text-text-muted">Trace / Debug</div>
+          <div className="text-[15px] font-semibold text-text-primary">Turn Metrics</div>
         </div>
         <Button variant="ghost" size="icon" onClick={onClose} aria-label="Close panel">
           <X size={15} />
@@ -447,8 +447,8 @@ export default function TraceDebugPanel({ message, turn, onClose }) {
         <div className="grid grid-cols-2 gap-x-3 gap-y-2 border-b border-border px-4 py-2.5">
           {identifiers.map(({ label, value }) => (
             <div key={label} className="min-w-0">
-              <div className="text-[10px] uppercase tracking-wide text-text-muted">{label}</div>
-              <div className="truncate font-mono text-[11px] text-text-secondary" title={value}>
+              <div className="text-xs uppercase tracking-wide text-text-muted">{label}</div>
+              <div className="truncate font-mono text-xs text-text-secondary" title={value}>
                 {value}
               </div>
             </div>
@@ -463,14 +463,14 @@ export default function TraceDebugPanel({ message, turn, onClose }) {
             key={id}
             type="button"
             onClick={() => setActiveTab(id)}
-            className={`relative flex flex-1 flex-col items-center gap-0.5 py-2.5 text-[10px] font-medium transition-colors ${
+            className={`relative flex flex-1 flex-col items-center gap-0.5 py-2.5 text-xs font-medium transition-colors ${
               activeTab === id ? 'text-accent' : 'text-text-muted hover:text-text-secondary'
             }`}
           >
             <Icon size={13} />
             <span>{label}</span>
             {tabBadge[id] != null ? (
-              <span className={`absolute right-1 top-1.5 rounded-full px-1 text-[9px] font-bold ${
+              <span className={`absolute right-1 top-1.5 rounded-full px-1 text-xs font-bold ${
                 activeTab === id ? 'bg-accent text-white' : 'bg-bg-tertiary text-text-muted'
               }`}>
                 {tabBadge[id]}

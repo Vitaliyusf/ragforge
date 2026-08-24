@@ -84,24 +84,24 @@ export default function UploadTab() {
     <section className="mx-auto flex w-full max-w-2xl flex-col gap-5 overflow-y-auto p-6">
       <form onSubmit={submit} className="w-full space-y-5 rounded-2xl border p-7" style={{ borderColor: 'var(--border)', background: 'var(--surface-elevated)' }}>
         <div>
-          <h1 className="flex items-center gap-2 text-xl font-semibold text-[var(--fg)]"><Upload size={20} /> Upload a file</h1>
-          <p className="mt-2 text-sm text-[var(--fg-soft)]">You can upload documents, but file details and review decisions are visible only to your administrator.</p>
+          <h1 className="flex items-center gap-2 text-2xl font-semibold text-[var(--fg)]"><Upload size={20} /> Upload a file</h1>
+          <p className="mt-2 text-[15px] text-[var(--fg-soft)]">You can upload documents, but file details and review decisions are visible only to your administrator.</p>
         </div>
         <label className="block">
-          <span className="mb-1 block text-xs font-medium text-[var(--fg-muted)]">Choose a file</span>
+          <span className="mb-1 block text-[13px] font-medium text-[var(--fg-muted)]">Choose a file</span>
           {/* No `required` here: the submit button is already disabled until a
               file is picked, and the attribute breaks form submission in jsdom. */}
-          <input type="file" onChange={(event) => setFile(event.target.files?.[0] || null)} className="block w-full text-sm text-[var(--fg-muted)]" />
+          <input type="file" onChange={(event) => setFile(event.target.files?.[0] || null)} className="block w-full text-[15px] text-[var(--fg-muted)]" />
         </label>
         <Button type="submit" variant="primary" disabled={!file || loading}>{loading ? 'Uploading…' : 'Upload'}</Button>
-        {status && <p className="text-sm text-[var(--fg-muted)]">{status}</p>}
+        {status && <p className="text-[15px] text-[var(--fg-muted)]">{status}</p>}
       </form>
 
       <div className="w-full rounded-2xl border p-7" style={{ borderColor: 'var(--border)', background: 'var(--surface-elevated)' }}>
         <div className="flex items-center justify-between gap-3">
           <div>
-            <h2 className="flex items-center gap-2 text-base font-semibold text-[var(--fg)]"><FileText size={17} /> Your files</h2>
-            <p className="mt-1 text-sm text-[var(--fg-soft)]">Documents you uploaded, and whether they are ready to be used.</p>
+            <h2 className="flex items-center gap-2 text-lg font-semibold text-[var(--fg)]"><FileText size={17} /> Your files</h2>
+            <p className="mt-1 text-[15px] text-[var(--fg-soft)]">Documents you uploaded, and whether they are ready to be used.</p>
           </div>
           <Button
             variant="secondary"
@@ -114,17 +114,17 @@ export default function UploadTab() {
         </div>
 
         {filesError ? (
-          <p className="mt-4 text-sm text-red-500">{filesError}</p>
+          <p className="mt-4 text-[15px] text-danger">{filesError}</p>
         ) : null}
 
         {!filesLoaded ? (
-          <p className="mt-4 flex items-center gap-2 text-sm text-[var(--fg-muted)]">
+          <p className="mt-4 flex items-center gap-2 text-[15px] text-[var(--fg-muted)]">
             <Loader2 size={14} className="animate-spin" /> Loading your files…
           </p>
         ) : null}
 
         {filesLoaded && !filesError && files.length === 0 ? (
-          <p className="mt-4 text-sm text-[var(--fg-muted)]">You have not uploaded any files yet.</p>
+          <p className="mt-4 text-[15px] text-[var(--fg-muted)]">You have not uploaded any files yet.</p>
         ) : null}
 
         {files.length > 0 ? (
@@ -136,8 +136,8 @@ export default function UploadTab() {
                 style={{ borderColor: 'var(--border)' }}
               >
                 <div className="min-w-0">
-                  <div className="truncate text-sm font-medium text-[var(--fg)]">{item.filename || 'Unknown file'}</div>
-                  <div className="mt-0.5 text-xs text-[var(--fg-muted)]">{formatFileSize(item.size)}</div>
+                  <div className="truncate text-[15px] font-medium text-[var(--fg)]">{item.filename || 'Unknown file'}</div>
+                  <div className="mt-0.5 text-[13px] text-[var(--fg-muted)]">{formatFileSize(item.size)}</div>
                 </div>
                 <Badge variant={getFileStatusBadgeVariant(item.status)}>{uploaderStatusLabel(item.status)}</Badge>
               </li>

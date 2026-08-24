@@ -23,7 +23,7 @@ export default function FeedbackControls({
     <div className="mt-2 w-full rounded-2xl border border-border bg-bg-tertiary/60 p-3">
       <div className="grid gap-3 md:grid-cols-2">
         <div>
-          <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-text-muted">
+          <div className="mb-2 flex items-center gap-2 text-[13px] font-semibold uppercase tracking-wide text-text-muted">
             <ThumbsUp size={12} />
             Answer Feedback
           </div>
@@ -47,13 +47,13 @@ export default function FeedbackControls({
               Needs work
             </Button>
           </div>
-          <div className="mt-2 text-[11px] text-text-muted">
+          <div className="mt-2 text-xs text-text-muted">
             {statusText(feedback?.answer, 'Send answer feedback')}
           </div>
         </div>
 
         <div>
-          <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-text-muted">
+          <div className="mb-2 flex items-center gap-2 text-[13px] font-semibold uppercase tracking-wide text-text-muted">
             <GitBranch size={12} />
             Flow Feedback
           </div>
@@ -77,19 +77,19 @@ export default function FeedbackControls({
               Confusing flow
             </Button>
           </div>
-          <div className="mt-2 text-[11px] text-text-muted">
+          <div className="mt-2 text-xs text-text-muted">
             {statusText(feedback?.flow, 'Send flow feedback')}
           </div>
         </div>
       </div>
 
       <label className="mt-3 block">
-        <span className="mb-1 block text-[11px] font-medium text-text-muted">Optional note</span>
+        <span className="mb-1 block text-xs font-medium text-text-muted">Optional note</span>
         <textarea
           value={comment}
           onChange={(event) => setComment(event.target.value)}
           placeholder="Add a short note for this answer or flow..."
-          className="h-20 w-full resize-none rounded-xl border border-border bg-bg-elevated px-3 py-2 text-sm text-text-primary outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/20"
+          className="h-20 w-full resize-none rounded-xl border border-border bg-bg-elevated px-3 py-2 text-[15px] text-text-primary outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/20"
         />
       </label>
     </div>

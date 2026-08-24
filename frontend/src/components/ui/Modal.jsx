@@ -94,7 +94,7 @@ export default function Modal({
                         className="flex items-center justify-between px-5 py-4 border-b"
                         style={{ borderColor: 'var(--border)' }}
                       >
-                        <Dialog.Title className="text-sm font-semibold" style={{ color: 'var(--fg)' }}>
+                        <Dialog.Title className="text-[15px] font-semibold" style={{ color: 'var(--fg)' }}>
                           {title}
                         </Dialog.Title>
                         {showClose && <CloseButton />}
@@ -120,7 +120,7 @@ export default function Modal({
                     >
                       <div className="p-5">
                         <div className="mb-4 flex items-center justify-between gap-3">
-                          <Dialog.Title className="text-sm font-semibold" style={{ color: 'var(--fg)' }}>
+                          <Dialog.Title className="text-[15px] font-semibold" style={{ color: 'var(--fg)' }}>
                             {title}
                           </Dialog.Title>
                           {showClose && <CloseButton />}
@@ -163,7 +163,7 @@ export function ConfirmModal({
             {variant === 'danger' && (
               <AlertTriangle size={18} className="shrink-0 mt-0.5" style={{ color: 'var(--warning)' }} />
             )}
-            <p className="text-sm leading-relaxed" style={{ color: 'var(--fg-muted)' }}>
+            <p className="text-[15px] leading-relaxed" style={{ color: 'var(--fg-muted)' }}>
               {description}
             </p>
           </div>
@@ -172,7 +172,7 @@ export function ConfirmModal({
           <Dialog.Close asChild>
             <button
               disabled={loading}
-              className="px-4 py-2 rounded-lg text-sm font-medium transition-colors outline-none"
+              className="px-4 py-2 rounded-lg text-[15px] font-medium transition-colors outline-none"
               style={{ background: 'var(--surface-hover)', color: 'var(--fg-muted)' }}
               onMouseEnter={e => e.currentTarget.style.background = 'var(--surface-active)'}
               onMouseLeave={e => e.currentTarget.style.background = 'var(--surface-hover)'}
@@ -183,7 +183,7 @@ export function ConfirmModal({
           <button
             onClick={handleConfirm}
             disabled={loading}
-            className="px-4 py-2 rounded-lg text-sm font-medium text-white transition-all outline-none disabled:opacity-60"
+            className="px-4 py-2 rounded-lg text-[15px] font-medium text-white transition-all outline-none disabled:opacity-60"
             style={{
               background: variant === 'danger' ? 'var(--danger)' : 'var(--gradient-primary)',
             }}

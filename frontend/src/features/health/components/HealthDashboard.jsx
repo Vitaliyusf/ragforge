@@ -49,7 +49,7 @@ function ServiceCard({ name, info, index = 0 }) {
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: index * 0.05 }}
-      className="relative overflow-hidden rounded-2xl border p-4 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md"
+      className="relative overflow-hidden rounded-2xl border p-4 transition-all duration-200 hover:shadow-md"
       style={{
         background: 'var(--surface-elevated)',
         borderColor: cfg.border,
@@ -63,21 +63,21 @@ function ServiceCard({ name, info, index = 0 }) {
         </span>
         <div className="min-w-0 flex-1">
           <div className="flex items-center justify-between gap-2">
-            <span className="truncate text-xs font-semibold text-text-primary">{SERVICE_LABELS[name] || name}</span>
+            <span className="truncate text-[13px] font-semibold text-text-primary">{SERVICE_LABELS[name] || name}</span>
             <Badge variant={cfg.badgeVariant} size="xs" dot>{cfg.label}</Badge>
           </div>
-          <p className="mt-1 truncate text-[10px] text-text-muted">
+          <p className="mt-1 truncate text-xs text-text-muted">
             {info.message || (info.status === 'healthy' ? 'Responding normally' : 'Service requires attention')}
           </p>
         </div>
       </div>
 
       <div className="mt-3 flex items-center justify-between border-t border-border/70 pt-2.5">
-        <span className="flex items-center gap-1.5 text-[10px] text-text-muted">
+        <span className="flex items-center gap-1.5 text-xs text-text-muted">
           <Icon size={11} style={{ color: cfg.iconColor }} /> Health check
         </span>
         {info.port && (
-          <span className="rounded-md bg-bg-tertiary px-1.5 py-0.5 font-mono text-[9px] text-text-muted">:{info.port}</span>
+          <span className="rounded-md bg-bg-tertiary px-1.5 py-0.5 font-mono text-xs text-text-muted">:{info.port}</span>
         )}
       </div>
     </motion.div>
@@ -89,7 +89,7 @@ function CircuitBreakerPanel({ breakers }) {
   const entries = Object.entries(breakers || {})
   if (entries.length === 0) {
     return (
-      <div className="py-8 text-center text-xs" style={{ color: 'var(--fg-soft)' }}>
+      <div className="py-8 text-center text-[13px]" style={{ color: 'var(--fg-soft)' }}>
         No circuit breakers registered yet
       </div>
     )
@@ -112,7 +112,7 @@ function CircuitBreakerPanel({ breakers }) {
             style={{ background: 'var(--surface-hover)', border: '1px solid var(--border)' }}
           >
             <div className="flex items-center justify-between mb-2.5">
-              <span className="text-xs font-semibold capitalize" style={{ color: 'var(--fg)' }}>
+              <span className="text-[13px] font-semibold capitalize" style={{ color: 'var(--fg)' }}>
                 {name.replace(/_/g, ' ')}
               </span>
               <Badge variant={cbCfg.variant} size="xs">{cbCfg.label}</Badge>
@@ -126,7 +126,7 @@ function CircuitBreakerPanel({ breakers }) {
               ].map(({ label, value, color }) => (
                 <div key={label}>
                   <div className="label-xs mb-0.5">{label}</div>
-                  <div className="text-xs font-mono font-semibold" style={{ color }}>{value}</div>
+                  <div className="text-[13px] font-mono font-semibold" style={{ color }}>{value}</div>
                 </div>
               ))}
             </div>
@@ -150,7 +150,7 @@ function CircuitBreakerPanel({ breakers }) {
 function RateLimiterPanel({ metrics }) {
   if (!metrics || Object.keys(metrics).length === 0) {
     return (
-      <div className="py-8 text-center text-xs" style={{ color: 'var(--fg-soft)' }}>
+      <div className="py-8 text-center text-[13px]" style={{ color: 'var(--fg-soft)' }}>
         Rate limiter metrics not available
       </div>
     )
@@ -179,7 +179,7 @@ function RateLimiterPanel({ metrics }) {
           <div className="label-xs mb-1.5">{label}</div>
           <div className="flex items-center gap-2">
             <Icon size={14} style={{ color: `var(--${variant === 'success' ? 'success' : variant === 'danger' ? 'danger' : variant === 'info' ? 'info' : 'warning'})` }} />
-            <span className="text-lg font-bold font-mono" style={{ color: 'var(--fg)' }}>{value}</span>
+            <span className="text-xl font-bold font-mono" style={{ color: 'var(--fg)' }}>{value}</span>
           </div>
         </div>
       ))}
@@ -255,7 +255,7 @@ export default function HealthDashboard() {
       {/* ── Error banner ── */}
       {error && (
         <div
-          className="flex items-center gap-2.5 px-4 py-3 rounded-xl text-sm"
+          className="flex items-center gap-2.5 px-4 py-3 rounded-xl text-[15px]"
           style={{ background: 'var(--danger-soft)', border: '1px solid rgba(239,68,68,0.25)', color: 'var(--danger)' }}
         >
           <AlertTriangle size={15} />
@@ -278,7 +278,7 @@ export default function HealthDashboard() {
           </span>
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
-              <h2 className="text-lg font-semibold tracking-tight text-text-primary">
+              <h2 className="text-xl font-semibold tracking-tight text-text-primary">
                 {health?.status === 'healthy'
                   ? 'All monitored systems are operational'
                   : health?.status === 'degraded'
@@ -289,7 +289,7 @@ export default function HealthDashboard() {
               </h2>
               <Badge variant={overallCfg.badgeVariant} dot>{overallCfg.label}</Badge>
             </div>
-            <p className="mt-1 text-sm text-text-muted">
+            <p className="mt-1 text-[15px] text-text-muted">
               {healthyCount} of {totalServices} services are responding normally.
             </p>
             <div className="mt-4 flex items-center gap-3">
@@ -302,7 +302,7 @@ export default function HealthDashboard() {
                   style={{ background: overallCfg.iconColor }}
                 />
               </div>
-              <span className="text-xs font-semibold tabular-nums" style={{ color: overallCfg.iconColor }}>{healthPercent}%</span>
+              <span className="text-[13px] font-semibold tabular-nums" style={{ color: overallCfg.iconColor }}>{healthPercent}%</span>
             </div>
           </div>
           <div className="grid grid-cols-3 gap-2 md:w-[260px]">
@@ -312,8 +312,8 @@ export default function HealthDashboard() {
               ['Down', unhealthyCount, 'var(--danger)'],
             ].map(([label, value, color]) => (
               <div key={label} className="rounded-xl border border-border bg-bg-elevated/70 px-3 py-2.5 text-center backdrop-blur">
-                <div className="text-lg font-semibold tabular-nums" style={{ color }}>{value}</div>
-                <div className="mt-0.5 text-[9px] uppercase tracking-wide text-text-muted">{label}</div>
+                <div className="text-xl font-semibold tabular-nums" style={{ color }}>{value}</div>
+                <div className="mt-0.5 text-xs uppercase tracking-wide text-text-muted">{label}</div>
               </div>
             ))}
           </div>
@@ -335,10 +335,10 @@ export default function HealthDashboard() {
         <div className="flex items-center gap-2 mb-4">
           <Server size={14} style={{ color: 'var(--fg-soft)' }} />
           <div>
-            <span className="text-sm font-semibold" style={{ color: 'var(--fg)' }}>Service map</span>
-            <p className="mt-0.5 text-[10px] text-text-muted">Live status for every platform dependency</p>
+            <span className="text-[15px] font-semibold" style={{ color: 'var(--fg)' }}>Service map</span>
+            <p className="mt-0.5 text-xs text-text-muted">Live status for every platform dependency</p>
           </div>
-          <span className="ml-auto text-xs" style={{ color: 'var(--fg-soft)' }}>
+          <span className="ml-auto text-[13px]" style={{ color: 'var(--fg-soft)' }}>
             {healthyCount}/{totalServices} online
           </span>
         </div>
@@ -371,8 +371,8 @@ export default function HealthDashboard() {
           <div className="flex items-center gap-2 mb-4">
             <ShieldCheck size={14} style={{ color: 'var(--fg-soft)' }} />
             <div>
-              <span className="text-sm font-semibold" style={{ color: 'var(--fg)' }}>Circuit breakers</span>
-              <p className="mt-0.5 text-[10px] text-text-muted">Failure isolation by dependency</p>
+              <span className="text-[15px] font-semibold" style={{ color: 'var(--fg)' }}>Circuit breakers</span>
+              <p className="mt-0.5 text-xs text-text-muted">Failure isolation by dependency</p>
             </div>
           </div>
           <CircuitBreakerPanel breakers={health?.circuit_breakers} />
@@ -382,8 +382,8 @@ export default function HealthDashboard() {
           <div className="flex items-center gap-2 mb-4">
             <Gauge size={14} style={{ color: 'var(--fg-soft)' }} />
             <div>
-              <span className="text-sm font-semibold" style={{ color: 'var(--fg)' }}>Rate limiter</span>
-              <p className="mt-0.5 text-[10px] text-text-muted">Traffic admission and rejection</p>
+              <span className="text-[15px] font-semibold" style={{ color: 'var(--fg)' }}>Rate limiter</span>
+              <p className="mt-0.5 text-xs text-text-muted">Traffic admission and rejection</p>
             </div>
           </div>
           <RateLimiterPanel metrics={health?.rate_limiter} />

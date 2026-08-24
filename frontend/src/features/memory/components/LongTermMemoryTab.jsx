@@ -76,7 +76,7 @@ function AddMemoryForm({ onAdd, onCancel }) {
         style={{ background: 'var(--surface-elevated)', border: '1px solid var(--border)' }}
       >
         <div className="flex items-center justify-between mb-3">
-          <span className="text-sm font-semibold" style={{ color: 'var(--fg)' }}>New Memory</span>
+          <span className="text-[15px] font-semibold" style={{ color: 'var(--fg)' }}>New Memory</span>
           <button onClick={onCancel} className="p-1 rounded" style={{ color: 'var(--fg-soft)' }}>
             <X size={14} />
           </button>
@@ -90,7 +90,7 @@ function AddMemoryForm({ onAdd, onCancel }) {
               placeholder="Enter memory content…"
               maxLength={MAX_CHARS}
               rows={3}
-              className="w-full rounded-lg px-3 py-2.5 text-sm resize-none outline-none transition-all duration-150"
+              className="w-full rounded-lg px-3 py-2.5 text-[15px] resize-none outline-none transition-all duration-150"
               style={{
                 background:  'var(--surface)',
                 border:      `1px solid ${content.length > MAX_CHARS * 0.9 ? 'var(--warning)' : 'var(--border)'}`,
@@ -101,7 +101,7 @@ function AddMemoryForm({ onAdd, onCancel }) {
             />
             <div className="flex justify-end mt-1">
               <span
-                className="text-[10px] font-mono"
+                className="text-xs font-mono"
                 style={{ color: content.length > MAX_CHARS ? 'var(--danger)' : 'var(--fg-soft)' }}
               >
                 {content.length}/{MAX_CHARS}
@@ -116,7 +116,7 @@ function AddMemoryForm({ onAdd, onCancel }) {
                 <button
                   key={opt.value}
                   onClick={() => setCategory(opt.value)}
-                  className="px-2.5 py-1 rounded-md text-xs font-medium transition-all duration-150 outline-none"
+                  className="px-2.5 py-1 rounded-md text-[13px] font-medium transition-all duration-150 outline-none"
                   style={{
                     background:  category === opt.value ? 'var(--primary-soft)' : 'var(--surface-hover)',
                     color:       category === opt.value ? 'var(--primary)' : 'var(--fg-muted)',
@@ -184,7 +184,7 @@ function MemoryCard({ memory, isDeleting, onEdit, onDelete }) {
               onChange={e => setContent(e.target.value)}
               maxLength={MAX_CHARS}
               rows={3}
-              className="w-full rounded-lg px-3 py-2.5 text-sm resize-none outline-none"
+              className="w-full rounded-lg px-3 py-2.5 text-[15px] resize-none outline-none"
               style={{
                 background:  'var(--surface-hover)',
                 border:      '1px solid var(--border-focus)',
@@ -193,7 +193,7 @@ function MemoryCard({ memory, isDeleting, onEdit, onDelete }) {
               autoFocus
             />
             <div className="flex items-center justify-between">
-              <span className="text-[10px] font-mono" style={{ color: 'var(--fg-soft)' }}>
+              <span className="text-xs font-mono" style={{ color: 'var(--fg-soft)' }}>
                 {content.length}/{MAX_CHARS}
               </span>
               <div className="flex gap-2">
@@ -209,7 +209,7 @@ function MemoryCard({ memory, isDeleting, onEdit, onDelete }) {
         ) : (
           <div className="flex gap-3">
             <div className="flex-1 min-w-0">
-              <p className="text-sm leading-relaxed whitespace-pre-wrap break-words" style={{ color: 'var(--fg)' }}>
+              <p className="text-[15px] leading-relaxed whitespace-pre-wrap break-words" style={{ color: 'var(--fg)' }}>
                 {memory.content}
               </p>
               <div className="flex items-center gap-3 mt-3 flex-wrap">
@@ -217,10 +217,10 @@ function MemoryCard({ memory, isDeleting, onEdit, onDelete }) {
                 {isAgent && (
                   <div className="flex items-center gap-1">
                     <Bot size={10} style={{ color: 'var(--fg-soft)' }} />
-                    <span className="text-[10px]" style={{ color: 'var(--fg-soft)' }}>Agent</span>
+                    <span className="text-xs" style={{ color: 'var(--fg-soft)' }}>Agent</span>
                   </div>
                 )}
-                <span className="text-[10px]" style={{ color: 'var(--fg-soft)' }}>
+                <span className="text-xs" style={{ color: 'var(--fg-soft)' }}>
                   {new Date(memory.updated_at || memory.created_at).toLocaleDateString()}
                 </span>
               </div>

@@ -20,9 +20,9 @@ const Input = forwardRef(function Input(
   ref
 ) {
   const sizeClasses = {
-    sm: 'h-8 text-xs px-2.5',
-    md: 'h-9 text-sm px-3',
-    lg: 'h-10 text-sm px-3.5',
+    sm: 'h-8 text-[13px] px-2.5',
+    md: 'h-9 text-[15px] px-3',
+    lg: 'h-10 text-[15px] px-3.5',
   }
 
   const iconPad = Icon ? (size === 'sm' ? 'pl-7' : 'pl-9') : ''
@@ -31,7 +31,7 @@ const Input = forwardRef(function Input(
     <div className={cn('flex flex-col gap-1', containerClassName)}>
       {label && (
         <label
-          className="text-xs font-medium"
+          className="text-[13px] font-medium"
           style={{ color: 'var(--fg-muted)' }}
         >
           {label}
@@ -74,12 +74,12 @@ const Input = forwardRef(function Input(
         )}
       </div>
       {error && (
-        <p className="text-[11px]" style={{ color: 'var(--danger)' }}>
+        <p className="text-xs" style={{ color: 'var(--danger)' }}>
           {error}
         </p>
       )}
       {hint && !error && (
-        <p className="text-[11px]" style={{ color: 'var(--fg-soft)' }}>
+        <p className="text-xs" style={{ color: 'var(--fg-soft)' }}>
           {hint}
         </p>
       )}
@@ -97,14 +97,14 @@ export const Textarea = forwardRef(function Textarea(
   return (
     <div className={cn('flex flex-col gap-1', containerClassName)}>
       {label && (
-        <label className="text-xs font-medium" style={{ color: 'var(--fg-muted)' }}>
+        <label className="text-[13px] font-medium" style={{ color: 'var(--fg-muted)' }}>
           {label}
         </label>
       )}
       <textarea
         ref={ref}
         className={cn(
-          'w-full rounded-lg border px-3 py-2 text-sm outline-none resize-y transition-all duration-150',
+          'w-full rounded-lg border px-3 py-2 text-[15px] outline-none resize-y transition-all duration-150',
           'placeholder:text-[var(--fg-soft)]',
           'focus:ring-2 focus:ring-[var(--ring)] focus:border-[var(--border-focus)]',
           'disabled:opacity-50 disabled:cursor-not-allowed',
@@ -119,10 +119,10 @@ export const Textarea = forwardRef(function Textarea(
         {...props}
       />
       {error && (
-        <p className="text-[11px]" style={{ color: 'var(--danger)' }}>{error}</p>
+        <p className="text-xs" style={{ color: 'var(--danger)' }}>{error}</p>
       )}
       {hint && !error && (
-        <p className="text-[11px]" style={{ color: 'var(--fg-soft)' }}>{hint}</p>
+        <p className="text-xs" style={{ color: 'var(--fg-soft)' }}>{hint}</p>
       )}
     </div>
   )

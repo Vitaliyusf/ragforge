@@ -61,7 +61,7 @@ export default function LoginForm() {
       <div className="hidden lg:flex flex-1 bg-gradient-accent items-center justify-center p-12">
         <div className="max-w-md text-white">
           <h2 className="text-3xl font-bold mb-4">RAGForge</h2>
-          <p className="text-white/90 text-lg">
+          <p className="text-white/90 text-xl">
             Your intelligent assistant for document search, chat, and more.
           </p>
           <div className="mt-8 flex gap-4">
@@ -70,7 +70,7 @@ export default function LoginForm() {
             </div>
             <div>
               <p className="font-semibold">Secure access</p>
-              <p className="text-sm text-white/80">
+              <p className="text-[15px] text-white/80">
                 {isSetup ? 'Set up your workspace to get started' : 'Sign in to get started'}
               </p>
             </div>
@@ -86,7 +86,7 @@ export default function LoginForm() {
             <h2 className="text-2xl font-semibold text-text-primary">
               {isSetup ? 'Create administrator' : 'Welcome back'}
             </h2>
-            <p className="text-text-muted text-sm mt-1">
+            <p className="text-text-muted text-[15px] mt-1">
               {isSetup
                 ? 'This is a fresh installation. The account you create now becomes the workspace administrator.'
                 : 'Sign in to your account'}
@@ -94,14 +94,14 @@ export default function LoginForm() {
           </div>
 
           {(formError || error) && (
-            <div className="p-4 rounded-xl bg-red-500/10 border border-red-500/30 text-red-600 dark:text-red-400 text-sm">
+            <div className="p-4 rounded-xl bg-danger-soft border border-danger text-danger dark:text-danger text-[15px]">
               {formError || error}
             </div>
           )}
 
           {!isSetup && (
             <div>
-              <label className="block text-text-secondary text-sm mb-2">Workspace</label>
+              <label className="block text-text-secondary text-[15px] mb-2">Workspace</label>
               <Input
                 type="text"
                 value={tenant}
@@ -115,7 +115,7 @@ export default function LoginForm() {
 
           {isSetup && (
             <div>
-              <label className="block text-text-secondary text-sm mb-2">Display name</label>
+              <label className="block text-text-secondary text-[15px] mb-2">Display name</label>
               <Input
                 type="text"
                 value={displayName}
@@ -127,7 +127,7 @@ export default function LoginForm() {
           )}
 
           <div>
-            <label className="block text-text-secondary text-sm mb-2">Email</label>
+            <label className="block text-text-secondary text-[15px] mb-2">Email</label>
             <Input
               type="email"
               value={email}
@@ -139,7 +139,7 @@ export default function LoginForm() {
           </div>
 
           <div>
-            <label className="block text-text-secondary text-sm mb-2">Password</label>
+            <label className="block text-text-secondary text-[15px] mb-2">Password</label>
             <Input
               type="password"
               value={password}
@@ -150,7 +150,7 @@ export default function LoginForm() {
               required
             />
             {isSetup && (
-              <p className="text-text-muted text-xs mt-1">
+              <p className="text-text-muted text-[13px] mt-1">
                 At least {MIN_PASSWORD_LENGTH} characters.
               </p>
             )}
@@ -158,7 +158,7 @@ export default function LoginForm() {
 
           {isSetup && (
             <div>
-              <label className="block text-text-secondary text-sm mb-2">Confirm password</label>
+              <label className="block text-text-secondary text-[15px] mb-2">Confirm password</label>
               <Input
                 type="password"
                 value={confirmPassword}
