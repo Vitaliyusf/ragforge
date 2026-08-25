@@ -10,6 +10,7 @@ import TabSkeleton from '@/components/ui/TabSkeleton'
 import { cn } from '@/lib/utils'
 import { useMetrics } from '../hooks/useMetrics'
 import KpiHeader from './KpiHeader'
+import EvalPanel from './EvalPanel'
 import LatencyPanel from './LatencyPanel'
 import PipelinePanel from './PipelinePanel'
 import QualityPanel from './QualityPanel'
@@ -29,12 +30,22 @@ export default function MetricsTab() {
   const [windowRange, setWindowRange] = useState(DEFAULT_WINDOW)
   const [tenant, setTenant] = useState(OWN_TENANT)
 
+  // A standalone section loads its own data and has no window or tenant
+  // dimension, so the shared hook is told to idle rather than fetching an
+  // endpoint that does not exist.
+  const standalone = Boolean(
+    METRICS_SECTIONS.find((entry) => entry.id === section)?.standalone
+  )
+
   // One section, one request. Changing the sub-nav swaps the endpoint rather
   // than loading all five.
-  const { data, loading, error, promAvailable, lastUpdated, refresh } = useMetrics(section, {
-    window: windowRange,
-    tenantId: tenant === OWN_TENANT ? '' : tenant,
-  })
+  const { data, loading, error, promAvailable, lastUpdated, refresh } = useMetrics(
+    standalone ? null : section,
+    {
+      window: windowRange,
+      tenantId: tenant === OWN_TENANT ? '' : tenant,
+    }
+  )
 
   const panelProps = { data, loading, error, promAvailable, onRetry: refresh }
 
@@ -62,6 +73,7 @@ export default function MetricsTab() {
               onValueChange={setWindowRange}
               className="w-[168px]"
               aria-label="Time window"
+              disabled={standalone}
             >
               {WINDOW_OPTIONS.map((option) => (
                 <SelectItem key={option.value} value={option.value}>
@@ -85,7 +97,7 @@ export default function MetricsTab() {
               variant="secondary"
               size="sm"
               onClick={refresh}
-              disabled={loading}
+              disabled={loading || standalone}
               leftIcon={<RefreshCw size={13} className={loading ? 'animate-spin' : ''} />}
             >
               Refresh
@@ -129,6 +141,7 @@ export default function MetricsTab() {
       {section === 'retrieval' && <RetrievalPanel {...panelProps} />}
       {section === 'quality' && <QualityPanel {...panelProps} />}
       {section === 'pipeline' && <PipelinePanel {...panelProps} />}
+      {section === 'eval' && <EvalPanel />}
     </div>
   )
 }

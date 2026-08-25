@@ -1,0 +1,568 @@
+'use client'
+
+import { useMemo, useState } from 'react'
+import { AlertTriangle, FlaskConical, Play, Trash2, Upload } from 'lucide-react'
+import Badge from '@/components/ui/Badge'
+import Button from '@/components/ui/Button'
+import Card, { CardHeader } from '@/components/ui/Card'
+import EmptyState from '@/components/ui/EmptyState'
+import Input, { Textarea } from '@/components/ui/Input'
+import Modal from '@/components/ui/Modal'
+import Select, { SelectItem } from '@/components/ui/Select'
+import StatCard from '@/components/ui/StatCard'
+import TabSkeleton from '@/components/ui/TabSkeleton'
+import { useEvalRuns } from '../hooks/useEvalRuns'
+import TimeSeries from './charts/TimeSeries'
+import {
+  CONFIG_DIFF_NOTE,
+  CONFIG_SNAPSHOT_LABELS,
+  EMPTY,
+  EVAL_HISTORY_K,
+  EVAL_K_VALUES,
+  EVAL_METRIC_LABELS,
+  FILE_MATCH_NOTE,
+  GOLDEN_SET_HELP,
+  MATCH_MODE_LABELS,
+  RUN_STATUS_LABELS,
+  RUN_STATUS_VARIANTS,
+  UNOBSERVED_NOTE,
+  formatCount,
+  formatMs,
+  formatPercent,
+  formatScore,
+  formatSetting,
+  formatTimestamp,
+  labelFor,
+} from './metricsConfig'
+
+/** Rows of the Recall/Precision/Hit-rate table, in display order. */
+const K_METRICS = ['recall_at_k', 'precision_at_k', 'hit_rate_at_k']
+
+/** How many per-item rows the drill-down shows before it truncates. */
+const MAX_ITEM_ROWS = 25
+
+/**
+ * Which settings two runs disagree on.
+ *
+ * `unobserved` is excluded from the comparison and surfaced separately: it
+ * is a list of what rag could not see, not a setting in its own right, and
+ * two runs that both failed to capture the embedding model have not been
+ * shown to share one.
+ */
+export function diffSnapshots(current, previous) {
+  const keys = new Set([
+    ...Object.keys(current || {}),
+    ...Object.keys(previous || {}),
+  ])
+  keys.delete('unobserved')
+  return [...keys]
+    .filter((key) => JSON.stringify(current?.[key]) !== JSON.stringify(previous?.[key]))
+    .map((key) => ({ key, current: current?.[key], previous: previous?.[key] }))
+}
+
+/**
+ * Worst-first ordering for the per-item drill-down.
+ *
+ * Failures rank above misses, misses above weak hits, and unscoreable items
+ * sink to the bottom — they are not retrieval failures and putting them at
+ * the top would bury the ones that are.
+ */
+function worstFirst(rows) {
+  const rank = (row) => {
+    if (row?.error) return -1
+    if (row?.skipped) return Number.POSITIVE_INFINITY
+    return typeof row?.reciprocal_rank === 'number' ? row.reciprocal_rank : 0
+  }
+  return [...(rows || [])].sort((a, b) => rank(a) - rank(b))
+}
+
+/**
+ * Completed runs as one Recall@5 series, oldest first.
+ *
+ * Returns nothing below two points. `TimeSeries` renders null for a single
+ * point — one point is not a line — so passing it one would leave an empty
+ * card where the panel should be saying why there is no trend yet.
+ */
+function historySeries(runs) {
+  const points = (runs || [])
+    .filter((entry) => entry?.status === 'completed')
+    .map((entry) => [
+      Date.parse(entry?.started_at),
+      Number(entry?.results?.recall_at_k?.[EVAL_HISTORY_K]),
+    ])
+    .filter(([time, value]) => Number.isFinite(time) && Number.isFinite(value))
+    .sort((a, b) => a[0] - b[0])
+  return points.length >= 2 ? [{ name: `Recall@${EVAL_HISTORY_K}`, points }] : []
+}
+
+export default function EvalPanel() {
+  const {
+    datasets,
+    datasetId,
+    selectDataset,
+    runs,
+    run,
+    running,
+    loading,
+    error,
+    busy,
+    startRun,
+    createDataset,
+    deleteDataset,
+    refresh,
+  } = useEvalRuns()
+
+  const [importOpen, setImportOpen] = useState(false)
+
+  const dataset = datasets.find((entry) => entry.dataset_id === datasetId)
+  const series = useMemo(() => historySeries(runs), [runs])
+  const configDiff = useMemo(
+    () => (runs.length >= 2 ? diffSnapshots(runs[0]?.config_snapshot, runs[1]?.config_snapshot) : []),
+    [runs]
+  )
+
+  if (loading && !datasets.length) return <TabSkeleton />
+
+  if (!datasets.length) {
+    return (
+      <>
+        <EmptyState
+          icon={FlaskConical}
+          title="No golden set yet"
+          description={
+            'Live traffic can only show proxy quality. Recall and nDCG need ' +
+            'ground truth, which is a set of queries somebody labelled by hand.'
+          }
+          action={
+            <div className="flex flex-col items-center gap-4">
+              <ol
+                className="max-w-md list-decimal space-y-1 pl-5 text-left text-[13px]"
+                style={{ color: 'var(--fg-muted)' }}
+              >
+                {GOLDEN_SET_HELP.map((step) => (
+                  <li key={step}>{step}</li>
+                ))}
+              </ol>
+              <Button onClick={() => setImportOpen(true)} leftIcon={<Upload size={14} />}>
+                Import a dataset
+              </Button>
+            </div>
+          }
+        />
+        <ImportModal
+          open={importOpen}
+          onOpenChange={setImportOpen}
+          onSubmit={createDataset}
+          busy={busy}
+          error={error}
+        />
+      </>
+    )
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+      {error && (
+        <div
+          className="flex items-center justify-between gap-3 rounded-xl px-4 py-3 text-[15px]"
+          style={{
+            background: 'var(--danger-soft)',
+            border: '1px solid rgba(239,68,68,0.25)',
+            color: 'var(--danger)',
+          }}
+        >
+          <span className="flex items-center gap-2.5">
+            <AlertTriangle size={15} />
+            {error}
+          </span>
+          <Button variant="secondary" size="sm" onClick={refresh}>
+            Retry
+          </Button>
+        </div>
+      )}
+
+      <Card>
+        <CardHeader
+          title="Golden set"
+          description="Measured against hand-labelled ground truth, not live traffic."
+          action={
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => setImportOpen(true)}
+                leftIcon={<Upload size={13} />}
+              >
+                Import
+              </Button>
+              <Button
+                size="sm"
+                onClick={startRun}
+                disabled={busy || running || !datasetId}
+                leftIcon={<Play size={13} />}
+              >
+                {running ? 'Running…' : 'Run evaluation'}
+              </Button>
+            </div>
+          }
+        />
+
+        <div className="flex flex-wrap items-end gap-4">
+          <Select
+            value={datasetId}
+            onValueChange={selectDataset}
+            className="w-[260px]"
+            aria-label="Dataset"
+          >
+            {datasets.map((entry) => (
+              <SelectItem key={entry.dataset_id} value={entry.dataset_id}>
+                {entry.name}
+              </SelectItem>
+            ))}
+          </Select>
+
+          <dl className="flex flex-wrap items-end gap-6">
+            <div>
+              <dt className="label-xs">Items</dt>
+              <dd className="mt-0.5 text-[15px] font-semibold tabular-nums">
+                {formatCount(dataset?.item_count)}
+              </dd>
+            </div>
+            <div>
+              <dt className="label-xs">Last run</dt>
+              <dd className="mt-0.5 text-[15px] font-semibold">
+                {dataset?.last_run_at ? formatTimestamp(dataset.last_run_at) : EMPTY}
+              </dd>
+            </div>
+            {run?.status && (
+              <div>
+                <dt className="label-xs">Status</dt>
+                <dd className="mt-0.5">
+                  <Badge variant={RUN_STATUS_VARIANTS[run.status] || 'default'} dot>
+                    {labelFor(RUN_STATUS_LABELS, run.status)}
+                  </Badge>
+                </dd>
+              </div>
+            )}
+          </dl>
+
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => deleteDataset(datasetId)}
+            disabled={busy || running || !datasetId}
+            leftIcon={<Trash2 size={13} />}
+          >
+            Delete
+          </Button>
+        </div>
+
+        {running && (
+          <p className="mt-3 text-[13px]" style={{ color: 'var(--fg-muted)' }}>
+            {formatCount(run?.per_item?.length || 0)} of {formatCount(dataset?.item_count)} items
+            scored. Retrieval only — this run calls no language model.
+          </p>
+        )}
+
+        {run?.status === 'failed' && run?.error && (
+          <p className="mt-3 text-[13px]" style={{ color: 'var(--danger)' }}>
+            Run failed: {run.error}
+          </p>
+        )}
+      </Card>
+
+      {configDiff.length > 0 && (
+        <ConfigDiff diff={configDiff} unobserved={runs[0]?.config_snapshot?.unobserved} />
+      )}
+
+      {run?.results && Object.keys(run.results).length > 0 && (
+        <>
+          <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+            <StatCard
+              label={EVAL_METRIC_LABELS.mrr}
+              value={formatScore(run.results.mrr)}
+              subLabel="mean reciprocal rank of the first hit"
+            />
+            <StatCard
+              label={EVAL_METRIC_LABELS.ndcg_at_10}
+              value={formatScore(run.results.ndcg_at_k?.['10'])}
+              subLabel="rewards ranking hits high, not just finding them"
+            />
+            <StatCard
+              label={EVAL_METRIC_LABELS.items_evaluated}
+              value={formatCount(run.results.items_evaluated)}
+              // The denominator behind every mean above. A high recall over
+              // three items is not a measurement of anything.
+              subLabel={`${formatCount(run.results.items_skipped)} skipped, ${formatCount(
+                run.results.items_failed
+              )} failed`}
+            />
+            <StatCard
+              label={EVAL_METRIC_LABELS.mean_latency_ms}
+              value={formatMs(run.results.mean_latency_ms)}
+              subLabel="per query, retrieval only"
+            />
+          </div>
+
+          <Card>
+            <CardHeader
+              title="Scores at k"
+              description={
+                run.match_mode === 'file_id'
+                  ? FILE_MATCH_NOTE
+                  : `${labelFor(MATCH_MODE_LABELS, run.match_mode)} matching against the labelled ids.`
+              }
+            />
+            <div className="overflow-x-auto">
+              <table className="w-full text-[13px]">
+                <caption className="sr-only">Retrieval scores at each cutoff</caption>
+                <thead>
+                  <tr style={{ color: 'var(--fg-muted)' }}>
+                    <th scope="col" className="py-1.5 pr-3 text-left font-medium">
+                      Metric
+                    </th>
+                    {EVAL_K_VALUES.map((k) => (
+                      <th key={k} scope="col" className="py-1.5 pr-3 text-right font-medium">
+                        k={k}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {K_METRICS.map((metric) => (
+                    <tr key={metric} className="border-t" style={{ borderColor: 'var(--border)' }}>
+                      <th
+                        scope="row"
+                        className="py-1.5 pr-3 text-left font-normal"
+                        style={{ color: 'var(--fg)' }}
+                      >
+                        {EVAL_METRIC_LABELS[metric]}
+                      </th>
+                      {EVAL_K_VALUES.map((k) => (
+                        <td
+                          key={k}
+                          className="py-1.5 pr-3 text-right tabular-nums"
+                          style={{ color: 'var(--fg-muted)' }}
+                        >
+                          {formatPercent(run.results[metric]?.[String(k)])}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        </>
+      )}
+
+      <Card>
+        <CardHeader
+          title={`Recall@${EVAL_HISTORY_K} over time`}
+          description="A retrieval config change should show up here as a step."
+        />
+        {series.length ? (
+          <TimeSeries
+            series={series}
+            label={`Recall@${EVAL_HISTORY_K} by run`}
+            yFormat={(value) => formatPercent(value)}
+          />
+        ) : (
+          <p className="text-[13px]" style={{ color: 'var(--fg-muted)' }}>
+            Two completed runs are needed before a trend can be drawn.
+          </p>
+        )}
+      </Card>
+
+      {run?.per_item?.length > 0 && <ItemTable rows={run.per_item} />}
+
+      <ImportModal
+        open={importOpen}
+        onOpenChange={setImportOpen}
+        onSubmit={createDataset}
+        busy={busy}
+        error={error}
+      />
+    </div>
+  )
+}
+
+/** The settings two consecutive runs disagreed on. */
+function ConfigDiff({ diff, unobserved }) {
+  return (
+    <Card>
+      <CardHeader title="Configuration changed between runs" description={CONFIG_DIFF_NOTE} />
+      <div className="overflow-x-auto">
+        <table className="w-full text-[13px]">
+          <caption className="sr-only">Configuration differences between the last two runs</caption>
+          <thead>
+            <tr style={{ color: 'var(--fg-muted)' }}>
+              <th scope="col" className="py-1.5 pr-3 text-left font-medium">Setting</th>
+              <th scope="col" className="py-1.5 pr-3 text-left font-medium">Previous run</th>
+              <th scope="col" className="py-1.5 text-left font-medium">This run</th>
+            </tr>
+          </thead>
+          <tbody>
+            {diff.map((entry) => (
+              <tr key={entry.key} className="border-t" style={{ borderColor: 'var(--border)' }}>
+                <th scope="row" className="py-1.5 pr-3 text-left font-normal" style={{ color: 'var(--fg)' }}>
+                  {labelFor(CONFIG_SNAPSHOT_LABELS, entry.key)}
+                </th>
+                <td className="py-1.5 pr-3" style={{ color: 'var(--fg-muted)' }}>
+                  {formatSetting(entry.previous)}
+                </td>
+                <td className="py-1.5 font-medium" style={{ color: 'var(--warning)' }}>
+                  {formatSetting(entry.current)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {unobserved?.length > 0 && (
+        <p className="mt-3 text-[12px]" style={{ color: 'var(--fg-soft)' }}>
+          {UNOBSERVED_NOTE} Affects:{' '}
+          {unobserved.map((key) => labelFor(CONFIG_SNAPSHOT_LABELS, key)).join(', ')}.
+        </p>
+      )}
+    </Card>
+  )
+}
+
+/** Per-item drill-down, worst first — the failures are the point. */
+function ItemTable({ rows }) {
+  const ordered = useMemo(() => worstFirst(rows), [rows])
+  const shown = ordered.slice(0, MAX_ITEM_ROWS)
+
+  return (
+    <Card>
+      <CardHeader
+        title="Per-item results"
+        description="Worst first. A missing rank means retrieval never returned a labelled chunk."
+      />
+      <div className="overflow-x-auto">
+        <table className="w-full text-[13px]">
+          <caption className="sr-only">Per-item retrieval results, worst first</caption>
+          <thead>
+            <tr style={{ color: 'var(--fg-muted)' }}>
+              <th scope="col" className="py-1.5 pr-3 text-left font-medium">Query</th>
+              <th scope="col" className="py-1.5 pr-3 text-right font-medium">First hit</th>
+              <th scope="col" className="py-1.5 pr-3 text-right font-medium">Recall@10</th>
+              <th scope="col" className="py-1.5 pr-3 text-left font-medium">Expected</th>
+              <th scope="col" className="py-1.5 text-left font-medium">Retrieved</th>
+            </tr>
+          </thead>
+          <tbody>
+            {shown.map((row) => (
+              <tr key={row.item_id} className="border-t align-top" style={{ borderColor: 'var(--border)' }}>
+                <th scope="row" className="py-1.5 pr-3 text-left font-normal" style={{ color: 'var(--fg)' }}>
+                  {row.query}
+                  {row.error && (
+                    <span className="ml-2 text-[12px]" style={{ color: 'var(--danger)' }}>
+                      failed: {row.error}
+                    </span>
+                  )}
+                  {row.skipped && !row.error && (
+                    <span className="ml-2 text-[12px]" style={{ color: 'var(--fg-soft)' }}>
+                      not labelled — excluded from every average
+                    </span>
+                  )}
+                </th>
+                <td className="py-1.5 pr-3 text-right tabular-nums" style={{ color: 'var(--fg-muted)' }}>
+                  {row.first_hit_rank ?? EMPTY}
+                </td>
+                <td className="py-1.5 pr-3 text-right tabular-nums" style={{ color: 'var(--fg-muted)' }}>
+                  {formatPercent(row.recall_at_10)}
+                </td>
+                <td className="py-1.5 pr-3 font-mono text-[12px]" style={{ color: 'var(--fg-soft)' }}>
+                  {(row.expected_ids || []).join(', ') || EMPTY}
+                </td>
+                <td className="py-1.5 font-mono text-[12px]" style={{ color: 'var(--fg-soft)' }}>
+                  {(row.retrieved_ids || []).join(', ') || EMPTY}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {ordered.length > shown.length && (
+        <p className="mt-3 text-[12px]" style={{ color: 'var(--fg-soft)' }}>
+          Showing the {MAX_ITEM_ROWS} worst of {formatCount(ordered.length)} items.
+        </p>
+      )}
+    </Card>
+  )
+}
+
+/**
+ * JSON import.
+ *
+ * Deliberately minimal — a full labelling interface is out of scope. Parse
+ * errors are reported here; everything else is the server's judgment, shown
+ * verbatim because its message names the offending item.
+ */
+function ImportModal({ open, onOpenChange, onSubmit, busy, error }) {
+  const [name, setName] = useState('')
+  const [description, setDescription] = useState('')
+  const [json, setJson] = useState('')
+  const [parseError, setParseError] = useState(null)
+
+  const handleSubmit = async () => {
+    let items
+    try {
+      items = JSON.parse(json)
+    } catch (err) {
+      setParseError(`That is not valid JSON: ${err.message}`)
+      return
+    }
+    if (!Array.isArray(items)) {
+      setParseError('Expected a JSON array of items.')
+      return
+    }
+    setParseError(null)
+    const created = await onSubmit({ name, description: description || null, items })
+    if (created) {
+      setName('')
+      setDescription('')
+      setJson('')
+      onOpenChange(false)
+    }
+  }
+
+  return (
+    <Modal open={open} onOpenChange={onOpenChange} title="Import a golden set" size="lg">
+      <div className="flex flex-col gap-3">
+        <Input label="Name" value={name} onChange={(event) => setName(event.target.value)} />
+        <Input
+          label="Description"
+          value={description}
+          onChange={(event) => setDescription(event.target.value)}
+        />
+        <Textarea
+          label="Items (JSON)"
+          rows={10}
+          value={json}
+          onChange={(event) => setJson(event.target.value)}
+          placeholder='[{"query": "What is the refund window?", "relevant_chunk_ids": ["chunk-1"]}]'
+        />
+        <p className="text-[12px]" style={{ color: 'var(--fg-soft)' }}>
+          Every item needs a query and at least one relevant chunk or file id. Items without
+          ground truth are rejected rather than imported and skipped.
+        </p>
+        {(parseError || error) && (
+          <p className="text-[13px]" style={{ color: 'var(--danger)' }}>
+            {parseError || error}
+          </p>
+        )}
+        <div className="flex justify-end gap-2">
+          <Button variant="secondary" onClick={() => onOpenChange(false)} disabled={busy}>
+            Cancel
+          </Button>
+          <Button onClick={handleSubmit} disabled={busy || !name.trim() || !json.trim()}>
+            Import
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  )
+}

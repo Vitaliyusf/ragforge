@@ -132,6 +132,16 @@ class RagAction(str, Enum):
     GET_TRACE = "get_trace"
     SUBMIT_FEEDBACK = "submit_feedback"
     GET_METRICS = "get_metrics"
+    # Retrieval eval harness. These values are mirrored as literals in the
+    # rag service's app/services/eval_runner.py, which cannot import gateway
+    # code — the same arrangement as GET_METRICS and METRICS_ACTION.
+    LIST_EVAL_DATASETS = "list_eval_datasets"
+    CREATE_EVAL_DATASET = "create_eval_dataset"
+    UPDATE_EVAL_DATASET = "update_eval_dataset"
+    DELETE_EVAL_DATASET = "delete_eval_dataset"
+    START_EVAL_RUN = "start_eval_run"
+    LIST_EVAL_RUNS = "list_eval_runs"
+    GET_EVAL_RUN = "get_eval_run"
 
 
 class VectorDbAction(str, Enum):

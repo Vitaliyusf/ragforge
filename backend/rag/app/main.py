@@ -24,6 +24,8 @@ from app.rest.v1.rag import get_rag_service
 from app.services.conversation_backend_client import ConversationBackendClient
 from app.services.conversation_persistence import create_conversation_store
 from app.services.conversation_tracing import ConversationTracer
+from app.services.eval_runner import EVAL_ACTIONS, create_eval_runner
+from app.services.eval_store import create_eval_store
 from app.services.metrics_query import METRICS_ACTION, MetricsQueryService
 from app.services.rag_service import RAGService
 from app.services.websocket_service import WebSocketService
@@ -49,6 +51,10 @@ rag_service = RAGService(
 )
 websocket_service = WebSocketService(rag_service, logger)
 metrics_query = MetricsQueryService(config, rag_service.graph_runner.metrics_facts)
+eval_store = create_eval_store(config)
+# The runner shares the graph's backend client on purpose: an eval run must
+# exercise the retrieval path the application actually uses, not a second one.
+eval_runner = create_eval_runner(config, eval_store, backend_client, logger)
 
 
 # ---------------------------------------------------------------------------
@@ -60,6 +66,7 @@ async def lifespan(app: FastAPI):
     logger.log("main:startup", "RAG service starting up")
     conversation_store.ensure_indexes()
     rag_service.graph_runner.metrics_facts.ensure_indexes()
+    eval_store.ensure_indexes()
     await rpc_client.connect()
 
     _consumer = MessageQueueFactory.create_consumer(config)
@@ -74,9 +81,14 @@ async def lifespan(app: FastAPI):
         # uses. Anything unrecognised - an absent action included - falls
         # through to the conversation graph, which is what every existing
         # caller relies on today.
-        if str(body.get("action") or "") == METRICS_ACTION:
+        action = str(body.get("action") or "")
+        if action == METRICS_ACTION:
             payload = extract_request_payload(body, correlation_id)
             return build_reply_envelope(body, metrics_query.handle(payload), correlation_id)
+        if action in EVAL_ACTIONS:
+            payload = extract_request_payload(body, correlation_id)
+            result = await eval_runner.handle(action, payload)
+            return build_reply_envelope(body, result, correlation_id)
 
         request = rag_service.build_request(extract_request_payload(body, correlation_id))
         emitter = CollectingConversationEmitter(request)
