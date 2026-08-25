@@ -37,6 +37,10 @@ const HealthDashboard = dynamic(
   () => import('@/features/health/components/HealthDashboard'),
   { loading: () => <TabSkeleton />, ssr: false }
 )
+const MetricsTab = dynamic(
+  () => import('@/features/metrics/components/MetricsTab'),
+  { loading: () => <TabSkeleton />, ssr: false }
+)
 const TrainingTab = dynamic(() => import('@/features/training/components/TrainingTab'), {
   loading: () => <TabSkeleton />, ssr: false,
 })
@@ -55,6 +59,7 @@ const TAB_COMPONENTS = {
   config:   ConfigTab,
   memory:   LongTermMemoryTab,
   health:   HealthDashboard,
+  metrics:  MetricsTab,
   users:    AdminUsersTab,
   upload:   UploadTab,
   ...(appConfig.enableTrainingTab ? { training: TrainingTab } : {}),
@@ -64,7 +69,7 @@ export default function TabbedPageLayout({ defaultTab = 'chat' }) {
   const { isAdmin } = useAuth()
   const [activeTab, setActiveTab] = useState(defaultTab)
   const allowedTabs = isAdmin
-    ? new Set(['chat', 'files', 'logs', 'models', 'config', 'memory', 'health', 'users', ...(appConfig.enableTrainingTab ? ['training'] : [])])
+    ? new Set(['chat', 'files', 'logs', 'models', 'config', 'memory', 'health', 'metrics', 'users', ...(appConfig.enableTrainingTab ? ['training'] : [])])
     : new Set(['chat', 'upload', 'memory'])
   const safeActiveTab = allowedTabs.has(activeTab) ? activeTab : 'chat'
   const TabComponent = TAB_COMPONENTS[safeActiveTab]

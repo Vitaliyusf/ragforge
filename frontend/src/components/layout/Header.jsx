@@ -9,6 +9,7 @@ import {
   Cpu,
   Zap,
   HeartPulse,
+  BarChart3,
   Settings2,
   Brain,
   Sun,
@@ -36,6 +37,7 @@ const ADMIN_TABS = [
   { id: 'models', label: 'Models', icon: Cpu },
   { id: 'logs', label: 'Logs', icon: Terminal },
   { id: 'health', label: 'Health', icon: HeartPulse },
+  { id: 'metrics', label: 'Metrics', icon: BarChart3 },
   ...(appConfig.enableTrainingTab ? [{ id: 'training', label: 'Training', icon: Zap }] : []),
 ]
 
