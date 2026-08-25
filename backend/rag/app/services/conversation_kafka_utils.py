@@ -167,6 +167,41 @@ def chunk_text_context(retrieved_chunks: Any) -> List[str]:
     return context
 
 
+def chunk_passages(retrieved_chunks: Any) -> List[Dict[str, Any]]:
+    """Build citable context passages from retrieved chunks.
+
+    The list order is the citation contract: llm_agent numbers these
+    ``[1]``, ``[2]``, ... in the prompt, and a marker resolves back through
+    this same order to ``source_id``. Generation and evaluation must be sent
+    the *same* list, or the judge's passage numbers and the answer's
+    citation markers name different chunks.
+
+    Chunks with no text are skipped, exactly as :func:`chunk_text_context`
+    skips them, so the two stay index-compatible.
+    """
+    if not isinstance(retrieved_chunks, list):
+        return []
+    passages: List[Dict[str, Any]] = []
+    for index, chunk in enumerate(retrieved_chunks):
+        if not isinstance(chunk, dict):
+            continue
+        text = chunk.get("text") or chunk.get("chunk") or chunk.get("content") or ""
+        if not text:
+            continue
+        source_id = chunk.get("chunk_id") or chunk.get("id") or f"passage_{index + 1}"
+        page = chunk.get("page")
+        section = chunk.get("section")
+        locator = None
+        if page is not None:
+            locator = f"p.{page}"
+        elif section:
+            locator = str(section)
+        passages.append(
+            {"source_id": str(source_id), "text": str(text), "locator": locator}
+        )
+    return passages
+
+
 def base_llm_metadata(request: ConversationRequest, **extras: Any) -> Dict[str, Any]:
     """Build shared llm-agent typed metadata for rag-originated requests."""
     metadata: Dict[str, Any] = {

@@ -2,6 +2,7 @@
 from app.services.conversation_kafka_utils import (
     base_llm_metadata,
     build_message_envelope,
+    chunk_passages,
     chunk_text_context,
     conversation_history,
     extract_message_payload,
@@ -13,6 +14,7 @@ from app.services.conversation_kafka_utils import (
 __all__ = [
     "base_llm_metadata",
     "build_message_envelope",
+    "chunk_passages",
     "chunk_text_context",
     "conversation_history",
     "extract_message_payload",

@@ -235,7 +235,7 @@ def test_rates_are_none_rather_than_zero_when_there_are_no_turns():
     assert result["retrieval_hit_rate"] is None
 
 
-def test_quality_names_the_proxy_metric_and_its_threshold():
+def test_quality_keeps_the_proxy_metric_explicitly_named():
     """The coarse figure must never be exposed as a bare hallucination rate."""
     service = build_service(
         {
@@ -254,19 +254,162 @@ def test_quality_names_the_proxy_metric_and_its_threshold():
 
     assert result["hallucination_rate_proxy_groundedness"] == pytest.approx(0.25)
     assert result["hallucination_groundedness_threshold"] == 0.6
-    assert "hallucination_rate" not in result
     assert result["groundedness_histogram"] == [{"bucket": "0.6-0.8", "count": 3}]
     assert result["confidence_mix"] == [{"level": "high", "count": 5}]
 
 
-def test_quality_reports_no_citation_coverage():
-    """citation_count and cited_chunk_ratio are always None until phase 6."""
-    service = build_service()
+def test_quality_reports_the_real_hallucination_rate_from_verdicts():
+    """The claim-level rate divides by the turns that actually have a verdict."""
+    service = build_service(
+        {
+            None: [
+                {
+                    "totals": [
+                        {
+                            "turns": 10,
+                            "scored_turns": 10,
+                            "below_threshold": 4,
+                            "verdict_turns": 8,
+                            "hallucinated_turns": 2,
+                            "severe_turns": 1,
+                            "mean_unsupported_claims": 0.5,
+                            "unsupported_claim_turns": 8,
+                        }
+                    ],
+                    "hallucination": [
+                        {"_id": "none", "count": 6},
+                        {"_id": "minor", "count": 1},
+                        {"_id": "severe", "count": 1},
+                    ],
+                }
+            ]
+        }
+    )
 
     with bound_context(**ADMIN.to_dict()):
         result = service.quality("24h")
 
-    assert not [key for key in result if "citation" in key or "cited" in key]
+    assert result["hallucination_rate"] == pytest.approx(0.25)
+    assert result["hallucination_severe_rate"] == pytest.approx(0.125)
+    assert result["hallucination_verdict_turns"] == 8
+    assert result["mean_unsupported_claims"] == 0.5
+    assert result["hallucination_verdict_mix"] == [
+        {"verdict": "none", "count": 6},
+        {"verdict": "minor", "count": 1},
+        {"verdict": "severe", "count": 1},
+    ]
+
+
+def test_quality_does_not_blend_a_window_spanning_the_phase_six_deploy():
+    """Pre- and post-deploy turns are reported side by side, never merged.
+
+    Ten turns: eight predate phase 6 and carry only a groundedness score,
+    two were judged with claim-level verdicts (one of them hallucinating).
+    The real rate is 1/2 over its own denominator; the proxy is 4/10 over
+    all scored turns; neither is allowed to absorb the other's turns.
+    """
+    service = build_service(
+        {
+            None: [
+                {
+                    "totals": [
+                        {
+                            "turns": 10,
+                            "scored_turns": 10,
+                            "below_threshold": 4,
+                            "verdict_turns": 2,
+                            "hallucinated_turns": 1,
+                            "severe_turns": 0,
+                        }
+                    ],
+                    "hallucination": [
+                        {"_id": "none", "count": 1},
+                        {"_id": "minor", "count": 1},
+                    ],
+                }
+            ]
+        }
+    )
+
+    with bound_context(**ADMIN.to_dict()):
+        result = service.quality("24h")
+
+    assert result["hallucination_rate"] == pytest.approx(0.5)
+    assert result["hallucination_verdict_turns"] == 2
+    assert result["turns_without_verdict"] == 8
+    assert result["hallucination_rate_proxy_groundedness"] == pytest.approx(0.4)
+    assert result["hallucination_rate"] != result["hallucination_rate_proxy_groundedness"]
+
+
+def test_quality_reports_no_verdicts_as_unmeasured_not_zero():
+    """A window entirely predating phase 6 has no real rate at all."""
+    service = build_service(
+        {
+            None: [
+                {
+                    "totals": [
+                        {"turns": 6, "scored_turns": 6, "below_threshold": 1, "verdict_turns": 0}
+                    ]
+                }
+            ]
+        }
+    )
+
+    with bound_context(**ADMIN.to_dict()):
+        result = service.quality("24h")
+
+    assert result["hallucination_rate"] is None
+    assert result["turns_without_verdict"] == 6
+    assert result["hallucination_rate_proxy_groundedness"] is not None
+
+
+def test_quality_reports_citation_means_with_their_denominators():
+    """A mean is shown with the count it was taken over, and what it excluded."""
+    service = build_service(
+        {
+            None: [
+                {
+                    "totals": [
+                        {
+                            "turns": 10,
+                            "scored_turns": 10,
+                            "citation_evaluated_turns": 10,
+                            "citation_precision_turns": 4,
+                            "mean_citation_precision": 0.5,
+                            "citation_recall_turns": 5,
+                            "mean_citation_recall": 1.0,
+                            "mean_citation_count": 1.5,
+                            "mean_cited_chunk_ratio": 0.25,
+                            "cited_turns": 4,
+                        }
+                    ]
+                }
+            ]
+        }
+    )
+
+    with bound_context(**ADMIN.to_dict()):
+        result = service.quality("24h")
+
+    assert result["mean_citation_precision"] == 0.5
+    assert result["citation_precision_turns"] == 4
+    # Six answers cited nothing: excluded from precision, not scored 0.0.
+    assert result["citation_precision_excluded"] == 6
+    assert result["citation_recall_excluded"] == 5
+    assert result["citation_f1"] == pytest.approx(2 / 3)
+
+
+def test_quality_citation_f1_is_unmeasured_when_either_half_is():
+    """Half a measurement is not a measurement."""
+    service = build_service(
+        {None: [{"totals": [{"turns": 3, "mean_citation_precision": 0.9}]}]}
+    )
+
+    with bound_context(**ADMIN.to_dict()):
+        result = service.quality("24h")
+
+    assert result["mean_citation_recall"] is None
+    assert result["citation_f1"] is None
 
 
 def test_cost_returns_tokens_and_no_price():
@@ -316,7 +459,12 @@ def test_worst_turns_projects_identifiers_and_scores_only():
         "completeness",
         "safety",
         "confidence",
+        "unsupported_claim_count",
+        "hallucination_verdict",
+        "citation_precision",
     }
+    # Counts and verdicts, never the claim text they were derived from.
+    assert "claims" not in project
 
 
 def test_worst_turns_sorts_ascending_and_caps_the_limit():
@@ -327,7 +475,7 @@ def test_worst_turns_sorts_ascending_and_caps_the_limit():
         service.worst_turns("24h", limit=5_000)
 
     stages = service.store.pipelines[0]["pipeline"]
-    assert {"$sort": {"groundedness": 1}} in stages
+    assert {"$sort": {"groundedness": 1, "unsupported_claim_count": -1}} in stages
     assert stages[2]["$limit"] == 50
 
 

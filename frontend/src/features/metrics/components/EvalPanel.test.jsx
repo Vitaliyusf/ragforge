@@ -6,7 +6,8 @@
  * assertion is the same one the rest of the tab makes: an absent measurement
  * renders as `—`, never as `NaN%` or a confident `0%`.
  */
-import { render, screen, within } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
 const { mockUseEvalRuns } = vi.hoisted(() => ({ mockUseEvalRuns: vi.fn() }))
@@ -16,7 +17,7 @@ vi.mock('@/features/metrics/hooks/useEvalRuns', () => ({
   isRunning: (run) => Boolean(run?.run_id) && !['completed', 'failed'].includes(run?.status),
 }))
 
-import EvalPanel, { diffSnapshots } from './EvalPanel'
+import EvalPanel, { diffSnapshots, estimateDescription } from './EvalPanel'
 
 const SNAPSHOT = {
   top_k_documents: 6,
@@ -88,6 +89,7 @@ function setup(overrides = {}) {
     error: null,
     busy: false,
     startRun: vi.fn(),
+    estimateRunCost: vi.fn(),
     createDataset: vi.fn(),
     deleteDataset: vi.fn(),
     refresh: vi.fn(),
@@ -300,5 +302,152 @@ describe('diffSnapshots', () => {
     // Two runs that both failed to capture the embedding model have not been
     // shown to share one, so `unobserved` is not a setting to diff.
     expect(diffSnapshots({ unobserved: ['x'] }, { unobserved: ['y'] })).toEqual([])
+  })
+})
+
+// ── Run mode and its cost gate ────────────────────────────────────────────
+
+/** Pick "End-to-end" from the Radix select, which is not a native <select>. */
+async function selectEndToEnd() {
+  await userEvent.click(screen.getByLabelText('Run mode'))
+  await userEvent.click(await screen.findByRole('option', { name: 'End-to-end' }))
+}
+
+const ESTIMATE = {
+  mode: 'end_to_end',
+  item_count: 20,
+  calls_per_item: 2,
+  estimated_tokens_in: 48000,
+  estimated_tokens_out: 8000,
+  estimated_cost_usd: 0,
+  model: 'some/model',
+  model_priced: false,
+}
+
+describe('EvalPanel run modes', () => {
+  it('defaults to the free retrieval run and says so', () => {
+    setup()
+
+    expect(screen.getByText(/No model is called, so the run is free/)).toBeInTheDocument()
+  })
+
+  it('starts a retrieval run without a cost confirmation', async () => {
+    const startRun = vi.fn()
+    setup({ startRun })
+
+    await userEvent.click(screen.getByRole('button', { name: /run evaluation/i }))
+
+    expect(startRun).toHaveBeenCalledWith('retrieval')
+    expect(screen.queryByText(/Start an end-to-end run\?/)).not.toBeInTheDocument()
+  })
+
+  it('prices an end-to-end run before starting it', async () => {
+    const startRun = vi.fn()
+    const estimateRunCost = vi.fn().mockResolvedValue(ESTIMATE)
+    setup({ startRun, estimateRunCost })
+
+    await selectEndToEnd()
+    await userEvent.click(screen.getByRole('button', { name: /run evaluation/i }))
+
+    await waitFor(() => expect(estimateRunCost).toHaveBeenCalledWith(20, 'end_to_end', null))
+    // Nothing starts until the estimate has been shown and accepted.
+    expect(startRun).not.toHaveBeenCalled()
+    expect(await screen.findByText(/Start an end-to-end run/)).toBeInTheDocument()
+  })
+
+  it('runs end-to-end only after the estimate is confirmed', async () => {
+    const startRun = vi.fn()
+    setup({ startRun, estimateRunCost: vi.fn().mockResolvedValue(ESTIMATE) })
+
+    await selectEndToEnd()
+    await userEvent.click(screen.getByRole('button', { name: /run evaluation/i }))
+    await userEvent.click(await screen.findByRole('button', { name: /run anyway/i }))
+
+    expect(startRun).toHaveBeenCalledWith('end_to_end')
+  })
+
+  it('does not start the run when the estimate could not be fetched', async () => {
+    const startRun = vi.fn()
+    setup({ startRun, estimateRunCost: vi.fn().mockResolvedValue(null) })
+
+    await selectEndToEnd()
+    await userEvent.click(screen.getByRole('button', { name: /run evaluation/i }))
+
+    await waitFor(() => expect(startRun).not.toHaveBeenCalled())
+  })
+})
+
+describe('estimateDescription', () => {
+  it('states the tokens, the cost, and that it is an estimate', () => {
+    const text = estimateDescription({ ...ESTIMATE, model_priced: true })
+
+    expect(text).toMatch(/20 items × 2 model calls/)
+    expect(text).toMatch(/56,000 tokens/)
+    expect(text).toMatch(/\$0\.00/)
+  })
+
+  it('says a zero cost means unpriced, not free', () => {
+    expect(estimateDescription(ESTIMATE)).toMatch(/no configured price/)
+  })
+})
+
+// ── End-to-end answer quality ─────────────────────────────────────────────
+
+const ANSWER_QUALITY = {
+  groundedness: { mean: 0.82, counted: 18, excluded: 2 },
+  citation_precision: { mean: 0.9, counted: 12, excluded: 8 },
+  citation_recall: { mean: 0.6, counted: 15, excluded: 5 },
+  unsupported_claims: { mean: 0.4, counted: 18, excluded: 2 },
+  hallucination_rate: 0.2,
+  hallucination_severe_rate: 0.05,
+  items_judged: 18,
+  items_unjudged: 2,
+}
+
+describe('EvalPanel answer quality', () => {
+  it('is absent for a retrieval-only run', () => {
+    setup()
+
+    expect(screen.queryByText('Answer quality')).not.toBeInTheDocument()
+  })
+
+  it('reports answer quality with the items each figure covers', () => {
+    setup({
+      run: {
+        ...COMPLETED_RUN,
+        mode: 'end_to_end',
+        results: { ...RESULTS, answer_quality: ANSWER_QUALITY },
+      },
+    })
+
+    expect(screen.getByText('Answer quality')).toBeInTheDocument()
+    expect(screen.getByText('0.82')).toBeInTheDocument()
+    expect(screen.getByText(/18 judged, 2 unjudged/)).toBeInTheDocument()
+    expect(screen.getByText(/8 cited nothing/)).toBeInTheDocument()
+  })
+
+  it('renders unmeasured answer quality as dashes, not zeroes', () => {
+    setup({
+      run: {
+        ...COMPLETED_RUN,
+        mode: 'end_to_end',
+        results: {
+          ...RESULTS,
+          answer_quality: {
+            groundedness: { mean: null, counted: 0, excluded: 20 },
+            citation_precision: { mean: null, counted: 0, excluded: 20 },
+            citation_recall: { mean: null, counted: 0, excluded: 20 },
+            unsupported_claims: { mean: null, counted: 0, excluded: 20 },
+            hallucination_rate: null,
+            hallucination_severe_rate: null,
+            items_judged: 0,
+            items_unjudged: 20,
+          },
+        },
+      },
+    })
+
+    expect(screen.queryByText(/NaN/)).not.toBeInTheDocument()
+    expect(screen.getAllByText('—').length).toBeGreaterThan(0)
   })
 })

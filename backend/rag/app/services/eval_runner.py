@@ -1,10 +1,24 @@
 """Execute a golden-set dataset against live retrieval and score it.
 
-**Retrieval only. This module never calls the LLM.** No generation, no answer
-evaluation, no reranker-free shortcut. That is what makes a 200-query run
-finish in seconds and cost nothing, which in turn is what makes it usable as
-a regression gate somebody actually runs before merging. Answer-quality
-evaluation is phase 6's problem.
+**``retrieval`` mode never calls the LLM, and is the default.** No
+generation, no answer evaluation, no reranker-free shortcut. That is what
+makes a 200-query run finish in seconds and cost nothing, which in turn is
+what makes it usable as a regression gate somebody actually runs before
+merging. Nothing in this module may quietly turn that promise into an LLM
+bill.
+
+**``end_to_end`` mode runs the whole conversation graph** — generation,
+judging, citations — and additionally reports groundedness, hallucination
+rate and citation precision/recall over the dataset. It costs real tokens
+per item, so it is opt-in per run, recorded in the run's ``config_snapshot``
+so a cheap run is never compared against an expensive one as though they
+measured the same thing, and bounded by the same ``eval_run_concurrency``
+semaphore as retrieval mode.
+
+Graph runs started here are executed with turn-metric recording **off**.
+An eval sweep is not user traffic, and letting a few hundred synthetic turns
+into ``metrics_turn_facts`` would move the very quality averages the sweep
+exists to check.
 
 Retrieval goes through ``ConversationBackendClient.search_chunks`` — the same
 call the conversation graph makes — because the number is only meaningful if
@@ -29,6 +43,8 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 
 from app.core.config import RAGConfig
 from app.services import retrieval_metrics
+from app.services.citation_metrics import aggregate_mean
+from app.services.conversation_events import CollectingConversationEmitter
 from app.services.conversation_types import ConversationRequest
 from app.services.eval_store import (
     RUN_COMPLETED,
@@ -46,6 +62,13 @@ from shared.context import bound_context
 # part of the stored `results` shape, and two runs carrying different k sets
 # under the same field names would be silently incomparable.
 K_VALUES: Tuple[int, ...] = (1, 3, 5, 10, 20)
+
+# Run modes. `retrieval` is the default everywhere it is optional: the
+# phase-5 promise of a free run must be what a caller gets by saying
+# nothing.
+MODE_RETRIEVAL = "retrieval"
+MODE_END_TO_END = "end_to_end"
+EVAL_MODES = (MODE_RETRIEVAL, MODE_END_TO_END)
 
 MATCH_CHUNK = "chunk_id"
 MATCH_FILE = "file_id"
@@ -193,11 +216,16 @@ class EvalRunner:
         store: EvalStore,
         backend_client: Any,
         logger: Any = None,
+        graph_runner: Any = None,
     ) -> None:
         self.config = config
         self.store = store
         self.backend_client = backend_client
         self.logger = logger
+        # Only `end_to_end` needs it. When absent, that mode is refused with a
+        # reason rather than silently downgraded to a retrieval run whose
+        # answer-quality columns would all be blank.
+        self.graph_runner = graph_runner
         # Strong references to in-flight runs. asyncio only holds a weak
         # reference to a task, so without this set a run can be garbage
         # collected mid-execution and silently never finish.
@@ -241,7 +269,12 @@ class EvalRunner:
             if action == DELETE_EVAL_DATASET:
                 return self.store.delete_dataset(str(payload.get("dataset_id") or ""))
             if action == START_EVAL_RUN:
-                return {"run": await self.start_run(str(payload.get("dataset_id") or ""))}
+                return {
+                    "run": await self.start_run(
+                        str(payload.get("dataset_id") or ""),
+                        str(payload.get("mode") or MODE_RETRIEVAL),
+                    )
+                }
             if action == LIST_EVAL_RUNS:
                 return {
                     "runs": self.store.list_runs(
@@ -262,13 +295,31 @@ class EvalRunner:
     # Running
     # ------------------------------------------------------------------
 
-    async def start_run(self, dataset_id: str) -> Dict[str, Any]:
+    async def start_run(
+        self,
+        dataset_id: str,
+        mode: str = MODE_RETRIEVAL,
+    ) -> Dict[str, Any]:
         """Open a run and execute it in the background.
 
         Returns as soon as the run document exists, carrying its ``run_id``.
         A synchronous RPC would blow the gateway's timeout on any dataset
         worth having, so the caller polls ``get_eval_run`` instead.
+
+        Args:
+            dataset_id: The dataset to execute.
+            mode: ``retrieval`` (default, LLM-free) or ``end_to_end``.
+
+        Raises:
+            EvalValidationError: On an unknown mode, or on ``end_to_end``
+                with no graph available to run.
         """
+        if mode not in EVAL_MODES:
+            raise EvalValidationError(f"Unsupported eval run mode: {mode!r}")
+        if mode == MODE_END_TO_END and self.graph_runner is None:
+            raise EvalValidationError(
+                "end_to_end runs are unavailable: no conversation graph is wired"
+            )
         # Raises EvalAccessDenied / EvalNotFound before anything is written,
         # so a refused request leaves no run document behind.
         dataset = self.store.get_dataset(dataset_id)
@@ -279,11 +330,14 @@ class EvalRunner:
 
         match_mode = dataset_match_mode(items)
         run = self.store.create_run(
-            dataset_id, build_config_snapshot(self.config), match_mode
+            dataset_id,
+            build_config_snapshot(self.config, mode=mode),
+            match_mode,
+            mode=mode,
         )
 
         task = asyncio.create_task(
-            self._execute(run["run_id"], identity, items, match_mode)
+            self._execute(run["run_id"], identity, items, match_mode, mode)
         )
         self._tasks.add(task)
         task.add_done_callback(self._tasks.discard)
@@ -295,6 +349,7 @@ class EvalRunner:
         identity: AuthIdentity,
         items: List[Dict[str, Any]],
         match_mode: str,
+        mode: str = MODE_RETRIEVAL,
     ) -> None:
         """Score every item, then close the run.
 
@@ -308,12 +363,17 @@ class EvalRunner:
         is what makes a stuck eval dashboard useless.
         """
         tenant_id = identity.tenant_id
+        # The same bound as retrieval mode, deliberately not raised for
+        # end_to_end: that mode is heavier per item, not more entitled to
+        # concurrency, and it shares the live LLM the application is serving.
         semaphore = asyncio.Semaphore(max(1, self.config.eval_run_concurrency))
         try:
             with bound_context(**identity.to_dict()):
                 rows = await asyncio.gather(
                     *(
-                        self._score_item(run_id, identity, item, match_mode, semaphore)
+                        self._score_item(
+                            run_id, identity, item, match_mode, semaphore, mode
+                        )
                         for item in items
                     )
                 )
@@ -322,7 +382,7 @@ class EvalRunner:
                 run_id,
                 tenant_id,
                 status=RUN_FAILED if failed else RUN_COMPLETED,
-                results=aggregate(rows),
+                results=aggregate(rows, mode),
                 error=_first_error(rows) if failed else None,
             )
         except Exception as exc:  # noqa: BLE001 - the run must always close
@@ -336,6 +396,7 @@ class EvalRunner:
         item: Dict[str, Any],
         match_mode: str,
         semaphore: asyncio.Semaphore,
+        mode: str = MODE_RETRIEVAL,
     ) -> Dict[str, Any]:
         """Retrieve for one item, score it, and persist the row.
 
@@ -375,10 +436,13 @@ class EvalRunner:
                     role=identity.role,
                     admin_id=identity.admin_id,
                 )
-                response = await self.backend_client.search_chunks(
-                    request, query, {}, "eval"
-                )
-            ids = retrieved_ids(eligible_chunks(response), item_mode)
+                if mode == MODE_END_TO_END:
+                    ids = await self._run_graph_item(request, row, item_mode)
+                else:
+                    response = await self.backend_client.search_chunks(
+                        request, query, {}, "eval"
+                    )
+                    ids = retrieved_ids(eligible_chunks(response), item_mode)
         except Exception as exc:  # noqa: BLE001 - one item, not the run
             row["error"] = str(exc)
             row["latency_ms"] = (time.monotonic() - started) * 1000
@@ -399,6 +463,35 @@ class EvalRunner:
 
         self.store.append_item_result(run_id, tenant_id, row)
         return row
+
+    async def _run_graph_item(
+        self,
+        request: ConversationRequest,
+        row: Dict[str, Any],
+        item_mode: str,
+    ) -> List[str]:
+        """Run the full graph for one item and record its answer quality.
+
+        Turn-metric recording is off: these are synthetic turns, and letting
+        them into `metrics_turn_facts` would shift the tenant averages the
+        run exists to measure.
+
+        Returns:
+            The retrieved ids, so the caller scores retrieval exactly as it
+            does in retrieval mode — an `end_to_end` run reports both.
+        """
+        emitter = CollectingConversationEmitter(request)
+        result = await self.graph_runner.run(request, emitter, record_metrics=False)
+        review = result.get("review") or {}
+        citations = result.get("citation_metrics") or {}
+        row["answer"] = result.get("answer", "")
+        row["groundedness"] = review.get("groundedness_score")
+        row["hallucination_verdict"] = review.get("hallucination_verdict")
+        row["unsupported_claim_count"] = review.get("unsupported_claim_count")
+        row["citation_precision"] = citations.get("citation_precision")
+        row["citation_recall"] = citations.get("citation_recall")
+        row["citation_count"] = citations.get("citation_count")
+        return retrieved_ids(eligible_chunks({"chunks": result.get("sources") or []}), item_mode)
 
     def _log(self, event: str, message: str, data: Dict[str, Any]) -> None:
         if self.logger is not None:
@@ -423,12 +516,17 @@ def _item_scores(ids: List[str], relevant: Set[str]) -> Dict[str, Dict[str, floa
     }
 
 
-def aggregate(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
+def aggregate(rows: List[Dict[str, Any]], mode: str = MODE_RETRIEVAL) -> Dict[str, Any]:
     """Average the per-item scores into the run's ``results``.
 
     Unlabelled and failed items are **excluded from every mean**, not counted
     as zeros, and both counts are reported alongside. A half-labelled dataset
     should be visible as a small denominator, never as a retrieval regression.
+
+    An ``end_to_end`` run adds answer-quality figures under
+    ``answer_quality``, each with the count of items it was measured over —
+    an item whose judge failed, or whose answer cited nothing, contributes
+    nothing rather than a zero.
     """
     scored = [row for row in rows if row.get("scores")]
     skipped = sum(1 for row in rows if row.get("skipped"))
@@ -453,6 +551,35 @@ def aggregate(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
         "items_skipped": skipped,
         "items_failed": failed,
         "mean_latency_ms": _mean(latencies),
+        **({"answer_quality": _answer_quality(rows)} if mode == MODE_END_TO_END else {}),
+    }
+
+
+def _answer_quality(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Answer-quality means for an ``end_to_end`` run, with denominators.
+
+    The hallucination rate divides by the items that actually got a verdict,
+    not by the dataset size: an item whose judge failed is unmeasured, and
+    counting it as "not hallucinating" would flatter every run in which the
+    judge was flaky.
+    """
+    verdicts = [row.get("hallucination_verdict") for row in rows]
+    judged = [verdict for verdict in verdicts if verdict is not None]
+    hallucinating = sum(1 for verdict in judged if verdict != "none")
+    severe = sum(1 for verdict in judged if verdict == "severe")
+    return {
+        "groundedness": aggregate_mean([row.get("groundedness") for row in rows]),
+        "citation_precision": aggregate_mean(
+            [row.get("citation_precision") for row in rows]
+        ),
+        "citation_recall": aggregate_mean([row.get("citation_recall") for row in rows]),
+        "unsupported_claims": aggregate_mean(
+            [row.get("unsupported_claim_count") for row in rows]
+        ),
+        "hallucination_rate": (hallucinating / len(judged)) if judged else None,
+        "hallucination_severe_rate": (severe / len(judged)) if judged else None,
+        "items_judged": len(judged),
+        "items_unjudged": len(rows) - len(judged),
     }
 
 
@@ -483,6 +610,11 @@ def create_eval_runner(
     store: EvalStore,
     backend_client: Any,
     logger: Any = None,
+    graph_runner: Any = None,
 ) -> EvalRunner:
-    """Create the eval runner."""
-    return EvalRunner(config, store, backend_client, logger)
+    """Create the eval runner.
+
+    ``graph_runner`` is required only for ``end_to_end`` runs; without it
+    that mode is refused rather than downgraded.
+    """
+    return EvalRunner(config, store, backend_client, logger, graph_runner)

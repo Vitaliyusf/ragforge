@@ -102,12 +102,23 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def build_config_snapshot(config: RAGConfig) -> Dict[str, Any]:
-    """Capture the retrieval configuration a run is about to execute under.
+def build_config_snapshot(
+    config: RAGConfig,
+    *,
+    mode: str = "retrieval",
+) -> Dict[str, Any]:
+    """Capture the configuration a run is about to execute under.
 
     Taken from live config at run start, never from the caller: a snapshot
     the user could supply would let two runs claim the same configuration
     while behaving differently.
+
+    Args:
+        config: Live rag configuration.
+        mode: ``retrieval`` or ``end_to_end``. Recorded in the snapshot so the
+            config-diff warning fires when a retrieval-only run is compared
+            against a run that also generated and judged answers — they
+            measure different systems and their numbers are not comparable.
 
     Returns:
         The observed settings, plus ``unobserved``: the names of the fields
@@ -115,6 +126,7 @@ def build_config_snapshot(config: RAGConfig) -> Dict[str, Any]:
         must treat an entry in ``unobserved`` as "unknown", not as a match.
     """
     snapshot: Dict[str, Any] = {
+        "mode": mode,
         "top_k_documents": config.top_k_documents,
         "reranker_enabled": config.reranker_enabled,
         "reranker_top_k": config.reranker_top_k,
@@ -151,7 +163,9 @@ def normalize_items(
 
     Returns:
         Normalized items, each with an ``item_id``, ``query``,
-        ``relevant_chunk_ids``, ``relevant_file_ids`` and ``notes``.
+        ``relevant_chunk_ids``, ``relevant_file_ids``, the optional
+        ``expected_answer`` / ``expected_claims`` an ``end_to_end`` run
+        reads, and ``notes``.
 
     Raises:
         EvalValidationError: On any violation, naming the offending index.
@@ -194,12 +208,19 @@ def normalize_items(
         seen_ids.add(item_id)
 
         notes = raw.get("notes")
+        expected_answer = raw.get("expected_answer")
+        expected_claims = _string_list(raw.get("expected_claims"), index, "expected_claims")
         normalized.append(
             {
                 "item_id": item_id,
                 "query": query.strip(),
                 "relevant_chunk_ids": chunk_ids,
                 "relevant_file_ids": file_ids,
+                # Both optional and used only by an `end_to_end` run. A
+                # retrieval run never reads them, so a dataset without them
+                # stays valid and scores exactly as it did before.
+                "expected_answer": str(expected_answer) if expected_answer else None,
+                "expected_claims": expected_claims,
                 "notes": str(notes) if notes else None,
             }
         )
@@ -380,6 +401,7 @@ class EvalStore:
         dataset_id: str,
         config_snapshot: Dict[str, Any],
         match_mode: str,
+        mode: str = "retrieval",
     ) -> Dict[str, Any]:
         """Open a run document in ``running`` state and return it.
 
@@ -389,6 +411,9 @@ class EvalStore:
             match_mode: ``chunk_id`` or ``file_id`` — recorded because
                 file-level matching is coarser, and two runs using different
                 modes are not comparable.
+            mode: ``retrieval`` or ``end_to_end``. Stored at the top level as
+                well as inside the snapshot so a run list can label each row
+                without unpacking it.
         """
         identity = _require_admin()
         document = {
@@ -399,6 +424,7 @@ class EvalStore:
             "finished_at": None,
             "status": RUN_RUNNING,
             "match_mode": match_mode,
+            "mode": mode,
             "config_snapshot": config_snapshot,
             "results": {},
             "per_item": [],

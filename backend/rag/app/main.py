@@ -54,7 +54,11 @@ metrics_query = MetricsQueryService(config, rag_service.graph_runner.metrics_fac
 eval_store = create_eval_store(config)
 # The runner shares the graph's backend client on purpose: an eval run must
 # exercise the retrieval path the application actually uses, not a second one.
-eval_runner = create_eval_runner(config, eval_store, backend_client, logger)
+# It shares the graph runner for the same reason: an `end_to_end` run measures
+# the answers this application generates, not a reimplementation of them.
+eval_runner = create_eval_runner(
+    config, eval_store, backend_client, logger, rag_service.graph_runner
+)
 
 
 # ---------------------------------------------------------------------------

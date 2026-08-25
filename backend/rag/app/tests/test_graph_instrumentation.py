@@ -238,3 +238,130 @@ def test_a_failing_metrics_write_never_fails_the_turn():
 
     assert result["answer"] == "Regular answer"
     assert "error" not in result
+
+
+# ── Citations and hallucination verdicts ──────────────────────────────────
+
+def run_cited_turn(citations, claims, verdict="minor"):
+    """Run one regular turn whose generator cites and whose judge decomposes.
+
+    The doubles stand in for llm_agent, which is where citation extraction
+    and claim analysis really happen; what is under test here is that the
+    graph joins the two into per-turn figures and records them.
+    """
+    service, backend, _ = build_service()
+    original_generate = backend.generate_answer
+    original_evaluate = backend.evaluate_answer
+
+    async def generate_answer(request, prompt, stream_request_id, token_callback):
+        response = await original_generate(request, prompt, stream_request_id, token_callback)
+        return {**response, "citations": citations, "invalid_citation_count": 0}
+
+    async def evaluate_answer(request, answer, retrieved_chunks, mode):
+        review = await original_evaluate(request, answer, retrieved_chunks, mode)
+        return {**review, "claims": claims, "hallucination_verdict": verdict}
+
+    backend.generate_answer = generate_answer
+    backend.evaluate_answer = evaluate_answer
+
+    request = service.build_request({"question": "What is RAG?", "mode": "regular"})
+    emitter = CollectingConversationEmitter(request)
+    result = asyncio.run(service.graph_runner.run(request, emitter))
+    return service, result, emitter
+
+
+def test_a_cited_turn_records_its_citation_figures_in_the_fact():
+    service, result, _ = run_cited_turn(
+        citations=[{"source_id": "c1", "locator": "[1]", "snippet": "Regular chunk"}],
+        # The judge answers in passage numbers; the graph resolves them to
+        # chunk ids before anything is compared.
+        claims=[{"claim": "RAG retrieves", "supported": True, "supporting_passage_ids": ["1"]}],
+    )
+
+    fact = service.graph_runner.metrics_facts.facts[0]
+    assert fact["citation_count"] == 1
+    assert fact["cited_chunk_ratio"] == 1.0
+    assert fact["citation_precision"] == 1.0
+    assert fact["citation_recall"] == 1.0
+    assert fact["unsupported_claim_count"] == 0
+    assert fact["hallucination_verdict"] == "minor"
+    assert result["citations"][0]["source_id"] == "c1"
+
+
+def test_a_citation_the_judge_never_confirmed_lowers_precision():
+    service, _, _ = run_cited_turn(
+        citations=[
+            {"source_id": "c1", "locator": "[1]"},
+            {"source_id": "c7", "locator": "[2]"},
+        ],
+        claims=[{"claim": "RAG retrieves", "supported": True, "supporting_passage_ids": ["1"]}],
+    )
+
+    fact = service.graph_runner.metrics_facts.facts[0]
+    assert fact["citation_precision"] == 0.5
+    assert fact["citation_recall"] == 1.0
+
+
+def test_an_answer_that_cited_nothing_has_no_precision_to_record():
+    service, _, _ = run_cited_turn(
+        citations=[],
+        claims=[{"claim": "RAG retrieves", "supported": True, "supporting_passage_ids": ["1"]}],
+    )
+
+    fact = service.graph_runner.metrics_facts.facts[0]
+    assert fact["citation_count"] == 0
+    assert fact["citation_precision"] is None
+    # It did fail to credit a supportable claim, and that is measurable.
+    assert fact["citation_recall"] == 0.0
+
+
+def test_the_hallucination_verdict_moves_its_counter():
+    before = counter_value(METRICS.rag_hallucination_total, service="rag", verdict="severe")
+
+    run_cited_turn(
+        citations=[{"source_id": "c1"}],
+        claims=[{"claim": "RAG invents", "supported": False, "supporting_passage_ids": []}],
+        verdict="severe",
+    )
+
+    assert (
+        counter_value(METRICS.rag_hallucination_total, service="rag", verdict="severe")
+        == before + 1
+    )
+
+
+def test_citation_precision_is_observed_only_when_it_was_measured():
+    before = histogram_count(METRICS.rag_citation_precision, service="rag")
+
+    # An uncited answer: nothing to observe, and a 0.0 would be a lie.
+    run_cited_turn(citations=[], claims=[])
+    assert histogram_count(METRICS.rag_citation_precision, service="rag") == before
+
+    run_cited_turn(
+        citations=[{"source_id": "c1"}],
+        claims=[{"claim": "RAG retrieves", "supported": True, "supporting_passage_ids": ["1"]}],
+    )
+    assert histogram_count(METRICS.rag_citation_precision, service="rag") == before + 1
+
+
+def test_an_eval_run_turn_writes_no_fact_and_moves_no_counter():
+    """`record_metrics=False` keeps synthetic turns out of the live numbers."""
+    service, backend, _ = build_service()
+    before = counter_value(
+        METRICS.rag_queries_total, service="rag", answer_mode="regular", status="success"
+    )
+    request = service.build_request({"question": "What is RAG?", "mode": "regular"})
+    emitter = CollectingConversationEmitter(request)
+
+    result = asyncio.run(
+        service.graph_runner.run(request, emitter, record_metrics=False)
+    )
+
+    assert result["answer"] == "Regular answer"
+    assert service.graph_runner.metrics_facts.facts == []
+    assert (
+        counter_value(
+            METRICS.rag_queries_total, service="rag", answer_mode="regular", status="success"
+        )
+        == before
+    )

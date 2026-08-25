@@ -19,6 +19,8 @@ from app.services.eval_runner import (
     MATCH_CHUNK,
     MATCH_FILE,
     MATCH_MIXED,
+    MODE_END_TO_END,
+    MODE_RETRIEVAL,
     EvalRunner,
     aggregate,
     dataset_match_mode,
@@ -380,3 +382,187 @@ def test_a_run_with_nothing_scorable_reports_none_not_zero():
     assert results["mrr"] is None
     assert results["recall_at_k"]["5"] is None
     assert results["items_evaluated"] == 0
+
+
+# ── end_to_end mode ───────────────────────────────────────────────────────
+
+class FakeGraphRunner:
+    """Return a canned graph result per query, recording how it was called."""
+
+    def __init__(self, results: Dict[str, Any]) -> None:
+        self.results = results
+        self.calls: List[Dict[str, Any]] = []
+
+    async def run(self, request, emitter, resume=False, record_metrics=True):
+        self.calls.append(
+            {"query": request.user_message, "record_metrics": record_metrics}
+        )
+        await asyncio.sleep(0)
+        return self.results.get(request.user_message, {})
+
+
+GRAPH_RESULTS = {
+    "first": {
+        "answer": "Alpha is first [1].",
+        "sources": [{"chunk_id": "c1"}, {"chunk_id": "c2"}],
+        "review": {
+            "groundedness_score": 0.9,
+            "hallucination_verdict": "none",
+            "unsupported_claim_count": 0,
+        },
+        "citation_metrics": {"citation_precision": 1.0, "citation_recall": 1.0},
+    },
+    "third": {
+        "answer": "Gamma is ninth.",
+        "sources": [{"chunk_id": "c9"}],
+        "review": {
+            "groundedness_score": 0.5,
+            "hallucination_verdict": "severe",
+            "unsupported_claim_count": 2,
+        },
+        # Cited nothing: precision is unmeasured, not zero.
+        "citation_metrics": {"citation_precision": None, "citation_recall": 0.0},
+    },
+}
+
+
+def run_end_to_end(runner: EvalRunner, dataset_id: str) -> Dict[str, Any]:
+    async def _go():
+        run = await runner.start_run(dataset_id, MODE_END_TO_END)
+        await asyncio.gather(*list(runner._tasks))
+        return run
+
+    with bound_context(**ADMIN.to_dict()):
+        return asyncio.run(_go())
+
+
+def test_retrieval_stays_the_default_mode():
+    """The free run is what a caller gets by saying nothing."""
+    store, runner, backend, dataset_id = build()
+
+    run = execute(runner, dataset_id)
+
+    assert fetch(store, run["run_id"])["mode"] == MODE_RETRIEVAL
+    assert fetch(store, run["run_id"])["config_snapshot"]["mode"] == MODE_RETRIEVAL
+
+
+def test_default_run_never_touches_the_graph():
+    """The phase-5 promise: a retrieval run costs nothing."""
+    store, runner, backend, dataset_id = build()
+    runner.graph_runner = FakeGraphRunner(GRAPH_RESULTS)
+
+    execute(runner, dataset_id)
+
+    assert runner.graph_runner.calls == []
+
+
+def test_end_to_end_mode_is_refused_without_a_graph():
+    """Better a refusal than a run whose answer columns are silently blank."""
+    store, runner, _, dataset_id = build()
+
+    async def _go():
+        with pytest.raises(EvalValidationError):
+            await runner.start_run(dataset_id, MODE_END_TO_END)
+
+    with bound_context(**ADMIN.to_dict()):
+        asyncio.run(_go())
+
+
+def test_an_unknown_mode_is_refused():
+    store, runner, _, dataset_id = build()
+
+    async def _go():
+        with pytest.raises(EvalValidationError):
+            await runner.start_run(dataset_id, "cheap")
+
+    with bound_context(**ADMIN.to_dict()):
+        asyncio.run(_go())
+
+
+def test_end_to_end_run_reports_answer_quality_and_retrieval():
+    """Both halves are scored: the run replaces neither measure."""
+    store, runner, _, dataset_id = build()
+    runner.graph_runner = FakeGraphRunner(GRAPH_RESULTS)
+
+    run = run_end_to_end(runner, dataset_id)
+    results = fetch(store, run["run_id"])["results"]
+    quality = results["answer_quality"]
+
+    assert results["mrr"] == pytest.approx((1.0 + 1.0) / 2)
+    assert quality["groundedness"]["mean"] == pytest.approx(0.7)
+    # One of the two items cited nothing, so precision is a mean of one.
+    assert quality["citation_precision"] == {"mean": 1.0, "counted": 1, "excluded": 1}
+    assert quality["citation_recall"]["mean"] == pytest.approx(0.5)
+    assert quality["hallucination_rate"] == pytest.approx(0.5)
+    assert quality["hallucination_severe_rate"] == pytest.approx(0.5)
+    assert quality["items_judged"] == 2
+
+
+def test_end_to_end_turns_are_kept_out_of_the_live_turn_facts():
+    """Synthetic turns must not move the averages the run is measuring."""
+    store, runner, _, dataset_id = build()
+    runner.graph_runner = FakeGraphRunner(GRAPH_RESULTS)
+
+    run_end_to_end(runner, dataset_id)
+
+    assert runner.graph_runner.calls
+    assert all(call["record_metrics"] is False for call in runner.graph_runner.calls)
+
+
+def test_end_to_end_mode_is_recorded_in_the_config_snapshot():
+    """So the config-diff warning fires when the two modes are compared."""
+    store, runner, _, dataset_id = build()
+    runner.graph_runner = FakeGraphRunner(GRAPH_RESULTS)
+
+    run = run_end_to_end(runner, dataset_id)
+    stored = fetch(store, run["run_id"])
+
+    assert stored["mode"] == MODE_END_TO_END
+    assert stored["config_snapshot"]["mode"] == MODE_END_TO_END
+
+
+def test_end_to_end_respects_the_phase_five_concurrency_bound():
+    """The heavier mode gets the same bound, not a larger one."""
+    store, runner, _, dataset_id = build(
+        items=[{"query": f"q{i}", "relevant_chunk_ids": ["c1"]} for i in range(8)],
+        eval_run_concurrency=2,
+    )
+
+    class CountingGraph(FakeGraphRunner):
+        def __init__(self):
+            super().__init__({})
+            self.in_flight = 0
+            self.max_in_flight = 0
+
+        async def run(self, request, emitter, resume=False, record_metrics=True):
+            self.in_flight += 1
+            self.max_in_flight = max(self.max_in_flight, self.in_flight)
+            try:
+                await asyncio.sleep(0)
+                return {"answer": "", "sources": [], "review": {}}
+            finally:
+                self.in_flight -= 1
+
+    runner.graph_runner = CountingGraph()
+    run_end_to_end(runner, dataset_id)
+
+    assert runner.graph_runner.max_in_flight <= 2
+
+
+def test_an_unjudged_item_is_excluded_from_the_hallucination_rate():
+    """A flaky judge must not read as an answer that did not hallucinate."""
+    rows = [
+        {"hallucination_verdict": "severe", "groundedness": 0.2},
+        {"hallucination_verdict": None, "groundedness": None},
+    ]
+
+    quality = aggregate(rows, MODE_END_TO_END)["answer_quality"]
+
+    assert quality["hallucination_rate"] == 1.0
+    assert quality["items_judged"] == 1
+    assert quality["items_unjudged"] == 1
+
+
+def test_retrieval_results_carry_no_answer_quality_section():
+    """A free run reports nothing it did not measure."""
+    assert "answer_quality" not in aggregate([{"skipped": True}], MODE_RETRIEVAL)

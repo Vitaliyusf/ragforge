@@ -111,11 +111,17 @@ class TurnFact(BaseModel):
     does not exist is unmeasured, and substituting 0.0 would report the
     flattest possible retrieval for what was often the sharpest.
 
-    `citation_count` and `cited_chunk_ratio` are always None today: the answer
-    generation prompt never asks the model for citations and its parser returns
-    a hardcoded null. The fields exist so phase 6 needs no migration; deriving
-    them by string-matching the answer against chunk text would produce an
-    authoritative-looking number that is not real.
+    The citation fields — `citation_count`, `cited_chunk_ratio`,
+    `citation_precision`, `citation_recall` — are populated from the answer's
+    real inline citations and the judge's claim analysis. They stay None
+    whenever that measurement did not happen: citations disabled, the judge
+    unavailable, or nothing retrieved. `citation_precision` is also None for
+    an answer that cited nothing, which is a different failure from citing
+    badly and must not be averaged in as a zero.
+
+    `hallucination_verdict` is None for every turn written before phase 6.
+    Aggregations must count those turns separately rather than reading a
+    missing verdict as "none" — see `metrics_query.quality`.
     """
 
     turn_id: str
@@ -137,6 +143,10 @@ class TurnFact(BaseModel):
     confidence: Optional[str] = None
     citation_count: Optional[int] = None
     cited_chunk_ratio: Optional[float] = None
+    citation_precision: Optional[float] = None
+    citation_recall: Optional[float] = None
+    unsupported_claim_count: Optional[int] = None
+    hallucination_verdict: Optional[str] = None
     guardrail_blocked: Optional[bool] = None
     revised: Optional[bool] = None
     model: Optional[str] = None
@@ -162,6 +172,9 @@ def build_turn_fact(
         timings: Observations collected by the graph while the turn ran:
             `latency_ms`, `ttft_ms`, `stage_ms`, `reranker_changed_top1`,
             `guardrail_blocked`, `model`, `usage`, and `error_class`.
+            The citation figures come from `result["citation_metrics"]`,
+            which the graph computes from the answer's citations and the
+            internal review — claim text never reaches this module.
 
     Returns:
         TurnFact: The document to persist. Quality fields stay None whenever
@@ -169,6 +182,7 @@ def build_turn_fact(
     """
     review = result.get("review") or {}
     sources = result.get("sources") or []
+    citations = result.get("citation_metrics") or {}
     scores = [
         score
         for score in (
@@ -205,8 +219,12 @@ def build_turn_fact(
         completeness=_optional_float(review.get("completeness_score")),
         safety=_optional_float(review.get("safety_score")),
         confidence=confidence_level(_optional_float(review.get("groundedness_score"))),
-        citation_count=None,
-        cited_chunk_ratio=None,
+        citation_count=_optional_int(citations.get("citation_count")),
+        cited_chunk_ratio=_optional_float(citations.get("cited_chunk_ratio")),
+        citation_precision=_optional_float(citations.get("citation_precision")),
+        citation_recall=_optional_float(citations.get("citation_recall")),
+        unsupported_claim_count=_optional_int(review.get("unsupported_claim_count")),
+        hallucination_verdict=review.get("hallucination_verdict"),
         guardrail_blocked=timings.get("guardrail_blocked"),
         revised=bool(review["revision_applied"]) if "revision_applied" in review else None,
         model=timings.get("model"),

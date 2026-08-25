@@ -1,5 +1,7 @@
 /** Pure helpers for shaping chat messages and turn metadata. */
 
+import { HISTORY_MESSAGE_LIMIT } from './chatConstants'
+
 export function createId(prefix) {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
     return crypto.randomUUID()

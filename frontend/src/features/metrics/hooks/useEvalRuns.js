@@ -107,19 +107,38 @@ export function useEvalRuns() {
     return () => clearInterval(timer)
   }, [runId, runStatus, datasetId, loadRuns])
 
-  const startRun = useCallback(async () => {
-    if (!datasetId) return
-    setBusy(true)
+  const startRun = useCallback(
+    async (mode = 'retrieval') => {
+      if (!datasetId) return
+      setBusy(true)
+      try {
+        const response = await metricsService.startEvalRun(datasetId, mode)
+        setRun(response?.run || null)
+        setError(null)
+      } catch (err) {
+        setError(err?.message || 'Could not start the evaluation run')
+      } finally {
+        setBusy(false)
+      }
+    },
+    [datasetId]
+  )
+
+  /**
+   * Price a prospective run without starting it.
+   *
+   * Returns null on failure rather than throwing: an unavailable estimate
+   * must not block a `retrieval` run, which costs nothing either way. The
+   * panel refuses to start an `end_to_end` run without one.
+   */
+  const estimateRunCost = useCallback(async (itemCount, mode, model) => {
     try {
-      const response = await metricsService.startEvalRun(datasetId)
-      setRun(response?.run || null)
-      setError(null)
+      return await metricsService.estimateEvalRunCost({ itemCount, mode, model })
     } catch (err) {
-      setError(err?.message || 'Could not start the evaluation run')
-    } finally {
-      setBusy(false)
+      setError(err?.message || 'Could not estimate the run cost')
+      return null
     }
-  }, [datasetId])
+  }, [])
 
   const createDataset = useCallback(
     async (body) => {
@@ -174,6 +193,7 @@ export function useEvalRuns() {
     error,
     busy,
     startRun,
+    estimateRunCost,
     createDataset,
     deleteDataset,
     refresh,

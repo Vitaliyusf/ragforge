@@ -53,6 +53,13 @@ MODEL_COST_PER_1K_TOKENS: dict[str, tuple[float, float]] = {
 # zero that someone could quote in a review deck.
 DEFAULT_MODEL_COST_PER_1K_TOKENS: tuple[float, float] = (0.0, 0.0)
 
+# ── Eval run cost estimation ──────────────────────────────────────────
+# An `end_to_end` eval run spends tokens per item: one generation call and
+# one judge call, each carrying the retrieved context. These are coarse
+# per-item averages used only to warn an admin before they start a run, and
+# the UI must present the result as an estimate, never as a bill.
+EVAL_END_TO_END_TOKENS_PER_ITEM: tuple[int, int] = (2_400, 400)
+
 
 # ── Domain Enums ──────────────────────────────────────────────────────────────
 
@@ -60,6 +67,18 @@ class AnswerMode(str, Enum):
     """Supported answer verbosity modes for chat requests."""
     QUICK = "quick"
     EXTENDED = "extended"
+
+
+class EvalRunMode(str, Enum):
+    """How much of the pipeline an eval run exercises.
+
+    ``RETRIEVAL`` is the default everywhere the mode is optional: it calls no
+    model, finishes a 200-item dataset in seconds, and costs nothing.
+    ``END_TO_END`` additionally generates and judges an answer per item, so
+    it spends tokens and is opt-in per run.
+    """
+    RETRIEVAL = "retrieval"
+    END_TO_END = "end_to_end"
 
 
 class MetricsWindow(str, Enum):

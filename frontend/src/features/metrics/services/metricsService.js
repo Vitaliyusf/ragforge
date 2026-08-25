@@ -56,9 +56,24 @@ class MetricsService {
     return await del(`/v1/metrics/eval/datasets/${encodeURIComponent(datasetId)}`)
   }
 
-  /** Returns as soon as the run is queued; poll `getEvalRun` for progress. */
-  async startEvalRun(datasetId) {
-    return await post('/v1/metrics/eval/runs', { dataset_id: datasetId })
+  /**
+   * Returns as soon as the run is queued; poll `getEvalRun` for progress.
+   *
+   * `mode` defaults to `retrieval`, the free LLM-less run. `end_to_end`
+   * spends tokens per item and must not be sent without showing the caller
+   * `estimateEvalRunCost` first.
+   */
+  async startEvalRun(datasetId, mode = 'retrieval') {
+    return await post('/v1/metrics/eval/runs', { dataset_id: datasetId, mode })
+  }
+
+  /** What a run would spend, priced by the gateway before anything starts. */
+  async estimateEvalRunCost({ itemCount, mode, model }) {
+    return await post('/v1/metrics/eval/runs/estimate', {
+      item_count: itemCount,
+      mode,
+      model: model || null,
+    })
   }
 
   async listEvalRuns({ datasetId, limit } = {}) {
