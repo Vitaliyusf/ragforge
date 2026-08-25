@@ -29,7 +29,8 @@ const INITIAL_STATE = {
  * Only the section named here is fetched — the tab must not pull all five
  * endpoints to render one panel.
  *
- * @param {string} section - 'overview' | 'latency' | 'retrieval' | 'quality' | 'pipeline'
+ * @param {?string} section - 'overview' | 'latency' | 'retrieval' | 'quality' |
+ *   'pipeline', or null for a section that loads its own data.
  * @param {{window?: string, tenantId?: string}} params
  */
 export function useMetrics(section, { window: windowRange, tenantId } = {}) {
@@ -38,6 +39,15 @@ export function useMetrics(section, { window: windowRange, tenantId } = {}) {
 
   const fetchSection = useCallback(
     async ({ silent = false } = {}) => {
+      // A standalone section (see METRICS_SECTIONS) owns its own loading.
+      // Idling here is not an error: there is no windowed endpoint to call,
+      // and reporting "unknown section" would put a spurious error banner
+      // above a panel that is working perfectly.
+      if (!section) {
+        setState({ ...INITIAL_STATE, loading: false })
+        return
+      }
+
       const fetcher = SECTION_FETCHERS[section]
       if (!fetcher) {
         setState({ ...INITIAL_STATE, loading: false, error: `Unknown metrics section: ${section}` })

@@ -75,9 +75,24 @@ class RAGConfig(BaseSettings):
     user_feedback_collection: str = "user_feedback"
     flow_feedback_collection: str = "flow_feedback"
     metrics_turn_facts_collection: str = "metrics_turn_facts"
+    eval_datasets_collection: str = "eval_datasets"
+    eval_runs_collection: str = "eval_runs"
 
     # Admin metrics retention
     metrics_retention_days: int = 90
+
+    # Retrieval eval harness.
+    #
+    # `eval_run_concurrency` bounds the semaphore in `eval_runner`. Raising
+    # it does not make a run finish sooner: the embedding service is the
+    # bottleneck, and an unbounded fan-out over a 200-item dataset buries it
+    # while live traffic is still being served by the same instance.
+    eval_run_concurrency: int = 4
+    # Upload limits. Enforced in `eval_store` even though the gateway checks
+    # them too — an RPC caller is not automatically the gateway, the same
+    # reason `metrics_query` re-validates its window on arrival.
+    eval_max_dataset_items: int = 1000
+    eval_max_query_length: int = 2000
 
     # A turn whose groundedness falls below this counts toward the proxy
     # hallucination rate. It is a threshold over one judge score, not a

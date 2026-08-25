@@ -28,6 +28,7 @@ from app.core.constants import (
     RagAction,
     VectorDbAction,
 )
+from app.core.errors import GatewayError, NotFoundError, ValidationError
 from app.core.logging_config import ServiceLogger
 from app.core.config import GatewayConfig
 from app.core.rabbitmq_client import RabbitMQClient
@@ -39,6 +40,11 @@ TOKENS_PER_COST_UNIT = 1_000
 
 # Prometheus data is never tenant-scoped here — see the module docstring.
 PROMETHEUS_SCOPE = "all_tenants"
+
+# Refusal kinds the rag eval handler reports, and the HTTP status each earns.
+# 403 is raised as a GatewayError with an explicit status because the
+# gateway's errors module does not re-export AuthorizationError.
+EVAL_FORBIDDEN_STATUS = 403
 
 
 class MetricsService(BaseRPCService):
@@ -257,6 +263,96 @@ class MetricsService(BaseRPCService):
             },
         }
         return self._envelope(window, rag or files, available, data)
+
+    # ------------------------------------------------------------------
+    # Eval harness
+    # ------------------------------------------------------------------
+
+    async def list_eval_datasets(self) -> Dict[str, Any]:
+        """List the tenant's golden-set datasets with counts and last-run times."""
+        return await self._eval(RagAction.LIST_EVAL_DATASETS, {})
+
+    async def create_eval_dataset(
+        self,
+        name: str,
+        description: Optional[str],
+        items: List[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        """Store one uploaded dataset, or refuse it with a reason."""
+        return await self._eval(
+            RagAction.CREATE_EVAL_DATASET,
+            {"name": name, "description": description, "items": items},
+        )
+
+    async def update_eval_dataset(
+        self,
+        dataset_id: str,
+        name: Optional[str] = None,
+        description: Optional[str] = None,
+        items: Optional[List[Dict[str, Any]]] = None,
+    ) -> Dict[str, Any]:
+        """Rename a dataset or replace its items wholesale."""
+        return await self._eval(
+            RagAction.UPDATE_EVAL_DATASET,
+            {
+                "dataset_id": dataset_id,
+                "name": name,
+                "description": description,
+                "items": items,
+            },
+        )
+
+    async def delete_eval_dataset(self, dataset_id: str) -> Dict[str, Any]:
+        """Delete one dataset. Its past runs are deliberately kept."""
+        return await self._eval(
+            RagAction.DELETE_EVAL_DATASET, {"dataset_id": dataset_id}
+        )
+
+    async def start_eval_run(self, dataset_id: str) -> Dict[str, Any]:
+        """Start a run and return its ``run_id`` immediately.
+
+        Uses the short timeout on purpose: rag opens the run document and
+        returns, executing it in the background, so this call is fast even
+        for a 200-item dataset. The client polls :meth:`get_eval_run`.
+        """
+        return await self._eval(RagAction.START_EVAL_RUN, {"dataset_id": dataset_id})
+
+    async def list_eval_runs(
+        self,
+        dataset_id: Optional[str] = None,
+        limit: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """List runs newest first, without their per-item rows."""
+        return await self._eval(
+            RagAction.LIST_EVAL_RUNS, {"dataset_id": dataset_id, "limit": limit}
+        )
+
+    async def get_eval_run(self, run_id: str) -> Dict[str, Any]:
+        """Fetch one run, including its per-item drill-down rows."""
+        return await self._eval(RagAction.GET_EVAL_RUN, {"run_id": run_id})
+
+    async def _eval(self, action: RagAction, payload: Dict[str, Any]) -> Dict[str, Any]:
+        """Send one eval action to rag and translate a typed refusal.
+
+        rag reports refusals inside a successful reply under ``eval_error``
+        rather than through the shared error envelope, which would flatten
+        every failure into one generic 500 with no reason — see
+        ``eval_runner._error_reply``. Translating them here is what lets a
+        malformed upload come back as a 400 naming the offending item.
+        """
+        reply = await self._send(
+            self.config.request_topics["rag"], {"action": action, **payload}
+        )
+        failure = (reply or {}).get("eval_error")
+        if not failure:
+            return reply
+        message = failure.get("message") or "Eval request failed"
+        kind = failure.get("kind")
+        if kind == "validation":
+            raise ValidationError(message)
+        if kind == "not_found":
+            raise NotFoundError(message)
+        raise GatewayError(message, status_code=EVAL_FORBIDDEN_STATUS)
 
     # ------------------------------------------------------------------
     # Downstream RPC

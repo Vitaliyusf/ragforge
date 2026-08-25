@@ -1,0 +1,304 @@
+/**
+ * Tests for the eval panel.
+ *
+ * `useEvalRuns` is mocked, so these cover what the panel renders from a run
+ * document rather than the polling behaviour behind it. The recurring
+ * assertion is the same one the rest of the tab makes: an absent measurement
+ * renders as `—`, never as `NaN%` or a confident `0%`.
+ */
+import { render, screen, within } from '@testing-library/react'
+import { describe, expect, it, vi } from 'vitest'
+
+const { mockUseEvalRuns } = vi.hoisted(() => ({ mockUseEvalRuns: vi.fn() }))
+
+vi.mock('@/features/metrics/hooks/useEvalRuns', () => ({
+  useEvalRuns: mockUseEvalRuns,
+  isRunning: (run) => Boolean(run?.run_id) && !['completed', 'failed'].includes(run?.status),
+}))
+
+import EvalPanel, { diffSnapshots } from './EvalPanel'
+
+const SNAPSHOT = {
+  top_k_documents: 6,
+  reranker_enabled: true,
+  embedding_model: null,
+  unobserved: ['embedding_model'],
+}
+
+const RESULTS = {
+  recall_at_k: { 1: 0.5, 3: 0.75, 5: 1, 10: 1, 20: 1 },
+  precision_at_k: { 1: 0.5, 3: 0.25, 5: 0.2, 10: 0.1, 20: 0.05 },
+  hit_rate_at_k: { 1: 0.5, 3: 1, 5: 1, 10: 1, 20: 1 },
+  ndcg_at_k: { 1: 0.5, 3: 0.8, 5: 0.85, 10: 0.87, 20: 0.87 },
+  mrr: 0.75,
+  items_evaluated: 20,
+  items_skipped: 0,
+  items_failed: 0,
+  mean_latency_ms: 120,
+}
+
+const COMPLETED_RUN = {
+  run_id: 'r-2',
+  dataset_id: 'd-1',
+  status: 'completed',
+  started_at: '2026-08-25T10:00:00Z',
+  match_mode: 'chunk_id',
+  config_snapshot: SNAPSHOT,
+  results: RESULTS,
+  per_item: [
+    {
+      item_id: 'i-1',
+      query: 'found first',
+      reciprocal_rank: 1,
+      first_hit_rank: 1,
+      recall_at_10: 1,
+      expected_ids: ['c1'],
+      retrieved_ids: ['c1'],
+    },
+    {
+      item_id: 'i-2',
+      query: 'never found',
+      reciprocal_rank: 0,
+      first_hit_rank: null,
+      recall_at_10: 0,
+      expected_ids: ['c9'],
+      retrieved_ids: ['c1'],
+    },
+  ],
+}
+
+const DATASETS = [
+  {
+    dataset_id: 'd-1',
+    name: 'Support golden set',
+    item_count: 20,
+    last_run_at: '2026-08-25T10:00:00Z',
+  },
+]
+
+function setup(overrides = {}) {
+  mockUseEvalRuns.mockReturnValue({
+    datasets: DATASETS,
+    datasetId: 'd-1',
+    selectDataset: vi.fn(),
+    runs: [COMPLETED_RUN],
+    run: COMPLETED_RUN,
+    running: false,
+    loading: false,
+    error: null,
+    busy: false,
+    startRun: vi.fn(),
+    createDataset: vi.fn(),
+    deleteDataset: vi.fn(),
+    refresh: vi.fn(),
+    ...overrides,
+  })
+  return render(<EvalPanel />)
+}
+
+// ── Empty state ───────────────────────────────────────────────────────────
+
+describe('EvalPanel without a dataset', () => {
+  it('explains how to build a golden set rather than showing empty charts', () => {
+    setup({ datasets: [], runs: [], run: null })
+
+    expect(screen.getByText('No golden set yet')).toBeInTheDocument()
+    expect(screen.getByText(/questions your users actually ask/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /import a dataset/i })).toBeInTheDocument()
+  })
+
+  it('shows no scores at all, rather than zeroes', () => {
+    setup({ datasets: [], runs: [], run: null })
+
+    expect(screen.queryByText('MRR')).not.toBeInTheDocument()
+    expect(screen.queryByText('0%')).not.toBeInTheDocument()
+  })
+})
+
+// ── Results ───────────────────────────────────────────────────────────────
+
+describe('EvalPanel results', () => {
+  it('renders the headline scores with their denominator', () => {
+    setup()
+
+    expect(screen.getByText('MRR')).toBeInTheDocument()
+    expect(screen.getByText('0.75')).toBeInTheDocument()
+    expect(screen.getByText('nDCG@10')).toBeInTheDocument()
+    expect(screen.getByText('0.87')).toBeInTheDocument()
+    expect(screen.getByText('Items scored')).toBeInTheDocument()
+    expect(screen.getByText('0 skipped, 0 failed')).toBeInTheDocument()
+  })
+
+  it('renders recall and precision across every k', () => {
+    setup()
+
+    const table = screen.getByRole('table', { name: /scores at each cutoff/i })
+    const recallRow = within(table).getByRole('row', { name: /Recall@k/ })
+    expect(within(recallRow).getByText('50%')).toBeInTheDocument()
+    expect(within(recallRow).getAllByText('100%').length).toBe(3)
+  })
+
+  it('renders an unmeasured score as a dash, never as NaN%', () => {
+    setup({
+      run: {
+        ...COMPLETED_RUN,
+        results: {
+          ...RESULTS,
+          mrr: null,
+          recall_at_k: { 1: null, 3: null, 5: null, 10: null, 20: null },
+        },
+      },
+    })
+
+    const table = screen.getByRole('table', { name: /scores at each cutoff/i })
+    const recallRow = within(table).getByRole('row', { name: /Recall@k/ })
+    expect(within(recallRow).getAllByText('—').length).toBe(5)
+    expect(within(table).queryByText(/NaN/)).not.toBeInTheDocument()
+  })
+
+  it('warns that a file-level run scores more generously', () => {
+    setup({ run: { ...COMPLETED_RUN, match_mode: 'file_id' } })
+
+    expect(screen.getByText(/any chunk from a relevant file counts as a hit/)).toBeInTheDocument()
+  })
+})
+
+// ── Running state ─────────────────────────────────────────────────────────
+
+describe('EvalPanel while a run is executing', () => {
+  const RUNNING_RUN = {
+    ...COMPLETED_RUN,
+    run_id: 'r-3',
+    status: 'running',
+    results: {},
+    per_item: [{ item_id: 'i-1', query: 'q', reciprocal_rank: 1 }],
+  }
+
+  it('shows the in-progress state and its item count', () => {
+    setup({ run: RUNNING_RUN, running: true })
+
+    expect(screen.getByText('Running')).toBeInTheDocument()
+    expect(screen.getByText(/1 of 20 items/)).toBeInTheDocument()
+  })
+
+  it('disables the run button so a second run cannot be started', () => {
+    setup({ run: RUNNING_RUN, running: true })
+
+    expect(screen.getByRole('button', { name: /running/i })).toBeDisabled()
+  })
+
+  it('says the run costs nothing, because that is why it is safe to re-run', () => {
+    setup({ run: RUNNING_RUN, running: true })
+
+    expect(screen.getByText(/calls no language model/)).toBeInTheDocument()
+  })
+
+  it('surfaces the error of a failed run rather than a silent empty panel', () => {
+    setup({
+      run: { ...COMPLETED_RUN, status: 'failed', error: 'embedding unavailable' },
+    })
+
+    expect(screen.getByText(/embedding unavailable/)).toBeInTheDocument()
+    expect(screen.getByText('Failed')).toBeInTheDocument()
+  })
+})
+
+// ── Config diff ───────────────────────────────────────────────────────────
+
+describe('EvalPanel config comparison', () => {
+  const PREVIOUS = {
+    ...COMPLETED_RUN,
+    run_id: 'r-1',
+    started_at: '2026-08-24T10:00:00Z',
+    config_snapshot: { ...SNAPSHOT, top_k_documents: 3, reranker_enabled: false },
+  }
+
+  it('warns when the two most recent runs used different settings', () => {
+    setup({ runs: [COMPLETED_RUN, PREVIOUS] })
+
+    expect(screen.getByText('Configuration changed between runs')).toBeInTheDocument()
+    expect(screen.getByText(/not a measure of retrieval quality alone/)).toBeInTheDocument()
+    expect(screen.getByText('Top-k documents')).toBeInTheDocument()
+    expect(screen.getByText('Reranker')).toBeInTheDocument()
+  })
+
+  it('renders booleans as words rather than true/false', () => {
+    setup({ runs: [COMPLETED_RUN, PREVIOUS] })
+
+    const table = screen.getByRole('table', { name: /configuration differences/i })
+    expect(within(table).getByText('On')).toBeInTheDocument()
+    expect(within(table).getByText('Off')).toBeInTheDocument()
+  })
+
+  it('names the settings that were never captured', () => {
+    setup({ runs: [COMPLETED_RUN, PREVIOUS] })
+
+    expect(screen.getByText(/Not captured/)).toBeInTheDocument()
+    expect(screen.getByText(/Embedding model/)).toBeInTheDocument()
+  })
+
+  it('stays silent when the two runs agree', () => {
+    setup({ runs: [COMPLETED_RUN, { ...COMPLETED_RUN, run_id: 'r-1' }] })
+
+    expect(screen.queryByText('Configuration changed between runs')).not.toBeInTheDocument()
+  })
+})
+
+// ── Per-item drill-down ───────────────────────────────────────────────────
+
+describe('EvalPanel per-item table', () => {
+  it('lists the failures first', () => {
+    setup()
+
+    const table = screen.getByRole('table', { name: /per-item retrieval results/i })
+    const rows = within(table).getAllByRole('row').slice(1)
+    expect(within(rows[0]).getByText('never found')).toBeInTheDocument()
+  })
+
+  it('renders a missing rank as a dash', () => {
+    setup()
+
+    const table = screen.getByRole('table', { name: /per-item retrieval results/i })
+    expect(within(table).getByText('—')).toBeInTheDocument()
+  })
+
+  it('marks an unlabelled item as excluded rather than as a failure', () => {
+    setup({
+      run: {
+        ...COMPLETED_RUN,
+        per_item: [{ item_id: 'i-3', query: 'unlabelled', skipped: true }],
+      },
+    })
+
+    expect(screen.getByText(/excluded from every average/)).toBeInTheDocument()
+  })
+})
+
+// ── History ───────────────────────────────────────────────────────────────
+
+describe('EvalPanel run history', () => {
+  it('explains itself rather than drawing a chart from one point', () => {
+    setup()
+
+    expect(screen.getByText(/Two completed runs are needed/)).toBeInTheDocument()
+  })
+})
+
+// ── diffSnapshots ─────────────────────────────────────────────────────────
+
+describe('diffSnapshots', () => {
+  it('reports only the keys that differ', () => {
+    const diff = diffSnapshots({ a: 1, b: 2 }, { a: 1, b: 3 })
+    expect(diff).toEqual([{ key: 'b', current: 2, previous: 3 }])
+  })
+
+  it('treats a key present in only one snapshot as a difference', () => {
+    expect(diffSnapshots({ a: 1 }, {})).toEqual([{ key: 'a', current: 1, previous: undefined }])
+  })
+
+  it('never compares the unobserved list itself', () => {
+    // Two runs that both failed to capture the embedding model have not been
+    // shown to share one, so `unobserved` is not a setting to diff.
+    expect(diffSnapshots({ unobserved: ['x'] }, { unobserved: ['y'] })).toEqual([])
+  })
+})

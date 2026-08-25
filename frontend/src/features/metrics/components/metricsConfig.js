@@ -1,17 +1,25 @@
 /** Section definitions, labels, units, formatters and thresholds. */
 
-import { Activity, Gauge, Search, ShieldCheck, Workflow } from 'lucide-react'
+import { Activity, FlaskConical, Gauge, Search, ShieldCheck, Workflow } from 'lucide-react'
 
 /** Shown wherever the API returned null — "not measured", not "zero". */
 export const EMPTY = '—'
 
-/** Sub-nav sections. One entry per panel, in display order. */
+/**
+ * Sub-nav sections. One entry per panel, in display order.
+ *
+ * `standalone` marks a section that owns its own data loading instead of
+ * going through `useMetrics`. Eval is not a windowed aggregation — a run is
+ * a document with its own lifecycle — so the window and tenant selectors do
+ * not apply to it.
+ */
 export const METRICS_SECTIONS = [
   { id: 'overview', label: 'Overview', icon: Gauge },
   { id: 'latency', label: 'Latency', icon: Activity },
   { id: 'retrieval', label: 'Retrieval', icon: Search },
   { id: 'quality', label: 'Quality', icon: ShieldCheck },
   { id: 'pipeline', label: 'Pipeline', icon: Workflow },
+  { id: 'eval', label: 'Eval', icon: FlaskConical, standalone: true },
 ]
 
 export const WINDOW_OPTIONS = [
@@ -197,6 +205,7 @@ export const METRIC_LABELS = {
   kafka_consumer_lag: 'Consumer lag',
   stuck_files: 'Stuck in processing',
   vectors: 'Vectors indexed',
+  recall_at_5: 'Recall@5',
 }
 
 /** Shown beside any figure Prometheus supplies: these carry no tenant label. */
@@ -212,4 +221,87 @@ export const PROM_UNAVAILABLE = {
   title: 'Metrics store unavailable',
   description:
     'Prometheus is not reachable, so live time-series widgets are hidden. Stored per-turn metrics are unaffected.',
+}
+
+// ---------------------------------------------------------------------------
+// Eval harness
+// ---------------------------------------------------------------------------
+
+/** The k values every run reports. Fixed by the stored `results` shape. */
+export const EVAL_K_VALUES = [1, 3, 5, 10, 20]
+
+/** The k the run-history chart tracks — deep enough to be stable, shallow
+ *  enough that a real ranking change still moves it. */
+export const EVAL_HISTORY_K = '5'
+
+export const RUN_STATUS_LABELS = {
+  running: 'Running',
+  completed: 'Completed',
+  failed: 'Failed',
+}
+
+export const RUN_STATUS_VARIANTS = {
+  running: 'info',
+  completed: 'success',
+  failed: 'danger',
+}
+
+export const EVAL_METRIC_LABELS = {
+  mrr: 'MRR',
+  ndcg_at_10: 'nDCG@10',
+  recall_at_k: 'Recall@k',
+  precision_at_k: 'Precision@k',
+  hit_rate_at_k: 'Hit rate@k',
+  items_evaluated: 'Items scored',
+  items_skipped: 'Items skipped',
+  items_failed: 'Items failed',
+  mean_latency_ms: 'Mean retrieval latency',
+}
+
+export const CONFIG_SNAPSHOT_LABELS = {
+  top_k_documents: 'Top-k documents',
+  reranker_enabled: 'Reranker',
+  reranker_top_k: 'Reranker top-k',
+  hybrid_search_enabled: 'Hybrid search',
+  hybrid_search_alpha: 'Hybrid alpha',
+  min_similarity_threshold: 'Min similarity',
+  embedding_model: 'Embedding model',
+  vector_collection: 'Vector collection',
+  chunk_strategy: 'Chunk strategy',
+}
+
+export const MATCH_MODE_LABELS = {
+  chunk_id: 'Chunk-level',
+  file_id: 'File-level',
+  mixed: 'Mixed',
+}
+
+/** Shown whenever the two most recent runs ran under different settings. */
+export const CONFIG_DIFF_NOTE =
+  'These runs used different retrieval settings, so the difference between ' +
+  'their scores is not a measure of retrieval quality alone.'
+
+/** Shown for snapshot fields the rag service cannot observe. */
+export const UNOBSERVED_NOTE =
+  'Not captured — the rag service cannot see this setting, so two runs ' +
+  'cannot be compared on it.'
+
+/** Shown beside file-level runs, which score more generously than chunk-level. */
+export const FILE_MATCH_NOTE =
+  'Scored at file level: any chunk from a relevant file counts as a hit, ' +
+  'which reads higher than chunk-level matching on the same retrieval.'
+
+/** The empty state's explainer. A golden set is hand-built, and saying so is
+ *  more useful than a button that implies otherwise. */
+export const GOLDEN_SET_HELP = [
+  'Pick 20–50 real questions your users actually ask.',
+  'For each one, open the documents and record the chunk ids that genuinely answer it.',
+  'Upload them as JSON. Re-run after any retrieval change to see the effect.',
+]
+
+/** Render a boolean setting as a word rather than "true"/"false". */
+export function formatSetting(value) {
+  if (value === null || value === undefined || value === '') return EMPTY
+  if (typeof value === 'boolean') return value ? 'On' : 'Off'
+  return String(value)
 }
