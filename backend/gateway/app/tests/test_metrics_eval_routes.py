@@ -9,7 +9,7 @@ than truncated into a dataset that produces confident, wrong recall numbers.
 from __future__ import annotations
 
 from types import SimpleNamespace
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, cast
 
 import pytest
 from fastapi import FastAPI
@@ -91,7 +91,19 @@ def build_service(override: Optional[Dict[str, Any]] = None) -> MetricsService:
         short_timeout=5.0,
         default_timeout=30.0,
     )
-    return MetricsService(DummyRPCClient(override), DummyLogger(), config, DummyPrometheus())
+    # Structural doubles, not subclasses: the constructor's nominal types have
+    # to be cast away. The service under test is still the real one.
+    return MetricsService(
+        cast(Any, DummyRPCClient(override)),
+        cast(Any, DummyLogger()),
+        cast(Any, config),
+        cast(Any, DummyPrometheus()),
+    )
+
+
+def rpc_calls(service: MetricsService) -> List[Any]:
+    """Calls recorded by the RPC double behind the service."""
+    return cast(List[Any], cast(Any, service.rpc_client).calls)
 
 
 def build_app(service, *, role: str = "admin") -> FastAPI:
@@ -108,7 +120,7 @@ def build_app(service, *, role: str = "admin") -> FastAPI:
 
 
 def last_payload(service) -> Dict[str, Any]:
-    return service.rpc_client.calls[-1]["payload"]
+    return cast(Dict[str, Any], rpc_calls(service)[-1]["payload"])
 
 
 # ── The seven routes ──────────────────────────────────────────────────────
@@ -233,7 +245,7 @@ def test_regular_users_are_forbidden_on_every_eval_route(method, path, body):
 
     assert response.status_code == 403
     # Refused before any RPC: a forbidden request must not reach rag at all.
-    assert service.rpc_client.calls == []
+    assert rpc_calls(service) == []
 
 
 # ── Upload validation ─────────────────────────────────────────────────────
@@ -249,7 +261,7 @@ def test_an_oversized_dataset_is_rejected_before_any_rpc():
         )
 
     assert response.status_code == 422
-    assert service.rpc_client.calls == []
+    assert rpc_calls(service) == []
 
 
 def test_an_item_without_ground_truth_is_rejected():
@@ -261,7 +273,7 @@ def test_an_item_without_ground_truth_is_rejected():
         response = client.post("/v1/metrics/eval/datasets", json=body)
 
     assert response.status_code == 422
-    assert service.rpc_client.calls == []
+    assert rpc_calls(service) == []
 
 
 @pytest.mark.parametrize(
@@ -279,7 +291,7 @@ def test_malformed_uploads_are_rejected(body):
         response = client.post("/v1/metrics/eval/datasets", json=body)
 
     assert response.status_code == 422
-    assert service.rpc_client.calls == []
+    assert rpc_calls(service) == []
 
 
 def test_a_run_defaults_to_the_free_retrieval_mode():
@@ -310,7 +322,7 @@ def test_an_unknown_run_mode_is_refused_before_it_costs_an_rpc():
         )
 
     assert response.status_code == 422
-    assert service.rpc_client.calls == []
+    assert rpc_calls(service) == []
 
 
 def test_a_retrieval_estimate_is_zero_because_no_model_is_called():
@@ -325,7 +337,7 @@ def test_a_retrieval_estimate_is_zero_because_no_model_is_called():
     assert body["calls_per_item"] == 0
     assert body["estimated_cost_usd"] == 0.0
     # Pure arithmetic in the gateway: estimating must not touch rag.
-    assert service.rpc_client.calls == []
+    assert rpc_calls(service) == []
 
 
 def test_an_end_to_end_estimate_reports_tokens_and_whether_the_model_is_priced():

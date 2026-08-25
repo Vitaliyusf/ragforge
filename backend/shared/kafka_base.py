@@ -221,6 +221,8 @@ class BaseKafkaConsumer:
         Never raises. Lag is a monitoring side-effect of consuming, and a
         metrics failure must not stop a service from processing its messages.
         """
+        if self._consumer is None:
+            return
         try:
             partition = TopicPartition(message.topic, message.partition)
             observe_kafka_consumer_lag(

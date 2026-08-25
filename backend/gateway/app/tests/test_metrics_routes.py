@@ -9,7 +9,7 @@ whole point of the route contract.
 from __future__ import annotations
 
 from types import SimpleNamespace
-from typing import Any, Dict, List
+from typing import Any, Dict, List, cast
 
 import pytest
 from fastapi import FastAPI
@@ -116,12 +116,24 @@ def build_service(*, prometheus_available: bool = True) -> MetricsService:
         short_timeout=5.0,
         default_timeout=30.0,
     )
+    # The doubles are structural stand-ins, not subclasses, so the constructor's
+    # nominal types have to be cast away. The service under test is still real.
     return MetricsService(
-        DummyRPCClient(),
-        DummyLogger(),
-        config,
-        DummyPrometheus(available=prometheus_available),
+        cast(Any, DummyRPCClient()),
+        cast(Any, DummyLogger()),
+        cast(Any, config),
+        cast(Any, DummyPrometheus(available=prometheus_available)),
     )
+
+
+def rpc_calls(service: MetricsService) -> List[Any]:
+    """Calls recorded by the RPC double behind the service."""
+    return cast(List[Any], cast(Any, service.rpc_client).calls)
+
+
+def prom_queries(service: MetricsService) -> List[Any]:
+    """Queries recorded by the Prometheus double behind the service."""
+    return cast(List[Any], cast(Any, service.prometheus).queries)
 
 
 def build_app(service, *, role: str = "admin") -> FastAPI:
@@ -267,7 +279,7 @@ def test_regular_users_are_forbidden(route):
         response = client.get(f"/v1/metrics/{route}")
 
     assert response.status_code == 403
-    assert service.rpc_client.calls == []
+    assert rpc_calls(service) == []
 
 
 @pytest.mark.parametrize("window", ["5m", "1y", "24h; drop", "", "rate(x[1h])"])
@@ -280,8 +292,8 @@ def test_invalid_window_is_rejected_before_any_query(window):
         response = client.get(f"/v1/metrics/overview?window={window}")
 
     assert response.status_code == 422
-    assert service.rpc_client.calls == []
-    assert service.prometheus.queries == []
+    assert rpc_calls(service) == []
+    assert prom_queries(service) == []
 
 
 @pytest.mark.parametrize("window", ["1h", "24h", "7d", "30d"])
@@ -305,5 +317,5 @@ def test_window_is_forwarded_to_the_downstream_service():
     with TestClient(app) as client:
         client.get("/v1/metrics/quality?window=7d")
 
-    assert service.rpc_client.calls[0]["payload"]["window"] == "7d"
-    assert service.rpc_client.calls[0]["payload"]["action"] == "get_metrics"
+    assert rpc_calls(service)[0]["payload"]["window"] == "7d"
+    assert rpc_calls(service)[0]["payload"]["action"] == "get_metrics"
