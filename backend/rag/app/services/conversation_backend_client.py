@@ -10,7 +10,7 @@ from app.messaging.rpc_client import RabbitMQRPCClient
 from app.services.conversation_messages import (
     base_llm_metadata,
     build_message_envelope,
-    chunk_text_context,
+    chunk_passages,
     conversation_history,
     extract_reply_payload,
     extract_stream_event,
@@ -104,7 +104,12 @@ class ConversationBackendClient:
         retrieved_chunks: Any,
         mode: str,
     ) -> Dict[str, Any]:
-        """Build the typed llm-agent payload for answer evaluation."""
+        """Build the typed llm-agent payload for answer evaluation.
+
+        ``reference_context`` carries passage ids so the judge can name the
+        passages supporting each claim in the same namespace the answer's
+        citation markers resolve to.
+        """
         return {
             "request_type": "answer_evaluation",
             "model": request.model,
@@ -113,7 +118,7 @@ class ConversationBackendClient:
             "input": {
                 "question": request.user_message,
                 "answer": answer,
-                "reference_context": chunk_text_context(retrieved_chunks),
+                "reference_context": chunk_passages(retrieved_chunks),
             },
         }
 

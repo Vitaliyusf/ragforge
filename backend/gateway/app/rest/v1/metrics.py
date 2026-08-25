@@ -22,7 +22,7 @@ from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field, model_validator
 
 from app.core.auth import require_admin
-from app.core.constants import MetricsWindow
+from app.core.constants import EvalRunMode, MetricsWindow
 from app.core.deps import get_metrics_service
 from app.core.errors import handle_exception
 from app.services.metrics_service import MetricsService
@@ -48,6 +48,10 @@ class EvalItemIn(BaseModel):
     query: str = Field(min_length=1, max_length=EVAL_MAX_QUERY_LENGTH)
     relevant_chunk_ids: List[str] = Field(default_factory=list)
     relevant_file_ids: List[str] = Field(default_factory=list)
+    # Read only by an `end_to_end` run. A dataset without them stays a valid
+    # retrieval golden set and scores exactly as it did before.
+    expected_answer: Optional[str] = Field(default=None, max_length=EVAL_MAX_QUERY_LENGTH)
+    expected_claims: List[str] = Field(default_factory=list)
     notes: Optional[str] = None
 
     @model_validator(mode="after")
@@ -81,9 +85,22 @@ class EvalDatasetUpdate(BaseModel):
 
 
 class EvalRunCreate(BaseModel):
-    """Start a run over one dataset."""
+    """Start a run over one dataset.
+
+    ``mode`` defaults to ``retrieval``: the free, LLM-free run stays what a
+    caller gets by saying nothing.
+    """
 
     dataset_id: str = Field(min_length=1)
+    mode: EvalRunMode = EvalRunMode.RETRIEVAL
+
+
+class EvalCostEstimate(BaseModel):
+    """Ask what a run would cost before starting it."""
+
+    item_count: int = Field(ge=0, le=EVAL_MAX_ITEMS)
+    mode: EvalRunMode = EvalRunMode.RETRIEVAL
+    model: Optional[str] = Field(default=None, max_length=EVAL_MAX_NAME_LENGTH)
 
 
 @router.get("/overview", dependencies=[Depends(require_admin)])
@@ -225,7 +242,24 @@ async def start_eval_run(
     ``GET /eval/runs/{run_id}`` until the status is terminal.
     """
     try:
-        return await service.start_eval_run(body.dataset_id)
+        return await service.start_eval_run(body.dataset_id, body.mode.value)
+    except Exception as exc:
+        raise handle_exception(exc)
+
+
+@router.post("/eval/runs/estimate", dependencies=[Depends(require_admin)])
+async def estimate_eval_run_cost(
+    body: EvalCostEstimate,
+    service: MetricsService = Depends(get_metrics_service),
+) -> Dict[str, Any]:
+    """Estimate a run's token spend before it starts.
+
+    Pure arithmetic over the gateway's pricing table — no RPC, no run
+    created. An `end_to_end` run is the expensive one, and an admin is shown
+    this before they can start it.
+    """
+    try:
+        return service.estimate_eval_cost(body.item_count, body.mode.value, body.model or "")
     except Exception as exc:
         raise handle_exception(exc)
 

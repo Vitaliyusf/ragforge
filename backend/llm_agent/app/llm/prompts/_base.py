@@ -15,7 +15,9 @@ from app.core.config import Settings
 from app.schemas.llm import ModelExecutionRequest
 
 PromptBuilder = Callable[[ModelExecutionRequest], "PromptRenderResult"]
-PromptParser = Callable[[str], Any]
+# Parsers take the raw model output, and optionally the originating request
+# when they declare ``parser_accepts_request``.
+PromptParser = Callable[..., Any]
 ModelResolver = Callable[[Settings], str]
 
 STRUCTURED_OUTPUT_DEBUG_PREFIX = "__structured_output_debug__:"
@@ -39,6 +41,10 @@ class PromptRegistryEntry:
     output_model: Type[BaseModel]
     streaming_allowed: bool = False
     structured_output_required: bool = False
+    # Parsers are called with the raw output only. A parser that must resolve
+    # something back to the request (citation markers to passages) declares it
+    # here rather than having the caller inspect its signature.
+    parser_accepts_request: bool = False
 
 
 @dataclass(frozen=True)
@@ -70,8 +76,66 @@ def _format_context(context: Any) -> str:
     if context is None:
         return "None"
     if isinstance(context, list):
-        return "\n\n".join(str(item) for item in context)
+        return "\n\n".join(_passage_text(item) for item in context)
     return str(context)
+
+
+def _passage_text(item: Any) -> str:
+    """Return the prose of one context item, whether string or ContextPassage."""
+    text = getattr(item, "text", None)
+    if text is not None:
+        return str(text)
+    if isinstance(item, dict) and "text" in item:
+        return str(item["text"])
+    return str(item)
+
+
+def _context_passages(context: Any) -> List[Dict[str, Optional[str]]]:
+    """Normalize a context input into an ordered list of citable passages.
+
+    Index order is the citation contract: the passage at position ``i`` is what
+    a ``[i + 1]`` marker in the answer refers to. A bare string or list of
+    strings carries no ids, so ``source_id`` comes back None and a citation
+    extracted against it can report only its marker.
+
+    Returns:
+        One dict per passage with ``source_id``, ``text`` and ``locator``.
+    """
+    if context is None:
+        return []
+    items = context if isinstance(context, list) else [context]
+    passages: List[Dict[str, Optional[str]]] = []
+    for item in items:
+        if isinstance(item, dict):
+            source_id = item.get("source_id")
+            locator = item.get("locator")
+        else:
+            source_id = getattr(item, "source_id", None)
+            locator = getattr(item, "locator", None)
+        passages.append(
+            {
+                "source_id": None if source_id is None else str(source_id),
+                "text": _passage_text(item),
+                "locator": None if locator is None else str(locator),
+            }
+        )
+    return passages
+
+
+def _format_numbered_context(context: Any) -> str:
+    """Render context as ``[n] text`` blocks so the model can cite by number.
+
+    Numbering is 1-based and matches :func:`_context_passages` position for
+    position; the two must stay in step or every extracted citation points at
+    the wrong passage.
+    """
+    passages = _context_passages(context)
+    if not passages:
+        return "None"
+    return "\n\n".join(
+        f"[{index}] {passage['text']}"
+        for index, passage in enumerate(passages, start=1)
+    )
 
 
 # ---------------------------------------------------------------------------

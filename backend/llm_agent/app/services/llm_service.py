@@ -232,7 +232,11 @@ class LLMService(BaseService):
                     metadata={"structured_output_required": entry.structured_output_required},
                 ) as span:
                     try:
-                        parsed_payload = entry.parser(raw_output)
+                        parsed_payload = (
+                            entry.parser(raw_output, request)
+                            if entry.parser_accepts_request
+                            else entry.parser(raw_output)
+                        )
                         if isinstance(parsed_payload, StructuredExtractionResult):
                             structured_output_debug = parsed_payload.metadata
                             parsed_payload = parsed_payload.payload
@@ -546,6 +550,14 @@ class LLMService(BaseService):
             except (TypeError, ValueError):
                 return None
 
+        def _to_int_or_none(v: Any) -> Any:
+            if v is None:
+                return None
+            try:
+                return int(v)
+            except (TypeError, ValueError):
+                return None
+
         return {
             "review_id": str(parsed_payload.get("review_id") or f"review_{request_message.request_id}"),
             "verdict": verdict,
@@ -553,6 +565,11 @@ class LLMService(BaseService):
             "completeness_score": _to_float_or_none(parsed_payload.get("completeness_score")),
             "safety_score": _to_float_or_none(parsed_payload.get("safety_score")),
             "issues": parsed_payload.get("issues") or [],
+            "claims": parsed_payload.get("claims") or [],
+            "unsupported_claim_count": _to_int_or_none(
+                parsed_payload.get("unsupported_claim_count")
+            ),
+            "hallucination_verdict": parsed_payload.get("hallucination_verdict"),
             "revision_applied": bool(parsed_payload.get("revision_applied", False)),
             "model_name": resolved_model,
             "created_at": int(time.time() * 1000),

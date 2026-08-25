@@ -21,6 +21,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
 from app.core.config import RAGConfig
+from app.services.citation_metrics import citation_f1
 from app.services.metrics_facts import MetricsFactStore
 from shared.auth import AuthIdentity, identity_from_context
 
@@ -52,6 +53,14 @@ CHUNK_BOUNDARIES: List[int] = [0, 1, 3, 5, 8, 13, 21]
 # interesting question is "was the top chunk actually distinguishable", and
 # that is decided between 0.0 and 0.2, not between 0.6 and 0.8.
 SCORE_GAP_BOUNDARIES: List[float] = [0.0, 0.05, 0.1, 0.2, 0.4, 1.01]
+
+# The judge's hallucination vocabulary, mirrored from
+# ``llm_agent.app.llm.prompts.answer_evaluation.HALLUCINATION_VERDICTS``.
+# rag cannot import llm_agent code, so the values are restated here and the
+# two must stay in step.
+HALLUCINATION_VERDICTS = ("none", "minor", "severe")
+HALLUCINATING_VERDICTS = ("minor", "severe")
+SEVERE_VERDICT = "severe"
 
 # The rating values the answer-feedback control actually emits.
 POSITIVE_RATING = "positive"
@@ -243,15 +252,25 @@ class MetricsQueryService:
     def quality(self, window: str, tenant_id: Optional[str] = None) -> Dict[str, Any]:
         """Return score distributions, confidence mix, and quality rates.
 
-        Citation coverage is deliberately absent: ``citation_count`` and
-        ``cited_chunk_ratio`` are always None until phase 6, because the app
-        emits no citations yet.
+        **Two hallucination measures are returned, never blended.**
+        ``hallucination_rate`` is the real one: the share of judged turns
+        whose claim-level ``hallucination_verdict`` is not "none". Turns
+        written before phase 6 have no verdict at all, so they are excluded
+        from it and counted in ``turns_without_verdict``.
+        ``hallucination_rate_proxy_groundedness`` is the older threshold over
+        a single judge score, kept because a window spanning the phase-6
+        deploy has turns that only it can describe. Each comes with its own
+        denominator; averaging one into the other would report a number that
+        measures nothing.
 
-        Returns:
-            A dict whose hallucination figure is named
-            ``hallucination_rate_proxy_groundedness`` and is accompanied by
-            the threshold that defines it. It is a threshold over a single
-            judge score, not a claim-level measurement.
+        Citation precision and recall are means over the turns that have
+        them, each with the count of turns excluded for having no measurement
+        — an answer that cited nothing has no precision, and scoring it 0.0
+        would conflate "cited badly" with "did not cite".
+
+        ``citation_f1`` is the harmonic mean **of the two means**, not the
+        mean of per-turn F1s: the two means have different denominators, so
+        no per-turn F1 exists for every turn either of them covers.
         """
         identity = _require_admin()
         window = _validate_window(window)
@@ -265,6 +284,11 @@ class MetricsQueryService:
                     "safety_histogram": self._score_facet("safety"),
                     "confidence": [
                         {"$group": {"_id": "$confidence", "count": {"$sum": 1}}},
+                        {"$sort": {"_id": 1}},
+                    ],
+                    "hallucination": [
+                        {"$match": {"hallucination_verdict": {"$ne": None}}},
+                        {"$group": {"_id": "$hallucination_verdict", "count": {"$sum": 1}}},
                         {"$sort": {"_id": 1}},
                     ],
                     "totals": [
@@ -308,6 +332,86 @@ class MetricsQueryService:
                                     }
                                 },
                                 "mean_groundedness": {"$avg": "$groundedness"},
+                                "verdict_turns": {
+                                    "$sum": {
+                                        "$cond": [
+                                            {"$ne": ["$hallucination_verdict", None]}, 1, 0
+                                        ]
+                                    }
+                                },
+                                "hallucinated_turns": {
+                                    "$sum": {
+                                        "$cond": [
+                                            {
+                                                "$in": [
+                                                    "$hallucination_verdict",
+                                                    list(HALLUCINATING_VERDICTS),
+                                                ]
+                                            },
+                                            1,
+                                            0,
+                                        ]
+                                    }
+                                },
+                                "severe_turns": {
+                                    "$sum": {
+                                        "$cond": [
+                                            {
+                                                "$eq": [
+                                                    "$hallucination_verdict",
+                                                    SEVERE_VERDICT,
+                                                ]
+                                            },
+                                            1,
+                                            0,
+                                        ]
+                                    }
+                                },
+                                "mean_unsupported_claims": {
+                                    "$avg": "$unsupported_claim_count"
+                                },
+                                "unsupported_claim_turns": {
+                                    "$sum": {
+                                        "$cond": [
+                                            {"$ne": ["$unsupported_claim_count", None]}, 1, 0
+                                        ]
+                                    }
+                                },
+                                "mean_citation_precision": {"$avg": "$citation_precision"},
+                                "citation_precision_turns": {
+                                    "$sum": {
+                                        "$cond": [
+                                            {"$ne": ["$citation_precision", None]}, 1, 0
+                                        ]
+                                    }
+                                },
+                                "mean_citation_recall": {"$avg": "$citation_recall"},
+                                "citation_recall_turns": {
+                                    "$sum": {
+                                        "$cond": [{"$ne": ["$citation_recall", None]}, 1, 0]
+                                    }
+                                },
+                                "mean_citation_count": {"$avg": "$citation_count"},
+                                "mean_cited_chunk_ratio": {"$avg": "$cited_chunk_ratio"},
+                                "cited_turns": {
+                                    "$sum": {
+                                        "$cond": [
+                                            {
+                                                "$and": [
+                                                    {"$ne": ["$citation_count", None]},
+                                                    {"$gt": ["$citation_count", 0]},
+                                                ]
+                                            },
+                                            1,
+                                            0,
+                                        ]
+                                    }
+                                },
+                                "citation_evaluated_turns": {
+                                    "$sum": {
+                                        "$cond": [{"$ne": ["$citation_count", None]}, 1, 0]
+                                    }
+                                },
                             }
                         }
                     ],
@@ -316,8 +420,13 @@ class MetricsQueryService:
         ]
         facets = _first(self.store.aggregate(pipeline))
         totals = _first(facets.get("totals") or [])
+        turns = totals.get("turns", 0)
+        verdict_turns = totals.get("verdict_turns", 0)
+        precision = totals.get("mean_citation_precision")
+        recall = totals.get("mean_citation_recall")
+        citation_evaluated = totals.get("citation_evaluated_turns", 0)
         return {
-            "turns": totals.get("turns", 0),
+            "turns": turns,
             "scored_turns": totals.get("scored_turns", 0),
             "mean_groundedness": totals.get("mean_groundedness"),
             "groundedness_histogram": _histogram(
@@ -333,10 +442,50 @@ class MetricsQueryService:
                 {"level": row.get("_id"), "count": row.get("count", 0)}
                 for row in (facets.get("confidence") or [])
             ],
+            # The real, claim-level measure. None when no turn in the window
+            # carries a verdict, which is what every pre-phase-6 window looks
+            # like.
+            "hallucination_rate": _ratio(
+                totals.get("hallucinated_turns", 0), verdict_turns
+            ),
+            "hallucination_severe_rate": _ratio(
+                totals.get("severe_turns", 0), verdict_turns
+            ),
+            "hallucination_verdict_mix": [
+                {"verdict": row.get("_id"), "count": row.get("count", 0)}
+                for row in (facets.get("hallucination") or [])
+            ],
+            "hallucination_verdict_turns": verdict_turns,
+            # Turns the real measure cannot describe: written before the
+            # verdict existed, or judged without one. The UI says so rather
+            # than folding them into either rate.
+            "turns_without_verdict": max(turns - verdict_turns, 0),
+            "mean_unsupported_claims": totals.get("mean_unsupported_claims"),
+            "unsupported_claim_turns": totals.get("unsupported_claim_turns", 0),
+            # The older proxy, kept and clearly named. A threshold over one
+            # judge score is not a claim-level measurement, and a window
+            # spanning the phase-6 deploy contains turns only it covers.
             "hallucination_rate_proxy_groundedness": _ratio(
                 totals.get("below_threshold", 0), totals.get("scored_turns", 0)
             ),
             "hallucination_groundedness_threshold": threshold,
+            "mean_citation_precision": precision,
+            "mean_citation_recall": recall,
+            "citation_f1": citation_f1(precision, recall),
+            # Denominators travel with the means: a precision of 1.0 over two
+            # answers and one over two hundred are different claims.
+            "citation_precision_turns": totals.get("citation_precision_turns", 0),
+            "citation_precision_excluded": max(
+                citation_evaluated - totals.get("citation_precision_turns", 0), 0
+            ),
+            "citation_recall_turns": totals.get("citation_recall_turns", 0),
+            "citation_recall_excluded": max(
+                citation_evaluated - totals.get("citation_recall_turns", 0), 0
+            ),
+            "citation_evaluated_turns": citation_evaluated,
+            "mean_citation_count": totals.get("mean_citation_count"),
+            "mean_cited_chunk_ratio": totals.get("mean_cited_chunk_ratio"),
+            "answers_with_citations": totals.get("cited_turns", 0),
             "revision_rate": _ratio(
                 totals.get("revised", 0), totals.get("revision_evaluated", 0)
             ),
@@ -503,8 +652,12 @@ class MetricsQueryService:
         """Return the lowest-groundedness turns in the window.
 
         Identifiers and scores only. No message or answer text leaves this
-        method — an operational metrics tab does not need to reproduce
-        conversation content to show which turns scored badly.
+        method — and no claim text either: the unsupported-claim *count* and
+        the verdict travel, the claims themselves never do.
+
+        Sorted worst-first by groundedness, with the unsupported-claim count
+        breaking ties so that two equally ungrounded turns are ordered by how
+        much of the answer the judge could not support.
         """
         identity = _require_admin()
         window = _validate_window(window)
@@ -513,7 +666,7 @@ class MetricsQueryService:
         match["groundedness"] = {"$ne": None}
         pipeline = [
             {"$match": match},
-            {"$sort": {"groundedness": 1}},
+            {"$sort": {"groundedness": 1, "unsupported_claim_count": -1}},
             {"$limit": capped},
             {
                 "$project": {
@@ -525,6 +678,9 @@ class MetricsQueryService:
                     "completeness": 1,
                     "safety": 1,
                     "confidence": 1,
+                    "unsupported_claim_count": 1,
+                    "hallucination_verdict": 1,
+                    "citation_precision": 1,
                 }
             },
         ]

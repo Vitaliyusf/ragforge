@@ -22,6 +22,7 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from app.core.constants import (
     DEFAULT_MODEL_COST_PER_1K_TOKENS,
+    EVAL_END_TO_END_TOKENS_PER_ITEM,
     MODEL_COST_PER_1K_TOKENS,
     FileAction,
     MetricsWindow,
@@ -308,14 +309,71 @@ class MetricsService(BaseRPCService):
             RagAction.DELETE_EVAL_DATASET, {"dataset_id": dataset_id}
         )
 
-    async def start_eval_run(self, dataset_id: str) -> Dict[str, Any]:
+    async def start_eval_run(
+        self,
+        dataset_id: str,
+        mode: str = "retrieval",
+    ) -> Dict[str, Any]:
         """Start a run and return its ``run_id`` immediately.
 
         Uses the short timeout on purpose: rag opens the run document and
         returns, executing it in the background, so this call is fast even
         for a 200-item dataset. The client polls :meth:`get_eval_run`.
+
+        Args:
+            dataset_id: The dataset to run.
+            mode: ``retrieval`` (default, LLM-free and free of charge) or
+                ``end_to_end``, which generates and judges an answer per
+                item. rag validates the value again on arrival.
         """
-        return await self._eval(RagAction.START_EVAL_RUN, {"dataset_id": dataset_id})
+        return await self._eval(
+            RagAction.START_EVAL_RUN, {"dataset_id": dataset_id, "mode": mode}
+        )
+
+    @staticmethod
+    def estimate_eval_cost(item_count: int, mode: str, model: str) -> Dict[str, Any]:
+        """Estimate what one eval run will spend, for the pre-run warning.
+
+        A ``retrieval`` run costs nothing — it never calls a model — and is
+        reported as exactly that rather than as a small number.
+
+        The token figures are coarse per-item averages from
+        ``EVAL_END_TO_END_TOKENS_PER_ITEM``, not a measurement, and
+        ``model_priced`` is False whenever the model is missing from
+        ``MODEL_COST_PER_1K_TOKENS``. A $0.00 estimate with
+        ``model_priced: False`` means "this model has no configured price",
+        not "this run is free"; the UI must say which it is showing.
+        """
+        if mode != "end_to_end":
+            return {
+                "mode": mode,
+                "item_count": item_count,
+                "calls_per_item": 0,
+                "estimated_tokens_in": 0,
+                "estimated_tokens_out": 0,
+                "estimated_cost_usd": 0.0,
+                "model": None,
+                "model_priced": True,
+            }
+        tokens_in, tokens_out = EVAL_END_TO_END_TOKENS_PER_ITEM
+        total_in = tokens_in * item_count
+        total_out = tokens_out * item_count
+        price = MODEL_COST_PER_1K_TOKENS.get(model or "")
+        priced = price is not None
+        if price is None:
+            price = DEFAULT_MODEL_COST_PER_1K_TOKENS
+        return {
+            "mode": mode,
+            "item_count": item_count,
+            # One generation call and one judge call per item.
+            "calls_per_item": 2,
+            "estimated_tokens_in": total_in,
+            "estimated_tokens_out": total_out,
+            "estimated_cost_usd": (total_in * price[0] + total_out * price[1])
+            / TOKENS_PER_COST_UNIT,
+            "model": model or None,
+            "model_priced": priced,
+        }
 
     async def list_eval_runs(
         self,

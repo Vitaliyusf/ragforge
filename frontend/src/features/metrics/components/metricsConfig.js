@@ -173,6 +173,19 @@ export const CONFIDENCE_LABELS = {
   low: 'Low',
 }
 
+/** The judge's claim-level hallucination verdicts. */
+export const HALLUCINATION_VERDICT_LABELS = {
+  none: 'None',
+  minor: 'Minor',
+  severe: 'Severe',
+}
+
+export const HALLUCINATION_VERDICT_VARIANTS = {
+  none: 'success',
+  minor: 'warning',
+  severe: 'danger',
+}
+
 /** Fall back to the raw key rather than hiding an unmapped label. */
 export function labelFor(map, key) {
   if (!key) return 'Unknown'
@@ -187,10 +200,20 @@ export const METRIC_LABELS = {
   mean_groundedness: 'Mean groundedness',
   thumbs_up_rate: 'Thumbs-up rate',
   estimated_cost_usd: 'Estimated cost',
-  // Deliberately not "Hallucination rate": this is a threshold over the
-  // judge's groundedness score, not a claim-level measurement. Phase 6
-  // replaces it with a real one.
+  // Two different measures, never merged into one number. The first is the
+  // claim-level judgement; the second is the older threshold over a single
+  // groundedness score, kept for turns recorded before the judge returned
+  // verdicts. Their labels say which is which because their denominators
+  // are different populations.
+  hallucination_rate: 'Hallucination rate',
+  hallucination_severe_rate: 'Severe hallucinations',
   hallucination_rate_proxy_groundedness: 'Hallucination rate (proxy)',
+  mean_unsupported_claims: 'Unsupported claims per answer',
+  mean_citation_precision: 'Citation precision',
+  mean_citation_recall: 'Citation recall',
+  citation_f1: 'Citation F1',
+  mean_citation_count: 'Citations per answer',
+  mean_cited_chunk_ratio: 'Chunks cited',
   revision_rate: 'Revision rate',
   guardrail_block_rate: 'Guardrail block rate',
   hit_rate: 'Retrieval hit rate',
@@ -207,6 +230,23 @@ export const METRIC_LABELS = {
   vectors: 'Vectors indexed',
   recall_at_5: 'Recall@5',
 }
+
+/**
+ * Shown when a window contains turns from both before and after the phase-6
+ * deploy. The two hallucination measures count different populations, so the
+ * panel shows both and says so rather than averaging them into one figure
+ * that describes neither.
+ */
+export const MIXED_HALLUCINATION_NOTE =
+  'Some turns in this window predate claim-level judging and carry no ' +
+  'verdict. The two rates below count different turns and must not be ' +
+  'compared or combined.'
+
+/** Shown beside citation precision, whose denominator excludes some answers. */
+export const CITATION_DENOMINATOR_NOTE =
+  'An answer that cited nothing has no precision to measure and is excluded ' +
+  'rather than scored zero, so this mean can cover far fewer answers than ' +
+  'the window holds.'
 
 /** Shown beside any figure Prometheus supplies: these carry no tenant label. */
 export const PLATFORM_SCOPE_NOTE =
@@ -265,9 +305,38 @@ export const CONFIG_SNAPSHOT_LABELS = {
   hybrid_search_enabled: 'Hybrid search',
   hybrid_search_alpha: 'Hybrid alpha',
   min_similarity_threshold: 'Min similarity',
+  mode: 'Run mode',
   embedding_model: 'Embedding model',
   vector_collection: 'Vector collection',
   chunk_strategy: 'Chunk strategy',
+}
+
+export const EVAL_MODE_LABELS = {
+  retrieval: 'Retrieval only',
+  end_to_end: 'End-to-end',
+}
+
+/** Said plainly before an end-to-end run, which is the one that spends money. */
+export const EVAL_MODE_HELP = {
+  retrieval:
+    'Runs retrieval only. No model is called, so the run is free and finishes in seconds.',
+  end_to_end:
+    'Generates and judges an answer for every item. This calls the model twice per item and takes minutes, not seconds.',
+}
+
+/** Shown when the estimate covers a model with no configured price. */
+export const UNPRICED_MODEL_NOTE =
+  'This model has no configured price, so the estimate is $0.00 because ' +
+  'nothing here is priced — not because the run is free.'
+
+export const EVAL_ANSWER_METRIC_LABELS = {
+  groundedness: 'Mean groundedness',
+  hallucination_rate: 'Hallucination rate',
+  hallucination_severe_rate: 'Severe hallucinations',
+  citation_precision: 'Citation precision',
+  citation_recall: 'Citation recall',
+  unsupported_claims: 'Unsupported claims per answer',
+  items_judged: 'Items judged',
 }
 
 export const MATCH_MODE_LABELS = {

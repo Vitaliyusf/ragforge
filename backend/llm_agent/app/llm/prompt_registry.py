@@ -78,6 +78,7 @@ class PromptRegistry:
                     output_model=AnswerGenerationParsedOutput,
                     streaming_allowed=True,
                     structured_output_required=False,
+                    parser_accepts_request=True,
                 )
             },
             "answer_evaluation": {

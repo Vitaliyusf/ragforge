@@ -303,10 +303,15 @@ def test_regular_flow_happy_path_streams_tokens_and_review():
         "completeness_score",
         "safety_score",
         "issues",
+        # Summary hallucination judgements are public; the claims array that
+        # produced them is not - see `_public_review`.
+        "hallucination_verdict",
+        "unsupported_claim_count",
         "revision_applied",
         "model_name",
         "created_at",
     }
+    assert "claims" not in review_event["data"]
     assert any(call["type"] == "memory" and call["depth"] == "light" for call in backend.calls)
     assert any(call["type"] == "vector_db" and call["pass_name"] == "regular" for call in backend.calls)
     done_event = emitter.events[-1]
@@ -755,7 +760,15 @@ def test_answer_evaluation_request_uses_typed_llm_agent_payload():
     assert payload["metadata"]["mode"] == "extended"
     assert payload["input"]["question"] == "What is RAG?"
     assert payload["input"]["answer"] == "RAG is retrieval augmented generation."
-    assert payload["input"]["reference_context"] == ["RAG combines retrieval and generation."]
+    # Passages, not bare strings: the judge names supporting passages by the
+    # same numbers the answer's citation markers resolve against.
+    assert payload["input"]["reference_context"] == [
+        {
+            "source_id": "passage_1",
+            "text": "RAG combines retrieval and generation.",
+            "locator": None,
+        }
+    ]
 
 
 def test_answer_generation_request_uses_typed_llm_agent_payload():

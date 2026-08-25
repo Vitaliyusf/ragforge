@@ -97,11 +97,56 @@ def test_successful_turn_carries_every_measured_field():
     assert fact.error_class is None
 
 
-def test_citation_fields_stay_none_because_the_app_emits_no_citations():
+def test_citation_fields_stay_none_when_nothing_was_measured():
+    """Citations off, or a turn the judge never saw, records no numbers."""
     fact = build_turn_fact(_request(), _successful_result(), _timings())
 
     assert fact.citation_count is None
     assert fact.cited_chunk_ratio is None
+    assert fact.citation_precision is None
+    assert fact.citation_recall is None
+    assert fact.hallucination_verdict is None
+
+
+def test_citation_and_hallucination_fields_come_from_the_graph():
+    result = _successful_result()
+    result["citation_metrics"] = {
+        "citation_count": 2,
+        "cited_chunk_ratio": 0.5,
+        "citation_precision": 1.0,
+        "citation_recall": 0.5,
+        "citation_f1": 2 / 3,
+    }
+    result["review"] = {
+        **result["review"],
+        "hallucination_verdict": "minor",
+        "unsupported_claim_count": 1,
+    }
+
+    fact = build_turn_fact(_request(), result, _timings())
+
+    assert fact.citation_count == 2
+    assert fact.cited_chunk_ratio == 0.5
+    assert fact.citation_precision == 1.0
+    assert fact.citation_recall == 0.5
+    assert fact.unsupported_claim_count == 1
+    assert fact.hallucination_verdict == "minor"
+
+
+def test_an_answer_that_cited_nothing_records_a_count_but_no_precision():
+    """Zero citations is a measurement; a precision of 0.0 would not be."""
+    result = _successful_result()
+    result["citation_metrics"] = {
+        "citation_count": 0,
+        "cited_chunk_ratio": 0.0,
+        "citation_precision": None,
+        "citation_recall": 0.0,
+    }
+
+    fact = build_turn_fact(_request(), result, _timings())
+
+    assert fact.citation_count == 0
+    assert fact.citation_precision is None
 
 
 def test_errored_turn_leaves_quality_fields_none_rather_than_zero():

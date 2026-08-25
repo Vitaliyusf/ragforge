@@ -163,6 +163,26 @@ class ServiceMetrics:
             ["service", "level"],  # high, medium, low
         )
 
+        self.rag_hallucination_total = Counter(
+            "ragapp_rag_hallucination_total",
+            "Answers by hallucination verdict",
+            ["service", "verdict"],  # none | minor | severe
+        )
+
+        self.rag_citation_precision = Histogram(
+            "ragapp_rag_citation_precision",
+            "Per-answer citation precision",
+            ["service"],
+            buckets=[0.0, 0.1, 0.25, 0.5, 0.75, 0.9, 1.0],
+        )
+
+        self.rag_citation_recall = Histogram(
+            "ragapp_rag_citation_recall",
+            "Per-answer citation recall",
+            ["service"],
+            buckets=[0.0, 0.1, 0.25, 0.5, 0.75, 0.9, 1.0],
+        )
+
         self.rag_sources_per_query = Histogram(
             "ragapp_rag_sources_per_query",
             "Number of sources retrieved per RAG query",

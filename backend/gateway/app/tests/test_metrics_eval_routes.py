@@ -282,6 +282,67 @@ def test_malformed_uploads_are_rejected(body):
     assert service.rpc_client.calls == []
 
 
+def test_a_run_defaults_to_the_free_retrieval_mode():
+    """Saying nothing must not start the run that spends tokens."""
+    service = build_service()
+    with TestClient(build_app(service)) as client:
+        client.post("/v1/metrics/eval/runs", json={"dataset_id": "d-1"})
+
+    assert last_payload(service)["mode"] == "retrieval"
+
+
+def test_an_end_to_end_run_forwards_its_mode():
+    service = build_service()
+    with TestClient(build_app(service)) as client:
+        response = client.post(
+            "/v1/metrics/eval/runs", json={"dataset_id": "d-1", "mode": "end_to_end"}
+        )
+
+    assert response.status_code == 200
+    assert last_payload(service)["mode"] == "end_to_end"
+
+
+def test_an_unknown_run_mode_is_refused_before_it_costs_an_rpc():
+    service = build_service()
+    with TestClient(build_app(service)) as client:
+        response = client.post(
+            "/v1/metrics/eval/runs", json={"dataset_id": "d-1", "mode": "cheap"}
+        )
+
+    assert response.status_code == 422
+    assert service.rpc_client.calls == []
+
+
+def test_a_retrieval_estimate_is_zero_because_no_model_is_called():
+    service = build_service()
+    with TestClient(build_app(service)) as client:
+        response = client.post(
+            "/v1/metrics/eval/runs/estimate", json={"item_count": 200, "mode": "retrieval"}
+        )
+
+    body = response.json()
+    assert response.status_code == 200
+    assert body["calls_per_item"] == 0
+    assert body["estimated_cost_usd"] == 0.0
+    # Pure arithmetic in the gateway: estimating must not touch rag.
+    assert service.rpc_client.calls == []
+
+
+def test_an_end_to_end_estimate_reports_tokens_and_whether_the_model_is_priced():
+    service = build_service()
+    with TestClient(build_app(service)) as client:
+        response = client.post(
+            "/v1/metrics/eval/runs/estimate",
+            json={"item_count": 20, "mode": "end_to_end", "model": "not-a-priced-model"},
+        )
+
+    body = response.json()
+    assert body["calls_per_item"] == 2
+    assert body["estimated_tokens_in"] > 0
+    # A $0.00 estimate here means "unpriced", and the flag is what says so.
+    assert body["model_priced"] is False
+
+
 def test_starting_a_run_needs_a_dataset_id():
     service = build_service()
     with TestClient(build_app(service)) as client:

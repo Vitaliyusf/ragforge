@@ -37,11 +37,33 @@ class DebugOptions(StrictSchema):
     include_visible_reasoning_steps: bool = True
 
 
+class ContextPassage(StrictSchema):
+    """One retrieved passage with a stable id the model can cite.
+
+    Plain strings carry no identity, so a ``[1]`` marker in an answer cannot be
+    resolved back to the chunk that supported it. Callers that want citation
+    metrics send passages instead of strings; ``source_id`` is the retrieving
+    service's chunk id and is what ``Citation.source_id`` reports back.
+    """
+
+    source_id: str
+    text: str
+    locator: Optional[str] = None
+
+
+class ClaimAssessment(StrictSchema):
+    """One atomic claim the judge extracted, and whether context supports it."""
+
+    claim: str
+    supported: bool
+    supporting_passage_ids: List[str] = Field(default_factory=list)
+
+
 class AnswerGenerationInput(StrictSchema):
     """Input fields for generating a final answer from retrieved context."""
 
     question: str
-    retrieved_context: Union[str, List[str]]
+    retrieved_context: Union[str, List[str], List[ContextPassage]]
     conversation_history: Optional[List[ConversationMessage]] = None
     instructions: Optional[str] = None
 
@@ -51,7 +73,7 @@ class AnswerEvaluationInput(StrictSchema):
 
     question: str
     answer: str
-    reference_context: Union[str, List[str]]
+    reference_context: Union[str, List[str], List[ContextPassage]]
     rubric: Optional[List[str]] = None
 
 
@@ -211,6 +233,9 @@ class AnswerReviewParsedOutput(StrictSchema):
     completeness_score: Optional[float] = None
     safety_score: Optional[float] = None
     issues: List[str]
+    claims: List[ClaimAssessment] = Field(default_factory=list)
+    unsupported_claim_count: Optional[int] = None
+    hallucination_verdict: Optional[str] = None
     revision_applied: bool
     model_name: str
     created_at: int
@@ -234,10 +259,21 @@ class MemoryItem(StrictSchema):
 
 
 class AnswerGenerationParsedOutput(StrictSchema):
-    """Parsed answer-generation output returned inside typed replies."""
+    """Parsed answer-generation output returned inside typed replies.
+
+    ``citations`` is an empty list when citation extraction ran and the
+    model cited nothing, and None when it did not run at all (feature off,
+    or no passage list available to resolve markers against).
+
+    ``invalid_citation_count`` counts markers the model emitted that point
+    outside the supplied passage range. They are discarded, never clamped
+    onto a real passage, so this is the only place a bad citation is
+    visible.
+    """
 
     answer: str
     citations: Optional[List[Citation]] = None
+    invalid_citation_count: Optional[int] = None
     confidence: Optional[str] = None
 
 

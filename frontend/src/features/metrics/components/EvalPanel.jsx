@@ -7,7 +7,7 @@ import Button from '@/components/ui/Button'
 import Card, { CardHeader } from '@/components/ui/Card'
 import EmptyState from '@/components/ui/EmptyState'
 import Input, { Textarea } from '@/components/ui/Input'
-import Modal from '@/components/ui/Modal'
+import Modal, { ConfirmModal } from '@/components/ui/Modal'
 import Select, { SelectItem } from '@/components/ui/Select'
 import StatCard from '@/components/ui/StatCard'
 import TabSkeleton from '@/components/ui/TabSkeleton'
@@ -17,16 +17,22 @@ import {
   CONFIG_DIFF_NOTE,
   CONFIG_SNAPSHOT_LABELS,
   EMPTY,
+  EVAL_ANSWER_METRIC_LABELS,
   EVAL_HISTORY_K,
   EVAL_K_VALUES,
   EVAL_METRIC_LABELS,
+  EVAL_MODE_HELP,
+  EVAL_MODE_LABELS,
   FILE_MATCH_NOTE,
   GOLDEN_SET_HELP,
   MATCH_MODE_LABELS,
   RUN_STATUS_LABELS,
   RUN_STATUS_VARIANTS,
   UNOBSERVED_NOTE,
+  UNPRICED_MODEL_NOTE,
+  formatCost,
   formatCount,
+  formatDecimal,
   formatMs,
   formatPercent,
   formatScore,
@@ -107,12 +113,18 @@ export default function EvalPanel() {
     error,
     busy,
     startRun,
+    estimateRunCost,
     createDataset,
     deleteDataset,
     refresh,
   } = useEvalRuns()
 
   const [importOpen, setImportOpen] = useState(false)
+  const [mode, setMode] = useState('retrieval')
+  // The estimate doubles as the confirmation gate: an end-to-end run cannot
+  // start until one has been fetched and shown.
+  const [estimate, setEstimate] = useState(null)
+  const [estimating, setEstimating] = useState(false)
 
   const dataset = datasets.find((entry) => entry.dataset_id === datasetId)
   const series = useMemo(() => historySeries(runs), [runs])
@@ -120,6 +132,32 @@ export default function EvalPanel() {
     () => (runs.length >= 2 ? diffSnapshots(runs[0]?.config_snapshot, runs[1]?.config_snapshot) : []),
     [runs]
   )
+
+  /**
+   * Start a retrieval run directly; price an end-to-end run first.
+   *
+   * A retrieval run calls no model and cannot cost anything, so a
+   * confirmation there would be noise. An end-to-end run spends tokens per
+   * item, and the number is shown before it can be started.
+   */
+  const handleRun = async () => {
+    if (mode !== 'end_to_end') {
+      await startRun('retrieval')
+      return
+    }
+    setEstimating(true)
+    // No model name is sent: the panel does not know which model rag will
+    // use, so the estimate comes back flagged as unpriced rather than priced
+    // against a guess. `estimateDescription` says so in words.
+    const priced = await estimateRunCost(dataset?.item_count || 0, mode, null)
+    setEstimating(false)
+    if (priced) setEstimate(priced)
+  }
+
+  const confirmRun = async () => {
+    setEstimate(null)
+    await startRun('end_to_end')
+  }
 
   if (loading && !datasets.length) return <TabSkeleton />
 
@@ -195,13 +233,25 @@ export default function EvalPanel() {
               >
                 Import
               </Button>
+              <Select
+                value={mode}
+                onValueChange={setMode}
+                className="w-[190px]"
+                aria-label="Run mode"
+              >
+                {Object.entries(EVAL_MODE_LABELS).map(([value, label]) => (
+                  <SelectItem key={value} value={value}>
+                    {label}
+                  </SelectItem>
+                ))}
+              </Select>
               <Button
                 size="sm"
-                onClick={startRun}
-                disabled={busy || running || !datasetId}
+                onClick={handleRun}
+                disabled={busy || running || estimating || !datasetId}
                 leftIcon={<Play size={13} />}
               >
-                {running ? 'Running…' : 'Run evaluation'}
+                {running ? 'Running…' : estimating ? 'Estimating…' : 'Run evaluation'}
               </Button>
             </div>
           }
@@ -257,10 +307,16 @@ export default function EvalPanel() {
           </Button>
         </div>
 
+        <p className="mt-3 text-[13px]" style={{ color: 'var(--fg-muted)' }}>
+          {EVAL_MODE_HELP[mode]}
+        </p>
+
         {running && (
-          <p className="mt-3 text-[13px]" style={{ color: 'var(--fg-muted)' }}>
+          <p className="mt-1 text-[13px]" style={{ color: 'var(--fg-muted)' }}>
             {formatCount(run?.per_item?.length || 0)} of {formatCount(dataset?.item_count)} items
-            scored. Retrieval only — this run calls no language model.
+            scored. {run?.mode === 'end_to_end'
+              ? 'End-to-end — every item calls the model.'
+              : 'Retrieval only — this run calls no language model.'}
           </p>
         )}
 
@@ -303,6 +359,10 @@ export default function EvalPanel() {
               subLabel="per query, retrieval only"
             />
           </div>
+
+          {run.results.answer_quality && (
+            <AnswerQuality quality={run.results.answer_quality} />
+          )}
 
           <Card>
             <CardHeader
@@ -376,6 +436,17 @@ export default function EvalPanel() {
 
       {run?.per_item?.length > 0 && <ItemTable rows={run.per_item} />}
 
+      <ConfirmModal
+        open={Boolean(estimate)}
+        onOpenChange={(next) => {
+          if (!next) setEstimate(null)
+        }}
+        title="Start an end-to-end run?"
+        description={estimateDescription(estimate)}
+        confirmLabel="Run anyway"
+        onConfirm={confirmRun}
+      />
+
       <ImportModal
         open={importOpen}
         onOpenChange={setImportOpen}
@@ -384,6 +455,72 @@ export default function EvalPanel() {
         error={error}
       />
     </div>
+  )
+}
+
+/**
+ * The sentence shown before an end-to-end run starts.
+ *
+ * States the estimate as an estimate, and says plainly when a $0.00 figure
+ * means "this model has no configured price" rather than "this is free".
+ */
+export function estimateDescription(estimate) {
+  if (!estimate) return ''
+  const tokens = (estimate.estimated_tokens_in || 0) + (estimate.estimated_tokens_out || 0)
+  const base =
+    `${formatCount(estimate.item_count)} items × ${estimate.calls_per_item} model calls ` +
+    `≈ ${formatCount(tokens)} tokens, an estimated ${formatCost(estimate.estimated_cost_usd)}. ` +
+    'This run also takes minutes rather than seconds.'
+  return estimate.model_priced ? base : `${base} ${UNPRICED_MODEL_NOTE}`
+}
+
+/** Answer-quality results, shown only for an end-to-end run. */
+function AnswerQuality({ quality }) {
+  const judged = quality?.items_judged ?? 0
+  const unjudged = quality?.items_unjudged ?? 0
+  return (
+    <Card>
+      <CardHeader
+        title="Answer quality"
+        description="From the same judge the live pipeline uses. Items it could not judge are excluded from every figure below, never counted as passes."
+      />
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <StatCard
+          label={EVAL_ANSWER_METRIC_LABELS.groundedness}
+          value={formatScore(quality?.groundedness?.mean)}
+          subLabel={`over ${formatCount(quality?.groundedness?.counted)} items`}
+        />
+        <StatCard
+          label={EVAL_ANSWER_METRIC_LABELS.hallucination_rate}
+          value={formatPercent(quality?.hallucination_rate)}
+          subLabel={`${formatCount(judged)} judged, ${formatCount(unjudged)} unjudged`}
+        />
+        <StatCard
+          label={EVAL_ANSWER_METRIC_LABELS.citation_precision}
+          value={formatPercent(quality?.citation_precision?.mean)}
+          subLabel={`${formatCount(quality?.citation_precision?.excluded)} cited nothing`}
+        />
+        <StatCard
+          label={EVAL_ANSWER_METRIC_LABELS.citation_recall}
+          value={formatPercent(quality?.citation_recall?.mean)}
+          subLabel={`over ${formatCount(quality?.citation_recall?.counted)} items`}
+        />
+      </div>
+      <dl className="mt-4 flex flex-wrap gap-6 text-[13px]">
+        <div>
+          <dt className="label-xs">{EVAL_ANSWER_METRIC_LABELS.hallucination_severe_rate}</dt>
+          <dd className="mt-0.5 font-semibold tabular-nums">
+            {formatPercent(quality?.hallucination_severe_rate)}
+          </dd>
+        </div>
+        <div>
+          <dt className="label-xs">{EVAL_ANSWER_METRIC_LABELS.unsupported_claims}</dt>
+          <dd className="mt-0.5 font-semibold tabular-nums">
+            {formatDecimal(quality?.unsupported_claims?.mean)}
+          </dd>
+        </div>
+      </dl>
+    </Card>
   )
 }
 

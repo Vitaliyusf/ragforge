@@ -12,6 +12,15 @@ from app.services.conversation_events import BaseConversationEmitter
 from app.services.conversation_backend_client import ConversationBackendClient
 from app.services.conversation_persistence import BaseConversationStore, make_json_safe
 from app.services.conversation_tracing import ConversationTracer
+from app.services.conversation_messages import chunk_passages
+from app.services.citation_metrics import (
+    citation_f1,
+    citation_precision,
+    citation_recall,
+    cited_chunk_ratio,
+    resolve_claim_passage_ids,
+    supporting_passage_ids,
+)
 from app.services.conversation_types import (
     ConversationRequest,
     ConversationState,
@@ -62,7 +71,20 @@ class ConversationGraphRunner:
         ]
 
     def _public_review(self, review: Dict[str, Any]) -> Dict[str, Any]:
-        """Return the frontend-safe review subset."""
+        """Return the frontend-safe review subset.
+
+        This method is the admin/user boundary for judge output. The
+        hallucination verdict and the unsupported-claim count are exposed to
+        everyone: they are summary judgements about the answer the user just
+        received, and hiding them would leave a reader unable to tell a
+        confident answer from an unsupported one.
+
+        The ``claims`` array is deliberately **not** exposed. Claim text is
+        the judge quoting the answer back alongside the passages that support
+        it, which can echo retrieved document content into a channel that has
+        no document-level authorization. It stays in the internal review,
+        which only the metrics and debug paths read.
+        """
         if not review:
             return {}
         return {
@@ -72,6 +94,8 @@ class ConversationGraphRunner:
             "completeness_score": review.get("completeness_score"),
             "safety_score": review.get("safety_score"),
             "issues": review.get("issues", []),
+            "hallucination_verdict": review.get("hallucination_verdict"),
+            "unsupported_claim_count": review.get("unsupported_claim_count"),
             "revision_applied": bool(review.get("revision_applied", False)),
             "model_name": review.get("model_name"),
             "created_at": review.get("created_at"),
@@ -82,8 +106,20 @@ class ConversationGraphRunner:
         request: ConversationRequest,
         emitter: BaseConversationEmitter,
         resume: bool = False,
+        record_metrics: bool = True,
     ) -> Dict[str, Any]:
-        """Run the conversation graph and return a normalized result."""
+        """Run the conversation graph and return a normalized result.
+
+        Args:
+            request: The normalized conversation request.
+            emitter: Where progress events are published.
+            resume: Whether to continue from the latest checkpoint.
+            record_metrics: Whether this turn contributes to Prometheus and
+                to `metrics_turn_facts`. The eval harness passes False: its
+                turns are synthetic, and letting a few hundred of them into
+                the fact collection would move the tenant quality averages an
+                eval run exists to measure.
+        """
         runtime = {"request": request, "emitter": emitter, "current_node": "graph_start"}
         state = build_initial_state(request)
         checkpoint = None
@@ -133,7 +169,10 @@ class ConversationGraphRunner:
                     final_state = await self._run_fallback_graph(state, runtime)
                 trace_metadata["chunk_count"] = len(final_state.get("retrieved_chunks", []))
             result = self._build_result(final_state)
-            self._record_turn_metrics(request, result, runtime, emitter, time.monotonic() - t0)
+            if record_metrics:
+                self._record_turn_metrics(
+                    request, result, runtime, emitter, time.monotonic() - t0
+                )
             return result
         except Exception as exc:
             failed_node = runtime.get("current_node", "unknown")
@@ -159,9 +198,10 @@ class ConversationGraphRunner:
                     },
                 )
             result = {"answer": "", "sources": [], "review": {}, "error": str(exc)}
-            self._record_turn_metrics(
-                request, result, runtime, emitter, time.monotonic() - t0, error=exc
-            )
+            if record_metrics:
+                self._record_turn_metrics(
+                    request, result, runtime, emitter, time.monotonic() - t0, error=exc
+                )
             return result
 
     def _record_turn_metrics(
@@ -207,6 +247,22 @@ class ConversationGraphRunner:
                 level = confidence_level(review.get("groundedness_score"))
                 if level is not None:
                     METRICS.rag_confidence_level.labels(service="rag", level=level).inc()
+
+                # Nothing is observed for an unmeasured value. A skipped
+                # observation is correct; a 0.0 would be a lie about an answer
+                # nobody measured.
+                citation_metrics = result.get("citation_metrics") or {}
+                verdict = review.get("hallucination_verdict")
+                if verdict is not None:
+                    METRICS.rag_hallucination_total.labels(
+                        service="rag", verdict=verdict
+                    ).inc()
+                precision = citation_metrics.get("citation_precision")
+                if precision is not None:
+                    METRICS.rag_citation_precision.labels(service="rag").observe(precision)
+                recall = citation_metrics.get("citation_recall")
+                if recall is not None:
+                    METRICS.rag_citation_recall.labels(service="rag").observe(recall)
 
             self.metrics_facts.save_fact(
                 build_turn_fact(
@@ -646,11 +702,8 @@ class ConversationGraphRunner:
         mode: str,
         review_issues: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
-        retrieved_context = [
-            chunk["text"]
-            for chunk in state.get("retrieved_chunks", [])[: self.config.top_k_documents]
-            if chunk.get("text")
-        ]
+        passages = self._prompt_passages(state)
+        retrieved_context = [passage["text"] for passage in passages]
         memory_context = "\n".join(str(item.get("content", "")) for item in state.get("memory_hits", []))
         parts = [f"Mode: {mode}", f"Conversation summary:\n{state.get('short_term_summary', '')}"]
         if state.get("recent_messages"):
@@ -673,12 +726,45 @@ class ConversationGraphRunner:
         )
         return {
             "instructions": "\n\n".join(parts),
-            "retrieved_context": retrieved_context,
+            # Passages, not bare strings: llm_agent numbers them [1], [2], ...
+            # and resolves the answer's citation markers back through this
+            # same order to `source_id`.
+            "retrieved_context": passages,
             "recent_messages": state.get("recent_messages", []),
             "revision_attempted": bool(review_issues),
         }
 
-    def _build_review(self, payload: Dict[str, Any], request: ConversationRequest) -> Dict[str, Any]:
+    def _prompt_passages(self, state: ConversationState) -> List[Dict[str, Any]]:
+        """Return the citable passages for this turn, in citation order.
+
+        Generation and evaluation are given the *same* list. If the judge saw
+        a different set, or the same set in a different order, its passage
+        numbers and the answer's citation markers would name different chunks
+        and every citation metric computed from them would be noise.
+        """
+        return chunk_passages(
+            state.get("retrieved_chunks", [])[: self.config.top_k_documents]
+        )
+
+    def _build_review(
+        self,
+        payload: Dict[str, Any],
+        request: ConversationRequest,
+        passages: Optional[List[Dict[str, Any]]] = None,
+    ) -> Dict[str, Any]:
+        """Normalize a judge reply into the internal review record.
+
+        Claim-level fields are carried through here and kept internal; see
+        `_public_review` for what leaves the service. The judge answers in
+        passage numbers, so its references are translated into chunk ids
+        against `passages` — the same list the answer's citations resolve
+        against — before anything compares the two.
+        """
+        claims = resolve_claim_passage_ids(
+            payload.get("claims") or [],
+            [passage["source_id"] for passage in (passages or [])],
+        )
+        unsupported = payload.get("unsupported_claim_count")
         return {
             "review_id": payload.get("review_id") or str(uuid4()),
             "verdict": payload.get("verdict", "pass"),
@@ -686,6 +772,13 @@ class ConversationGraphRunner:
             "completeness_score": float(payload.get("completeness_score") or 0.0),
             "safety_score": float(payload.get("safety_score") or 0.0),
             "issues": payload.get("issues", []),
+            "claims": claims,
+            "unsupported_claim_count": (
+                sum(1 for claim in claims if not claim.get("supported"))
+                if claims
+                else (int(unsupported) if unsupported is not None else None)
+            ),
+            "hallucination_verdict": payload.get("hallucination_verdict"),
             "revision_applied": bool(payload.get("revision_applied", False)),
             "model_name": payload.get("model_name") or request.model or "default",
             "created_at": payload.get("created_at") or utc_now_iso(),
@@ -729,9 +822,58 @@ class ConversationGraphRunner:
         return {
             "answer": state.get("draft_answer", {}).get("text", ""),
             "sources": state.get("retrieved_chunks", []),
+            "citations": state.get("draft_answer", {}).get("citations"),
             "review": self._public_review(state.get("answer_review", {})),
+            # Numbers only, derived from the internal review. The claim text
+            # they were computed from does not travel with them.
+            "citation_metrics": self._citation_metrics(state),
             "trace_events": state.get("trace_events", []),
             "debug_payloads": state.get("debug_payloads", {}),
+        }
+
+    def _citation_metrics(self, state: ConversationState) -> Dict[str, Any]:
+        """Compute this turn's citation figures from the answer and the judge.
+
+        Every value is None when the corresponding measurement did not
+        happen: citations off or absent, judge unavailable, nothing
+        retrieved. A turn that was not measured must contribute nothing to an
+        average rather than a zero.
+        """
+        draft = state.get("draft_answer", {}) or {}
+        review = state.get("answer_review", {}) or {}
+        citations = draft.get("citations")
+        if citations is None:
+            return {
+                "citation_count": None,
+                "cited_chunk_ratio": None,
+                "citation_precision": None,
+                "citation_recall": None,
+                "citation_f1": None,
+            }
+
+        cited_ids = [
+            str(citation.get("source_id"))
+            for citation in citations
+            if isinstance(citation, dict) and citation.get("source_id")
+        ]
+        claims = review.get("claims") or []
+        # No claims means the judge did not run or returned nothing usable:
+        # precision has no support set to check against, so it is unmeasured
+        # rather than zero.
+        precision = (
+            citation_precision(cited_ids, supporting_passage_ids(claims))
+            if claims
+            else None
+        )
+        recall = citation_recall(claims, set(cited_ids)) if claims else None
+        return {
+            "citation_count": len(citations),
+            "cited_chunk_ratio": cited_chunk_ratio(
+                cited_ids, len(self._prompt_passages(state))
+            ),
+            "citation_precision": precision,
+            "citation_recall": recall,
+            "citation_f1": citation_f1(precision, recall),
         }
 
     async def _input_guardrails(self, state: ConversationState, runtime: Dict[str, Any]) -> Dict[str, Any]:
@@ -974,6 +1116,10 @@ class ConversationGraphRunner:
         answer_text = response.get("answer", "")
         draft_answer = {
             "text": answer_text,
+            # None when citation extraction did not run at all, [] when it ran
+            # and the model cited nothing. The two are different facts.
+            "citations": response.get("citations"),
+            "invalid_citation_count": response.get("invalid_citation_count"),
             "sources": state.get("retrieved_chunks", []),
             "model_name": response.get("model_name") or request.model or "default",
             "created_at": utc_now_iso(),
@@ -1014,13 +1160,16 @@ class ConversationGraphRunner:
     async def _evaluate_common(self, state: ConversationState, runtime: Dict[str, Any], mode: str) -> Dict[str, Any]:
         request: ConversationRequest = runtime["request"]
         emitter: BaseConversationEmitter = runtime["emitter"]
+        # The same slice the answer was generated from: citation markers and
+        # the judge's passage numbers must index the same list.
+        chunks = state.get("retrieved_chunks", [])[: self.config.top_k_documents]
         response = await self.backend_client.evaluate_answer(
             request,
             state.get("draft_answer", {}).get("text", ""),
-            state.get("retrieved_chunks", []),
+            chunks,
             mode,
         )
-        review = self._build_review(response, request)
+        review = self._build_review(response, request, self._prompt_passages(state))
         if state.get("draft_answer", {}).get("revision_attempted"):
             review["revision_applied"] = True
         await emitter.emit("answer_review", self._public_review(review))

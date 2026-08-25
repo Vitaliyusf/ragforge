@@ -46,6 +46,13 @@ class Settings(BaseSettings):
     
     # LLM configuration
     llm_implementation: str = Field(default="huggingface", description="LLM implementation (huggingface, vllm, ollama)")
+
+    # Answer citations change user-visible answer text (inline [1] markers),
+    # so the behaviour is switchable without a rollback.
+    enable_answer_citations: bool = Field(
+        default=True,
+        description="Ask the model for inline [n] citations and extract them into citations[]",
+    )
     
     # Model configuration
     summary_model: str = Field(default="RedHatAI/Qwen3.5-4B-quantized.w4a16", description="Summary model")
