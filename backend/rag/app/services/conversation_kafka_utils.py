@@ -209,6 +209,7 @@ def normalize_llm_agent_response(payload: Dict[str, Any]) -> Dict[str, Any]:
         normalized["answer"] = parsed_output.get("answer", payload.get("raw_output", ""))
         normalized["raw_output"] = payload.get("raw_output", normalized["answer"])
         normalized["model_name"] = payload.get("model")
+        normalized["usage"] = payload.get("usage")
         normalized["raw_prompt"] = payload.get("raw_prompt", "")
         normalized["system_prompt"] = payload.get("system_prompt", "")
         return normalized

@@ -18,6 +18,13 @@ from app.services.conversation_types import (
     build_initial_state,
     utc_now_iso,
 )
+from app.services.metrics_facts import (
+    MetricsFactStore,
+    build_turn_fact,
+    confidence_level,
+    create_metrics_fact_store,
+)
+from shared.metrics import METRICS
 
 try:  # pragma: no cover
     from langgraph.graph import END, StateGraph
@@ -39,12 +46,14 @@ class ConversationGraphRunner:
         store: BaseConversationStore,
         tracer: ConversationTracer,
         logger: Any,
+        metrics_facts: Optional[MetricsFactStore] = None,
     ):
         self.config = config
         self.backend_client = backend_client
         self.store = store
         self.tracer = tracer
         self.logger = logger
+        self.metrics_facts = metrics_facts or create_metrics_fact_store(config)
         self._secret_key_pattern = re.compile(r"(secret|token|password|auth|credential|bootstrap|mongodb)", re.IGNORECASE)
         self._secret_string_patterns = [
             re.compile(r"mongodb:\/\/[^\s]+", re.IGNORECASE),
@@ -112,6 +121,7 @@ class ConversationGraphRunner:
             "model_name": request.model or "default",
         }
 
+        t0 = time.monotonic()
         try:
             with self.tracer.run("rag_conversation_graph", metadata) as trace_metadata:
                 if checkpoint and checkpoint.get("stage"):
@@ -122,7 +132,9 @@ class ConversationGraphRunner:
                 else:
                     final_state = await self._run_fallback_graph(state, runtime)
                 trace_metadata["chunk_count"] = len(final_state.get("retrieved_chunks", []))
-            return self._build_result(final_state)
+            result = self._build_result(final_state)
+            self._record_turn_metrics(request, result, runtime, emitter, time.monotonic() - t0)
+            return result
         except Exception as exc:
             failed_node = runtime.get("current_node", "unknown")
             self.logger.exception(
@@ -146,7 +158,85 @@ class ConversationGraphRunner:
                         "message": str(exc),
                     },
                 )
-            return {"answer": "", "sources": [], "review": {}, "error": str(exc)}
+            result = {"answer": "", "sources": [], "review": {}, "error": str(exc)}
+            self._record_turn_metrics(
+                request, result, runtime, emitter, time.monotonic() - t0, error=exc
+            )
+            return result
+
+    def _record_turn_metrics(
+        self,
+        request: ConversationRequest,
+        result: Dict[str, Any],
+        runtime: Dict[str, Any],
+        emitter: BaseConversationEmitter,
+        elapsed: float,
+        error: Optional[Exception] = None,
+    ) -> None:
+        """Record the Prometheus series and the Mongo fact for one finished turn.
+
+        Logs and swallows every failure: a metrics write must never fail a
+        user's turn.
+        """
+        try:
+            status = "error" if error is not None else "success"
+            # Error latency is recorded too, otherwise slow failures are invisible.
+            METRICS.rag_query_duration.labels(
+                service="rag",
+                answer_mode=request.mode,
+            ).observe(elapsed)
+            METRICS.rag_queries_total.labels(
+                service="rag",
+                answer_mode=request.mode,
+                status=status,
+            ).inc()
+
+            review = result.get("review") or {}
+            sources = result.get("sources") or []
+            if error is None:
+                METRICS.rag_sources_per_query.labels(service="rag").observe(len(sources))
+                scores = [
+                    float(chunk["score"])
+                    for chunk in sources
+                    if isinstance(chunk, dict) and chunk.get("score") is not None
+                ]
+                if scores:
+                    # Top chunk only. One observation per chunk would inflate the
+                    # sample count and make the histogram mean meaningless.
+                    METRICS.rag_retrieval_score.labels(service="rag").observe(max(scores))
+                level = confidence_level(review.get("groundedness_score"))
+                if level is not None:
+                    METRICS.rag_confidence_level.labels(service="rag", level=level).inc()
+
+            self.metrics_facts.save_fact(
+                build_turn_fact(
+                    request,
+                    result,
+                    {
+                        "latency_ms": round(elapsed * 1000, 2),
+                        "ttft_ms": (
+                            round(emitter.ttft_seconds * 1000, 2)
+                            if emitter.ttft_seconds is not None
+                            else None
+                        ),
+                        "stage_ms": runtime.get("stage_ms", {}),
+                        "reranker_changed_top1": runtime.get("reranker_changed_top1"),
+                        "guardrail_blocked": runtime.get("guardrail_blocked"),
+                        "model": runtime.get("model"),
+                        "usage": runtime.get("usage"),
+                        "error_class": type(error).__name__ if error is not None else None,
+                    },
+                )
+            )
+        except Exception as metrics_error:
+            self.logger.exception(
+                "turn metrics recording failed",
+                error=str(metrics_error),
+                data={
+                    "conversation_id": request.conversation_id,
+                    "turn_id": request.turn_id,
+                },
+            )
 
     def _build_graph(self, runtime: Dict[str, Any]):
         workflow = StateGraph(ConversationState)
@@ -376,6 +466,13 @@ class ConversationGraphRunner:
                 "counters": meta.get("counters", {}),
                 "latency": round((time.monotonic() - started) * 1000, 2),
             }
+            METRICS.rag_stage_duration.labels(service="rag", stage=span_name).observe(
+                time.monotonic() - started
+            )
+            # Carried on `runtime` (one dict per turn) for the turn fact. Retrieval
+            # runs more than once per extended turn, so stages accumulate.
+            stage_ms = runtime.setdefault("stage_ms", {})
+            stage_ms[span_name] = stage_ms.get(span_name, 0.0) + trace_payload["latency"]
             if meta.get("debug_excerpt"):
                 trace_payload["debug_excerpt"] = self._truncate(meta["debug_excerpt"])
             trace_events = list(update.get("trace_events", state.get("trace_events", [])))
@@ -632,6 +729,7 @@ class ConversationGraphRunner:
         scan = await self.backend_client.risk_scan(request, user_message, stage="input")
         debug_payloads = self._append_debug(state, input_safety_flags=scan)
         if scan.get("blocked"):
+            runtime["guardrail_blocked"] = True
             raise ValueError(scan.get("message", "Input blocked by guardrails"))
         snapshot = copy.deepcopy(state)
         snapshot["user_message"] = user_message
@@ -752,13 +850,24 @@ class ConversationGraphRunner:
         }
 
     async def _rerank_and_merge(self, state: ConversationState, runtime: Dict[str, Any]) -> Dict[str, Any]:
+        incoming = state.get("retrieved_chunks", [])
+        previous_top = incoming[0].get("chunk_id") if incoming else None
         merged: Dict[str, Dict[str, Any]] = {}
-        for chunk in state.get("retrieved_chunks", []):
+        for chunk in incoming:
             chunk_id = chunk["chunk_id"]
             current = merged.get(chunk_id)
             if current is None or chunk.get("score", 0.0) > current.get("score", 0.0):
                 merged[chunk_id] = chunk
         reranked = sorted(merged.values(), key=lambda item: item.get("score", 0.0), reverse=True)
+        if previous_top is not None:
+            # Only meaningful when something was retrieved; an empty turn has no
+            # first-ranked chunk to change.
+            changed = reranked[0].get("chunk_id") != previous_top if reranked else False
+            runtime["reranker_changed_top1"] = changed
+            METRICS.rag_reranker_changed_top1.labels(
+                service="rag",
+                changed="true" if changed else "false",
+            ).inc()
         return {
             "retrieved_chunks": reranked[: self.config.top_k_documents * 2],
             "_meta": {
@@ -858,6 +967,8 @@ class ConversationGraphRunner:
             "source": source,
             "revision_attempted": bool(is_revision or state.get("draft_answer", {}).get("revision_attempted", False)),
         }
+        runtime["model"] = draft_answer["model_name"]
+        runtime["usage"] = response.get("usage")
         debug_payloads = self._append_debug(
             state,
             generation_instructions=prompt.get("instructions"),
@@ -953,6 +1064,7 @@ class ConversationGraphRunner:
         request: ConversationRequest = runtime["request"]
         answer_text = state.get("draft_answer", {}).get("text", "")
         response = await self.backend_client.risk_scan(request, answer_text, stage="output")
+        runtime["guardrail_blocked"] = bool(response.get("blocked"))
         draft_answer = dict(state.get("draft_answer", {}))
         if response.get("blocked"):
             draft_answer["text"] = response.get("safe_output") or "I can't help with that request."

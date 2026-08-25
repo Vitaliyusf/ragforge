@@ -57,6 +57,7 @@ websocket_service = WebSocketService(rag_service, logger)
 async def lifespan(app: FastAPI):
     logger.log("main:startup", "RAG service starting up")
     conversation_store.ensure_indexes()
+    rag_service.graph_runner.metrics_facts.ensure_indexes()
     await rpc_client.connect()
 
     _consumer = MessageQueueFactory.create_consumer(config)

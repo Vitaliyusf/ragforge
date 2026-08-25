@@ -74,6 +74,10 @@ class RAGConfig(BaseSettings):
     answer_reviews_collection: str = "answer_reviews"
     user_feedback_collection: str = "user_feedback"
     flow_feedback_collection: str = "flow_feedback"
+    metrics_turn_facts_collection: str = "metrics_turn_facts"
+
+    # Admin metrics retention
+    metrics_retention_days: int = 90
 
     class Config:
         env_file = ".env"

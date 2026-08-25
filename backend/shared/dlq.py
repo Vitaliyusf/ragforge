@@ -17,6 +17,8 @@ import logging
 from typing import Dict, Any, Optional
 from datetime import datetime, timezone
 
+from shared.metrics import METRICS
+
 logger = logging.getLogger("dlq")
 
 
@@ -118,6 +120,10 @@ class DeadLetterQueue:
 
         # Update metrics
         self._total_sent += 1
+        METRICS.dlq_messages.labels(
+            service=self.service_name,
+            error_type=error_type,
+        ).inc()
         self._total_by_error_type[error_type] = (
             self._total_by_error_type.get(error_type, 0) + 1
         )

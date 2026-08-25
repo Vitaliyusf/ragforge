@@ -1,10 +1,12 @@
 """Frontend event helpers for the direct WebSocket runtime."""
 from __future__ import annotations
 
+import time
 from copy import deepcopy
 from typing import Any, Dict, List, Optional
 
 from app.services.conversation_types import ConversationRequest, utc_now_iso
+from shared.metrics import METRICS
 
 
 ALLOWED_EVENT_TYPES = {"status", "trace", "token", "answer_review", "done", "error"}
@@ -66,9 +68,21 @@ class BaseConversationEmitter:
         self.request = request
         self._terminal_sent = False
         self.events: List[Dict[str, Any]] = []
+        self._started = time.monotonic()
+        self._ttft_recorded = False
+        self.ttft_seconds: Optional[float] = None
 
     async def emit(self, event_type: str, data: Dict[str, Any]) -> Dict[str, Any]:
         """Emit a standardized event."""
+        # Time to first token, measured before the admin-only filtering below so
+        # that regular users' turns are counted too.
+        if event_type == "token" and not self._ttft_recorded:
+            self.ttft_seconds = time.monotonic() - self._started
+            METRICS.rag_ttft_seconds.labels(
+                service="rag",
+                answer_mode=self.request.mode,
+            ).observe(self.ttft_seconds)
+            self._ttft_recorded = True
         if self._terminal_sent and event_type in {"done", "error"}:
             return {}
         # Trace and model-debug payloads are operational data.  They can expose
