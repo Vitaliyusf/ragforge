@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from typing import Any, Dict, Optional
 
 from app.core.config import RAGConfig
@@ -15,6 +16,7 @@ from app.services.conversation_messages import (
     extract_stream_event,
 )
 from app.services.conversation_types import ConversationRequest
+from shared.metrics import METRICS
 
 
 class ConversationBackendClient:
@@ -167,11 +169,20 @@ class ConversationBackendClient:
             correlation_id=request.correlation_id,
             payload=payload,
         )
-        reply = await self.service_client.request(
-            routing_key,
-            envelope,
-            timeout if timeout is not None else self.config.internal_request_timeout,
-        )
+        started = time.monotonic()
+        try:
+            reply = await self.service_client.request(
+                routing_key,
+                envelope,
+                timeout if timeout is not None else self.config.internal_request_timeout,
+            )
+        finally:
+            # try/finally so a timed-out or failed RPC is measured too, not just
+            # the calls that happened to succeed.
+            METRICS.rpc_roundtrip_seconds.labels(
+                service="rag",
+                downstream=target_service,
+            ).observe(time.monotonic() - started)
         return extract_reply_payload(reply)
 
     # ------------------------------------------------------------------

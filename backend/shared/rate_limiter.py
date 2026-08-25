@@ -23,7 +23,11 @@ from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoin
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
+from shared.metrics import METRICS
+
 logger = logging.getLogger("rate_limiter")
+
+_SERVICE_NAME = os.getenv("SERVICE_NAME", "unknown")
 
 
 class TokenBucket:
@@ -139,6 +143,7 @@ class RateLimiter:
         if not self._global_bucket.consume():
             retry_after = self._global_bucket.time_until_available()
             self._total_rejected += 1
+            METRICS.rate_limiter_rejected.labels(service=_SERVICE_NAME).inc()
             logger.warning(f"Global rate limit hit (retry_after={retry_after:.1f}s)")
             return False, retry_after
 
@@ -147,12 +152,14 @@ class RateLimiter:
         if not bucket.consume():
             retry_after = bucket.time_until_available()
             self._total_rejected += 1
+            METRICS.rate_limiter_rejected.labels(service=_SERVICE_NAME).inc()
             with self._lock:
                 self._rejected_by_ip[client_ip] = self._rejected_by_ip.get(client_ip, 0) + 1
             logger.warning(f"Per-IP rate limit hit for {client_ip} (retry_after={retry_after:.1f}s)")
             return False, retry_after
 
         self._total_allowed += 1
+        METRICS.rate_limiter_allowed.labels(service=_SERVICE_NAME).inc()
         return True, None
 
     def _get_ip_bucket(self, client_ip: str) -> TokenBucket:

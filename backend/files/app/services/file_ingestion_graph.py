@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import time
 from typing import Any, Dict, Iterable, List, Optional
 
 try:
@@ -33,6 +34,7 @@ from app.utils.common import (
     validate_managed_file_path,
 )
 from shared.auth import identity_from_context
+from shared.metrics import METRICS
 
 
 class FileIngestionGraph:
@@ -146,6 +148,11 @@ class FileIngestionGraph:
                     },
                     session=session,
                 )
+                METRICS.ingestion_stage_total.labels(
+                    service="files",
+                    stage="extraction",
+                    outcome="ok",
+                ).inc()
                 self.repository.update_task(
                     current_task["task_id"],
                     {
@@ -540,6 +547,12 @@ class FileIngestionGraph:
             },
             session=session,
         )
+        for stage, outcome in (("review", "ok"), ("chunking", "skipped"), ("embedding", "skipped")):
+            METRICS.ingestion_stage_total.labels(
+                service="files",
+                stage=stage,
+                outcome=outcome,
+            ).inc()
         self.repository.update_task(
             task_doc["task_id"],
             {
@@ -731,6 +744,7 @@ class FileIngestionGraph:
         review_case_id: Optional[str] = None,
         decision_id: Optional[str] = None,
     ) -> List[OutboundMessage]:
+        chunking_started = time.monotonic()
         source_text = state.get("sanitized_text") if text_source == "sanitized" else state.get("extracted_text")
         source_text = source_text or ""
         chunk_version = self.repository.get_next_chunk_version(file_doc.get("document_id") or file_doc["file_id"])
@@ -758,6 +772,15 @@ class FileIngestionGraph:
             },
             session=session,
         )
+        METRICS.file_processing_duration.labels(service="files", stage="chunking").observe(
+            time.monotonic() - chunking_started
+        )
+        for stage in ("review", "chunking"):
+            METRICS.ingestion_stage_total.labels(
+                service="files",
+                stage=stage,
+                outcome="ok",
+            ).inc()
         self.repository.update_task(
             task_doc["task_id"],
             {

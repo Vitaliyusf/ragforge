@@ -11,15 +11,23 @@ Usage:
     except CircuitBreakerOpen:
         return {"error": "Service temporarily unavailable"}
 """
+import os
 import time
 import threading
 import logging
 from enum import Enum
 from typing import Callable, TypeVar, Any, Dict, Optional
 
+from shared.metrics import METRICS
+
 logger = logging.getLogger("circuit_breaker")
 
 T = TypeVar("T")
+
+# A breaker knows only the downstream it guards, not which service owns it, and
+# threading an extra argument through every call site would be worse than one
+# module-level lookup.
+_SERVICE_NAME = os.getenv("SERVICE_NAME", "unknown")
 
 
 class CircuitState(str, Enum):
@@ -27,6 +35,13 @@ class CircuitState(str, Enum):
     CLOSED = "closed"
     OPEN = "open"
     HALF_OPEN = "half_open"
+
+
+_STATE_GAUGE_VALUES = {
+    CircuitState.CLOSED: 0,
+    CircuitState.OPEN: 1,
+    CircuitState.HALF_OPEN: 2,
+}
 
 
 class CircuitBreakerOpen(Exception):
@@ -132,11 +147,19 @@ class CircuitBreaker:
             if self._state == CircuitState.OPEN:
                 remaining = self.recovery_timeout - (time.monotonic() - self._opened_at)
                 self._total_rejected += 1
+                METRICS.circuit_breaker_rejections.labels(
+                    service=_SERVICE_NAME,
+                    downstream=self.name,
+                ).inc()
                 raise CircuitBreakerOpen(self.name, max(0.0, remaining))
 
             if self._state == CircuitState.HALF_OPEN:
                 if self._half_open_calls >= self.half_open_max_calls:
                     self._total_rejected += 1
+                    METRICS.circuit_breaker_rejections.labels(
+                        service=_SERVICE_NAME,
+                        downstream=self.name,
+                    ).inc()
                     raise CircuitBreakerOpen(self.name, 0.0)
                 self._half_open_calls += 1
 
@@ -166,6 +189,10 @@ class CircuitBreaker:
         """Record a failed call."""
         with self._lock:
             self._total_failures += 1
+            METRICS.circuit_breaker_failures.labels(
+                service=_SERVICE_NAME,
+                downstream=self.name,
+            ).inc()
             self._failure_count += 1
             self._last_failure_time = time.monotonic()
 
@@ -186,6 +213,10 @@ class CircuitBreaker:
         """Transition to a new state (called under lock)."""
         old_state = self._state
         self._state = new_state
+        METRICS.circuit_breaker_state.labels(
+            service=_SERVICE_NAME,
+            downstream=self.name,
+        ).set(_STATE_GAUGE_VALUES[new_state])
 
         if new_state == CircuitState.OPEN:
             self._opened_at = time.monotonic()

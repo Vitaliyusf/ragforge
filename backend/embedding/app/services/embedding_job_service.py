@@ -22,6 +22,10 @@ from app.services.embedding_job_publisher import EmbeddingJobPublisher
 from app.services.embedding_job_tracing import EmbeddingLangSmithTracer
 from app.core.logging_config import ServiceLogger
 from app.messaging.embedding_kafka import EmbeddingKafkaProducer
+# Imported normally rather than through `_load_shared_symbol` below: the service
+# already imports `shared.metrics` in main.py, and loading the module a second
+# time would re-register every collector in the default Prometheus registry.
+from shared.metrics import METRICS
 
 
 SERVICE_ROOT = Path(__file__).resolve().parents[2]
@@ -227,6 +231,9 @@ class EmbeddingJobService:
 
                 self._publisher.publish_upsert(upsert_envelope, batch_index, batch_metadata)
                 batches_processed += 1
+                METRICS.embedding_chunks_processed.labels(service="embedding").inc(
+                    len(batch_chunks)
+                )
 
             completed_event = self._publisher.build_completed_envelope(
                 envelope=envelope,

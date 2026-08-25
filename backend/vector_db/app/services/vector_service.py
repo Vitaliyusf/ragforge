@@ -1,5 +1,6 @@
 """Chunk-native vector service for Qdrant and Kafka operations."""
 import os
+import time
 from typing import Any, Dict, List, Optional, Union
 from uuid import uuid4
 
@@ -27,6 +28,7 @@ from app.schemas.vector import (
 )
 from app.services.base import BaseVectorService
 from shared.auth import AuthError, ROLE_SERVICE, identity_from_context
+from shared.metrics import METRICS
 
 
 KafkaRequest = Union[
@@ -155,6 +157,10 @@ class VectorService(BaseVectorService):
             "file_id": first_chunk.get("file_id"),
             "review_outcome": review_outcome,
         }
+        METRICS.vector_upsert_total.labels(
+            service="vector_db",
+            collection=result["collection_name"],
+        ).inc()
         self.logger.log("vector_service:upsert_chunks", "Chunks upserted", result)
         return result
 
@@ -170,6 +176,8 @@ class VectorService(BaseVectorService):
         if not query_vector:
             raise InvalidVectorError("query_vector is required")
 
+        collection = self.vector_store.collection_name
+        started = time.monotonic()
         try:
             query = np.asarray(query_vector, dtype=np.float32)
             results = self.vector_store.search_chunks(
@@ -185,6 +193,16 @@ class VectorService(BaseVectorService):
             raise InvalidVectorError(str(exc)) from exc
         except Exception as exc:
             raise VectorStoreError(f"Failed to search chunks: {exc}") from exc
+        finally:
+            # In `finally` so a failed search is still counted and timed.
+            METRICS.vector_search_duration.labels(
+                service="vector_db",
+                collection=collection,
+            ).observe(time.monotonic() - started)
+            METRICS.vector_search_total.labels(
+                service="vector_db",
+                collection=collection,
+            ).inc()
 
         self.logger.log(
             "vector_service:search_chunks",
