@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
   CheckCircle,
@@ -63,10 +63,18 @@ export default function ModelManagementTab() {
   const [downloadStatus, setDownloadStatus] = useState({})
   const [modelQuery, setModelQuery] = useState('')
   const [loading, setLoading] = useState(false)
+  // Download polls are started from a click handler, so they outlive no effect
+  // of their own — they have to be cleared explicitly when the tab unmounts.
+  const downloadPollsRef = useRef(new Set())
 
   useEffect(() => {
     loadImplementations()
     loadModels()
+  }, [])
+
+  useEffect(() => () => {
+    downloadPollsRef.current.forEach(clearInterval)
+    downloadPollsRef.current.clear()
   }, [])
 
   const loadImplementations = async () => {
@@ -129,20 +137,26 @@ export default function ModelManagementTab() {
     try {
       setLoading(true)
       await modelService.downloadModel(model, implementation)
+      const stopPoll = () => {
+        clearInterval(pollStatus)
+        downloadPollsRef.current.delete(pollStatus)
+      }
       const pollStatus = setInterval(async () => {
         try {
           const status = await modelService.getDownloadStatus(model)
           setDownloadStatus((previous) => ({ ...previous, [model]: status }))
           if (status.status === 'completed' || status.status === 'error') {
-            clearInterval(pollStatus)
+            stopPoll()
             setLoading(false)
             if (status.status === 'completed') loadModels()
           }
         } catch (err) {
-          clearInterval(pollStatus)
+          stopPoll()
           setLoading(false)
+          toast.error('Download status check failed', { description: err.message })
         }
       }, 2000)
+      downloadPollsRef.current.add(pollStatus)
     } catch (err) {
       toast.error('Download failed', { description: err.message })
       setLoading(false)

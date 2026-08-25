@@ -22,6 +22,8 @@ import {
 import Card from '@/components/ui/Card'
 import Button from '@/components/ui/Button'
 import ProgressBar from '@/components/ui/ProgressBar'
+import { ConfirmModal } from '@/components/ui/Modal'
+import { toast } from 'sonner'
 import { useTraining } from '../hooks/useTraining'
 
 const STATUS_STYLES = {
@@ -249,7 +251,28 @@ export default function TrainingTab() {
     refresh,
   } = useTraining()
 
+  // Deleting a dataset or adapter is irreversible. Every other feature in the
+  // app confirms first; this one used to delete on a single unlabelled click.
+  const [pendingDelete, setPendingDelete] = useState(null)
+
+  const runAction = async (label, action) => {
+    try {
+      await action()
+    } catch (err) {
+      toast.error(`${label} failed`, { description: err?.message || 'Please try again.' })
+    }
+  }
+
+  const confirmDelete = async () => {
+    if (!pendingDelete) return
+    const { kind, id, name } = pendingDelete
+    await runAction(`Deleting ${name}`, () =>
+      kind === 'dataset' ? deleteDataset(id) : deleteAdapter(id))
+    setPendingDelete(null)
+  }
+
   return (
+    <>
     <div className="mx-auto flex h-full w-full max-w-6xl flex-col gap-4 overflow-y-auto p-3 md:p-6">
       {/* Header */}
       <div className="flex items-center justify-between">
@@ -281,7 +304,7 @@ export default function TrainingTab() {
       {activeJob && activeJob.status === 'training' && (
         <div className="space-y-2">
           <JobProgressBar job={activeJob} />
-          <Button variant="secondary" size="sm" onClick={() => cancelJob(activeJob.job_id)} className="gap-1.5">
+          <Button variant="secondary" size="sm" onClick={() => runAction('Cancelling the job', () => cancelJob(activeJob.job_id))} className="gap-1.5">
             <Square size={14} />
             Cancel Training
           </Button>
@@ -311,7 +334,12 @@ export default function TrainingTab() {
                     <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${
                       ds.status === 'validated' ? 'text-success bg-success-soft' : 'text-danger bg-danger-soft'
                     }`}>{ds.status}</span>
-                    <button onClick={() => deleteDataset(ds.dataset_id)} className="text-text-muted hover:text-danger transition-colors">
+                    <button
+                      type="button"
+                      onClick={() => setPendingDelete({ kind: 'dataset', id: ds.dataset_id, name: ds.name || 'this dataset' })}
+                      aria-label={`Delete dataset ${ds.name || ds.dataset_id}`}
+                      className="flex h-7 w-7 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-danger-soft hover:text-danger"
+                    >
                       <Trash2 size={13} />
                     </button>
                   </div>
@@ -328,7 +356,7 @@ export default function TrainingTab() {
             <h3 className="text-[15px] font-semibold text-text-primary">Start Training</h3>
           </div>
           <TrainingConfigForm
-            onStart={startTraining}
+            onStart={(id, cfg) => runAction('Starting training', () => startTraining(id, cfg))}
             disabled={!!activeJob}
           />
         </Card>
@@ -389,7 +417,12 @@ export default function TrainingTab() {
                     }`}>
                       {adapter.loaded ? 'Loaded' : 'Available'}
                     </span>
-                    <button onClick={() => deleteAdapter(adapter.adapter_id)} className="text-text-muted hover:text-danger transition-colors">
+                    <button
+                      type="button"
+                      onClick={() => setPendingDelete({ kind: 'adapter', id: adapter.adapter_id, name: adapter.name || 'this adapter' })}
+                      aria-label={`Delete adapter ${adapter.name || adapter.adapter_id}`}
+                      className="flex h-7 w-7 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-danger-soft hover:text-danger"
+                    >
                       <Trash2 size={13} />
                     </button>
                   </div>
@@ -400,5 +433,17 @@ export default function TrainingTab() {
         </Card>
       </div>
     </div>
+
+      <ConfirmModal
+        open={Boolean(pendingDelete)}
+        onOpenChange={(open) => { if (!open) setPendingDelete(null) }}
+        title={pendingDelete?.kind === 'adapter' ? 'Delete adapter?' : 'Delete dataset?'}
+        description={pendingDelete ? `Delete "${pendingDelete.name}"? This cannot be undone.` : ''}
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        onConfirm={confirmDelete}
+        variant="danger"
+      />
+    </>
   )
 }

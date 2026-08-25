@@ -39,7 +39,13 @@ function AddMemoryForm({ onAdd, onCancel }) {
       >
         <div className="flex items-center justify-between mb-3">
           <span className="text-[15px] font-semibold" style={{ color: 'var(--fg)' }}>New Memory</span>
-          <button onClick={onCancel} className="p-1 rounded" style={{ color: 'var(--fg-soft)' }}>
+          <button
+            type="button"
+            onClick={onCancel}
+            aria-label="Cancel adding memory"
+            className="flex h-7 w-7 items-center justify-center rounded-lg"
+            style={{ color: 'var(--fg-soft)' }}
+          >
             <X size={14} />
           </button>
         </div>
