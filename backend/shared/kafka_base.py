@@ -31,7 +31,9 @@ import time
 from typing import Any, Dict, Iterator, Optional, Tuple
 
 from kafka import KafkaConsumer, KafkaProducer
+from kafka.structs import TopicPartition
 from .auth import attach_internal_auth_context
+from .metrics import observe_kafka_consumer_lag
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +46,7 @@ class _KafkaConfigProtocol:
     """
 
     kafka_bootstrap_servers: str
+    service_name: str
     kafka_max_retries: int
     kafka_retry_delay: int
     kafka_consumer_timeout_ms: int
@@ -202,9 +205,34 @@ class BaseKafkaConsumer:
             raise RuntimeError("Kafka consumer not available")
         try:
             for message in self._consumer:
+                self._record_lag(message)
                 yield message.value
         except StopIteration:
             return
+
+    def _record_lag(self, message: Any) -> None:
+        """Update the consumer-lag gauge from offsets this fetch already carried.
+
+        Free: ``highwater`` is the value kafka-python cached from the last
+        FetchResponse, so this adds no broker round-trip, no admin client, and
+        no background thread — the gauge is updated on the path that was
+        already running.
+
+        Never raises. Lag is a monitoring side-effect of consuming, and a
+        metrics failure must not stop a service from processing its messages.
+        """
+        try:
+            partition = TopicPartition(message.topic, message.partition)
+            observe_kafka_consumer_lag(
+                service=getattr(self.config, "service_name", "unknown"),
+                topic=message.topic,
+                group=self.group_id,
+                highwater=self._consumer.highwater(partition),
+                # Both are *next* offsets: the message just yielded is consumed.
+                next_offset=message.offset + 1,
+            )
+        except Exception:
+            logger.debug("Kafka consumer lag not recorded", exc_info=True)
 
     def close(self) -> None:
         """Close the consumer and release the underlying client."""

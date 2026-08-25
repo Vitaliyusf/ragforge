@@ -232,6 +232,36 @@ class VectorService(BaseVectorService):
         )
         return deleted_count
 
+    def collection_metrics(self) -> Dict[str, Any]:
+        """Return the point count for the active collection.
+
+        Admin or service callers only, like every other privileged action here.
+
+        The count is **collection-wide, not tenant-scoped**. Qdrant is asked for
+        the size of the collection, and this service has no per-tenant
+        breakdown to offer without a filtered count the store interface does not
+        expose. The `scope` marker travels with the number so the metrics tab
+        presents it as a platform figure, the way it already presents the
+        Prometheus series, rather than letting it read as "this tenant's
+        vectors".
+
+        Raises:
+            InvalidVectorError: If the caller is neither admin nor service.
+            VectorStoreError: If the store could not be counted.
+        """
+        identity = self._identity()
+        if identity is not None and not (identity.is_admin or identity.role == ROLE_SERVICE):
+            raise InvalidVectorError("Administrator role required for vector metrics")
+        collection = self.vector_store.collection_name
+        try:
+            vectors = self.vector_store.count()
+        except Exception as exc:
+            raise VectorStoreError(f"Failed to count vectors: {exc}") from exc
+        return {
+            "scope": "all_tenants",
+            "collections": [{"collection": collection, "vectors": vectors}],
+        }
+
     # ------------------------------------------------------------------
     # RabbitMQ RPC dispatcher (returns reply dict)
     # ------------------------------------------------------------------
@@ -306,6 +336,11 @@ class VectorService(BaseVectorService):
                 collection_name = self.initialize_collection()
                 return self._build_rpc_success(
                     normalized_request, action, {"collection_name": collection_name}
+                )
+
+            if action == VectorAction.GET_METRICS:
+                return self._build_rpc_success(
+                    normalized_request, action, self.collection_metrics()
                 )
 
             raise InvalidVectorError(f"Unsupported action: {action}")

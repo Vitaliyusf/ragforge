@@ -26,6 +26,7 @@ from app.core.constants import (
     FileAction,
     MetricsWindow,
     RagAction,
+    VectorDbAction,
 )
 from app.core.logging_config import ServiceLogger
 from app.core.config import GatewayConfig
@@ -152,6 +153,10 @@ class MetricsService(BaseRPCService):
                 "vector_search_rate",
                 "retrieval_score_p50",
                 "sources_per_query_p95",
+                "retrieval_filtered_rate",
+                "retrieval_filtered_by_reason",
+                "reranker_p95",
+                "reranker_top_score_buckets",
             ],
             window,
         )
@@ -165,6 +170,15 @@ class MetricsService(BaseRPCService):
             ),
             "retrieval_score_p50": _scalar(metrics.get("retrieval_score_p50")),
             "sources_per_query_p95": _scalar(metrics.get("sources_per_query_p95")),
+            "retrieval_filtered_rate": _scalar(metrics.get("retrieval_filtered_rate")),
+            "retrieval_filtered_by_reason": _by_label(
+                metrics.get("retrieval_filtered_by_reason"), "reason"
+            ),
+            "reranker_p95_seconds": _scalar(metrics.get("reranker_p95")),
+            # Scored 0-10 by the reranker model, not 0-1 like the judge scores.
+            "reranker_top_score_histogram": _histogram_from_le(
+                metrics.get("reranker_top_score_buckets")
+            ),
         }
         return self._envelope(window, rag, available, data)
 
@@ -195,6 +209,7 @@ class MetricsService(BaseRPCService):
         """Build the ingestion funnel, throughput, and token/cost breakdown."""
         rag = await self._rag_sections(["cost"], window, tenant_id)
         files = await self._files_metrics(window, tenant_id)
+        vectors = await self._vector_metrics()
         metrics, available = await self._gather(
             [
                 "ingestion_stage_rate",
@@ -204,6 +219,9 @@ class MetricsService(BaseRPCService):
                 "llm_p95",
                 "llm_token_rate",
                 "vector_search_rate",
+                "kafka_consumer_lag",
+                "dlq_rate",
+                "vector_upsert_increase",
             ],
             window,
         )
@@ -227,6 +245,16 @@ class MetricsService(BaseRPCService):
             "vector_search_rate": _by_label(
                 metrics.get("vector_search_rate"), "collection"
             ),
+            "kafka_consumer_lag": _by_labels(
+                metrics.get("kafka_consumer_lag"), ("topic", "group")
+            ),
+            "dlq_rate": _by_labels(metrics.get("dlq_rate"), ("service", "error_type")),
+            # Counts are collection-wide, not tenant-scoped — `scope` says so
+            # and the panel must repeat it. Growth is what the window added.
+            "vectors": {
+                **vectors,
+                "growth": _by_label(metrics.get("vector_upsert_increase"), "collection"),
+            },
         }
         return self._envelope(window, rag or files, available, data)
 
@@ -265,6 +293,26 @@ class MetricsService(BaseRPCService):
                 "tenant_id": tenant_id,
             },
         )
+
+    async def _vector_metrics(self) -> Dict[str, Any]:
+        """Fetch collection point counts from the vector_db service.
+
+        Returns an empty dict rather than raising. Vector counts are one card
+        on the pipeline panel; a vector_db outage should cost that card, not
+        the funnel, the stuck-file list and the cost breakdown beside it.
+        """
+        routing_key = self.config.request_topics.get("vector_db")
+        if not routing_key:
+            return {}
+        try:
+            return await self._send(routing_key, {"action": VectorDbAction.GET_METRICS})
+        except Exception as exc:
+            self.logger.log(
+                "metrics_service:vector_metrics",
+                "vector_db metrics unavailable; omitting collection counts",
+                {"error": str(exc)},
+            )
+            return {}
 
     # ------------------------------------------------------------------
     # Prometheus
@@ -358,6 +406,9 @@ class MetricsService(BaseRPCService):
             fell back to the default. A $0.00 total next to a non-empty
             ``models_without_pricing`` means "nothing here is priced", not
             "this was free".
+
+            ``by_tenant`` carries the same rows rag sent, priced only when
+            there is exactly one — see the loop for why.
         """
         by_model: List[Dict[str, Any]] = []
         unpriced: List[str] = []
@@ -374,8 +425,20 @@ class MetricsService(BaseRPCService):
             ) / TOKENS_PER_COST_UNIT
             total += estimated
             by_model.append({**entry, "estimated_cost_usd": estimated})
+        by_tenant: List[Dict[str, Any]] = []
+        tenant_rows = cost.get("by_tenant") or []
+        for entry in tenant_rows:
+            # `by_tenant` and `by_model` aggregate the same turns, so with the
+            # single row rag can return, that tenant's spend *is* the window
+            # total. More than one row would need a per-tenant model split rag
+            # does not send, so the cost is left None rather than apportioned
+            # by a guess.
+            by_tenant.append(
+                {**entry, "estimated_cost_usd": total if len(tenant_rows) == 1 else None}
+            )
         return {
             "by_model": by_model,
+            "by_tenant": by_tenant,
             "tokens_in": cost.get("tokens_in", 0),
             "tokens_out": cost.get("tokens_out", 0),
             "estimated_cost_usd": total,
@@ -463,6 +526,62 @@ def _by_labels(
         row["value"] = _number((entry.get("value") or [None, None])[1])
         rows.append(row)
     return rows
+
+
+def _histogram_from_le(result: Optional[List[Dict[str, Any]]]) -> List[Dict[str, Any]]:
+    """Convert cumulative ``le`` bucket counts into discrete ``{bucket, count}``.
+
+    A Prometheus ``_bucket`` series is cumulative: ``le="2"`` counts everything
+    at or below 2, not the 1-to-2 band. Handing those numbers to a bar chart
+    draws a staircase that only ever rises, which reads as a distribution and
+    is not one — so each bucket has its predecessor subtracted here.
+
+    ``+Inf`` is folded into the final labelled bucket rather than shown: it is
+    an artefact of the bucket definition, not a score range an operator can act
+    on. A negative difference (a counter reset mid-window) is clamped to 0.
+
+    Returns:
+        Buckets in ascending order, labelled by their upper bound. Empty when
+        the query matched nothing, which the chart renders as no chart at all
+        rather than as a row of zeroes.
+    """
+    if not result:
+        return []
+    edges: List[Tuple[float, float]] = []
+    infinite = 0.0
+    for entry in result:
+        raw = (entry.get("metric") or {}).get("le")
+        value = _number((entry.get("value") or [None, None])[1])
+        if raw is None or value is None:
+            continue
+        try:
+            bound = float(raw)
+        except (TypeError, ValueError):
+            continue
+        if math.isinf(bound):
+            infinite = value
+            continue
+        edges.append((bound, value))
+
+    if not edges:
+        return []
+    edges.sort(key=lambda item: item[0])
+
+    buckets: List[Dict[str, Any]] = []
+    previous = 0.0
+    for bound, cumulative in edges:
+        buckets.append({"bucket": _bucket_label(bound), "count": max(0.0, cumulative - previous)})
+        previous = cumulative
+    # Anything above the last finite edge belongs to that edge's band; the
+    # +Inf series is the same running total, so the overflow is its remainder.
+    if infinite > previous:
+        buckets[-1]["count"] += infinite - previous
+    return buckets
+
+
+def _bucket_label(bound: float) -> str:
+    """Label one histogram bucket by its upper bound, without a trailing .0."""
+    return str(int(bound)) if float(bound).is_integer() else str(bound)
 
 
 def _series(result: Optional[List[Dict[str, Any]]]) -> List[Dict[str, Any]]:

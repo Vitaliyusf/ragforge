@@ -137,6 +137,7 @@ class RagAction(str, Enum):
 class VectorDbAction(str, Enum):
     """Action strings routed to the vector DB service."""
     DELETE_BY_FILE_ID = "delete_by_file_id"
+    GET_METRICS = "get_metrics"
 
 
 class ConfigManagementAction(str, Enum):

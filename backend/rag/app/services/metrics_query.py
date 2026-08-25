@@ -48,6 +48,11 @@ MAX_WORST_TURN_LIMIT = 50
 SCORE_BOUNDARIES: List[float] = [0.0, 0.2, 0.4, 0.6, 0.8, 1.01]
 CHUNK_BOUNDARIES: List[int] = [0, 1, 3, 5, 8, 13, 21]
 
+# Score gaps bunch up near zero, so the low end gets the resolution: the
+# interesting question is "was the top chunk actually distinguishable", and
+# that is decided between 0.0 and 0.2, not between 0.6 and 0.8.
+SCORE_GAP_BOUNDARIES: List[float] = [0.0, 0.05, 0.1, 0.2, 0.4, 1.01]
+
 # The rating values the answer-feedback control actually emits.
 POSITIVE_RATING = "positive"
 NEGATIVE_RATING = "negative"
@@ -350,6 +355,9 @@ class MetricsQueryService:
             {
                 "$facet": {
                     "top_score_histogram": self._score_facet("top_score"),
+                    "score_gap_histogram": self._score_facet(
+                        "score_gap", SCORE_GAP_BOUNDARIES
+                    ),
                     "chunks_per_query": [
                         {
                             "$bucket": {
@@ -373,6 +381,10 @@ class MetricsQueryService:
                                 },
                                 "mean_chunk_count": {"$avg": "$chunk_count"},
                                 "mean_top_score": {"$avg": "$top_score"},
+                                "mean_score_gap": {"$avg": "$score_gap"},
+                                "score_gap_turns": {
+                                    "$sum": {"$cond": [{"$ne": ["$score_gap", None]}, 1, 0]}
+                                },
                                 "mean_score": {"$avg": "$mean_score"},
                                 "reranker_evaluated": {
                                     "$sum": {
@@ -404,8 +416,16 @@ class MetricsQueryService:
             "mean_chunk_count": totals.get("mean_chunk_count"),
             "mean_top_score": totals.get("mean_top_score"),
             "mean_score": totals.get("mean_score"),
+            "mean_score_gap": totals.get("mean_score_gap"),
+            # The denominator the UI must show beside the mean: only turns
+            # that returned at least SCORE_GAP_RANK chunks have a gap at all,
+            # so this is nearly always smaller than `turns`.
+            "score_gap_turns": totals.get("score_gap_turns", 0),
             "top_score_histogram": _histogram(
                 facets.get("top_score_histogram") or [], SCORE_BOUNDARIES
+            ),
+            "score_gap_histogram": _histogram(
+                facets.get("score_gap_histogram") or [], SCORE_GAP_BOUNDARIES
             ),
             "chunks_per_query": _histogram(
                 facets.get("chunks_per_query") or [], CHUNK_BOUNDARIES
@@ -423,33 +443,53 @@ class MetricsQueryService:
         ``MODEL_COST_PER_1K_TOKENS``, and the gateway turns these token sums
         into ``estimated_cost_usd`` — one source of truth for pricing rather
         than a second copy in this service that could drift from it.
+
+        ``by_tenant`` will always hold exactly one row. ``_match`` refuses a
+        tenant_id other than the caller's, so a cross-tenant total is not
+        something this method can produce — the breakdown exists because the
+        pipeline panel asks for spend by tenant, and answering with one
+        labelled row is honest where inventing a platform-wide split would not
+        be. Callers must not present it as a comparison between tenants.
         """
         identity = _require_admin()
         window = _validate_window(window)
+        totals = {
+            "turns": {"$sum": 1},
+            "tokens_in": {"$sum": {"$ifNull": ["$tokens_in", 0]}},
+            "tokens_out": {"$sum": {"$ifNull": ["$tokens_out", 0]}},
+        }
         pipeline = [
             {"$match": self._match(window, tenant_id, identity)},
             {
-                "$group": {
-                    "_id": "$model",
-                    "turns": {"$sum": 1},
-                    "tokens_in": {"$sum": {"$ifNull": ["$tokens_in", 0]}},
-                    "tokens_out": {"$sum": {"$ifNull": ["$tokens_out", 0]}},
+                "$facet": {
+                    "by_model": [
+                        {"$group": {"_id": "$model", **totals}},
+                        {"$sort": {"tokens_out": -1}},
+                    ],
+                    "by_tenant": [
+                        {"$group": {"_id": "$tenant_id", **totals}},
+                        {"$sort": {"tokens_out": -1}},
+                    ],
                 }
             },
-            {"$sort": {"tokens_out": -1}},
         ]
-        rows = self.store.aggregate(pipeline)
-        by_model = [
-            {
-                "model": row.get("_id"),
-                "turns": row.get("turns", 0),
-                "tokens_in": row.get("tokens_in", 0),
-                "tokens_out": row.get("tokens_out", 0),
-            }
-            for row in rows
-        ]
+        facets = _first(self.store.aggregate(pipeline))
+
+        def _rows(branch: str, key: str) -> List[Dict[str, Any]]:
+            return [
+                {
+                    key: row.get("_id"),
+                    "turns": row.get("turns", 0),
+                    "tokens_in": row.get("tokens_in", 0),
+                    "tokens_out": row.get("tokens_out", 0),
+                }
+                for row in (facets.get(branch) or [])
+            ]
+
+        by_model = _rows("by_model", "model")
         return {
             "by_model": by_model,
+            "by_tenant": _rows("by_tenant", "tenant_id"),
             "tokens_in": sum(item["tokens_in"] for item in by_model),
             "tokens_out": sum(item["tokens_out"] for item in by_model),
         }
@@ -535,14 +575,24 @@ class MetricsQueryService:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _score_facet(field: str) -> List[Dict[str, Any]]:
-        """Build a ``$facet`` branch bucketing one 0-1 score field."""
+    def _score_facet(
+        field: str,
+        boundaries: Optional[List[float]] = None,
+    ) -> List[Dict[str, Any]]:
+        """Build a ``$facet`` branch bucketing one numeric score field.
+
+        Args:
+            field: The document field to bucket. Nulls are excluded first, so
+                an unmeasured turn never lands in the lowest bucket.
+            boundaries: Bucket edges, defaulting to the 0-1 score edges.
+        """
+        bounds = boundaries or SCORE_BOUNDARIES
         return [
             {"$match": {field: {"$ne": None}}},
             {
                 "$bucket": {
                     "groupBy": f"${field}",
-                    "boundaries": SCORE_BOUNDARIES,
+                    "boundaries": bounds,
                     "default": "out_of_range",
                     "output": {"count": {"$sum": 1}},
                 }

@@ -572,7 +572,20 @@ class ConversationGraphRunner:
                 continue
             review_status = item.get("review_status") or qdrant_payload.get("review_status") or metadata.get("review_status") or "clean"
             retrieval_allowed = bool(item.get("retrieval_allowed", qdrant_payload.get("retrieval_allowed", metadata.get("retrieval_allowed", True))))
-            if not retrieval_allowed or review_status == "removed":
+            # Counted where the policy decision is made, so the filtered rate's
+            # denominator matches its numerator. Chunks dropped just above for
+            # empty text never reach here: that is a data-quality drop, not a
+            # policy one, and folding it in would dilute the rate.
+            METRICS.rag_chunks_considered_total.labels(service="rag").inc()
+            if not retrieval_allowed:
+                METRICS.rag_chunks_filtered_total.labels(
+                    service="rag", reason="retrieval_not_allowed"
+                ).inc()
+                continue
+            if review_status == "removed":
+                METRICS.rag_chunks_filtered_total.labels(
+                    service="rag", reason="review_removed"
+                ).inc()
                 continue
             chunk_index = item.get("chunk_index") or qdrant_payload.get("chunk_index") or metadata.get("chunk_index") or len(normalized)
             chunk_version = item.get("chunk_version") or qdrant_payload.get("chunk_version") or metadata.get("chunk_version") or 1
