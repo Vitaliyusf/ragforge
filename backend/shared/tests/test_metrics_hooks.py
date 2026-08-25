@@ -1,5 +1,5 @@
 """Tests for the resilience metric hooks and the no-Prometheus fallback."""
-from typing import Any
+from typing import Any, List, Tuple, cast
 
 import pytest
 
@@ -17,19 +17,19 @@ SERVICE = circuit_breaker_module._SERVICE_NAME
 
 def gauge_value(metric: Any, **labels: str) -> float:
     """Current value of a labelled gauge."""
-    return metric.labels(**labels)._value.get()
+    return cast(float, metric.labels(**labels)._value.get())
 
 
 def counter_value(metric: Any, **labels: str) -> float:
     """Current value of a labelled counter."""
-    return metric.labels(**labels)._value.get()
+    return cast(float, metric.labels(**labels)._value.get())
 
 
 def _failing_call() -> None:
     raise RuntimeError("downstream is down")
 
 
-def test_circuit_breaker_transition_sets_the_state_gauge():
+def test_circuit_breaker_transition_sets_the_state_gauge() -> None:
     breaker = CircuitBreaker(
         name="metrics-gauge-test",
         failure_threshold=1,
@@ -57,7 +57,7 @@ def test_circuit_breaker_transition_sets_the_state_gauge():
     )
 
 
-def test_circuit_breaker_failure_increments_the_failure_counter():
+def test_circuit_breaker_failure_increments_the_failure_counter() -> None:
     breaker = CircuitBreaker(
         name="metrics-failure-test",
         failure_threshold=5,
@@ -78,7 +78,7 @@ def test_circuit_breaker_failure_increments_the_failure_counter():
     )
 
 
-def test_open_circuit_rejection_increments_the_rejection_counter():
+def test_open_circuit_rejection_increments_the_rejection_counter() -> None:
     breaker = CircuitBreaker(
         name="metrics-rejection-test",
         failure_threshold=1,
@@ -105,7 +105,7 @@ def test_open_circuit_rejection_increments_the_rejection_counter():
     )
 
 
-def test_rate_limiter_records_allowed_and_rejected_requests():
+def test_rate_limiter_records_allowed_and_rejected_requests() -> None:
     # A capacity of one token lets exactly one request through.
     limiter = RateLimiter(global_rate=1.0, per_ip_rate=1.0, burst_multiplier=1.0)
     before_allowed = counter_value(METRICS.rate_limiter_allowed, service=SERVICE)
@@ -121,10 +121,10 @@ def test_rate_limiter_records_allowed_and_rejected_requests():
     assert counter_value(METRICS.rate_limiter_rejected, service=SERVICE) == before_rejected + 1
 
 
-def test_dlq_send_counts_the_message_by_error_type():
+def test_dlq_send_counts_the_message_by_error_type() -> None:
     class FakeProducer:
         def __init__(self) -> None:
-            self.sent = []
+            self.sent: List[Tuple[str, dict]] = []
 
         def send(self, topic: str, entry: dict) -> None:
             self.sent.append((topic, entry))
@@ -147,7 +147,9 @@ def test_dlq_send_counts_the_message_by_error_type():
     )
 
 
-def test_metrics_are_silent_when_prometheus_is_not_installed(monkeypatch):
+def test_metrics_are_silent_when_prometheus_is_not_installed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Every recording call must be a harmless no-op without prometheus_client."""
     monkeypatch.setattr(metrics_module, "_HAS_PROMETHEUS", False)
     noop = metrics_module.ServiceMetrics()

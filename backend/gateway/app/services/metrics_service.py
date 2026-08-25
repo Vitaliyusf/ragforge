@@ -232,7 +232,7 @@ class MetricsService(BaseRPCService):
             ],
             window,
         )
-        data = {
+        data: Dict[str, Any] = {
             "ingestion": _without_tenant(files),
             "cost": self._priced(rag.get("cost") or {}),
             "ingestion_stage_rate": _by_labels(
