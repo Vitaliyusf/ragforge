@@ -65,6 +65,22 @@ STAGE_KEYS = (
 
 STAGE_DONE = "done"
 
+# The ingestion funnel, in order. Each step names the `stage.*` key whose
+# `done` state marks it complete; `uploaded` is every file in the window and
+# so has no stage key of its own.
+#
+# A subset of STAGE_KEYS on purpose: review, summary, semantic and metadata
+# are real stages but not narrowing ones — a file can finish ingestion
+# without them — and putting them in the funnel would show drop-off where
+# none occurred.
+FUNNEL_STEPS: tuple[tuple[str, Optional[str]], ...] = (
+    ("uploaded", None),
+    ("extracted", "extraction"),
+    ("chunked", "chunking"),
+    ("embedded", "embedding"),
+    ("indexed", "vector"),
+)
+
 
 class FileMetricsAccessDenied(PermissionError):
     """The caller is not an administrator of the tenant being queried."""
@@ -140,6 +156,16 @@ class FileMetricsQueryService:
         Statuses are reported exactly as the ingestion graph writes them.
         Nothing is renamed, merged, or normalised on the way out — a status
         this module has never seen still appears in the result.
+
+        `funnel_steps` carries each step's count, how many were lost since the
+        previous step, and that loss as a fraction — computed here so the UI
+        renders numbers rather than deriving them. The first step's drop-off is
+        None (nothing precedes it), and any step whose predecessor was empty is
+        None rather than 0.0.
+
+        A negative `dropped` is reported as-is rather than clamped: it means a
+        later stage completed for more files than an earlier one, which is a
+        real inconsistency worth seeing, not a rendering artefact to hide.
         """
         identity = _require_admin()
         window = _validate_window(window)
@@ -167,6 +193,25 @@ class FileMetricsQueryService:
         ]
         facets = _first(self._aggregate_files(pipeline))
         stages = _first(facets.get("stages") or [])
+        counts = {
+            step: stages.get("files", 0) if key is None else stages.get(f"stage_{key}_done", 0)
+            for step, key in FUNNEL_STEPS
+        }
+        funnel_steps: List[Dict[str, Any]] = []
+        previous: Optional[int] = None
+        for step, _key in FUNNEL_STEPS:
+            count = counts[step]
+            dropped = None if previous is None else previous - count
+            funnel_steps.append(
+                {
+                    "step": step,
+                    "count": count,
+                    "dropped": dropped,
+                    "drop_off": None if dropped is None else _ratio(dropped, previous),
+                    "share_of_uploaded": _ratio(count, counts["uploaded"]),
+                }
+            )
+            previous = count
         return {
             "files": stages.get("files", 0),
             "by_status": [
@@ -181,6 +226,7 @@ class FileMetricsQueryService:
                 {"stage": stage, "done": stages.get(f"stage_{stage}_done", 0)}
                 for stage in STAGE_KEYS
             ],
+            "funnel_steps": funnel_steps,
         }
 
     def task_durations(self, window: str, tenant_id: Optional[str] = None) -> Dict[str, Any]:
@@ -367,6 +413,17 @@ class FileMetricsQueryService:
 def _first(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
     """Return the single row of a ``_id: None`` group, or an empty dict."""
     return rows[0] if rows else {}
+
+
+def _ratio(numerator: float, denominator: float) -> Optional[float]:
+    """Divide, returning None rather than 0.0 when there is nothing to divide.
+
+    A drop-off over zero inbound files is unknown, not zero. Returning 0.0
+    would render a confident "0% lost" for a stage nothing ever reached.
+    """
+    if not denominator:
+        return None
+    return numerator / denominator
 
 
 def _serialize(row: Dict[str, Any]) -> Dict[str, Any]:

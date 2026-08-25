@@ -3,7 +3,11 @@
 The tab needs roughly two dozen queries. Inline strings in route handlers
 become unmaintainable immediately, so handlers name a key here instead.
 
-Placeholder: ``${window}`` only, substituted via :class:`string.Template`.
+Placeholders, substituted via :class:`string.Template`: ``${window}`` is the
+rate window used for smoothing (minutes, even for a 30-day selection), and
+``${range}`` is the selected window's full duration. Use ``${range}`` only for
+``increase()``-style totals that must cover the whole period; every rate keeps
+using ``${window}``.
 PromQL is full of literal braces, so ``str.format`` would require escaping
 every label matcher; ``$``-substitution has no such collision.
 
@@ -68,6 +72,21 @@ INSTANT_QUERIES: dict[str, str] = {
     "vector_search_rate": "sum by (collection) (rate(ragapp_vector_searches_total[${window}]))",
     "retrieval_score_p50": "histogram_quantile(0.50, sum by (le) (rate(ragapp_rag_retrieval_score_bucket[${window}])))",
     "sources_per_query_p95": "histogram_quantile(0.95, sum by (le) (rate(ragapp_rag_sources_per_query_bucket[${window}])))",
+    # Numerator and denominator are the pair recorded at the policy gate in
+    # rag's _normalize_chunks, so this is a true fraction of judged chunks.
+    "retrieval_filtered_rate": (
+        "sum(rate(ragapp_rag_chunks_filtered_total[${window}])) "
+        "/ clamp_min(sum(rate(ragapp_rag_chunks_considered_total[${window}])), "
+        + _EPSILON
+        + ")"
+    ),
+    "retrieval_filtered_by_reason": "sum by (reason) (rate(ragapp_rag_chunks_filtered_total[${window}]))",
+    # Phase 1 records both of these; nothing queried them until now. The lift
+    # number alone cannot answer "is the reranker earning its latency".
+    "reranker_p95": "histogram_quantile(0.95, sum by (le) (rate(ragapp_reranker_duration_seconds_bucket[${window}])))",
+    # Cumulative-by-`le` counts over the whole window; the gateway converts
+    # them to discrete buckets before they reach the UI.
+    "reranker_top_score_buckets": "sum by (le) (increase(ragapp_reranker_top_score_bucket[${range}]))",
 
     # ── Embedding and generation ──────────────────────────────────────
     "embedding_p95": "histogram_quantile(0.95, sum by (le) (rate(ragapp_embedding_duration_seconds_bucket[${window}])))",
@@ -78,6 +97,13 @@ INSTANT_QUERIES: dict[str, str] = {
     # ── Ingestion pipeline ────────────────────────────────────────────
     "ingestion_stage_rate": "sum by (stage, outcome) (rate(ragapp_ingestion_stage_total[${window}]))",
     "file_processing_p95": "histogram_quantile(0.95, sum by (stage, le) (rate(ragapp_file_processing_duration_seconds_bucket[${window}])))",
+    # A gauge, so it is read at its current value rather than rated. Absent
+    # series mean no consumer has fetched yet — not a lag of zero.
+    "kafka_consumer_lag": "max by (topic, group) (ragapp_kafka_consumer_lag)",
+    # Vectors added over the selected window — hence ${range}, not ${window}.
+    # `increase` over a counter, so a vector_db restart does not read as a
+    # sudden negative.
+    "vector_upsert_increase": "sum by (collection) (increase(ragapp_vector_upserts_total[${range}]))",
 }
 
 RANGE_QUERIES: dict[str, str] = {
@@ -144,10 +170,13 @@ def render(key: str, window: MetricsWindow, *, range_query: bool = False) -> str
         range_query: Read the key from ``RANGE_QUERIES`` instead.
 
     Returns:
-        The PromQL expression with ``${window}`` substituted.
+        The PromQL expression with ``${window}`` and ``${range}`` substituted.
 
     Raises:
         KeyError: If ``key`` names no known query.
     """
     source = RANGE_QUERIES if range_query else INSTANT_QUERIES
-    return Template(source[key]).substitute(window=promql_window(window))
+    return Template(source[key]).substitute(
+        window=promql_window(window),
+        range=f"{window_seconds(window)}s",
+    )

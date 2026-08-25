@@ -15,7 +15,7 @@ Usage:
     METRICS.circuit_breaker_state.labels(service="embedding").set(0)  # 0=closed, 1=open, 2=half_open
 """
 import logging
-from typing import Any
+from typing import Any, Optional
 
 logger = logging.getLogger("metrics")
 
@@ -76,6 +76,12 @@ class ServiceMetrics:
             "Kafka message processing duration",
             ["service", "topic"],
             buckets=[0.01, 0.05, 0.1, 0.5, 1.0, 5.0, 10.0, 30.0, 60.0],
+        )
+
+        self.kafka_consumer_lag = Gauge(
+            "ragapp_kafka_consumer_lag",
+            "Consumer group lag in messages",
+            ["service", "topic", "group"],
         )
 
         # Circuit breaker metrics
@@ -182,6 +188,18 @@ class ServiceMetrics:
             "ragapp_rag_reranker_changed_top1_total",
             "Turns where the reranker changed which chunk ranked first",
             ["service", "changed"],  # "true" | "false"
+        )
+
+        self.rag_chunks_considered_total = Counter(
+            "ragapp_rag_chunks_considered_total",
+            "Retrieved chunks that reached the retrieval-policy gate",
+            ["service"],
+        )
+
+        self.rag_chunks_filtered_total = Counter(
+            "ragapp_rag_chunks_filtered_total",
+            "Retrieved chunks dropped by retrieval policy",
+            ["service", "reason"],  # retrieval_not_allowed | review_removed
         )
 
         # ── LLM metrics ─────────────────────────────────────────────
@@ -331,6 +349,46 @@ class _NoOpMetric:
 
 # Singleton metrics instance
 METRICS = ServiceMetrics()
+
+
+def observe_kafka_consumer_lag(
+    service: str,
+    topic: str,
+    group: str,
+    highwater: Optional[int],
+    next_offset: Optional[int],
+) -> Optional[int]:
+    """Record consumer lag from two offsets the consume path already holds.
+
+    Lag is ``highwater - next_offset``: both are *next* offsets, so a caught-up
+    consumer is genuinely 0 and the subtraction needs no correction.
+
+    An unknown offset records **nothing** and returns None. kafka-python
+    reports ``highwater`` only once a FetchResponse has arrived for that
+    partition, and a gauge that reads 0 because the offset was unavailable is
+    indistinguishable from a consumer that is keeping up — the worse of the two
+    failures, since it is the reading an operator would trust.
+
+    Lives here rather than in ``kafka_base`` on purpose: kafka-python is in no
+    shared requirements file, so ``shared/kafka_base.py`` cannot be imported by
+    the shared test job at all. Keeping the arithmetic in this kafka-free
+    module is what makes it testable rather than permanently skipped.
+
+    Args:
+        service: Recording service name, the gauge's ``service`` label.
+        topic: Topic the message came from.
+        group: Consumer group id.
+        highwater: Next offset the broker will assign, or None if unknown.
+        next_offset: Next offset this consumer will read, or None if unknown.
+
+    Returns:
+        The recorded lag, or None when nothing was recorded.
+    """
+    if highwater is None or next_offset is None:
+        return None
+    lag = max(0, int(highwater) - int(next_offset))
+    METRICS.kafka_consumer_lag.labels(service=service, topic=topic, group=group).set(lag)
+    return lag
 
 
 def setup_metrics(app: Any, service_name: str, enable_tracing: bool = True) -> None:

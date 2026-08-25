@@ -18,6 +18,8 @@ import pytest
 
 from app.services.metrics_query import (
     METRICS_ACTION,
+    SCORE_BOUNDARIES,
+    SCORE_GAP_BOUNDARIES,
     MetricsAccessDenied,
     MetricsQueryService,
     MetricsWindowInvalid,
@@ -270,7 +272,18 @@ def test_quality_reports_no_citation_coverage():
 def test_cost_returns_tokens_and_no_price():
     """Pricing lives only in the gateway, so rag must not emit a cost field."""
     service = build_service(
-        {None: [{"_id": "model-a", "turns": 3, "tokens_in": 100, "tokens_out": 50}]}
+        {
+            None: [
+                {
+                    "by_model": [
+                        {"_id": "model-a", "turns": 3, "tokens_in": 100, "tokens_out": 50}
+                    ],
+                    "by_tenant": [
+                        {"_id": "tenant-a", "turns": 3, "tokens_in": 100, "tokens_out": 50}
+                    ],
+                }
+            ]
+        }
     )
 
     with bound_context(**ADMIN.to_dict()):
@@ -278,6 +291,9 @@ def test_cost_returns_tokens_and_no_price():
 
     assert result["by_model"] == [
         {"model": "model-a", "turns": 3, "tokens_in": 100, "tokens_out": 50}
+    ]
+    assert result["by_tenant"] == [
+        {"tenant_id": "tenant-a", "turns": 3, "tokens_in": 100, "tokens_out": 50}
     ]
     assert result["tokens_in"] == 100
     assert not [key for key in result if "cost" in key or "usd" in key]
@@ -343,6 +359,71 @@ def test_retrieval_reports_empty_and_hit_rates():
     assert result["hit_rate"] == pytest.approx(0.7)
     assert result["empty_retrieval_rate"] == pytest.approx(0.3)
     assert result["reranker_changed_top1_rate"] == pytest.approx(0.25)
+
+
+def test_retrieval_reports_the_score_gap_with_its_denominator():
+    """The gap mean is meaningless without the count it was averaged over."""
+    service = build_service(
+        {
+            None: [
+                {
+                    "totals": [{"turns": 10, "mean_score_gap": 0.42, "score_gap_turns": 6}],
+                    "top_score_histogram": [],
+                    "chunks_per_query": [],
+                    "score_gap_histogram": [
+                        {"_id": 0.0, "count": 2},
+                        {"_id": 0.2, "count": 4},
+                    ],
+                }
+            ]
+        }
+    )
+
+    with bound_context(**ADMIN.to_dict()):
+        result = service.retrieval("24h")
+
+    assert result["mean_score_gap"] == pytest.approx(0.42)
+    # Smaller than `turns`: four turns returned under five chunks.
+    assert result["score_gap_turns"] == 6
+    assert result["turns"] == 10
+    assert result["score_gap_histogram"] == [
+        {"bucket": "0.0-0.05", "count": 2},
+        {"bucket": "0.2-0.4", "count": 4},
+    ]
+
+
+def test_retrieval_over_an_empty_window_returns_none_not_zero():
+    """A window with no turns must not raise, and must not invent a 0% rate.
+
+    This is the division-by-zero case. `0.0` here would render as a confident
+    "0% empty retrievals" on a tab that measured nothing at all.
+    """
+    service = build_service(
+        {None: [{"totals": [], "top_score_histogram": [], "chunks_per_query": []}]}
+    )
+
+    with bound_context(**ADMIN.to_dict()):
+        result = service.retrieval("24h")
+
+    assert result["turns"] == 0
+    assert result["hit_rate"] is None
+    assert result["empty_retrieval_rate"] is None
+    assert result["reranker_changed_top1_rate"] is None
+    assert result["mean_score_gap"] is None
+    assert result["score_gap_turns"] == 0
+    assert result["score_gap_histogram"] == []
+
+
+def test_score_gap_buckets_use_their_own_boundaries():
+    """The gap facet must not reuse the 0-1 score edges — gaps cluster near 0."""
+    service = build_service()
+
+    with bound_context(**ADMIN.to_dict()):
+        service.retrieval("24h")
+
+    facets = service.store.pipelines[0]["pipeline"][1]["$facet"]
+    assert facets["score_gap_histogram"][1]["$bucket"]["boundaries"] == SCORE_GAP_BOUNDARIES
+    assert facets["top_score_histogram"][1]["$bucket"]["boundaries"] == SCORE_BOUNDARIES
 
 
 # ── Dispatch ──────────────────────────────────────────────────────────────

@@ -36,6 +36,10 @@ except ImportError:  # pragma: no cover - exercised by fallback tests
 HIGH_CONFIDENCE_GROUNDEDNESS = 0.8
 MEDIUM_CONFIDENCE_GROUNDEDNESS = 0.5
 
+# Which rank the top score is compared against for `score_gap`. A turn that
+# returned fewer chunks than this has no gap to report — see `TurnFact`.
+SCORE_GAP_RANK = 5
+
 SECONDS_PER_DAY = 86_400
 
 
@@ -100,6 +104,13 @@ class TurnFact(BaseModel):
     retrieval or evaluation genuinely has no score, and writing zeros would
     silently drag down every average shown on the metrics tab.
 
+    `score_gap` is the top score minus the fifth-ranked score — a proxy for how
+    discriminative retrieval was, where a wide gap means one clearly best chunk
+    and a flat one means the top result was arbitrary. It is None when the turn
+    returned fewer than `SCORE_GAP_RANK` scored chunks: the gap to a rank that
+    does not exist is unmeasured, and substituting 0.0 would report the
+    flattest possible retrieval for what was often the sharpest.
+
     `citation_count` and `cited_chunk_ratio` are always None today: the answer
     generation prompt never asks the model for citations and its parser returns
     a hardcoded null. The fields exist so phase 6 needs no migration; deriving
@@ -118,6 +129,7 @@ class TurnFact(BaseModel):
     chunk_count: int = 0
     top_score: Optional[float] = None
     mean_score: Optional[float] = None
+    score_gap: Optional[float] = None
     reranker_changed_top1: Optional[bool] = None
     groundedness: Optional[float] = None
     completeness: Optional[float] = None
@@ -166,6 +178,7 @@ def build_turn_fact(
         )
         if score is not None
     ]
+    ranked = sorted(scores, reverse=True)
     usage = timings.get("usage") or {}
     stage_ms = {
         str(stage): float(elapsed)
@@ -184,6 +197,9 @@ def build_turn_fact(
         chunk_count=len(sources),
         top_score=max(scores) if scores else None,
         mean_score=(sum(scores) / len(scores)) if scores else None,
+        score_gap=(
+            ranked[0] - ranked[SCORE_GAP_RANK - 1] if len(ranked) >= SCORE_GAP_RANK else None
+        ),
         reranker_changed_top1=timings.get("reranker_changed_top1"),
         groundedness=_optional_float(review.get("groundedness_score")),
         completeness=_optional_float(review.get("completeness_score")),

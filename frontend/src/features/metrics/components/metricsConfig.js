@@ -1,18 +1,17 @@
 /** Section definitions, labels, units, formatters and thresholds. */
 
-import { Activity, Gauge, ShieldCheck } from 'lucide-react'
+import { Activity, Gauge, Search, ShieldCheck, Workflow } from 'lucide-react'
 
 /** Shown wherever the API returned null — "not measured", not "zero". */
 export const EMPTY = '—'
 
-/**
- * Sub-nav sections. Retrieval and Pipeline arrive in phase 4 and are a
- * one-line addition here plus their panel component.
- */
+/** Sub-nav sections. One entry per panel, in display order. */
 export const METRICS_SECTIONS = [
   { id: 'overview', label: 'Overview', icon: Gauge },
   { id: 'latency', label: 'Latency', icon: Activity },
+  { id: 'retrieval', label: 'Retrieval', icon: Search },
   { id: 'quality', label: 'Quality', icon: ShieldCheck },
+  { id: 'pipeline', label: 'Pipeline', icon: Workflow },
 ]
 
 export const WINDOW_OPTIONS = [
@@ -63,6 +62,12 @@ export function formatScore(value) {
   return Number(value).toFixed(2)
 }
 
+/** A count that is meaningfully fractional, such as a mean per query. */
+export function formatDecimal(value) {
+  if (isBlank(value)) return EMPTY
+  return Number(value).toFixed(1)
+}
+
 export function formatCount(value) {
   if (isBlank(value)) return EMPTY
   return Number(value).toLocaleString()
@@ -90,6 +95,12 @@ export const THRESHOLDS = {
   error_rate: { warn: 0.02, danger: 0.05 },
   hallucination_rate: { warn: 0.1, danger: 0.25 },
   guardrail_block_rate: { warn: 0.05, danger: 0.15 },
+  empty_retrieval_rate: { warn: 0.1, danger: 0.25 },
+  retrieval_filtered_rate: { warn: 0.2, danger: 0.4 },
+  // Messages, not a rate. A few hundred behind is a blip; five figures is a
+  // consumer that is not keeping up.
+  kafka_consumer_lag: { warn: 1000, danger: 10000 },
+  stuck_files: { warn: 1, danger: 5 },
 }
 
 /** Variant for a metric where higher is worse. */
@@ -135,6 +146,19 @@ export const SERVICE_LABELS = {
   memory: 'Memory',
 }
 
+export const FUNNEL_STEP_LABELS = {
+  uploaded: 'Uploaded',
+  extracted: 'Extracted',
+  chunked: 'Chunked',
+  embedded: 'Embedded',
+  indexed: 'Indexed',
+}
+
+export const FILTER_REASON_LABELS = {
+  retrieval_not_allowed: 'Retrieval not allowed',
+  review_removed: 'Removed in review',
+}
+
 export const CONFIDENCE_LABELS = {
   high: 'High',
   medium: 'Medium',
@@ -161,7 +185,27 @@ export const METRIC_LABELS = {
   hallucination_rate_proxy_groundedness: 'Hallucination rate (proxy)',
   revision_rate: 'Revision rate',
   guardrail_block_rate: 'Guardrail block rate',
+  hit_rate: 'Retrieval hit rate',
+  empty_retrieval_rate: 'Empty retrievals',
+  mean_chunk_count: 'Chunks per query',
+  vector_search_p95: 'Vector search p95',
+  mean_score_gap: 'Mean score gap',
+  reranker_changed_top1_rate: 'Reranker lift',
+  reranker_p95_seconds: 'Reranker p95',
+  retrieval_filtered_rate: 'Filtered out',
+  embedding_chunk_rate: 'Embedding throughput',
+  kafka_consumer_lag: 'Consumer lag',
+  stuck_files: 'Stuck in processing',
+  vectors: 'Vectors indexed',
 }
+
+/** Shown beside any figure Prometheus supplies: these carry no tenant label. */
+export const PLATFORM_SCOPE_NOTE =
+  'Platform-wide across all tenants — this figure carries no tenant label.'
+
+/** Every cost on the tab is an estimate from a static price table. */
+export const COST_ESTIMATE_NOTE =
+  'Estimated from the configured per-token price table, not billed amounts.'
 
 /** Message shown wherever a Prometheus-backed widget cannot be drawn. */
 export const PROM_UNAVAILABLE = {

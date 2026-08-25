@@ -11,7 +11,9 @@ import { cn } from '@/lib/utils'
 import { useMetrics } from '../hooks/useMetrics'
 import KpiHeader from './KpiHeader'
 import LatencyPanel from './LatencyPanel'
+import PipelinePanel from './PipelinePanel'
 import QualityPanel from './QualityPanel'
+import RetrievalPanel from './RetrievalPanel'
 import {
   DEFAULT_WINDOW,
   METRICS_SECTIONS,
@@ -92,8 +94,7 @@ export default function MetricsTab() {
         }
       />
 
-      {/* Sub-nav. Retrieval and Pipeline join in phase 4 by extending
-          METRICS_SECTIONS — no change is needed here. */}
+      {/* Sub-nav, driven entirely by METRICS_SECTIONS. */}
       <nav aria-label="Metrics sections">
         <ul className="flex flex-wrap gap-1.5">
           {METRICS_SECTIONS.map(({ id, label, icon: Icon }) => {
@@ -125,7 +126,9 @@ export default function MetricsTab() {
 
       {section === 'overview' && <OverviewSection {...panelProps} />}
       {section === 'latency' && <LatencyPanel {...panelProps} />}
+      {section === 'retrieval' && <RetrievalPanel {...panelProps} />}
       {section === 'quality' && <QualityPanel {...panelProps} />}
+      {section === 'pipeline' && <PipelinePanel {...panelProps} />}
     </div>
   )
 }

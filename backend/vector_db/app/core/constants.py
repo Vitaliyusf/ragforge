@@ -27,6 +27,7 @@ class VectorAction(str, Enum):
     UPSERT_CHUNKS = "upsert_chunks"
     DELETE_CHUNKS = "delete_chunks"
     INITIALIZE_COLLECTION = "initialize_collection"
+    GET_METRICS = "get_metrics"
 
 
 # ---------------------------------------------------------------------------
