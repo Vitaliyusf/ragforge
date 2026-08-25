@@ -1,0 +1,41 @@
+# Prometheus scrape configuration for the RAGForge backend.
+#
+# Every backend service exposes /metrics via shared.metrics.setup_metrics(),
+# and all seven sit on the internal `messaging` network, so Prometheus reaches
+# them by container name. `reranker:8003` appears in SERVICE_PORTS but has no
+# container, so it is deliberately absent.
+#
+# Each target gets its own static_configs entry solely to attach a `service`
+# label. The http_* series that prometheus-fastapi-instrumentator emits carry
+# no service label of their own, and `instance` (host:port) is not a name
+# anyone wants to read on a dashboard. The ragapp_* series already carry their
+# own `service` label; Prometheus keeps that as `exported_service` and both
+# hold the same value, so grouping by `service` works across every series.
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: ragapp
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["gateway:8000"]
+        labels: { service: gateway }
+      - targets: ["llm_agent:8001"]
+        labels: { service: llm_agent }
+      - targets: ["embedding:8002"]
+        labels: { service: embedding }
+      - targets: ["rag:8004"]
+        labels: { service: rag }
+      - targets: ["files:8005"]
+        labels: { service: files }
+      - targets: ["vector_db:8006"]
+        labels: { service: vector_db }
+      - targets: ["memory:8007"]
+        labels: { service: memory }
+
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+        labels: { service: prometheus }

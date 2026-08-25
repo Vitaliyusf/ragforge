@@ -16,7 +16,9 @@ from app.services.config_management_service import ConfigManagementService
 from app.services.file_service import FileService
 from app.services.log_service import LogService
 from app.services.long_term_memory_service import LongTermMemoryService
+from app.services.metrics_service import MetricsService
 from app.services.model_management_service import ModelManagementService
+from app.services.prometheus_client import PrometheusClient
 from app.services.rag_service import RagService
 from app.services.auth_service import AuthService
 
@@ -90,3 +92,13 @@ def get_config_management_service() -> ConfigManagementService:
 def get_model_management_service() -> ModelManagementService:
     from app.main import _model_management_service
     return _require(_model_management_service, "Model management service")
+
+
+def get_prometheus_client() -> PrometheusClient:
+    from app.main import _prometheus_client
+    return _require(_prometheus_client, "Prometheus client")
+
+
+def get_metrics_service() -> MetricsService:
+    from app.main import _metrics_service
+    return _require(_metrics_service, "Metrics service")

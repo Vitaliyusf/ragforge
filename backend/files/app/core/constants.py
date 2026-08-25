@@ -26,3 +26,4 @@ class FileAction(str, Enum):
     GET_SUMMARY = "get_summary"
     DELETE = "delete"
     RERUN_STAGE = "rerun_stage"
+    GET_METRICS = "get_metrics"
