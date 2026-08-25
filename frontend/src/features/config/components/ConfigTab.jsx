@@ -9,8 +9,8 @@ import { config as appConfig } from '@/lib/config'
 import Card from '@/components/ui/Card'
 import PageHeader from '@/components/ui/PageHeader'
 
-const formFieldClass = 'w-full px-4 py-2.5 rounded-xl bg-bg-tertiary border border-border text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-bg-primary disabled:opacity-60'
-const labelClass = 'block text-text-secondary text-sm mb-2'
+const formFieldClass = 'w-full px-4 py-2.5 rounded-xl bg-bg-tertiary border border-border text-text-primary text-[15px] focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-bg-primary disabled:opacity-60'
+const labelClass = 'block text-text-secondary text-[15px] mb-2'
 
 export default function ConfigTab() {
   const [config, setConfig] = useState(null)
@@ -114,7 +114,7 @@ export default function ConfigTab() {
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <Card variant="elevated" className="p-6">
-          <h2 className="text-base font-semibold mb-4 flex items-center gap-2">
+          <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
             <Cpu size={18} />
             LLM Implementation
           </h2>
@@ -164,7 +164,7 @@ export default function ConfigTab() {
         </Card>
 
         <Card variant="elevated" className="p-6">
-          <h2 className="text-base font-semibold mb-4 flex items-center gap-2">
+          <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
             <Settings size={18} />
             Model Configurations
           </h2>
@@ -191,7 +191,7 @@ export default function ConfigTab() {
 
         {generationParams?.huggingface && (
           <Card variant="elevated" className="p-6">
-            <h2 className="text-base font-semibold mb-4 flex items-center gap-2">
+            <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
               <Sliders size={18} />
               Hugging Face Parameters
             </h2>
@@ -281,7 +281,7 @@ export default function ConfigTab() {
 
         {generationParams?.vllm && (
           <Card variant="elevated" className="p-6">
-            <h2 className="text-base font-semibold mb-4 flex items-center gap-2">
+            <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
               <Sliders size={18} />
               vLLM Parameters
             </h2>
@@ -332,7 +332,7 @@ export default function ConfigTab() {
         )}
 
         <Card variant="elevated" className="p-6">
-          <h2 className="text-base font-semibold mb-4 flex items-center gap-2">
+          <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
             <Database size={18} />
             Ollama Configuration
           </h2>
@@ -348,7 +348,7 @@ export default function ConfigTab() {
                 placeholder="http://host.docker.internal:11434"
               />
             </div>
-            <div className="p-3 rounded-lg bg-bg-tertiary text-xs text-text-muted">
+            <div className="p-3 rounded-lg bg-bg-tertiary text-[13px] text-text-muted">
               <strong className="text-text-secondary">Note:</strong> Ollama must be running and accessible at the specified URL.
               Make sure Ollama is installed and running on your system.
             </div>
@@ -356,7 +356,7 @@ export default function ConfigTab() {
         </Card>
 
         <Card variant="elevated" className="p-6">
-          <h2 className="text-base font-semibold mb-4 flex items-center gap-2">
+          <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
             <Clock size={18} />
             Timeout Settings
           </h2>

@@ -3,6 +3,8 @@
 import { useState } from 'react'
 import { ThumbsUp, ThumbsDown, BarChart2, ShieldCheck, Shield, ShieldAlert } from 'lucide-react'
 import Modal from '@/components/ui/Modal'
+import { CodeBlock } from '@/components/ui/DataDisplay'
+import ProgressBar from '@/components/ui/ProgressBar'
 
 function Section({ title, children, defaultOpen = true }) {
   const [open, setOpen] = useState(defaultOpen)
@@ -11,27 +13,16 @@ function Section({ title, children, defaultOpen = true }) {
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="flex items-center justify-between w-full text-left text-sm font-semibold text-text-primary py-2 hover:text-accent transition-colors"
+        className="flex items-center justify-between w-full text-left text-[15px] font-semibold text-text-primary py-2 hover:text-accent transition-colors"
       >
         {title}
-        <span className="text-text-muted text-xs font-normal">{open ? 'Hide' : 'Show'}</span>
+        <span className="text-text-muted text-[13px] font-normal">{open ? 'Hide' : 'Show'}</span>
       </button>
-      {open && <div className="mt-2 text-sm text-text-secondary space-y-2">{children}</div>}
+      {open && <div className="mt-2 text-[15px] text-text-secondary space-y-2">{children}</div>}
     </div>
   )
 }
 
-function PreBlock({ label, content }) {
-  if (!content) return null
-  return (
-    <div>
-      {label && <div className="text-xs font-medium text-text-muted mb-1">{label}</div>}
-      <pre className="p-3 rounded-lg bg-bg-tertiary border border-border text-xs overflow-x-auto max-h-48 overflow-y-auto whitespace-pre-wrap break-words">
-        {content}
-      </pre>
-    </div>
-  )
-}
 
 export default function MessageMetricsModal({ open, onOpenChange, message }) {
   const isUser = message?.sender === 'You' || message?.sender === 'User'
@@ -45,14 +36,15 @@ export default function MessageMetricsModal({ open, onOpenChange, message }) {
     <Modal open={open} onOpenChange={onOpenChange} title="Message Details & Metrics" size="lg">
       <div className="space-y-4">
         {!hasMetadata ? (
-          <p className="text-text-muted text-sm">No metrics available for this message.</p>
+          <p className="text-text-muted text-[15px]">No metrics available for this message.</p>
         ) : isUser ? (
           <>
             <Section title="Question sent">
-              <PreBlock label="Your question (as sent to the backend)" content={message?.text} />
+              <CodeBlock hideWhenEmpty label="Your question (as sent to the backend)" content={message?.text} />
             </Section>
             <Section title="Conversation history included">
-              <PreBlock
+              <CodeBlock
+                hideWhenEmpty
                 label="History sent with this question"
                 content={meta.historySent || '(none)'}
               />
@@ -61,7 +53,7 @@ export default function MessageMetricsModal({ open, onOpenChange, message }) {
         ) : (
           <>
             <Section title="Full prompt sent to LLM">
-              <PreBlock content={meta.promptSent} />
+              <CodeBlock hideWhenEmpty content={meta.promptSent} />
             </Section>
 
             <Section title="RAG context (chunks used)">
@@ -69,13 +61,13 @@ export default function MessageMetricsModal({ open, onOpenChange, message }) {
                 <div className="space-y-3">
                   {meta.chunks.map((chunk, i) => (
                     <div key={i} className="p-3 rounded-lg bg-bg-tertiary border border-border">
-                      <div className="text-xs text-text-muted mb-1">Chunk {i + 1}</div>
-                      <div className="text-sm whitespace-pre-wrap break-words">{chunk}</div>
+                      <div className="text-[13px] text-text-muted mb-1">Chunk {i + 1}</div>
+                      <div className="text-[15px] whitespace-pre-wrap break-words">{chunk}</div>
                     </div>
                   ))}
                 </div>
               ) : (
-                <p className="text-text-muted text-sm">
+                <p className="text-text-muted text-[15px]">
                   {meta.retrievalBypassed ? 'Retrieval was bypassed (general knowledge query).' : 'No chunks retrieved.'}
                 </p>
               )}
@@ -89,7 +81,7 @@ export default function MessageMetricsModal({ open, onOpenChange, message }) {
                       key={i}
                       className="p-3 rounded-lg bg-bg-tertiary border border-border space-y-2"
                     >
-                      <div className="flex flex-wrap gap-2 text-xs">
+                      <div className="flex flex-wrap gap-2 text-[13px]">
                         {src.filename && (
                           <span className="px-2 py-0.5 rounded bg-accent/20 text-accent">
                             {src.filename}
@@ -104,14 +96,14 @@ export default function MessageMetricsModal({ open, onOpenChange, message }) {
                           <span className="text-text-muted">Chunk #{src.chunk_index}</span>
                         )}
                       </div>
-                      <div className="text-sm whitespace-pre-wrap break-words line-clamp-4">
+                      <div className="text-[15px] whitespace-pre-wrap break-words line-clamp-4">
                         {typeof src === 'string' ? src : src.text}
                       </div>
                     </div>
                   ))}
                 </div>
               ) : (
-                <p className="text-text-muted text-sm">No sources.</p>
+                <p className="text-text-muted text-[15px]">No sources.</p>
               )}
             </Section>
 
@@ -123,23 +115,22 @@ export default function MessageMetricsModal({ open, onOpenChange, message }) {
                     const filename = typeof item === 'object' ? (item.filename ?? item.file_name) : null
                     const pct = score != null ? (score * 100).toFixed(1) : null
                     const barColor =
-                      score >= 0.75 ? 'bg-emerald-400' :
-                      score >= 0.50 ? 'bg-yellow-400' : 'bg-text-muted'
+                      score >= 0.75 ? 'var(--success)' :
+                      score >= 0.50 ? 'var(--warning)' : 'var(--fg-soft)'
                     return (
                       <div key={i} className="flex items-center gap-2">
                         <BarChart2 size={12} className="shrink-0 text-text-muted" />
-                        <span className="truncate text-xs text-text-secondary flex-1 min-w-0">
+                        <span className="truncate text-[13px] text-text-secondary flex-1 min-w-0">
                           {filename ?? `Result ${i + 1}`}
                         </span>
                         {pct != null && (
                           <>
-                            <div className="w-20 h-1.5 rounded-full bg-bg-tertiary overflow-hidden shrink-0">
-                              <div
-                                className={`h-full rounded-full ${barColor}`}
-                                style={{ width: `${Math.min(parseFloat(pct), 100)}%` }}
-                              />
-                            </div>
-                            <span className="text-xs font-medium text-text-secondary w-10 text-right shrink-0">
+                            <ProgressBar
+                              value={Math.min(parseFloat(pct), 100)}
+                              color={barColor}
+                              className="w-20 shrink-0"
+                            />
+                            <span className="text-[13px] font-medium text-text-secondary w-10 text-right shrink-0">
                               {pct}%
                             </span>
                           </>
@@ -153,10 +144,10 @@ export default function MessageMetricsModal({ open, onOpenChange, message }) {
 
             {meta.evaluation && (
               <Section title="Answer quality">
-                <div className="grid grid-cols-3 gap-3 text-sm mb-3">
+                <div className="grid grid-cols-3 gap-3 text-[15px] mb-3">
                   {meta.evaluation.retrieval_score != null && (
                     <div className="p-2 rounded-lg bg-bg-tertiary text-center">
-                      <div className="text-text-muted text-xs mb-0.5">Retrieval</div>
+                      <div className="text-text-muted text-[13px] mb-0.5">Retrieval</div>
                       <div className="font-semibold">
                         {(meta.evaluation.retrieval_score * 100).toFixed(0)}%
                       </div>
@@ -164,7 +155,7 @@ export default function MessageMetricsModal({ open, onOpenChange, message }) {
                   )}
                   {meta.evaluation.coverage_score != null && (
                     <div className="p-2 rounded-lg bg-bg-tertiary text-center">
-                      <div className="text-text-muted text-xs mb-0.5">Coverage</div>
+                      <div className="text-text-muted text-[13px] mb-0.5">Coverage</div>
                       <div className="font-semibold">
                         {(meta.evaluation.coverage_score * 100).toFixed(0)}%
                       </div>
@@ -172,10 +163,10 @@ export default function MessageMetricsModal({ open, onOpenChange, message }) {
                   )}
                   {meta.evaluation.confidence_level && (
                     <div className="p-2 rounded-lg bg-bg-tertiary text-center">
-                      <div className="text-text-muted text-xs mb-0.5">Confidence</div>
+                      <div className="text-text-muted text-[13px] mb-0.5">Confidence</div>
                       <div className={`font-semibold flex items-center justify-center gap-1
-                        ${meta.evaluation.confidence_level === 'high'   ? 'text-emerald-400' :
-                          meta.evaluation.confidence_level === 'medium' ? 'text-yellow-400'  : 'text-red-400'}`}
+                        ${meta.evaluation.confidence_level === 'high'   ? 'text-success' :
+                          meta.evaluation.confidence_level === 'medium' ? 'text-warning'  : 'text-danger'}`}
                       >
                         {meta.evaluation.confidence_level === 'high'   && <ShieldCheck size={13} />}
                         {meta.evaluation.confidence_level === 'medium' && <Shield size={13} />}
@@ -186,7 +177,7 @@ export default function MessageMetricsModal({ open, onOpenChange, message }) {
                     </div>
                   )}
                 </div>
-                <p className="text-text-muted text-xs">
+                <p className="text-text-muted text-[13px]">
                   Metrics computed locally — no extra LLM call. Retrieval = mean top-3 rerank scores.
                   Coverage = answer/context token overlap.
                 </p>
@@ -194,17 +185,17 @@ export default function MessageMetricsModal({ open, onOpenChange, message }) {
             )}
 
             <Section title="Metrics">
-              <div className="grid grid-cols-2 gap-3 text-sm">
+              <div className="grid grid-cols-2 gap-3 text-[15px]">
                 <div className="p-2 rounded-lg bg-bg-tertiary">
-                  <div className="text-text-muted text-xs">Retrieval bypassed</div>
+                  <div className="text-text-muted text-[13px]">Retrieval bypassed</div>
                   <div>{meta.retrievalBypassed ? 'Yes' : 'No'}</div>
                 </div>
                 <div className="p-2 rounded-lg bg-bg-tertiary">
-                  <div className="text-text-muted text-xs">Search results count</div>
+                  <div className="text-text-muted text-[13px]">Search results count</div>
                   <div>{meta.searchResultsCount ?? '-'}</div>
                 </div>
                 <div className="p-2 rounded-lg bg-bg-tertiary">
-                  <div className="text-text-muted text-xs">Top similarity</div>
+                  <div className="text-text-muted text-[13px]">Top similarity</div>
                   <div>
                     {meta.topSimilarity != null
                       ? `${(meta.topSimilarity * 100).toFixed(1)}%`
@@ -212,7 +203,7 @@ export default function MessageMetricsModal({ open, onOpenChange, message }) {
                   </div>
                 </div>
                 <div className="p-2 rounded-lg bg-bg-tertiary">
-                  <div className="text-text-muted text-xs">Chunks used</div>
+                  <div className="text-text-muted text-[13px]">Chunks used</div>
                   <div>{meta.chunks?.length ?? meta.sources?.length ?? 0}</div>
                 </div>
               </div>
@@ -220,7 +211,7 @@ export default function MessageMetricsModal({ open, onOpenChange, message }) {
 
             <Section title="Rate this response" defaultOpen={false}>
               <div className="flex gap-4 items-center">
-                <span className="text-text-muted text-sm">Was this helpful?</span>
+                <span className="text-text-muted text-[15px]">Was this helpful?</span>
                 <button
                   type="button"
                   className="p-2 rounded-lg border border-border hover:bg-bg-tertiary hover:border-accent transition-colors"
@@ -230,7 +221,7 @@ export default function MessageMetricsModal({ open, onOpenChange, message }) {
                 </button>
                 <button
                   type="button"
-                  className="p-2 rounded-lg border border-border hover:bg-bg-tertiary hover:border-red-500/50 transition-colors"
+                  className="p-2 rounded-lg border border-border hover:bg-bg-tertiary hover:border-danger transition-colors"
                   title="Poor"
                 >
                   <ThumbsDown size={18} className="text-text-secondary" />
@@ -238,7 +229,7 @@ export default function MessageMetricsModal({ open, onOpenChange, message }) {
               </div>
               <textarea
                 placeholder="Optional notes..."
-                className="mt-3 w-full p-3 rounded-lg bg-bg-tertiary border border-border text-sm resize-none h-20 focus:outline-none focus:ring-2 focus:ring-accent/50"
+                className="mt-3 w-full p-3 rounded-lg bg-bg-tertiary border border-border text-[15px] resize-none h-20 focus:outline-none focus:ring-2 focus:ring-accent/50"
                 readOnly
               />
             </Section>

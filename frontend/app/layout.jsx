@@ -30,8 +30,8 @@ export default function RootLayout({ children }) {
             toastOptions={{
               classNames: {
                 toast:   '!border',
-                success: '!border-emerald-500/40',
-                error:   '!border-red-500/40',
+                success: '!border-success',
+                error:   '!border-danger',
               },
               style: {
                 background: 'var(--surface-elevated)',

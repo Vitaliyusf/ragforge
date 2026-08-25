@@ -66,7 +66,7 @@ export default function Switch({
         />
       </div>
       {label && (
-        <span className="text-sm" style={{ color: 'var(--fg-muted)' }}>
+        <span className="text-[15px]" style={{ color: 'var(--fg-muted)' }}>
           {label}
         </span>
       )}

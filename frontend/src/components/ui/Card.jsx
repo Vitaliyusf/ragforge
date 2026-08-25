@@ -47,10 +47,10 @@ const variantStyles = {
 
 const paddingMap = {
   none: '',
-  xs:   'p-2',
-  sm:   'p-3',
-  md:   'p-4',
-  lg:   'p-6',
+  xs:   'p-2.5',
+  sm:   'p-4',
+  md:   'p-5',
+  lg:   'p-7',
 }
 
 export default function Card({
@@ -70,7 +70,7 @@ export default function Card({
       className={cn(
         'overflow-hidden rounded-2xl',
         paddingMap[padding],
-        isInteractive && 'transition-all duration-200 hover:-translate-y-0.5 hover:border-[var(--border-strong)] hover:shadow-md',
+        isInteractive && 'transition-all duration-200 hover:border-[var(--border-strong)] hover:shadow-md',
         className
       )}
       style={{ ...baseStyle, ...style }}
@@ -100,11 +100,11 @@ export function CardHeader({ title, description, action, className = '' }) {
   return (
     <div className={cn('flex items-start justify-between gap-3 mb-4', className)}>
       <div className="min-w-0">
-        <h3 className="text-sm font-semibold truncate" style={{ color: 'var(--fg)' }}>
+        <h3 className="text-[15px] font-semibold truncate" style={{ color: 'var(--fg)' }}>
           {title}
         </h3>
         {description && (
-          <p className="text-xs mt-0.5" style={{ color: 'var(--fg-soft)' }}>
+          <p className="text-[13px] mt-0.5" style={{ color: 'var(--fg-soft)' }}>
             {description}
           </p>
         )}

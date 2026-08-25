@@ -17,7 +17,7 @@ export default function Select({
     <SelectPrimitive.Root value={value} onValueChange={onValueChange} disabled={disabled}>
       <SelectPrimitive.Trigger
         className={cn(
-          'inline-flex items-center justify-between gap-2 w-full px-3 py-2 rounded-lg text-sm font-medium',
+          'inline-flex items-center justify-between gap-2 w-full px-3 py-2 rounded-lg text-[15px] font-medium',
           'border outline-none transition-all duration-150',
           'focus:ring-2 focus:ring-[var(--ring)] focus:border-[var(--border-focus)]',
           'disabled:opacity-50 disabled:cursor-not-allowed',
@@ -66,7 +66,7 @@ export function SelectItem({ value, children, className = '' }) {
     <SelectPrimitive.Item
       value={value}
       className={cn(
-        'relative flex items-center justify-between px-3 py-2 rounded-md text-sm font-medium outline-none cursor-pointer select-none',
+        'relative flex items-center justify-between px-3 py-2 rounded-md text-[15px] font-medium outline-none cursor-pointer select-none',
         'transition-colors duration-100',
         className
       )}

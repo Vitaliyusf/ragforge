@@ -138,7 +138,7 @@ export default function ChatTab() {
               }}
             >
               <div className="flex h-10 shrink-0 items-center justify-between px-1">
-                <span className="text-sm font-semibold text-[var(--fg)]">Chat workspace</span>
+                <span className="text-[15px] font-semibold text-[var(--fg)]">Chat workspace</span>
                 <button
                   type="button"
                   onClick={() => setSidebarOpen(false)}
@@ -183,10 +183,10 @@ export default function ChatTab() {
           </div>
 
           <div className="min-w-0 flex-1">
-            <h1 className="truncate text-sm font-semibold text-[var(--fg)]">
+            <h1 className="truncate text-[15px] font-semibold text-[var(--fg)]">
               {activeChat?.title || 'New conversation'}
             </h1>
-            <p className="mt-0.5 text-[11px] text-[var(--fg-soft)]">
+            <p className="mt-0.5 text-xs text-[var(--fg-soft)]">
               {messages.length === 0
                 ? 'Ask your knowledge base anything'
                 : `${messages.length} message${messages.length === 1 ? '' : 's'} in this thread`}
@@ -194,7 +194,7 @@ export default function ChatTab() {
           </div>
 
           <div
-            className="hidden items-center gap-2 rounded-full border px-2.5 py-1.5 text-[10px] font-medium sm:flex"
+            className="hidden items-center gap-2 rounded-full border px-2.5 py-1.5 text-xs font-medium sm:flex"
             style={{
               background: statusPill.tone === 'success'
                 ? 'var(--success-soft)'
@@ -225,7 +225,7 @@ export default function ChatTab() {
 
         {!llmReady && (
           <div
-            className="flex shrink-0 items-center gap-2.5 border-b px-4 py-2.5 text-xs"
+            className="flex shrink-0 items-center gap-2.5 border-b px-4 py-2.5 text-[13px]"
             style={{
               borderColor: 'var(--border)',
               background: llmChecked ? 'var(--danger-soft)' : 'var(--surface-hover)',

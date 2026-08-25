@@ -128,9 +128,13 @@ module.exports = {
       transitionDuration: {
         DEFAULT: '200ms',
       },
+      /* Calmer than Tailwind's defaults. The app leans on rounded-lg/xl/2xl
+         everywhere, so tightening these three reshapes every surface at once. */
       borderRadius: {
-        '2xl': '1rem',
-        '3xl': '1.5rem',
+        lg:    '0.5rem',   /* 8px  */
+        xl:    '0.625rem', /* 10px */
+        '2xl': '0.75rem',  /* 12px */
+        '3xl': '1rem',     /* 16px */
       },
     },
   },

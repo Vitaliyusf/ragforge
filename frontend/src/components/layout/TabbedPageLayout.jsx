@@ -7,7 +7,6 @@
 
 import { useEffect, useState } from 'react'
 import dynamic from 'next/dynamic'
-import { AnimatePresence, motion } from 'framer-motion'
 import Header from '@/components/layout/Header'
 import TabSkeleton from '@/components/ui/TabSkeleton'
 import ErrorBoundary from '@/components/ErrorBoundary'
@@ -85,32 +84,23 @@ export default function TabbedPageLayout({ defaultTab = 'chat' }) {
         id="main-content"
         className="relative z-10 flex min-h-0 flex-1 flex-col overflow-hidden"
       >
-        <AnimatePresence mode="wait">
-          {TabComponent ? (
-            <motion.div
-              key={safeActiveTab}
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{    opacity: 0, y: -8 }}
-              transition={{ type: 'spring', damping: 30, stiffness: 350, mass: 0.8 }}
-              className="flex-1 min-h-0 flex flex-col overflow-hidden"
-            >
-              <ErrorBoundary name={safeActiveTab}>
-                <TabComponent />
-              </ErrorBoundary>
-            </motion.div>
-          ) : (
-            <motion.div
-              key="skeleton"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="flex-1 min-h-0 flex flex-col"
-            >
-              <TabSkeleton />
-            </motion.div>
-          )}
-        </AnimatePresence>
+        {/* Keyed so React remounts on tab change, which restarts the CSS
+            enter animation. Previously framer-motion — dropping it here (and
+            in Header and Modal) keeps the library out of the first load. */}
+        {TabComponent ? (
+          <div
+            key={safeActiveTab}
+            className="flex min-h-0 flex-1 animate-fade-in flex-col overflow-hidden"
+          >
+            <ErrorBoundary name={safeActiveTab}>
+              <TabComponent />
+            </ErrorBoundary>
+          </div>
+        ) : (
+          <div key="skeleton" className="flex min-h-0 flex-1 animate-fade-in flex-col">
+            <TabSkeleton />
+          </div>
+        )}
       </main>
     </div>
   )

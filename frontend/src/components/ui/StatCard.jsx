@@ -55,13 +55,13 @@ export default function StatCard({
           {value}
         </div>
         {subLabel && (
-          <div className="text-xs mt-0.5" style={{ color: 'var(--fg-soft)' }}>
+          <div className="text-[13px] mt-0.5" style={{ color: 'var(--fg-soft)' }}>
             {subLabel}
           </div>
         )}
       </div>
       {trend && trendLabel && (
-        <div className="flex items-center gap-1 text-[11px] font-medium" style={{ color: trendColor }}>
+        <div className="flex items-center gap-1 text-xs font-medium" style={{ color: trendColor }}>
           <TrendIcon size={12} />
           {trendLabel}
         </div>

@@ -30,6 +30,9 @@ id_rsa*
 
 # Logs and runtime data
 logs/
+# ...but `logs/` is unanchored, so it also matched the Logs *feature* source
+# at frontend/src/features/logs/, which was silently never committed.
+!frontend/src/features/logs/
 *.log
 uploads/
 qdrant_storage/

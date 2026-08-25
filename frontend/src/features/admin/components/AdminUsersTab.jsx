@@ -54,7 +54,7 @@ export default function AdminUsersTab() {
           <h1 className="flex items-center gap-2 text-2xl font-semibold text-[var(--fg)]">
             <Users size={22} /> Users
           </h1>
-          <p className="mt-1 text-sm text-[var(--fg-soft)]">Manage users assigned to your administrator account.</p>
+          <p className="mt-1 text-[15px] text-[var(--fg-soft)]">Manage users assigned to your administrator account.</p>
         </div>
 
         <form onSubmit={createUser} className="grid gap-3 rounded-2xl border p-4 md:grid-cols-4" style={{ borderColor: 'var(--border)', background: 'var(--surface-elevated)' }}>
@@ -64,14 +64,14 @@ export default function AdminUsersTab() {
           <Button type="submit" variant="primary"><UserPlus size={15} /> Add user</Button>
         </form>
 
-        {error && <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-500">{error}</div>}
+        {error && <div className="rounded-xl border border-danger bg-danger-soft p-3 text-[15px] text-danger">{error}</div>}
 
         <div className="overflow-hidden rounded-2xl border" style={{ borderColor: 'var(--border)', background: 'var(--surface-elevated)' }}>
-          {loading ? <p className="p-5 text-sm text-[var(--fg-soft)]">Loading users…</p> : users.map((user) => (
+          {loading ? <p className="p-5 text-[15px] text-[var(--fg-soft)]">Loading users…</p> : users.map((user) => (
             <div key={user.user_id} className="flex items-center justify-between gap-4 border-b p-4 last:border-b-0" style={{ borderColor: 'var(--border)' }}>
               <div className="min-w-0">
-                <p className="truncate text-sm font-medium text-[var(--fg)]">{user.display_name}</p>
-                <p className="truncate text-xs text-[var(--fg-soft)]">{user.email} · {user.role}</p>
+                <p className="truncate text-[15px] font-medium text-[var(--fg)]">{user.display_name}</p>
+                <p className="truncate text-[13px] text-[var(--fg-soft)]">{user.email} · {user.role}</p>
               </div>
               {user.role !== 'admin' && (
                 <Button type="button" variant="secondary" onClick={() => toggleStatus(user)}>

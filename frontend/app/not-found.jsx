@@ -11,7 +11,7 @@ export default function NotFound() {
           <Compass className="text-accent" size={48} />
         </div>
         <h2 className="text-6xl font-bold text-accent mb-2">404</h2>
-        <h3 className="text-xl font-semibold text-text-primary mb-2">Lost in the void</h3>
+        <h3 className="text-2xl font-semibold text-text-primary mb-2">Lost in the void</h3>
         <p className="text-text-secondary mb-8">
           This page could not be found. Maybe it drifted off into another dimension.
         </p>

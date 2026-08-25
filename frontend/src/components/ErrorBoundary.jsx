@@ -35,19 +35,19 @@ export default class ErrorBoundary extends Component {
       return (
         <div className="flex-1 flex items-center justify-center p-8">
           <div className="max-w-md text-center space-y-4">
-            <div className="inline-flex p-3 rounded-full bg-red-400/10">
-              <AlertTriangle size={28} className="text-red-400" />
+            <div className="inline-flex p-3 rounded-full bg-danger-soft">
+              <AlertTriangle size={28} className="text-danger" />
             </div>
-            <h3 className="text-lg font-semibold text-text-primary">
+            <h3 className="text-xl font-semibold text-text-primary">
               Something went wrong
             </h3>
-            <p className="text-sm text-text-secondary">
+            <p className="text-[15px] text-text-secondary">
               {this.props.name
                 ? `The ${this.props.name} tab encountered an error.`
                 : 'This component encountered an unexpected error.'}
             </p>
             {this.state.error?.message && (
-              <pre className="text-xs text-text-muted bg-bg-tertiary rounded-lg p-3 text-left overflow-auto max-h-32">
+              <pre className="text-[13px] text-text-muted bg-bg-tertiary rounded-lg p-3 text-left overflow-auto max-h-32">
                 {this.state.error.message}
                 {this.state.error.code ? `\ncode: ${this.state.error.code}` : ''}
                 {/* Surface the correlation ids the boundary already logs, so a

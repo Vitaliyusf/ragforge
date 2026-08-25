@@ -14,9 +14,9 @@ export default function EmptyState({
   className = '',
 }) {
   const sizes = {
-    sm: { iconSize: 28, iconBox: 'w-12 h-12', titleClass: 'text-sm', descClass: 'text-xs' },
-    md: { iconSize: 36, iconBox: 'w-16 h-16', titleClass: 'text-base', descClass: 'text-sm' },
-    lg: { iconSize: 48, iconBox: 'w-20 h-20', titleClass: 'text-lg', descClass: 'text-sm' },
+    sm: { iconSize: 28, iconBox: 'w-12 h-12', titleClass: 'text-[15px]', descClass: 'text-[13px]' },
+    md: { iconSize: 36, iconBox: 'w-16 h-16', titleClass: 'text-lg', descClass: 'text-[15px]' },
+    lg: { iconSize: 48, iconBox: 'w-20 h-20', titleClass: 'text-xl', descClass: 'text-[15px]' },
   }
   const { iconSize, iconBox, titleClass, descClass } = sizes[size] || sizes.md
 
