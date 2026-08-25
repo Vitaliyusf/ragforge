@@ -21,8 +21,10 @@ from app.services.chat_service import ChatService
 from app.services.config_management_service import ConfigManagementService
 from app.services.file_service import FileService
 from app.services.log_service import LogService
+from app.services.metrics_service import MetricsService
 from app.services.long_term_memory_service import LongTermMemoryService
 from app.services.model_management_service import ModelManagementService
+from app.services.prometheus_client import PrometheusClient
 from app.services.rag_service import RagService
 from app.services.auth_service import AuthService
 
@@ -57,8 +59,10 @@ _chat_service: Optional[ChatService] = None
 _config_management_service: Optional[ConfigManagementService] = None
 _file_service: Optional[FileService] = None
 _log_service: Optional[LogService] = None
+_metrics_service: Optional[MetricsService] = None
 _long_term_memory_service: Optional[LongTermMemoryService] = None
 _model_management_service: Optional[ModelManagementService] = None
+_prometheus_client: Optional[PrometheusClient] = None
 _rag_service: Optional[RagService] = None
 _auth_service: Optional[AuthService] = None
 
@@ -71,6 +75,7 @@ async def lifespan(app: FastAPI):
     global _chat_history_service, _chat_service, _config_management_service
     global _file_service, _log_service, _long_term_memory_service
     global _model_management_service, _rag_service, _auth_service
+    global _prometheus_client, _metrics_service
 
     _config = GatewayConfig()
     _logger = setup_logging(_config.service_name)
@@ -95,6 +100,8 @@ async def lifespan(app: FastAPI):
     _long_term_memory_service = LongTermMemoryService(_rabbitmq_client, _logger, _config)
     _model_management_service = ModelManagementService(_rabbitmq_client, _logger, _config)
     _rag_service             = RagService(_rabbitmq_client, _logger, _config)
+    _prometheus_client       = PrometheusClient(_config.prometheus_url)
+    _metrics_service         = MetricsService(_rabbitmq_client, _logger, _config, _prometheus_client)
 
     _logger.log("main:startup", "Gateway service startup complete")
     try:
@@ -102,6 +109,7 @@ async def lifespan(app: FastAPI):
     finally:
         _logger.log("main:shutdown", "Gateway service shutting down")
         await _rpc_client.close()
+        await _prometheus_client.aclose()
         close_db()
 
 

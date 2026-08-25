@@ -10,6 +10,7 @@ from app.core.config import Settings
 from app.db.repository import FileRepository
 from app.messaging.interfaces import IProducer
 from app.services.file_handlers import FileHandlers
+from app.services.metrics_query import FileMetricsQueryService
 from shared.auth import ROLE_SERVICE, identity_from_context, verify_internal_ticket_from_envelope
 from shared.context import bound_context
 
@@ -27,6 +28,7 @@ class FileService:
         self.producer = producer
         self.config = config
         self.handlers = FileHandlers(producer, repository, logger, config)
+        self.metrics_query = FileMetricsQueryService(repository, config)
         self.logger = logger
         self._exception_handler = ExceptionHandler(logger=logger)
 
@@ -148,6 +150,8 @@ class FileService:
                     return self.handlers.handle_delete(correlation_id, request)
                 elif action == FileAction.RERUN_STAGE:
                     return self.handlers.handle_rerun_stage(correlation_id, request)
+                elif action == FileAction.GET_METRICS:
+                    return self.metrics_query.handle_get_metrics(correlation_id, request)
                 return self._build_error_reply(request, ValidationException(f"Unknown action: {action}"))
         except Exception as exc:
             return self._build_error_reply(request, exc)
@@ -164,6 +168,7 @@ class FileService:
             FileAction.GET_SUMMARY,
             FileAction.DELETE,
             FileAction.RERUN_STAGE,
+            FileAction.GET_METRICS,
         }
         if action in admin_actions and not (identity.is_admin or identity.role == ROLE_SERVICE):
             raise ValidationException("Administrator role required")

@@ -24,6 +24,7 @@ from app.rest.v1.rag import get_rag_service
 from app.services.conversation_backend_client import ConversationBackendClient
 from app.services.conversation_persistence import create_conversation_store
 from app.services.conversation_tracing import ConversationTracer
+from app.services.metrics_query import METRICS_ACTION, MetricsQueryService
 from app.services.rag_service import RAGService
 from app.services.websocket_service import WebSocketService
 from app.utils.common import setup_cors
@@ -47,6 +48,7 @@ rag_service = RAGService(
     tracer=tracer,
 )
 websocket_service = WebSocketService(rag_service, logger)
+metrics_query = MetricsQueryService(config, rag_service.graph_runner.metrics_facts)
 
 
 # ---------------------------------------------------------------------------
@@ -67,6 +69,15 @@ async def lifespan(app: FastAPI):
         body = dict(body)  # shallow copy
         body.setdefault("reply_to", reply_to)
         body.setdefault("correlation_id", correlation_id)
+
+        # Action dispatch, following the shape the files service already
+        # uses. Anything unrecognised - an absent action included - falls
+        # through to the conversation graph, which is what every existing
+        # caller relies on today.
+        if str(body.get("action") or "") == METRICS_ACTION:
+            payload = extract_request_payload(body, correlation_id)
+            return build_reply_envelope(body, metrics_query.handle(payload), correlation_id)
+
         request = rag_service.build_request(extract_request_payload(body, correlation_id))
         emitter = CollectingConversationEmitter(request)
         result = await rag_service.graph_runner.run(request, emitter)

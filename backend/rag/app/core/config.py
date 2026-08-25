@@ -79,6 +79,11 @@ class RAGConfig(BaseSettings):
     # Admin metrics retention
     metrics_retention_days: int = 90
 
+    # A turn whose groundedness falls below this counts toward the proxy
+    # hallucination rate. It is a threshold over one judge score, not a
+    # claim-level measurement — phase 6 replaces it with the real thing.
+    hallucination_groundedness_threshold: float = 0.6
+
     class Config:
         env_file = ".env"
         case_sensitive = False

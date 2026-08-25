@@ -33,12 +33,46 @@ SERVICE_PORTS: dict[str, int] = {
     "memory":    8007,
 }
 
+# ── Model pricing ─────────────────────────────────────────────────────
+# Estimated price per 1,000 tokens as ``(input, output)``, in USD.
+#
+# Every model this repository ships with runs on self-hosted vLLM, where
+# there is no per-token charge, so the honest price is 0.0. Add hosted
+# models here with their real published rates when one is configured.
+#
+# This table is the single source of truth for pricing. The rag service
+# returns token sums only and applies no price of its own, so the two can
+# never drift apart.
+MODEL_COST_PER_1K_TOKENS: dict[str, tuple[float, float]] = {
+    "RedHatAI/Qwen3.5-4B-quantized.w4a16": (0.0, 0.0),
+}
+
+# Unknown models assume no price rather than a guessed one. Metrics
+# responses list any such model under ``models_without_pricing``, so a
+# $0.00 total reads as "nothing here is priced" rather than as a measured
+# zero that someone could quote in a review deck.
+DEFAULT_MODEL_COST_PER_1K_TOKENS: tuple[float, float] = (0.0, 0.0)
+
+
 # ── Domain Enums ──────────────────────────────────────────────────────────────
 
 class AnswerMode(str, Enum):
     """Supported answer verbosity modes for chat requests."""
     QUICK = "quick"
     EXTENDED = "extended"
+
+
+class MetricsWindow(str, Enum):
+    """Allowed lookback windows for the admin metrics routes.
+
+    A fixed allow-list: route handlers annotate their query parameter with
+    this type, so FastAPI rejects anything else with a 422 long before any
+    value could reach a PromQL expression or a MongoDB pipeline.
+    """
+    HOUR = "1h"
+    DAY = "24h"
+    WEEK = "7d"
+    MONTH = "30d"
 
 
 class ReviewDecision(str, Enum):
@@ -88,6 +122,7 @@ class FileAction(str, Enum):
     DELETE = "delete"
     RERUN_STAGE = "rerun_stage"
     GET_SUGGESTED_QUESTIONS = "get_suggested_questions"
+    GET_METRICS = "get_metrics"
 
 
 class RagAction(str, Enum):
@@ -96,6 +131,7 @@ class RagAction(str, Enum):
     GENERATE = "generate"
     GET_TRACE = "get_trace"
     SUBMIT_FEEDBACK = "submit_feedback"
+    GET_METRICS = "get_metrics"
 
 
 class VectorDbAction(str, Enum):

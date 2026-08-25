@@ -76,6 +76,10 @@ class GatewayConfig(BaseSettings):
         default="gateway,files,embedding,llm_agent,memory,rag,reranker,vector_db",
     )
 
+    # Admin metrics backend. Prometheus lives on the internal `messaging`
+    # network and is reached by container name.
+    prometheus_url: str = Field(default="http://prometheus:9090")
+
     gateway_deployment_replicas: int = Field(default=1)
 
     # Aliases so existing service code that calls self.config.rag_topic etc. needs zero changes

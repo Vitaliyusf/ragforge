@@ -253,6 +253,35 @@ class MetricsFactStore:
         """Persist one turn fact under the caller's tenant."""
         self._collection_insert(self._document(fact))
 
+    def aggregate(
+        self,
+        pipeline: List[Dict[str, Any]],
+        *,
+        collection: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """Run an aggregation pipeline over a metrics-readable collection.
+
+        Returns an empty list in in-memory mode: that backend is a plain
+        list with no aggregation engine, so a developer running without
+        MongoDB sees empty panels rather than a crash or an invented number.
+
+        Args:
+            pipeline: A MongoDB aggregation pipeline. Its first stage must
+                already carry the tenant boundary — see
+                `MetricsQueryService`, which is the only caller.
+            collection: Collection to read, defaulting to the turn-fact
+                collection. Reads share this object's Mongo client rather
+                than opening a second connection.
+
+        Returns:
+            The aggregation result rows.
+        """
+        if self._in_memory:
+            return []
+        self._init_db()
+        name = collection or self.config.metrics_turn_facts_collection
+        return list(self._db[name].aggregate(pipeline))
+
     def _document(self, fact: TurnFact) -> Dict[str, Any]:
         """Serialize a fact, stamping the tenant from the trusted context.
 

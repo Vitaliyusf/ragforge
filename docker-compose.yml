@@ -347,6 +347,7 @@ services:
       PYTHONPATH: /app
       DEFAULT_TIMEOUT: ${GATEWAY_DEFAULT_TIMEOUT:-120}
       SHORT_TIMEOUT: ${GATEWAY_SHORT_TIMEOUT:-30}
+      PROMETHEUS_URL: ${PROMETHEUS_URL:-http://prometheus:9090}
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -364,6 +365,22 @@ services:
       - logs_data:/app/logs
     restart: unless-stopped
     networks: [edge, messaging, data]
+
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    # Internal infrastructure — no host port by default. Uncomment only for
+    # local debugging; this must never be reachable from the LAN.
+    # ports:
+    #   - "127.0.0.1:${PUBLIC_PROMETHEUS_PORT:-9090}:9090"
+    volumes:
+      - ./docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=15d
+    restart: unless-stopped
+    networks: [messaging]
 
   frontend:
     build:
@@ -397,6 +414,7 @@ volumes:
   hf_cache:
   rabbitmq_data:
   logs_data:
+  prometheus_data:
 
 networks:
   edge:
