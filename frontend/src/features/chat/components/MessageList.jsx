@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import ProgressBar from '@/components/ui/ProgressBar'
 import { ArrowUpRight, Bot, ChevronDown, ChevronUp, Copy, Info, Sparkles } from 'lucide-react'
 import { toast } from 'sonner'
 import { formatMessageTime } from '@/utils/common'
@@ -49,7 +50,7 @@ export default function MessageList({
       style={{ background: 'linear-gradient(180deg, var(--surface-hover) 0%, var(--surface) 38%)' }}
     >
       {messages.length === 0 ? (
-        <EmptyState suggestedPrompts={suggestedPrompts} onSuggestedPrompt={onSuggestedPrompt} />
+        <ChatWelcome suggestedPrompts={suggestedPrompts} onSuggestedPrompt={onSuggestedPrompt} />
       ) : (
         <div className="mx-auto max-w-3xl space-y-6">
           {messages.map((message) => (
@@ -249,7 +250,7 @@ function PromptViewer({ systemPrompt, rawPrompt }) {
 
 // ─── Empty state ───────────────────────────────────────────────────────────────
 
-function EmptyState({ suggestedPrompts, onSuggestedPrompt }) {
+function ChatWelcome({ suggestedPrompts, onSuggestedPrompt }) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 10 }}
@@ -320,14 +321,7 @@ function ExtendedProgressIndicator({ progress }) {
           </div>
           <p className="mb-2 text-[13px] text-text-muted">{progress?.message || 'Processing...'}</p>
           {percent != null ? (
-            <div className="h-1.5 w-full overflow-hidden rounded-full bg-bg-tertiary">
-              <motion.div
-                className="h-full rounded-full bg-primary"
-                initial={{ width: 0 }}
-                animate={{ width: `${percent}%` }}
-                transition={{ duration: 0.4, ease: 'easeOut' }}
-              />
-            </div>
+            <ProgressBar value={percent} aria-label={label} />
           ) : null}
         </div>
       </div>

@@ -21,6 +21,7 @@ import {
 } from 'lucide-react'
 import Card from '@/components/ui/Card'
 import Button from '@/components/ui/Button'
+import ProgressBar from '@/components/ui/ProgressBar'
 import { useTraining } from '../hooks/useTraining'
 
 const STATUS_STYLES = {
@@ -207,12 +208,7 @@ function JobProgressBar({ job }) {
           </span>
         </div>
       </div>
-      <div className="h-2 rounded-full bg-bg-tertiary overflow-hidden mb-2">
-        <div
-          className="h-full rounded-full bg-primary transition-all duration-500"
-          style={{ width: `${pct}%` }}
-        />
-      </div>
+      <ProgressBar value={pct} thickness="md" className="mb-2" aria-label="Training progress" />
       <div className="grid grid-cols-4 gap-2 text-xs">
         <div>
           <span className="text-text-muted">Step</span>

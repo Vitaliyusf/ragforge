@@ -1,6 +1,7 @@
 'use client'
 
 import Badge from '@/components/ui/Badge'
+import { DataCell } from '@/components/ui/DataDisplay'
 
 function scoreTone(score) {
   if (score >= 0.85) return 'text-success'
@@ -68,15 +69,16 @@ export default function AnswerReviewCard({ review }) {
   )
 }
 
+/** Score-to-percentage presentation; the markup lives in DataCell. */
 function Metric({ label, score }) {
   const value = Number.isFinite(score) ? Math.round(score * 100) : null
 
   return (
-    <div className="rounded-xl border border-border bg-bg-elevated px-2.5 py-2">
-      <div className="text-xs text-text-muted">{label}</div>
-      <div className={`mt-1 text-[15px] font-semibold ${value == null ? 'text-text-secondary' : scoreTone(score)}`}>
-        {value == null ? '-' : `${value}%`}
-      </div>
-    </div>
+    <DataCell
+      label={label}
+      uppercaseLabel={false}
+      value={value == null ? '-' : `${value}%`}
+      valueClassName={`font-semibold ${value == null ? 'text-text-secondary' : scoreTone(score)}`}
+    />
   )
 }

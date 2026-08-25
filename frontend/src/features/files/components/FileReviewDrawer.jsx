@@ -5,6 +5,7 @@ import { AlertTriangle, FileWarning, Scissors, ShieldCheck, Trash2 } from 'lucid
 import Modal from '@/components/ui/Modal'
 import Button from '@/components/ui/Button'
 import Badge from '@/components/ui/Badge'
+import { DataCell } from '@/components/ui/DataDisplay'
 
 const ACTION_CONFIG = {
   delete_file: {
@@ -103,10 +104,10 @@ export default function FileReviewDrawer({
       {reviewCase ? (
         <div className="space-y-5">
           <div className="grid gap-3 md:grid-cols-2">
-            <MetaCard label="Opened at" value={reviewCase.opened_at} />
-            <MetaCard label="Status" value={reviewCase.status} />
-            <MetaCard label="Decision status" value={reviewCase.decision_status} />
-            <MetaCard label="Extracted text hash" value={extractedTextHash} />
+            <DataCell label="Opened at" value={reviewCase.opened_at} />
+            <DataCell label="Status" value={reviewCase.status} />
+            <DataCell label="Decision status" value={reviewCase.decision_status} />
+            <DataCell label="Extracted text hash" value={extractedTextHash} />
           </div>
 
           <section className="space-y-2 rounded-2xl border border-border bg-bg-tertiary/70 p-4">
@@ -233,11 +234,3 @@ export default function FileReviewDrawer({
   )
 }
 
-function MetaCard({ label, value }) {
-  return (
-    <div className="rounded-2xl border border-border bg-bg-tertiary px-3 py-2">
-      <div className="text-xs uppercase tracking-wide text-text-muted">{label}</div>
-      <div className="mt-1 break-all text-[15px] text-text-primary">{value || '-'}</div>
-    </div>
-  )
-}

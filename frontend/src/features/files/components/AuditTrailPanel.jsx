@@ -3,6 +3,7 @@
 import { History, RefreshCw } from 'lucide-react'
 import Modal from '@/components/ui/Modal'
 import Button from '@/components/ui/Button'
+import { DataCell, CodeBlock } from '@/components/ui/DataDisplay'
 
 function formatDate(value) {
   if (!value) return '-'
@@ -61,24 +62,24 @@ export default function AuditTrailPanel({
               </div>
 
               <div className="mt-3 grid gap-3 md:grid-cols-2">
-                <AuditMeta label="From status" value={event.from_status} />
-                <AuditMeta label="To status" value={event.to_status} />
-                <AuditMeta label="Actor" value={event.actor?.display_name} />
-                <AuditMeta label="Reason" value={event.reason} />
+                <DataCell label="From status" value={event.from_status} />
+                <DataCell label="To status" value={event.to_status} />
+                <DataCell label="Actor" value={event.actor?.display_name} />
+                <DataCell label="Reason" value={event.reason} />
                 {/* Identifiers that make an audit entry cross-referenceable
                     against the file task and review records it came from. */}
-                <AuditMeta label="Event ID" value={event.event_id} />
-                <AuditMeta label="Task ID" value={event.task_id} />
+                <DataCell label="Event ID" value={event.event_id} />
+                <DataCell label="Task ID" value={event.task_id} />
                 {event.review_case_id ? (
-                  <AuditMeta label="Review case ID" value={event.review_case_id} />
+                  <DataCell label="Review case ID" value={event.review_case_id} />
                 ) : null}
                 {event.decision_id ? (
-                  <AuditMeta label="Decision ID" value={event.decision_id} />
+                  <DataCell label="Decision ID" value={event.decision_id} />
                 ) : null}
               </div>
 
               <div className="mt-3 space-y-2">
-                <AuditBlock label="Details" value={event.details} />
+                <CodeBlock label="Details" content={event.details} />
               </div>
             </div>
           ))}
@@ -101,22 +102,4 @@ export default function AuditTrailPanel({
   )
 }
 
-function AuditMeta({ label, value }) {
-  return (
-    <div className="rounded-xl border border-border bg-bg-elevated px-3 py-2">
-      <div className="text-xs uppercase tracking-wide text-text-muted">{label}</div>
-      <div className="mt-1 break-all text-[15px] text-text-primary">{value || '-'}</div>
-    </div>
-  )
-}
 
-function AuditBlock({ label, value }) {
-  return (
-    <div>
-      <div className="mb-1 text-[13px] font-medium text-text-muted">{label}</div>
-      <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-xl border border-border bg-bg-elevated p-3 text-[13px] text-text-secondary">
-        {value ? JSON.stringify(value, null, 2) : 'Not available'}
-      </pre>
-    </div>
-  )
-}

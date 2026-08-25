@@ -3,6 +3,8 @@
 import { useState } from 'react'
 import { ThumbsUp, ThumbsDown, BarChart2, ShieldCheck, Shield, ShieldAlert } from 'lucide-react'
 import Modal from '@/components/ui/Modal'
+import { CodeBlock } from '@/components/ui/DataDisplay'
+import ProgressBar from '@/components/ui/ProgressBar'
 
 function Section({ title, children, defaultOpen = true }) {
   const [open, setOpen] = useState(defaultOpen)
@@ -21,17 +23,6 @@ function Section({ title, children, defaultOpen = true }) {
   )
 }
 
-function PreBlock({ label, content }) {
-  if (!content) return null
-  return (
-    <div>
-      {label && <div className="text-[13px] font-medium text-text-muted mb-1">{label}</div>}
-      <pre className="p-3 rounded-lg bg-bg-tertiary border border-border text-[13px] overflow-x-auto max-h-48 overflow-y-auto whitespace-pre-wrap break-words">
-        {content}
-      </pre>
-    </div>
-  )
-}
 
 export default function MessageMetricsModal({ open, onOpenChange, message }) {
   const isUser = message?.sender === 'You' || message?.sender === 'User'
@@ -49,10 +40,11 @@ export default function MessageMetricsModal({ open, onOpenChange, message }) {
         ) : isUser ? (
           <>
             <Section title="Question sent">
-              <PreBlock label="Your question (as sent to the backend)" content={message?.text} />
+              <CodeBlock hideWhenEmpty label="Your question (as sent to the backend)" content={message?.text} />
             </Section>
             <Section title="Conversation history included">
-              <PreBlock
+              <CodeBlock
+                hideWhenEmpty
                 label="History sent with this question"
                 content={meta.historySent || '(none)'}
               />
@@ -61,7 +53,7 @@ export default function MessageMetricsModal({ open, onOpenChange, message }) {
         ) : (
           <>
             <Section title="Full prompt sent to LLM">
-              <PreBlock content={meta.promptSent} />
+              <CodeBlock hideWhenEmpty content={meta.promptSent} />
             </Section>
 
             <Section title="RAG context (chunks used)">
@@ -123,8 +115,8 @@ export default function MessageMetricsModal({ open, onOpenChange, message }) {
                     const filename = typeof item === 'object' ? (item.filename ?? item.file_name) : null
                     const pct = score != null ? (score * 100).toFixed(1) : null
                     const barColor =
-                      score >= 0.75 ? 'bg-success' :
-                      score >= 0.50 ? 'bg-warning' : 'bg-text-muted'
+                      score >= 0.75 ? 'var(--success)' :
+                      score >= 0.50 ? 'var(--warning)' : 'var(--fg-soft)'
                     return (
                       <div key={i} className="flex items-center gap-2">
                         <BarChart2 size={12} className="shrink-0 text-text-muted" />
@@ -133,12 +125,11 @@ export default function MessageMetricsModal({ open, onOpenChange, message }) {
                         </span>
                         {pct != null && (
                           <>
-                            <div className="w-20 h-1.5 rounded-full bg-bg-tertiary overflow-hidden shrink-0">
-                              <div
-                                className={`h-full rounded-full ${barColor}`}
-                                style={{ width: `${Math.min(parseFloat(pct), 100)}%` }}
-                              />
-                            </div>
+                            <ProgressBar
+                              value={Math.min(parseFloat(pct), 100)}
+                              color={barColor}
+                              className="w-20 shrink-0"
+                            />
                             <span className="text-[13px] font-medium text-text-secondary w-10 text-right shrink-0">
                               {pct}%
                             </span>

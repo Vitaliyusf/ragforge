@@ -27,6 +27,8 @@ import Modal, { ConfirmModal } from '@/components/ui/Modal'
 import FileReviewDrawer from './FileReviewDrawer'
 import AuditTrailPanel from './AuditTrailPanel'
 import fileService from '@/features/files/services/fileService'
+import { DataRow } from '@/components/ui/DataDisplay'
+import EmptyState from '@/components/ui/EmptyState'
 import {
   computeEffectiveStatus,
   formatFileSize,
@@ -285,11 +287,11 @@ function FileCard({
           >
             <div className="space-y-1.5 px-4 pb-4 pt-1">
               {file.owner_display_name || file.owner_email ? (
-                <DetailRow label="Owner" value={file.owner_display_name || file.owner_email} />
+                <DataRow label="Owner" value={file.owner_display_name || file.owner_email} />
               ) : null}
-              <DetailRow label="File ID" value={file.file_id} mono />
+              <DataRow label="File ID" value={file.file_id} mono />
               {file.current_task_id ? (
-                <DetailRow label="Task ID" value={file.current_task_id} mono />
+                <DataRow label="Task ID" value={file.current_task_id} mono />
               ) : null}
             </div>
           </motion.div>
@@ -299,14 +301,6 @@ function FileCard({
   )
 }
 
-function DetailRow({ label, value, mono }) {
-  return (
-    <div className="flex items-start gap-2 rounded-xl bg-bg-tertiary/60 px-3 py-2 text-[13px]">
-      <span className="shrink-0 font-medium text-text-secondary">{label}:</span>
-      <span className={`min-w-0 break-all text-text-secondary ${mono ? 'font-mono' : ''}`}>{value}</span>
-    </div>
-  )
-}
 
 // ─── Summary modal ────────────────────────────────────────────────────────────
 
@@ -676,35 +670,32 @@ export default function FilesTab() {
 
           {/* Empty state — only after we know there truly are no files */}
           {!loading && files.length === 0 ? (
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="flex min-h-[260px] flex-col items-center justify-center rounded-2xl border border-border bg-bg-tertiary/20 py-12"
-            >
-              <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-primary-soft">
-                <Upload className="text-primary" size={28} />
-              </div>
-              <h3 className="mt-5 text-[15px] font-semibold text-text-primary">No files uploaded yet</h3>
-              <p className="mt-1.5 max-w-xs text-center text-[13px] text-text-secondary">
-                Upload a document to start the ingestion pipeline. Each stage is tracked individually.
-              </p>
-            </motion.div>
+            <div className="rounded-2xl border border-border bg-bg-tertiary/20">
+              <EmptyState
+                icon={Upload}
+                title="No files uploaded yet"
+                description="Upload a document to start the ingestion pipeline. Each stage is tracked individually."
+              />
+            </div>
           ) : null}
 
           {!loading && files.length > 0 && visibleFiles.length === 0 ? (
-            <div className="flex min-h-[240px] flex-col items-center justify-center rounded-2xl border border-dashed border-border bg-bg-tertiary/20 text-center">
-              <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary-soft text-primary">
-                <Search size={19} />
-              </span>
-              <h3 className="mt-4 text-[15px] font-semibold text-text-primary">No matching documents</h3>
-              <p className="mt-1 text-[13px] text-text-secondary">Try another search or choose a different status.</p>
-              <button
-                type="button"
-                onClick={() => { setQuery(''); setStatusFilter('all') }}
-                className="mt-3 text-[13px] font-medium text-primary hover:underline"
-              >
-                Clear filters
-              </button>
+            <div className="rounded-2xl border border-dashed border-border bg-bg-tertiary/20">
+              <EmptyState
+                icon={Search}
+                size="sm"
+                title="No matching documents"
+                description="Try another search or choose a different status."
+                action={
+                  <button
+                    type="button"
+                    onClick={() => { setQuery(''); setStatusFilter('all') }}
+                    className="text-[13px] font-medium text-primary hover:underline"
+                  >
+                    Clear filters
+                  </button>
+                }
+              />
             </div>
           ) : null}
 

@@ -12,6 +12,7 @@ import Badge from '@/components/ui/Badge'
 import PageHeader from '@/components/ui/PageHeader'
 import StatCard from '@/components/ui/StatCard'
 import EmptyState from '@/components/ui/EmptyState'
+import ProgressBar from '@/components/ui/ProgressBar'
 import { useHealth } from '../hooks/useHealth'
 
 /* ── Status config ──────────────────────────────────────── */
@@ -130,15 +131,12 @@ function CircuitBreakerPanel({ breakers }) {
                 </div>
               ))}
             </div>
-            <div
-              className="h-1.5 rounded-full overflow-hidden"
-              style={{ background: 'var(--border)' }}
-            >
-              <div
-                className="h-full rounded-full transition-all duration-500"
-                style={{ width: `${Math.min(100, failPct)}%`, background: barColor }}
-              />
-            </div>
+            <ProgressBar
+              value={Math.min(100, failPct)}
+              color={barColor}
+              track="bg-border"
+              aria-label="Failure rate"
+            />
           </div>
         )
       })}
@@ -293,15 +291,13 @@ export default function HealthDashboard() {
               {healthyCount} of {totalServices} services are responding normally.
             </p>
             <div className="mt-4 flex items-center gap-3">
-              <div className="h-2 flex-1 overflow-hidden rounded-full bg-bg-tertiary">
-                <motion.div
-                  className="h-full rounded-full"
-                  initial={{ width: 0 }}
-                  animate={{ width: `${healthPercent}%` }}
-                  transition={{ duration: 0.6, ease: 'easeOut' }}
-                  style={{ background: overallCfg.iconColor }}
-                />
-              </div>
+              <ProgressBar
+                value={healthPercent}
+                color={overallCfg.iconColor}
+                thickness="md"
+                className="flex-1"
+                aria-label="Service health"
+              />
               <span className="text-[13px] font-semibold tabular-nums" style={{ color: overallCfg.iconColor }}>{healthPercent}%</span>
             </div>
           </div>

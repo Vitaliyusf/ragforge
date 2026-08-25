@@ -4,6 +4,8 @@ import { useMemo, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, Zap, Database, FileText, ShieldCheck, ChevronDown, ChevronUp } from 'lucide-react'
 import Button from '@/components/ui/Button'
+import { DataCell } from '@/components/ui/DataDisplay'
+import ProgressBar from '@/components/ui/ProgressBar'
 
 // ─── Node styling ──────────────────────────────────────────────────────────────
 
@@ -52,17 +54,7 @@ function ScoreBar({ label, value, color = 'var(--success)' }) {
           {pct != null ? `${pct}%` : 'n/a'}
         </span>
       </div>
-      <div className="h-1.5 w-full overflow-hidden rounded-full bg-bg-tertiary">
-        {pct != null ? (
-          <motion.div
-            className="h-full rounded-full"
-            style={{ backgroundColor: color }}
-            initial={{ width: 0 }}
-            animate={{ width: `${pct}%` }}
-            transition={{ duration: 0.5, ease: 'easeOut' }}
-          />
-        ) : null}
-      </div>
+      <ProgressBar value={pct} color={color} aria-label={label} />
     </div>
   )
 }
@@ -88,11 +80,11 @@ function PipelineTab({ traceEvents, retrievalSummary }) {
     <div className="space-y-3">
       {retrievalSummary ? (
         <div className="grid grid-cols-2 gap-2">
-          <Stat label="Chunks used" value={retrievalSummary.chunk_count ?? '—'} />
-          <Stat label="Total latency" value={`${Math.round(totalLatency)} ms`} />
+          <DataCell reverse center mono label="Chunks used" value={retrievalSummary.chunk_count ?? '—'} />
+          <DataCell reverse center mono label="Total latency" value={`${Math.round(totalLatency)} ms`} />
         </div>
       ) : (
-        <Stat label="Total latency" value={`${Math.round(totalLatency)} ms`} />
+        <DataCell reverse center mono label="Total latency" value={`${Math.round(totalLatency)} ms`} />
       )}
 
       <div className="space-y-1.5">
@@ -123,15 +115,14 @@ function PipelineTab({ traceEvents, retrievalSummary }) {
                 </span>
               </div>
 
-              <div className="mb-1 h-1 w-full overflow-hidden rounded-full bg-bg-elevated">
-                <motion.div
-                  className="h-full rounded-full"
-                  style={{ backgroundColor: color, opacity: 0.7 }}
-                  initial={{ width: 0 }}
-                  animate={{ width: `${pct}%` }}
-                  transition={{ duration: 0.4, delay: index * 0.04, ease: 'easeOut' }}
-                />
-              </div>
+              <ProgressBar
+                value={pct}
+                color={color}
+                thickness="xs"
+                track="bg-bg-elevated"
+                fillOpacity={0.7}
+                className="mb-1"
+              />
 
               {counters ? (
                 <div className="flex flex-wrap gap-x-3 gap-y-0.5 pt-0.5">
@@ -165,9 +156,9 @@ function SourcesTab({ sources, retrievalSummary }) {
   return (
     <div className="space-y-3">
       <div className="grid grid-cols-3 gap-2">
-        <Stat label="Chunks" value={sources.length} />
-        <Stat label="Top score" value={topScore ? `${(topScore * 100).toFixed(0)}%` : '—'} />
-        <Stat label="Min score" value={bottomScore ? `${(bottomScore * 100).toFixed(0)}%` : '—'} />
+        <DataCell reverse center mono label="Chunks" value={sources.length} />
+        <DataCell reverse center mono label="Top score" value={topScore ? `${(topScore * 100).toFixed(0)}%` : '—'} />
+        <DataCell reverse center mono label="Min score" value={bottomScore ? `${(bottomScore * 100).toFixed(0)}%` : '—'} />
       </div>
 
       <div className="space-y-2">
@@ -193,17 +184,13 @@ function SourcesTab({ sources, retrievalSummary }) {
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-[13px] font-medium text-text-primary">{name}</div>
-                  <div className="mt-1 h-1 w-full overflow-hidden rounded-full bg-bg-elevated">
-                    {pct != null ? (
-                      <motion.div
-                        className="h-full rounded-full"
-                        style={{ backgroundColor: color }}
-                        initial={{ width: 0 }}
-                        animate={{ width: `${pct}%` }}
-                        transition={{ duration: 0.4, delay: index * 0.05, ease: 'easeOut' }}
-                      />
-                    ) : null}
-                  </div>
+                  <ProgressBar
+                    value={pct}
+                    color={color}
+                    thickness="xs"
+                    track="bg-bg-elevated"
+                    className="mt-1"
+                  />
                   <div className="mt-0.5 flex items-center gap-2 text-xs text-text-muted">
                     {pct != null ? (
                       <span style={{ color }} className="font-mono font-semibold">{pct.toFixed(1)}%</span>
@@ -381,14 +368,6 @@ function PromptTab({ debugPayloads, metadata }) {
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
 
-function Stat({ label, value }) {
-  return (
-    <div className="rounded-lg border border-border bg-bg-tertiary px-2.5 py-2 text-center">
-      <div className="font-mono text-[15px] font-bold text-text-primary">{value}</div>
-      <div className="mt-0.5 text-xs text-text-muted">{label}</div>
-    </div>
-  )
-}
 
 function Empty({ label }) {
   return (
