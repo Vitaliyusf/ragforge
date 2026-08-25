@@ -2,7 +2,6 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import authService from '@/features/auth/services/authService'
-import socketService from '@/features/websocket/services/socketService'
 import { store } from '@/store'
 
 const AuthContext = createContext(null)
@@ -74,6 +73,10 @@ export function AuthProvider({ children }) {
     try {
       await authService.logout()
     } finally {
+      // Imported here rather than at module scope: AuthProvider mounts before
+      // login, and a static import puts socket.io-client in the first load for
+      // visitors who only ever see the login screen.
+      const { default: socketService } = await import('@/features/websocket/services/socketService')
       socketService.disconnect()
       clearBrowserState()
       setUser(null)

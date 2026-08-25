@@ -21,7 +21,6 @@ import {
   Upload,
   LogOut,
 } from 'lucide-react'
-import { AnimatePresence, motion } from 'framer-motion'
 import { toast } from 'sonner'
 import { configService } from '@/features/config'
 import { modelService } from '@/features/models'
@@ -180,18 +179,19 @@ export default function Header({ activeTab, setActiveTab }) {
                     active ? 'text-[var(--fg)]' : 'text-[var(--fg-soft)] hover:text-[var(--fg)]'
                   )}
                 >
-                  {active && (
-                    <motion.span
-                      layoutId="primary-navigation"
-                      className="absolute inset-0 rounded-lg border"
-                      style={{
-                        background: 'var(--surface-elevated)',
-                        borderColor: 'var(--border)',
-                        boxShadow: 'var(--shadow-sm)',
-                      }}
-                      transition={{ type: 'spring', damping: 30, stiffness: 420 }}
-                    />
-                  )}
+                  {/* Was a framer-motion shared-element pill. A per-button
+                      background cross-fades instead: no slide, but it keeps
+                      framer-motion out of the first-load bundle. */}
+                  <span
+                    aria-hidden="true"
+                    className="absolute inset-0 rounded-lg border transition-opacity duration-200"
+                    style={{
+                      background: 'var(--surface-elevated)',
+                      borderColor: 'var(--border)',
+                      boxShadow: 'var(--shadow-sm)',
+                      opacity: active ? 1 : 0,
+                    }}
+                  />
                   <Icon
                     size={16}
                     strokeWidth={active ? 2.2 : 1.8}
@@ -233,18 +233,9 @@ export default function Header({ activeTab, setActiveTab }) {
             title={resolvedTheme === 'dark' ? 'Light mode' : 'Dark mode'}
             className={iconButtonClass}
           >
-            <AnimatePresence mode="wait" initial={false}>
-              <motion.span
-                key={resolvedTheme}
-                initial={{ opacity: 0, rotate: -20, scale: 0.8 }}
-                animate={{ opacity: 1, rotate: 0, scale: 1 }}
-                exit={{ opacity: 0, rotate: 20, scale: 0.8 }}
-                transition={{ duration: 0.14 }}
-                className="flex"
-              >
-                {resolvedTheme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
-              </motion.span>
-            </AnimatePresence>
+            <span key={resolvedTheme} className="flex animate-icon-swap">
+              {resolvedTheme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
+            </span>
           </button>
 
           {isAdmin && <div ref={settingsRef} className="relative">
@@ -269,14 +260,9 @@ export default function Header({ activeTab, setActiveTab }) {
               />
             </button>
 
-            <AnimatePresence>
-              {showSettings && (
-                <motion.div
-                  initial={{ opacity: 0, y: -6, scale: 0.98 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={{ opacity: 0, y: -6, scale: 0.98 }}
-                  transition={{ duration: 0.15, ease: 'easeOut' }}
-                  className="absolute right-0 top-full z-[1000] mt-2 w-[min(19rem,calc(100vw-1.5rem))] overflow-hidden rounded-2xl border"
+            {showSettings && (
+              <div
+                  className="animate-dropdown-in absolute right-0 top-full z-[1000] mt-2 w-[min(19rem,calc(100vw-1.5rem))] overflow-hidden rounded-2xl border"
                   style={{
                     background: 'var(--surface-elevated)',
                     borderColor: 'var(--border)',
@@ -348,9 +334,8 @@ export default function Header({ activeTab, setActiveTab }) {
                       <Settings2 size={13} /> All settings
                     </button>
                   </div>
-                </motion.div>
+                </div>
               )}
-            </AnimatePresence>
           </div>}
 
           <span className="hidden max-w-32 truncate px-2 text-xs text-[var(--fg-soft)] 2xl:block" title={user?.email}>
