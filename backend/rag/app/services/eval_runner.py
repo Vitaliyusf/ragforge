@@ -500,6 +500,15 @@ class EvalRunner:
             if action == LIST_EVAL_DATASETS:
                 return {"datasets": self.store.list_datasets()}
             if action == CREATE_EVAL_DATASET:
+                if "content" in payload:
+                    return {
+                        "dataset": self.store.import_dataset(
+                            payload.get("name") or "",
+                            payload.get("description"),
+                            payload.get("content"),
+                            str(payload.get("format") or ""),
+                        )
+                    }
                 return {
                     "dataset": self.store.create_dataset(
                         payload.get("name") or "",
@@ -577,6 +586,18 @@ class EvalRunner:
         items = dataset.get("items") or []
         if not items:
             raise EvalValidationError("Dataset has no items to evaluate")
+        unresolved = [
+            str(item.get("item_id") or index)
+            for index, item in enumerate(items)
+            if item.get("expected_file_names")
+            and not item.get("relevant_chunk_ids")
+            and not item.get("relevant_file_ids")
+        ]
+        if unresolved:
+            raise EvalValidationError(
+                "Dataset has unresolved expected_file_names; resolve filenames "
+                f"before running it (items: {', '.join(unresolved[:10])})"
+            )
 
         match_mode = dataset_match_mode(items)
         run = self.store.create_run(

@@ -210,6 +210,23 @@ def test_accepted_items_are_normalized_with_generated_ids():
     assert items[0]["notes"] is None
 
 
+def test_jsonl_import_is_parsed_before_the_dataset_is_stored():
+    store = build_store(eval_max_dataset_bytes=2048)
+    content = (
+        '{"item_id":"q1","query":"Where?","expected_file_names":["guide.md"],'
+        '"expected_facts":["It is in the guide."],"answerable":true,"tags":["docs"]}'
+    )
+    with bound_context(**ADMIN_A.to_dict()):
+        created = store.import_dataset("Imported", None, content, "jsonl")
+
+    item = created["items"][0]
+    assert item["expected_file_names"] == ["guide.md"]
+    assert item["expected_claims"] == ["It is in the guide."]
+    assert item["relevant_file_ids"] == []
+    assert item["answerable"] is True
+    assert item["tags"] == ["docs"]
+
+
 # ── Datasets ──────────────────────────────────────────────────────────────
 
 def test_the_listing_carries_counts_not_item_bodies():
