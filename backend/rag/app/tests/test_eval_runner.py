@@ -741,6 +741,47 @@ def test_concurrency_stays_within_the_semaphore_bound():
     assert len(backend.calls) == 12
 
 
+def test_item_timing_separates_queue_wait_from_bounded_execution():
+    class DelayedBackend(FakeBackend):
+        async def search_chunks(self, *args, **kwargs):
+            await asyncio.sleep(0.02)
+            return await super().search_chunks(*args, **kwargs)
+
+    store, runner, _, dataset_id = build(
+        items=ITEMS,
+        backend=DelayedBackend(),
+        eval_run_concurrency=1,
+    )
+    run = execute(runner, dataset_id)
+    rows = fetch(store, run["run_id"])["per_item"]
+
+    first, second = rows
+    assert first["queue_wait_ms"] < first["execution_ms"]
+    assert second["queue_wait_ms"] > 0
+    assert second["total_elapsed_ms"] > second["execution_ms"]
+    for row in rows:
+        assert row["latency_ms"] == pytest.approx(row["total_elapsed_ms"])
+        assert row["total_elapsed_ms"] == pytest.approx(
+            row["queue_wait_ms"] + row["execution_ms"]
+        )
+
+
+def test_failed_item_still_records_reconciled_timing():
+    store, runner, _, dataset_id = build(
+        items=[{"query": "broken", "relevant_chunk_ids": ["c1"]}],
+        backend=FakeBackend(fail_queries={"broken"}),
+    )
+    run = execute(runner, dataset_id)
+    row = fetch(store, run["run_id"])["per_item"][0]
+
+    assert row["outcome"] == "failed"
+    assert row["queue_wait_ms"] >= 0
+    assert row["execution_ms"] >= 0
+    assert row["total_elapsed_ms"] == pytest.approx(
+        row["queue_wait_ms"] + row["execution_ms"]
+    )
+
+
 # ── Match modes ───────────────────────────────────────────────────────────
 
 def test_a_fully_chunk_labelled_dataset_matches_on_chunk_id():

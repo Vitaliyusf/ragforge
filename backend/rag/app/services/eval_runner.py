@@ -1089,6 +1089,9 @@ class EvalRunner:
             "reciprocal_rank": None,
             "recall_at_10": None,
             "latency_ms": None,
+            "queue_wait_ms": None,
+            "execution_ms": None,
+            "total_elapsed_ms": None,
             "skipped": not relevant,
             # Distinct from `skipped`, which means "this item was never
             # labelled". An unscorable item *is* labelled — against chunks
@@ -1106,9 +1109,12 @@ class EvalRunner:
             return row
 
         trace = RetrievalTrace.from_config(self.config)
-        started = time.monotonic()
+        scheduled_at = time.monotonic()
+        execution_started_at: Optional[float] = None
         try:
-            async with semaphore:
+            await semaphore.acquire()
+            execution_started_at = time.monotonic()
+            try:
                 request = ConversationRequest(
                     user_message=query,
                     # The pipeline the run declared. A retrieval run passes
@@ -1151,18 +1157,20 @@ class EvalRunner:
                     )
                     trace.record_stage(STAGE_FINAL_CONTEXT, eligible)
                     ids = retrieved_ids(eligible, item_mode)
+            finally:
+                semaphore.release()
         except Exception as exc:  # noqa: BLE001 - one item, not the run
             row["error"] = str(exc)
             row["error_class"] = type(exc).__name__
             row["timed_out"] = isinstance(exc, TimeoutError)
             row["outcome"] = "timed_out" if row["timed_out"] else "failed"
-            row["latency_ms"] = (time.monotonic() - started) * 1000
+            _record_item_timing(row, scheduled_at, execution_started_at)
             row["retrieval_trace"] = trace.to_payload()
             row["failure_attribution"] = classify_item(row)
             await self._persist_item_result(run_id, tenant_id, row, on_item_completed)
             return row
 
-        row["latency_ms"] = (time.monotonic() - started) * 1000
+        _record_item_timing(row, scheduled_at, execution_started_at)
         row["retrieval_trace"] = trace.to_payload()
         row["retrieved_ids"] = ids[:MAX_ROW_IDS]
         if row["outcome"] == "guardrail_blocked":
@@ -1321,6 +1329,35 @@ def _item_scores(ids: List[str], relevant: Set[str]) -> Dict[str, Dict[str, floa
             str(k): retrieval_metrics.ndcg_at_k(ids, relevant, k) for k in K_VALUES
         },
     }
+
+
+def _record_item_timing(
+    row: Dict[str, Any],
+    scheduled_at: float,
+    execution_started_at: Optional[float],
+) -> None:
+    """Persist reconciled queue, execution and total elapsed timings.
+
+    ``latency_ms`` remains a backward-compatible alias for
+    ``total_elapsed_ms``. It must not be interpreted as provider or retrieval
+    execution latency because it includes time waiting for the eval slot.
+    """
+    finished_at = time.monotonic()
+    if execution_started_at is None:
+        queue_wait_ms = (finished_at - scheduled_at) * 1000
+        execution_ms = 0.0
+    else:
+        queue_wait_ms = (execution_started_at - scheduled_at) * 1000
+        execution_ms = (finished_at - execution_started_at) * 1000
+    total_elapsed_ms = queue_wait_ms + execution_ms
+    row.update(
+        {
+            "queue_wait_ms": queue_wait_ms,
+            "execution_ms": execution_ms,
+            "total_elapsed_ms": total_elapsed_ms,
+            "latency_ms": total_elapsed_ms,
+        }
+    )
 
 
 def aggregate(rows: List[Dict[str, Any]], mode: str = MODE_RETRIEVAL) -> Dict[str, Any]:

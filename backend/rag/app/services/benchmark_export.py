@@ -169,7 +169,13 @@ def _trace_evidence(rows: Any) -> list[Any]:
         "first_hit_rank",
         "reciprocal_rank",
         "recall_at_10",
+        # ``latency_ms`` is retained as an alias of ``total_elapsed_ms`` for
+        # older consumers; the explicit fields prevent queue time from being
+        # mistaken for execution time.
         "latency_ms",
+        "queue_wait_ms",
+        "execution_ms",
+        "total_elapsed_ms",
         "skipped",
         "unscorable",
         "error",
@@ -308,6 +314,17 @@ state explicitly when their dataset evidence depends on today's Golden Set or
 when that Golden Set has been deleted. `null` means unmeasured or unavailable,
 never zero. Per-item files contain bounded scoring and retrieval lineage only;
 raw document/context text and answer text are excluded.
+
+Per-item timing is explicit: `queue_wait_ms` ends when the eval semaphore is
+acquired, `execution_ms` covers work inside that bounded slot, and
+`total_elapsed_ms` covers scheduling through terminal outcome. The legacy
+`latency_ms` field is retained as an alias of `total_elapsed_ms`; it is not
+request or execution latency. Benchmark phases separately expose
+`phase_started_at`, `phase_finished_at`, and real `phase_wall_clock_ms`.
+
+`metrics.json` contains platform-wide Prometheus snapshots, including bounded
+LLM `request_type` and `traffic_class` groupings. It contains no tenant, item,
+request, trace, conversation, or prompt labels.
 
 `truncation.json` reports every bounded-text truncation count and up to 100
 field paths, so an archive never silently presents shortened evidence as

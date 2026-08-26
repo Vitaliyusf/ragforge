@@ -643,6 +643,19 @@ def test_a_refused_benchmark_leaves_no_document_behind():
         assert store.list_benchmark_runs() == []
 
 
+def test_completed_phase_persists_explicit_wall_clock_fields():
+    store, orchestrator, _, dataset_id = build()
+
+    benchmark = run_benchmark(orchestrator, dataset_id, [PHASE_RETRIEVAL_BASE])
+    phase = phases_by_name(fetch(store, benchmark["benchmark_id"]))[
+        PHASE_RETRIEVAL_BASE
+    ]
+
+    assert phase["phase_started_at"] == phase["started_at"]
+    assert phase["phase_finished_at"] == phase["finished_at"]
+    assert phase["phase_wall_clock_ms"] >= 0
+
+
 # ── Manifest ──────────────────────────────────────────────────────────────
 
 def test_a_benchmark_records_the_manifest_it_ran_under(monkeypatch):

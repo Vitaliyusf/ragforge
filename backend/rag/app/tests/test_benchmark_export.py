@@ -161,6 +161,27 @@ def test_legacy_per_item_export_uses_null_for_unknown_outcome_fields():
     assert evidence[0]["error_class"] is None
 
 
+def test_per_item_export_includes_explicit_timing_and_reads_legacy_rows():
+    timed = _trace_evidence(
+        [
+            {
+                "item_id": "timed-1",
+                "latency_ms": 12.0,
+                "queue_wait_ms": 2.0,
+                "execution_ms": 10.0,
+                "total_elapsed_ms": 12.0,
+            },
+            {"item_id": "legacy-1", "latency_ms": 7.0},
+        ]
+    )
+
+    assert timed[0]["queue_wait_ms"] == 2.0
+    assert timed[0]["execution_ms"] == 10.0
+    assert timed[0]["total_elapsed_ms"] == 12.0
+    assert timed[1]["latency_ms"] == 7.0
+    assert "queue_wait_ms" not in timed[1]
+
+
 @pytest.mark.parametrize(
     "value",
     [

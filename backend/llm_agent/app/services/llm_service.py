@@ -34,6 +34,18 @@ from shared.metrics import METRICS, traffic_class
 
 StreamPublisher = Callable[[ModelExecutionStreamPayload], None]
 
+_BOUNDED_FINISH_REASONS = frozenset(
+    {"completed", "stop", "length", "content_filter", "tool_calls", "cancelled"}
+)
+
+
+def _metric_finish_reason(value: str, *, errored: bool) -> str:
+    """Map provider-controlled finish text onto a bounded metric label."""
+    if errored:
+        return "error"
+    normalized = str(value or "").strip().lower()
+    return normalized if normalized in _BOUNDED_FINISH_REASONS else "other"
+
 
 class LLMService(BaseService):
     """Service for typed LLM prompt execution and legacy text generation."""
@@ -108,6 +120,7 @@ class LLMService(BaseService):
         errors: List[ErrorEntry] = []
         usage = UsageInfo(provider=self.config.llm_implementation)
         finish_reason = "completed"
+        provider_duration_seconds: Optional[float] = None
         token_event_count = 0
         status = "success"
         can_stream = False
@@ -200,7 +213,11 @@ class LLMService(BaseService):
                 inputs={"model": resolved_model, "streaming": can_stream},
                 metadata={"provider": self.config.llm_implementation, "timeout": timeout},
             ) as span:
-                generation = self.llm_client.generate(invocation)
+                provider_started_at = time.perf_counter()
+                try:
+                    generation = self.llm_client.generate(invocation)
+                finally:
+                    provider_duration_seconds = time.perf_counter() - provider_started_at
                 raw_output = generation.raw_output or ""
                 finish_reason = generation.finish_reason or "completed"
                 usage = self._normalize_usage(generation.usage)
@@ -334,18 +351,27 @@ class LLMService(BaseService):
         METRICS.llm_requests_total.labels(
             service=self.config.service_name,
             model=metric_model,
-            action=request.request_type,
+            request_type=request.request_type,
             traffic_class=traffic_class(),
         ).inc()
         METRICS.llm_request_duration.labels(
             service=self.config.service_name,
             model=metric_model,
+            request_type=request.request_type,
             traffic_class=traffic_class(),
         ).observe(latency_ms / 1000)
+        if provider_duration_seconds is not None:
+            METRICS.llm_provider_duration.labels(
+                service=self.config.service_name,
+                model=metric_model,
+                request_type=request.request_type,
+                traffic_class=traffic_class(),
+            ).observe(provider_duration_seconds)
         if status == "error":
             METRICS.llm_errors_total.labels(
                 service=self.config.service_name,
                 model=metric_model,
+                request_type=request.request_type,
                 error_type=errors[0].code if errors else "unknown",
                 traffic_class=traffic_class(),
             ).inc()
@@ -354,14 +380,23 @@ class LLMService(BaseService):
         for direction, token_count in (
             ("input", usage.input_tokens),
             ("output", usage.output_tokens),
+            ("total", usage.total_tokens),
         ):
             if token_count is not None:
                 METRICS.llm_tokens_total.labels(
                     service=self.config.service_name,
                     model=metric_model,
+                    request_type=request.request_type,
                     direction=direction,
                     traffic_class=traffic_class(),
                 ).inc(token_count)
+        METRICS.llm_finish_reasons_total.labels(
+            service=self.config.service_name,
+            model=metric_model,
+            request_type=request.request_type,
+            finish_reason=_metric_finish_reason(finish_reason, errored=status == "error"),
+            traffic_class=traffic_class(),
+        ).inc()
 
         response_payload = ModelExecutionResponsePayload(
             request_type=request.request_type,
