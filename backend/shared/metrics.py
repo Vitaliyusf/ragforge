@@ -236,26 +236,40 @@ class ServiceMetrics:
         self.llm_requests_total = Counter(
             "ragapp_llm_requests_total",
             "Total LLM generation requests",
-            ["service", "model", "action", "traffic_class"],
+            ["service", "model", "request_type", "traffic_class"],
         )
 
         self.llm_request_duration = Histogram(
             "ragapp_llm_request_duration_seconds",
             "LLM generation latency",
-            ["service", "model", "traffic_class"],
+            ["service", "model", "request_type", "traffic_class"],
+            buckets=[0.5, 1.0, 2.0, 5.0, 10.0, 20.0, 30.0, 60.0, 120.0],
+        )
+
+        self.llm_provider_duration = Histogram(
+            "ragapp_llm_provider_duration_seconds",
+            "Time spent inside the observable LLM provider call",
+            ["service", "model", "request_type", "traffic_class"],
             buckets=[0.5, 1.0, 2.0, 5.0, 10.0, 20.0, 30.0, 60.0, 120.0],
         )
 
         self.llm_tokens_total = Counter(
             "ragapp_llm_tokens_total",
             "LLM tokens by direction",
-            ["service", "model", "direction", "traffic_class"],  # input | output
+            ["service", "model", "request_type", "direction", "traffic_class"],
+            # direction is bounded to input | output | total
         )
 
         self.llm_errors_total = Counter(
             "ragapp_llm_errors_total",
             "LLM generation errors",
-            ["service", "model", "error_type", "traffic_class"],
+            ["service", "model", "request_type", "error_type", "traffic_class"],
+        )
+
+        self.llm_finish_reasons_total = Counter(
+            "ragapp_llm_finish_reasons_total",
+            "LLM requests by bounded provider finish reason",
+            ["service", "model", "request_type", "finish_reason", "traffic_class"],
         )
 
         # ── Embedding metrics ────────────────────────────────────────

@@ -351,6 +351,82 @@ def test_totals_sum_the_denominators_and_pool_the_samples():
     assert totals["latency_ms"]["p50"] == pytest.approx(30.0)
 
 
+def test_execution_and_scoring_axes_account_for_blocked_items_once():
+    rows = [scored_row(outcome="success") for _ in range(24)]
+    rows.extend({"skipped": True, "outcome": "success"} for _ in range(4))
+    rows.extend(
+        {"skipped": True, "outcome": "guardrail_blocked", "guardrail_stage": "input"}
+        for _ in range(2)
+    )
+
+    summary = summarize_phase(phase(results=aggregate(rows)))
+
+    assert summary["execution"] == {
+        "total": 30,
+        "succeeded": 28,
+        "guardrail_blocked": 2,
+        "failed": 0,
+        "timed_out": 0,
+        "interrupted": 0,
+    }
+    assert summary["scoring"] == {
+        "dataset_items": 30,
+        "scored": 24,
+        "skipped": 6,
+        "unscorable": 0,
+    }
+    assert summary["items"]["reached"] == 30
+    assert sum(
+        summary["execution"][key]
+        for key in (
+            "succeeded",
+            "guardrail_blocked",
+            "failed",
+            "timed_out",
+            "interrupted",
+        )
+    ) == summary["execution"]["total"]
+    assert summary["execution"]["total"] == summary["scoring"]["dataset_items"]
+
+
+def test_pooled_axes_do_not_double_count_guardrail_blocks():
+    rows = [scored_row(outcome="success") for _ in range(28)] + [
+        {"skipped": True, "outcome": "guardrail_blocked"},
+        {"skipped": True, "outcome": "guardrail_blocked"},
+    ]
+    phases = [
+        phase(name, run_id=f"run-{index}", results=aggregate(rows))
+        for index, name in enumerate(
+            (PHASE_RETRIEVAL_BASE, PHASE_RETRIEVAL_EXTENDED, PHASE_END_TO_END_REGULAR),
+            start=1,
+        )
+    ]
+
+    totals = summarize_benchmark(benchmark(phases))["totals"]
+
+    assert totals["execution"]["total"] == 90
+    assert totals["execution"]["guardrail_blocked"] == 6
+    assert totals["scoring"]["dataset_items"] == 90
+    assert totals["items"]["reached"] == 90
+
+
+def test_legacy_results_do_not_infer_execution_outcomes():
+    summary = summarize_phase(
+        phase(results={"items_evaluated": 24, "items_skipped": 6, "items_failed": 2})
+    )
+
+    assert summary["execution"] == {
+        "total": None,
+        "succeeded": None,
+        "guardrail_blocked": None,
+        "failed": None,
+        "timed_out": None,
+        "interrupted": None,
+    }
+    assert summary["scoring"]["dataset_items"] == 30
+    assert summary["items"]["reached"] == 30
+
+
 def test_totals_carry_no_pooled_retrieval_or_quality_mean():
     """Averaging a retrieval phase with an end-to-end one measures nothing."""
     summary = summarize_benchmark(benchmark([phase(results=aggregate([scored_row()]))]))

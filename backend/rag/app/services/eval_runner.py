@@ -1089,14 +1089,19 @@ class EvalRunner:
             "reciprocal_rank": None,
             "recall_at_10": None,
             "latency_ms": None,
+            "queue_wait_ms": None,
+            "execution_ms": None,
+            "total_elapsed_ms": None,
             "skipped": not relevant,
             # Distinct from `skipped`, which means "this item was never
             # labelled". An unscorable item *is* labelled — against chunks
             # the live index no longer offers.
             "unscorable": unscorable,
             "error": None,
+            "error_class": None,
             "outcome": "success",
             "guardrail_stage": None,
+            "timed_out": False,
         }
         if unscorable:
             row["failure_attribution"] = classify_item(row)
@@ -1104,9 +1109,12 @@ class EvalRunner:
             return row
 
         trace = RetrievalTrace.from_config(self.config)
-        started = time.monotonic()
+        scheduled_at = time.monotonic()
+        execution_started_at: Optional[float] = None
         try:
-            async with semaphore:
+            await semaphore.acquire()
+            execution_started_at = time.monotonic()
+            try:
                 request = ConversationRequest(
                     user_message=query,
                     # The pipeline the run declared. A retrieval run passes
@@ -1149,16 +1157,20 @@ class EvalRunner:
                     )
                     trace.record_stage(STAGE_FINAL_CONTEXT, eligible)
                     ids = retrieved_ids(eligible, item_mode)
+            finally:
+                semaphore.release()
         except Exception as exc:  # noqa: BLE001 - one item, not the run
             row["error"] = str(exc)
-            row["outcome"] = "failed"
-            row["latency_ms"] = (time.monotonic() - started) * 1000
+            row["error_class"] = type(exc).__name__
+            row["timed_out"] = isinstance(exc, TimeoutError)
+            row["outcome"] = "timed_out" if row["timed_out"] else "failed"
+            _record_item_timing(row, scheduled_at, execution_started_at)
             row["retrieval_trace"] = trace.to_payload()
             row["failure_attribution"] = classify_item(row)
             await self._persist_item_result(run_id, tenant_id, row, on_item_completed)
             return row
 
-        row["latency_ms"] = (time.monotonic() - started) * 1000
+        _record_item_timing(row, scheduled_at, execution_started_at)
         row["retrieval_trace"] = trace.to_payload()
         row["retrieved_ids"] = ids[:MAX_ROW_IDS]
         if row["outcome"] == "guardrail_blocked":
@@ -1319,6 +1331,35 @@ def _item_scores(ids: List[str], relevant: Set[str]) -> Dict[str, Dict[str, floa
     }
 
 
+def _record_item_timing(
+    row: Dict[str, Any],
+    scheduled_at: float,
+    execution_started_at: Optional[float],
+) -> None:
+    """Persist reconciled queue, execution and total elapsed timings.
+
+    ``latency_ms`` remains a backward-compatible alias for
+    ``total_elapsed_ms``. It must not be interpreted as provider or retrieval
+    execution latency because it includes time waiting for the eval slot.
+    """
+    finished_at = time.monotonic()
+    if execution_started_at is None:
+        queue_wait_ms = (finished_at - scheduled_at) * 1000
+        execution_ms = 0.0
+    else:
+        queue_wait_ms = (execution_started_at - scheduled_at) * 1000
+        execution_ms = (finished_at - execution_started_at) * 1000
+    total_elapsed_ms = queue_wait_ms + execution_ms
+    row.update(
+        {
+            "queue_wait_ms": queue_wait_ms,
+            "execution_ms": execution_ms,
+            "total_elapsed_ms": total_elapsed_ms,
+            "latency_ms": total_elapsed_ms,
+        }
+    )
+
+
 def aggregate(rows: List[Dict[str, Any]], mode: str = MODE_RETRIEVAL) -> Dict[str, Any]:
     """Average the per-item scores into the run's ``results``.
 
@@ -1348,6 +1389,38 @@ def aggregate(rows: List[Dict[str, Any]], mode: str = MODE_RETRIEVAL) -> Dict[st
     latencies = [
         row["latency_ms"] for row in rows if isinstance(row.get("latency_ms"), (int, float))
     ]
+    outcomes_known = all("outcome" in row for row in rows)
+    execution: Dict[str, Any] = {
+        "total": len(rows),
+        "succeeded": 0 if outcomes_known else None,
+        "guardrail_blocked": 0 if outcomes_known else None,
+        "failed": 0 if outcomes_known else None,
+        "timed_out": 0 if outcomes_known else None,
+        "interrupted": 0 if outcomes_known else None,
+    }
+    if outcomes_known:
+        for row in rows:
+            outcome = row["outcome"]
+            key = "succeeded" if outcome == "success" else str(outcome)
+            if key not in execution:
+                key = "failed"
+            execution[key] += 1
+
+    scoring = {
+        "dataset_items": len(rows),
+        "scored": len(scored),
+        "skipped": 0,
+        "unscorable": 0,
+    }
+    for row in rows:
+        if row.get("scores"):
+            continue
+        if row.get("skipped"):
+            scoring["skipped"] += 1
+        else:
+            # A labelled item that produced no score (for example because an
+            # execution guardrail blocked it) is unscorable for this run.
+            scoring["unscorable"] += 1
 
     def mean_at_k(metric: str) -> Dict[str, Optional[float]]:
         return {
@@ -1366,6 +1439,11 @@ def aggregate(rows: List[Dict[str, Any]], mode: str = MODE_RETRIEVAL) -> Dict[st
         "items_unscorable": unscorable,
         "items_guardrail_blocked": blocked,
         "items_failed": failed,
+        # Execution and scoring are deliberately independent, mutually
+        # exclusive axes. Keep the legacy counters above for readers that
+        # predate this contract, but never add them together as one total.
+        "execution": execution,
+        "scoring": scoring,
         "mean_latency_ms": _mean(latencies),
         # Where the failures were, not just how many. Reported for every run
         # and every benchmark phase — a phase stores exactly this dict — so

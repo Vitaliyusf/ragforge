@@ -36,6 +36,12 @@ SNAPSHOT_QUERIES: Dict[str, Dict[str, str]] = {
     "pipeline": {
         "embedding_p95": 'histogram_quantile(0.95, sum by (le) (rate(ragapp_embedding_duration_seconds_bucket{traffic_class="live"}[5m])))',
         "llm_p95": 'histogram_quantile(0.95, sum by (model, le) (rate(ragapp_llm_request_duration_seconds_bucket{traffic_class="live"}[5m])))',
+        "llm_p95_by_request_type": "histogram_quantile(0.95, sum by (request_type, traffic_class, le) (rate(ragapp_llm_request_duration_seconds_bucket[5m])))",
+        "llm_provider_p95_by_request_type": "histogram_quantile(0.95, sum by (request_type, traffic_class, le) (rate(ragapp_llm_provider_duration_seconds_bucket[5m])))",
+        "llm_wall_time_rate": "sum by (request_type, traffic_class) (rate(ragapp_llm_request_duration_seconds_sum[5m]))",
+        "llm_request_rate": "sum by (request_type, traffic_class) (rate(ragapp_llm_requests_total[5m]))",
+        "llm_error_rate": "sum by (request_type, traffic_class) (rate(ragapp_llm_errors_total[5m]))",
+        "llm_output_token_rate": 'sum by (request_type, traffic_class) (rate(ragapp_llm_tokens_total{direction="output"}[5m]))',
         "ingestion_stage_rate": "sum by (stage, outcome) (rate(ragapp_ingestion_stage_total[5m]))",
     },
 }

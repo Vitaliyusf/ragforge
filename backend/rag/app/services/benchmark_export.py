@@ -22,6 +22,17 @@ MAX_EXPORT_BYTES = 8 * 1024 * 1024
 MAX_TEXT_BYTES = 16 * 1024
 MAX_TRUNCATION_EXAMPLES = 100
 _SECRET_KEY = re.compile(r"(?:secret|password|api[_-]?key|token|authorization)", re.I)
+_NON_FINITE_STRINGS = {
+    "nan",
+    "+nan",
+    "-nan",
+    "inf",
+    "+inf",
+    "-inf",
+    "infinity",
+    "+infinity",
+    "-infinity",
+}
 
 
 class BenchmarkExportTooLarge(EvalValidationError):
@@ -158,10 +169,20 @@ def _trace_evidence(rows: Any) -> list[Any]:
         "first_hit_rank",
         "reciprocal_rank",
         "recall_at_10",
+        # ``latency_ms`` is retained as an alias of ``total_elapsed_ms`` for
+        # older consumers; the explicit fields prevent queue time from being
+        # mistaken for execution time.
         "latency_ms",
+        "queue_wait_ms",
+        "execution_ms",
+        "total_elapsed_ms",
         "skipped",
         "unscorable",
         "error",
+        "error_class",
+        "outcome",
+        "guardrail_stage",
+        "timed_out",
         "scores",
         "retrieval_trace",
         "groundedness",
@@ -170,11 +191,15 @@ def _trace_evidence(rows: Any) -> list[Any]:
         "unsupported_claim_count",
         "hallucination_verdict",
     )
-    return [
-        {key: row.get(key) for key in allowed if key in row}
-        for row in (rows if isinstance(rows, list) else [])
-        if isinstance(row, Mapping)
-    ]
+    evidence = []
+    for row in rows if isinstance(rows, list) else []:
+        if not isinstance(row, Mapping):
+            continue
+        exported = {key: row.get(key) for key in allowed if key in row}
+        for key in ("outcome", "guardrail_stage", "timed_out", "error_class"):
+            exported.setdefault(key, None)
+        evidence.append(exported)
+    return evidence
 
 
 def _errors(benchmark: Mapping[str, Any], runs: Iterable[Mapping[str, Any]]) -> Dict[str, Any]:
@@ -256,6 +281,8 @@ def _sanitize(
     if isinstance(value, float) and not math.isfinite(value):
         return None
     if isinstance(value, str):
+        if value.strip().lower() in _NON_FINITE_STRINGS:
+            return None
         encoded = value.encode("utf-8")
         if len(encoded) <= MAX_TEXT_BYTES:
             return value
@@ -287,6 +314,17 @@ state explicitly when their dataset evidence depends on today's Golden Set or
 when that Golden Set has been deleted. `null` means unmeasured or unavailable,
 never zero. Per-item files contain bounded scoring and retrieval lineage only;
 raw document/context text and answer text are excluded.
+
+Per-item timing is explicit: `queue_wait_ms` ends when the eval semaphore is
+acquired, `execution_ms` covers work inside that bounded slot, and
+`total_elapsed_ms` covers scheduling through terminal outcome. The legacy
+`latency_ms` field is retained as an alias of `total_elapsed_ms`; it is not
+request or execution latency. Benchmark phases separately expose
+`phase_started_at`, `phase_finished_at`, and real `phase_wall_clock_ms`.
+
+`metrics.json` contains platform-wide Prometheus snapshots, including bounded
+LLM `request_type` and `traffic_class` groupings. It contains no tenant, item,
+request, trace, conversation, or prompt labels.
 
 `truncation.json` reports every bounded-text truncation count and up to 100
 field paths, so an archive never silently presents shortened evidence as

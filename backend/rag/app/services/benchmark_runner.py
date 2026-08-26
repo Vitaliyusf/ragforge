@@ -265,6 +265,9 @@ def plan_phases(
                 "run_id": None,
                 "started_at": None,
                 "finished_at": None,
+                "phase_started_at": None,
+                "phase_finished_at": None,
+                "phase_wall_clock_ms": None,
                 "error": None,
                 "results": None,
             }
@@ -326,6 +329,24 @@ def initial_phase_progress(item_count: int, started_at: str) -> Dict[str, Any]:
         "phase_started_at": started_at,
         "last_progress_at": started_at,
     }
+
+
+def _finish_phase_clock(phase: Dict[str, Any]) -> None:
+    """Close the explicit phase clock while retaining legacy timestamps."""
+    finished_at = phase.get("finished_at") or _now_iso()
+    started_at = phase.get("phase_started_at") or phase.get("started_at")
+    phase["finished_at"] = finished_at
+    phase["phase_started_at"] = started_at
+    phase["phase_finished_at"] = finished_at
+    if started_at is None:
+        phase["phase_wall_clock_ms"] = None
+        return
+    try:
+        elapsed = datetime.fromisoformat(finished_at) - datetime.fromisoformat(started_at)
+    except (TypeError, ValueError):
+        phase["phase_wall_clock_ms"] = None
+    else:
+        phase["phase_wall_clock_ms"] = max(0.0, elapsed.total_seconds() * 1000)
 
 
 def _item_progress(phases: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -408,23 +429,25 @@ def _count(phases: List[Dict[str, Any]], status: str) -> int:
 
 
 def _phase_item_count(phase: Dict[str, Any]) -> int:
-    """How many items one finished phase actually got through.
-
-    Every row an eval run writes lands in exactly one of the outcome counters,
-    so their sum is the number of items the phase reached — zero for a phase
-    refused before scoring, which is what a stale-label failure looks like.
-    """
+    """How many item observations one phase recorded, without axis overlap."""
     results = phase.get("results") or {}
-    return sum(
+    execution = results.get("execution")
+    if isinstance(execution, dict):
+        return int(execution.get("total") or 0)
+
+    # Legacy aggregates mixed scoring eligibility and execution outcomes.
+    # Neither axis alone is a complete historical execution account, but the
+    # larger one is the honest lower bound and, unlike their sum, cannot count
+    # the same blocked/skipped row twice.
+    scoring = sum(
         int(results.get(key) or 0)
-        for key in (
-            "items_evaluated",
-            "items_skipped",
-            "items_unscorable",
-            "items_guardrail_blocked",
-            "items_failed",
-        )
+        for key in ("items_evaluated", "items_skipped", "items_unscorable")
     )
+    outcomes = sum(
+        int(results.get(key) or 0)
+        for key in ("items_evaluated", "items_guardrail_blocked", "items_failed")
+    )
+    return max(scoring, outcomes)
 
 
 class BenchmarkRunner:
@@ -490,7 +513,7 @@ class BenchmarkRunner:
                 # no run_id means the former worker did not reach a safe
                 # ownership boundary either.
                 phase["status"] = PHASE_INTERRUPTED
-                phase["finished_at"] = phase.get("finished_at") or _now_iso()
+                _finish_phase_clock(phase)
                 phase["reason"] = (
                     "Recovery could not prove a safe idempotent resume boundary"
                 )
@@ -714,7 +737,7 @@ class BenchmarkRunner:
             for phase in phases:
                 if phase["status"] in (PHASE_RUNNING, PHASE_QUEUED):
                     phase["status"] = PHASE_INTERRUPTED
-                    phase["finished_at"] = phase["finished_at"] or _now_iso()
+                    _finish_phase_clock(phase)
                     phase["reason"] = "The benchmark was cancelled before this phase finished"
             operational_metrics["after"] = await self._capture_snapshot()
             self.store.record_benchmark_operational_metrics(
@@ -770,6 +793,7 @@ class BenchmarkRunner:
         """
         phase["status"] = PHASE_RUNNING
         phase["started_at"] = _now_iso()
+        phase["phase_started_at"] = phase["started_at"]
         phase["item_progress"] = initial_phase_progress(item_count, phase["started_at"])
         self.store.record_benchmark_progress(
             benchmark_id,
@@ -815,7 +839,7 @@ class BenchmarkRunner:
                 self.store.heartbeat_benchmark(benchmark_id, tenant_id, self.owner_id)
 
         summary = await prepared.execute(on_item_completed=record_item)
-        phase["finished_at"] = _now_iso()
+        _finish_phase_clock(phase)
         results = summary.get("results") or {}
         phase["results"] = results
 
@@ -837,7 +861,7 @@ class BenchmarkRunner:
         """Close one phase as failed and report why the rest are skipped."""
         phase["status"] = PHASE_FAILED
         phase["error"] = error
-        phase["finished_at"] = phase["finished_at"] or _now_iso()
+        _finish_phase_clock(phase)
         return f"Skipped after phase {phase['name']} failed: {error}"
 
     def _log(self, event: str, message: str, data: Dict[str, Any]) -> None:

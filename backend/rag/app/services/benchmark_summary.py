@@ -46,14 +46,22 @@ from app.services.failure_attribution import FAILURE_CATEGORIES
 # Bumped when the summary's *shape* changes, for the reason the manifest
 # carries a version: a summary read back later must be interpretable under
 # the rules it was written with.
-SUMMARY_VERSION = 1
+SUMMARY_VERSION = 2
 
 # The IR metrics a retrieval phase reports at every k.
 _AT_K_METRICS = ("recall_at_k", "precision_at_k", "hit_rate_at_k", "ndcg_at_k")
 
-# Per-item counters every eval run writes. Their sum is how many items the
-# phase actually reached.
+# Legacy per-item counters retained for readers of summary version 1. They mix
+# scoring and execution and therefore must never be summed into a denominator.
 _ITEM_COUNTERS = ("evaluated", "skipped", "unscorable", "guardrail_blocked", "failed")
+_EXECUTION_COUNTERS = (
+    "succeeded",
+    "guardrail_blocked",
+    "failed",
+    "timed_out",
+    "interrupted",
+)
+_SCORING_COUNTERS = ("scored", "skipped", "unscorable")
 
 # Answer-quality fields that arrive as ``{"mean", "counted", "excluded"}``
 # from `citation_metrics.aggregate_mean`, and the ones that are a bare rate.
@@ -169,17 +177,38 @@ def _retrieval_block(results: Mapping[str, Any]) -> Dict[str, Any]:
     return block
 
 
-def _items_block(results: Mapping[str, Any]) -> Dict[str, Any]:
-    """The phase's denominators, with the total it reached.
+def _scoring_block(results: Mapping[str, Any]) -> Dict[str, Any]:
+    """The mutually exclusive scoring axis, with a legacy-safe fallback."""
+    stored = results.get("scoring")
+    if isinstance(stored, Mapping):
+        return {
+            "dataset_items": _count(stored.get("dataset_items")),
+            **{name: _count(stored.get(name)) for name in _SCORING_COUNTERS},
+        }
+    counts = {
+        "scored": _count(results.get("items_evaluated")) or 0,
+        "skipped": _count(results.get("items_skipped")) or 0,
+        "unscorable": _count(results.get("items_unscorable")) or 0,
+    }
+    return {"dataset_items": sum(counts.values()), **counts}
 
-    ``reached`` is the sum of the outcome counters and not the dataset size: an
-    item the phase never got to is not evidence of anything, and putting the
-    dataset size here would make every rate look better than it is.
-    """
+
+def _execution_block(results: Mapping[str, Any]) -> Dict[str, Optional[int]]:
+    """The mutually exclusive execution axis, or nulls for legacy records."""
+    stored = results.get("execution")
+    source = stored if isinstance(stored, Mapping) else {}
+    return {
+        "total": _count(source.get("total")),
+        **{name: _count(source.get(name)) for name in _EXECUTION_COUNTERS},
+    }
+
+
+def _items_block(results: Mapping[str, Any]) -> Dict[str, Any]:
+    """Legacy item counters with an unambiguous bounded ``reached`` value."""
     counts = {
         name: _count(results.get(f"items_{name}")) or 0 for name in _ITEM_COUNTERS
     }
-    return {**counts, "reached": sum(counts.values())}
+    return {**counts, "reached": _scoring_block(results)["dataset_items"]}
 
 
 def _quality_block(stored: Any) -> Optional[Dict[str, Any]]:
@@ -301,6 +330,8 @@ def summarize_phase(
         "started_at": phase.get("started_at"),
         "finished_at": phase.get("finished_at"),
         "items": _items_block(results) if results else None,
+        "execution": _execution_block(results) if results else None,
+        "scoring": _scoring_block(results) if results else None,
         "retrieval": _retrieval_block(results) if results else None,
         "answer_quality": _quality_block(results.get("answer_quality")),
         "failure_attribution": _attribution_block(results.get("failure_attribution")),
@@ -324,10 +355,24 @@ def _totals(
     describing no measurement anyone performed.
     """
     measured = [phase for phase in phases if phase["items"] is not None]
-    items = {
-        name: sum(phase["items"][name] for phase in measured)
-        for name in (*_ITEM_COUNTERS, "reached")
-    }
+    items: Dict[str, Any] = {}
+    for name in (*_ITEM_COUNTERS, "reached"):
+        values = [phase["items"][name] for phase in measured]
+        items[name] = None if any(value is None for value in values) else sum(values)
+    execution_phases = [phase["execution"] for phase in phases if phase["execution"]]
+    scoring_phases = [phase["scoring"] for phase in phases if phase["scoring"]]
+
+    def pooled_axis(
+        blocks: List[Dict[str, Any]], fields: Sequence[str]
+    ) -> Optional[Dict[str, int]]:
+        complete = [
+            block
+            for block in blocks
+            if all(block.get(field) is not None for field in fields)
+        ]
+        if not blocks or len(complete) != len(blocks):
+            return None
+        return {field: sum(block[field] for block in complete) for field in fields}
     counts = {category: 0 for category in FAILURE_CATEGORIES}
     attributed = 0
     for phase in phases:
@@ -347,6 +392,8 @@ def _totals(
         "measured_phases": len(measured),
         "phase_status_counts": statuses,
         "items": items if measured else None,
+        "execution": pooled_axis(execution_phases, ("total", *_EXECUTION_COUNTERS)),
+        "scoring": pooled_axis(scoring_phases, ("dataset_items", *_SCORING_COUNTERS)),
         "failure_attribution": _attribution_from_counts(counts, attributed),
         # Pooled from the per-item samples only. A mean of phase means would
         # weight a phase that reached two items like one that reached two

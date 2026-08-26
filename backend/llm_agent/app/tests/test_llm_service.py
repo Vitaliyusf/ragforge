@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import unittest
 from typing import List
+from unittest.mock import patch
 
 from app.core.config import Settings
 from app.llm.interfaces import ILLMClient, LLMGenerationResult, LLMInvocation, LLMUsage
@@ -10,7 +11,8 @@ from app.schemas.llm import (
     ModelExecutionStreamPayload,
     validate_model_execution_request_message,
 )
-from app.services.llm_service import LLMService
+from app.services.llm_service import LLMService, _metric_finish_reason
+from shared.context import bound_context
 
 
 class FakeLogger:
@@ -119,6 +121,33 @@ class DummyTracer:
     def start_execution(self, name, trace_id, inputs, metadata):
         self.last_trace = DummyTrace(metadata)
         return self.last_trace
+
+
+class RecordingMetric:
+    def __init__(self):
+        self.label_calls = []
+        self.increments = []
+        self.observations = []
+
+    def labels(self, **labels):
+        self.label_calls.append(labels)
+        return self
+
+    def inc(self, value=1):
+        self.increments.append(value)
+
+    def observe(self, value):
+        self.observations.append(value)
+
+
+class RecordingMetrics:
+    def __init__(self):
+        self.llm_requests_total = RecordingMetric()
+        self.llm_request_duration = RecordingMetric()
+        self.llm_provider_duration = RecordingMetric()
+        self.llm_errors_total = RecordingMetric()
+        self.llm_tokens_total = RecordingMetric()
+        self.llm_finish_reasons_total = RecordingMetric()
 
 
 def _settings(**overrides):
@@ -678,3 +707,67 @@ class LLMServiceTests(unittest.TestCase):
         self.assertEqual(service.tracer.last_trace.metadata["document_id"], "doc-1")
         self.assertEqual(service.tracer.last_trace.metadata["graph_run_id"], "graph-1")
         self.assertEqual(service.tracer.last_trace.metadata["mode"], "chat")
+
+    def test_metrics_are_bounded_and_grouped_by_request_type_and_traffic_class(self):
+        metrics = RecordingMetrics()
+        success = LLMService(FakeLLMClient(), FakeLogger(), _settings())
+        failure = LLMService(
+            FakeLLMClient(exception=RuntimeError("provider exploded")),
+            FakeLogger(),
+            _settings(),
+        )
+
+        with patch("app.services.llm_service.METRICS", metrics):
+            success.execute(
+                _request_message(
+                    "answer_generation",
+                    {"question": "Q?", "retrieved_context": "Context"},
+                )
+            )
+            with bound_context(traffic_class="eval"):
+                failure.execute(
+                    _request_message("query_rewrite", {"query": "rewrite me"})
+                )
+
+        request_labels = metrics.llm_requests_total.label_calls
+        self.assertEqual(
+            [labels["request_type"] for labels in request_labels],
+            ["answer_generation", "query_rewrite"],
+        )
+        self.assertEqual(
+            [labels["traffic_class"] for labels in request_labels],
+            ["live", "eval"],
+        )
+        self.assertTrue(
+            all(
+                "request_type" in labels
+                for labels in metrics.llm_request_duration.label_calls
+            )
+        )
+        self.assertEqual(
+            metrics.llm_errors_total.label_calls[0]["traffic_class"], "eval"
+        )
+        self.assertEqual(
+            metrics.llm_errors_total.label_calls[0]["request_type"], "query_rewrite"
+        )
+        self.assertEqual(
+            [labels["direction"] for labels in metrics.llm_tokens_total.label_calls],
+            ["input", "output", "total"],
+        )
+        self.assertEqual(metrics.llm_tokens_total.increments, [5, 3, 8])
+        self.assertTrue(
+            all(
+                labels["request_type"] == "answer_generation"
+                for labels in metrics.llm_tokens_total.label_calls
+            )
+        )
+        self.assertEqual(
+            [
+                labels["finish_reason"]
+                for labels in metrics.llm_finish_reasons_total.label_calls
+            ],
+            ["completed", "error"],
+        )
+        self.assertEqual(
+            _metric_finish_reason("request-specific-value", errored=False), "other"
+        )

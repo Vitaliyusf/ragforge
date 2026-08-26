@@ -16,6 +16,7 @@ from typing import Any, Dict, List, Optional
 
 import pytest
 
+from app.services.benchmark_prometheus import SNAPSHOT_QUERIES
 from app.services.benchmark_runner import (
     BENCHMARK_ACTIONS,
     GET_BENCHMARK_RUN,
@@ -33,6 +34,7 @@ from app.services.benchmark_runner import (
     PHASE_UNSUPPORTED,
     START_BENCHMARK_RUN,
     BenchmarkRunner,
+    _phase_item_count,
     benchmark_status,
     plan_phases,
 )
@@ -464,6 +466,20 @@ def test_every_supported_phase_produces_its_own_run():
     assert plan[PHASE_RETRIEVAL_BASE]["results"]["items_evaluated"] == 2
 
 
+def test_legacy_phase_item_count_does_not_add_scoring_and_execution_axes():
+    phase = {
+        "results": {
+            "items_evaluated": 24,
+            "items_skipped": 6,
+            "items_unscorable": 0,
+            "items_guardrail_blocked": 2,
+            "items_failed": 0,
+        }
+    }
+
+    assert _phase_item_count(phase) == 30
+
+
 def test_a_benchmark_is_listed_and_fetched_within_its_tenant():
     store, orchestrator, _, dataset_id = build()
 
@@ -628,6 +644,19 @@ def test_a_refused_benchmark_leaves_no_document_behind():
         assert store.list_benchmark_runs() == []
 
 
+def test_completed_phase_persists_explicit_wall_clock_fields():
+    store, orchestrator, _, dataset_id = build()
+
+    benchmark = run_benchmark(orchestrator, dataset_id, [PHASE_RETRIEVAL_BASE])
+    phase = phases_by_name(fetch(store, benchmark["benchmark_id"]))[
+        PHASE_RETRIEVAL_BASE
+    ]
+
+    assert phase["phase_started_at"] == phase["started_at"]
+    assert phase["phase_finished_at"] == phase["finished_at"]
+    assert phase["phase_wall_clock_ms"] >= 0
+
+
 # ── Manifest ──────────────────────────────────────────────────────────────
 
 def test_a_benchmark_records_the_manifest_it_ran_under(monkeypatch):
@@ -696,6 +725,31 @@ def test_a_benchmark_stores_before_and_after_operational_snapshots():
 
     assert benchmark["operational_metrics"] == {"before": before, "after": after}
     assert snapshotter.calls == 2
+
+
+def test_prometheus_evidence_groups_llm_metrics_by_bounded_dimensions():
+    pipeline = SNAPSHOT_QUERIES["pipeline"]
+
+    for name in (
+        "llm_p95_by_request_type",
+        "llm_provider_p95_by_request_type",
+        "llm_wall_time_rate",
+        "llm_request_rate",
+        "llm_error_rate",
+        "llm_output_token_rate",
+    ):
+        assert "request_type" in pipeline[name]
+        assert "traffic_class" in pipeline[name]
+        assert not any(
+            forbidden in pipeline[name]
+            for forbidden in (
+                "request_id",
+                "trace_id",
+                "conversation_id",
+                "item_id",
+                "prompt",
+            )
+        )
 
 
 def test_a_snapshot_outage_does_not_fail_the_benchmark():

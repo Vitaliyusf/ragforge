@@ -8,7 +8,13 @@ import zipfile
 
 import pytest
 
-from app.services.benchmark_export import MAX_TEXT_BYTES, build_benchmark_export
+from app.services.benchmark_export import (
+    MAX_TEXT_BYTES,
+    _json_bytes,
+    _sanitize,
+    _trace_evidence,
+    build_benchmark_export,
+)
 from app.services.benchmark_runner import PHASE_RETRIEVAL_BASE
 from app.services.eval_store import EvalNotFound
 from app.tests.test_benchmark_runner import ADMIN, build, run_benchmark
@@ -38,6 +44,10 @@ def test_export_has_the_evidence_layout_and_strict_json():
                 "summary.json", "metrics.json", "runtime.json", "errors.json",
                 "benchmark.json", "truncation.json"} <= names
         assert any(name.endswith("/per-item.json") for name in names)
+        exported_phase = json.loads(archive.read("benchmark.json"))["phases"][0]
+        assert exported_phase["phase_started_at"]
+        assert exported_phase["phase_finished_at"]
+        assert exported_phase["phase_wall_clock_ms"] >= 0
         for name in names:
             if name.endswith(".json"):
                 json.loads(
@@ -119,6 +129,85 @@ def test_export_excludes_answers_and_redacts_secrets():
     assert "private answer" not in text
     assert "do-not-export" not in text
     assert "[redacted]" in text
+
+
+def test_per_item_export_identifies_guardrail_outcome_and_stage():
+    evidence = _trace_evidence(
+        [
+            {
+                "item_id": "blocked-1",
+                "outcome": "guardrail_blocked",
+                "guardrail_stage": "input",
+                "timed_out": False,
+                "error_class": None,
+                "query": "private prompt",
+            }
+        ]
+    )
+
+    assert evidence == [
+        {
+            "item_id": "blocked-1",
+            "outcome": "guardrail_blocked",
+            "guardrail_stage": "input",
+            "timed_out": False,
+            "error_class": None,
+        }
+    ]
+
+
+def test_legacy_per_item_export_uses_null_for_unknown_outcome_fields():
+    evidence = _trace_evidence([{"item_id": "legacy-1", "skipped": True}])
+
+    assert evidence[0]["outcome"] is None
+    assert evidence[0]["guardrail_stage"] is None
+    assert evidence[0]["timed_out"] is None
+    assert evidence[0]["error_class"] is None
+
+
+def test_per_item_export_includes_explicit_timing_and_reads_legacy_rows():
+    timed = _trace_evidence(
+        [
+            {
+                "item_id": "timed-1",
+                "latency_ms": 12.0,
+                "queue_wait_ms": 2.0,
+                "execution_ms": 10.0,
+                "total_elapsed_ms": 12.0,
+            },
+            {"item_id": "legacy-1", "latency_ms": 7.0},
+        ]
+    )
+
+    assert timed[0]["queue_wait_ms"] == 2.0
+    assert timed[0]["execution_ms"] == 10.0
+    assert timed[0]["total_elapsed_ms"] == 12.0
+    assert timed[1]["latency_ms"] == 7.0
+    assert "queue_wait_ms" not in timed[1]
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        float("nan"),
+        float("inf"),
+        float("-inf"),
+        "NaN",
+        "+Inf",
+        "-Inf",
+        "Infinity",
+        "+Infinity",
+        "-Infinity",
+    ],
+)
+def test_non_finite_numeric_and_string_evidence_becomes_null(value):
+    truncation = {"text_fields_truncated": 0, "examples": []}
+    sanitized = _sanitize(
+        {"sample": [value]}, path="metrics.json", truncation=truncation
+    )
+
+    assert sanitized == {"sample": [None]}
+    assert json.loads(_json_bytes(sanitized)) == {"sample": [None]}
 
 
 def test_export_reports_text_truncation_explicitly():
