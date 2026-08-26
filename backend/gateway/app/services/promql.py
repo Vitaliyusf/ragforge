@@ -100,10 +100,14 @@ INSTANT_QUERIES: dict[str, str] = {
     # A gauge, so it is read at its current value rather than rated. Absent
     # series mean no consumer has fetched yet — not a lag of zero.
     "kafka_consumer_lag": "max by (topic, group) (ragapp_kafka_consumer_lag)",
-    # Vectors added over the selected window — hence ${range}, not ${window}.
+    # Points added over the selected window — hence ${range}, not ${window}.
     # `increase` over a counter, so a vector_db restart does not read as a
-    # sudden negative.
-    "vector_upsert_increase": "sum by (collection) (increase(ragapp_vector_upserts_total[${range}]))",
+    # sudden negative. Uses the points-upserted counter, not the upsert
+    # operation counter: a single call can upsert hundreds of points, so the
+    # operation count understates growth.
+    "vector_points_upserted_increase": (
+        "sum by (collection) (increase(ragapp_vector_points_upserted_total[${range}]))"
+    ),
 }
 
 RANGE_QUERIES: dict[str, str] = {

@@ -228,7 +228,7 @@ class MetricsService(BaseRPCService):
                 "vector_search_rate",
                 "kafka_consumer_lag",
                 "dlq_rate",
-                "vector_upsert_increase",
+                "vector_points_upserted_increase",
             ],
             window,
         )
@@ -260,7 +260,9 @@ class MetricsService(BaseRPCService):
             # and the panel must repeat it. Growth is what the window added.
             "vectors": {
                 **vectors,
-                "growth": _by_label(metrics.get("vector_upsert_increase"), "collection"),
+                "growth": _by_label(
+                    metrics.get("vector_points_upserted_increase"), "collection"
+                ),
             },
         }
         return self._envelope(window, rag or files, available, data)
