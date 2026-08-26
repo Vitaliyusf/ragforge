@@ -58,7 +58,7 @@ import json
 import os
 import time
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Mapping, Optional, Tuple
 from uuid import uuid4
 
 from app.core.config import RAGConfig
@@ -88,6 +88,7 @@ MAX_RUN_LIMIT = 100
 RUN_RUNNING = "running"
 RUN_COMPLETED = "completed"
 RUN_FAILED = "failed"
+RUN_INTERRUPTED = "interrupted"
 
 # Benchmark orchestration states. Defined here beside the run states for the
 # same reason those are: they are persisted values, and the module that
@@ -374,6 +375,36 @@ def dataset_fingerprint(items: Any) -> str:
     return hashlib.sha256(payload).hexdigest()
 
 
+def benchmark_dataset_snapshot(dataset: Mapping[str, Any]) -> Dict[str, Any]:
+    """Capture the minimal immutable scoring evidence for one benchmark.
+
+    The snapshot deliberately contains canonical items rather than the live
+    Golden Set document: authoring notes, descriptions and timestamps cannot
+    affect a score and do not belong in durable evidence.
+
+    ``item_id`` is the one non-scoring field kept, because a benchmark phase
+    executes this snapshot rather than the live dataset. It is the key every
+    per-item row, retrieval trace and unscorable-label decision is recorded
+    under, so dropping it would leave a phase whose rows cannot be told
+    apart or joined back to the golden set. It stays outside the fingerprint
+    regardless: :func:`canonical_items` reads only scoring fields, so
+    ``dataset_fingerprint`` over these items is unchanged by its presence.
+    """
+    items = [
+        {"item_id": source.get("item_id"), **canonical_items([source])[0]}
+        for source in dataset.get("items") or []
+        if isinstance(source, dict)
+    ]
+    return {
+        "snapshot_version": 1,
+        "dataset_id": dataset.get("dataset_id"),
+        "dataset_name": dataset.get("name"),
+        "dataset_version": dataset.get("dataset_version"),
+        "dataset_sha256": dataset.get("dataset_sha256"),
+        "items": items,
+    }
+
+
 class EvalStore:
     """Tenant-scoped persistence for eval datasets and runs."""
 
@@ -637,6 +668,7 @@ class EvalStore:
         dataset_sha256: Optional[str] = None,
         pipeline_mode: Optional[str] = None,
         benchmark_id: Optional[str] = None,
+        owner_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Open a run document in ``running`` state and return it.
 
@@ -668,13 +700,14 @@ class EvalStore:
                 rather than a separate collection.
         """
         identity = _require_admin()
+        now = _now()
         document = {
             "run_id": str(uuid4()),
             "dataset_id": dataset_id,
             "dataset_version": dataset_version,
             "dataset_sha256": dataset_sha256,
             "tenant_id": identity.tenant_id,
-            "started_at": _now(),
+            "started_at": now,
             "finished_at": None,
             "status": RUN_RUNNING,
             "match_mode": match_mode,
@@ -690,6 +723,7 @@ class EvalStore:
             "results": {},
             "per_item": [],
             "error": None,
+            "lease": _lease(owner_id, now, self.config.eval_lease_seconds),
         }
         self._insert(self.config.eval_runs_collection, document)
         return _serialize(document)
@@ -759,6 +793,91 @@ class EvalStore:
             },
         )
 
+    def heartbeat_run(self, run_id: str, tenant_id: str, owner_id: str) -> bool:
+        """Renew the current owner's lease without changing run evidence."""
+        now = _now()
+        if self._in_memory:
+            for document in self._docs(self.config.eval_runs_collection):
+                if (document.get("tenant_id") == tenant_id and document.get("run_id") == run_id
+                        and document.get("status") == RUN_RUNNING
+                        and (document.get("lease") or {}).get("owner_id") == owner_id):
+                    document["lease"] = _lease(owner_id, now, self.config.eval_lease_seconds)
+                    return True
+            return False
+        return self._update_one(
+            self.config.eval_runs_collection,
+            {"tenant_id": tenant_id, "run_id": run_id, "status": RUN_RUNNING,
+             "lease.owner_id": owner_id},
+            {"lease.heartbeat_at": now,
+             "lease.expires_at": _lease_expiry(now, self.config.eval_lease_seconds)},
+        )
+
+    def recover_stale_runs(self, owner_id: str) -> List[Dict[str, Any]]:
+        """Atomically claim and close stale eval runs once per recovery owner.
+
+        There is no safe item-level idempotency boundary in the current eval
+        scorer, so recovery records an explicit interruption instead of
+        replaying a possibly partial run.
+        """
+        recovered: List[Dict[str, Any]] = []
+        for row in self._query(self.config.eval_runs_collection, {"status": RUN_RUNNING}):
+            claimed = self._claim_stale_run(row, owner_id)
+            if claimed is None:
+                continue
+            if self._interrupt_claimed_run(claimed, owner_id):
+                recovered.append(claimed)
+        return recovered
+
+    def _interrupt_claimed_run(self, run: Dict[str, Any], owner_id: str) -> bool:
+        """Close only the lease we claimed, never overwrite terminal history."""
+        changes = {
+            "status": RUN_INTERRUPTED,
+            "results": {},
+            "error": "Eval run interrupted after its worker lease expired",
+            "finished_at": _now(),
+        }
+        filters = {"tenant_id": run["tenant_id"], "run_id": run["run_id"],
+                   "status": RUN_RUNNING, "lease.owner_id": owner_id}
+        if self._in_memory:
+            for document in self._docs(self.config.eval_runs_collection):
+                if (document.get("tenant_id") == run["tenant_id"] and document.get("run_id") == run["run_id"]
+                        and document.get("status") == RUN_RUNNING
+                        and (document.get("lease") or {}).get("owner_id") == owner_id):
+                    document.update(changes)
+                    return True
+            return False
+        result = self._collection(self.config.eval_runs_collection).update_one(filters, {"$set": changes})
+        return result.matched_count > 0
+
+    def _claim_stale_run(self, row: Dict[str, Any], owner_id: str) -> Optional[Dict[str, Any]]:
+        now = _now()
+        expiry = _lease_expires_at(row.get("lease"))
+        if expiry is not None and expiry > now:
+            return None
+        changes = {"lease": _lease(owner_id, now, self.config.eval_lease_seconds),
+                   "recovery": {"owner_id": owner_id, "claimed_at": now}}
+        if self._in_memory:
+            # The in-memory backend is used by a single event loop in tests;
+            # check-and-set is one uninterrupted operation there.
+            for document in self._docs(self.config.eval_runs_collection):
+                if document.get("run_id") != row.get("run_id") or document.get("tenant_id") != row.get("tenant_id"):
+                    continue
+                if document.get("status") != RUN_RUNNING:
+                    return None
+                current_expiry = _lease_expires_at(document.get("lease"))
+                if current_expiry is not None and current_expiry > now:
+                    return None
+                document.update(changes)
+                return dict(document)
+            return None
+        # The expiry predicate is part of the update filter: two processes
+        # cannot both acquire one stale run.
+        query: Dict[str, Any] = {"tenant_id": row["tenant_id"], "run_id": row["run_id"], "status": RUN_RUNNING,
+                                 "$or": [{"lease.expires_at": {"$lte": now}}, {"lease": None}, {"lease.expires_at": None}]}
+        return self._collection(self.config.eval_runs_collection).find_one_and_update(
+            query, {"$set": changes}, return_document=True, projection={"_id": 0}
+        )
+
     def list_runs(
         self,
         dataset_id: Optional[str] = None,
@@ -805,8 +924,10 @@ class EvalStore:
         *,
         dataset_version: Optional[int] = None,
         dataset_sha256: Optional[str] = None,
+        dataset_snapshot: Optional[Dict[str, Any]] = None,
         manifest: Optional[Dict[str, Any]] = None,
         operational_metrics: Optional[Dict[str, Any]] = None,
+        owner_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Open a benchmark document in ``queued`` state and return it.
 
@@ -831,6 +952,9 @@ class EvalStore:
                 edited before the last phase finishes, and a benchmark whose
                 phases described different label sets would be uncomparable
                 against itself.
+            dataset_snapshot: Immutable canonical scoring items captured at
+                plan time. ``None`` only for documents created before this
+                evidence was introduced.
             manifest: From
                 :func:`app.services.benchmark_manifest.build_benchmark_manifest`
                 — the build, dataset, retrieval, model and runtime metadata
@@ -850,6 +974,7 @@ class EvalStore:
             "dataset_id": dataset_id,
             "dataset_version": dataset_version,
             "dataset_sha256": dataset_sha256,
+            "dataset_snapshot": dataset_snapshot,
             "tenant_id": identity.tenant_id,
             "created_at": _now(),
             "started_at": None,
@@ -860,6 +985,7 @@ class EvalStore:
             "manifest": manifest,
             "operational_metrics": operational_metrics,
             "error": None,
+            "lease": _lease(owner_id, _now(), self.config.eval_lease_seconds),
         }
         self._insert(self.config.eval_benchmark_runs_collection, document)
         return _serialize(document)
@@ -941,6 +1067,37 @@ class EvalStore:
             },
         )
 
+    def heartbeat_benchmark(self, benchmark_id: str, tenant_id: str, owner_id: str) -> bool:
+        now = _now()
+        if self._in_memory:
+            for document in self._docs(self.config.eval_benchmark_runs_collection):
+                if (document.get("benchmark_id") == benchmark_id and document.get("tenant_id") == tenant_id
+                        and document.get("status") in (BENCHMARK_QUEUED, BENCHMARK_RUNNING)
+                        and (document.get("lease") or {}).get("owner_id") == owner_id):
+                    document["lease"] = _lease(owner_id, now, self.config.eval_lease_seconds)
+                    return True
+            return False
+        return self._update_one(
+            self.config.eval_benchmark_runs_collection,
+            {"tenant_id": tenant_id, "benchmark_id": benchmark_id,
+             "lease.owner_id": owner_id},
+            {"lease.heartbeat_at": now,
+             "lease.expires_at": _lease_expiry(now, self.config.eval_lease_seconds)},
+        )
+
+    def active_benchmarks(self) -> List[Dict[str, Any]]:
+        """Return non-terminal benchmark documents for trusted startup repair."""
+        return self._query(
+            self.config.eval_benchmark_runs_collection,
+            {"status": BENCHMARK_RUNNING},
+        ) + self._query(self.config.eval_benchmark_runs_collection, {"status": BENCHMARK_QUEUED})
+
+    def stale_benchmarks(self) -> List[Dict[str, Any]]:
+        """Return active orchestration records whose worker lease expired."""
+        now = _now()
+        return [row for row in self.active_benchmarks()
+                if (expiry := _lease_expires_at(row.get("lease"))) is None or expiry <= now]
+
     def list_benchmark_runs(
         self,
         dataset_id: Optional[str] = None,
@@ -1012,6 +1169,10 @@ class EvalStore:
             [("dataset_id", 1), ("started_at", -1)],
             name="idx_eval_runs_dataset_started",
         )
+        self._collection(self.config.eval_runs_collection).create_index(
+            [("status", 1), ("lease.expires_at", 1)],
+            name="idx_eval_runs_recovery_lease",
+        )
         self._collection(self.config.eval_benchmark_runs_collection).create_index(
             [("tenant_id", 1), ("created_at", -1)],
             name="idx_eval_benchmarks_tenant_created",
@@ -1019,6 +1180,10 @@ class EvalStore:
         self._collection(self.config.eval_benchmark_runs_collection).create_index(
             [("dataset_id", 1), ("created_at", -1)],
             name="idx_eval_benchmarks_dataset_created",
+        )
+        self._collection(self.config.eval_benchmark_runs_collection).create_index(
+            [("status", 1), ("lease.expires_at", 1)],
+            name="idx_eval_benchmarks_recovery_lease",
         )
 
     def backfill_dataset_fingerprints(self) -> int:
@@ -1250,6 +1415,7 @@ def _normalize_run(document: Dict[str, Any]) -> Dict[str, Any]:
         # detection existed was never checked, and saying "no stale labels"
         # on its behalf would be a claim nobody made.
         "label_validation": None,
+        "lease": None,
         **document,
     }
 
@@ -1262,7 +1428,39 @@ def _normalize_benchmark(document: Dict[str, Any]) -> Dict[str, Any]:
     the ones that benchmark actually ran under, and a confident wrong
     manifest is worse than a blank one a UI can label "not recorded".
     """
-    return {"manifest": None, "operational_metrics": None, **document}
+    progress = document.get("progress") or {}
+    normalized_progress = {
+        "current_phase": None,
+        "items_total": 0,
+        "items_completed": 0,
+        "items_in_flight": 0,
+        "items_succeeded": 0,
+        "items_guardrail_blocked": 0,
+        "items_failed": 0,
+        "items_timed_out": 0,
+        "phase_started_at": None,
+        "last_progress_at": None,
+        **progress,
+    }
+    return {
+        "manifest": None,
+        "operational_metrics": None,
+        # Legacy benchmarks did not retain their scoring labels.  Keep this
+        # absence explicit so exporters never imply immutable provenance.
+        "dataset_snapshot": None,
+        "lease": None,
+        **document,
+        "progress": normalized_progress,
+    }
+
+
+# Nested blocks whose own values are timestamps. They are stored as datetimes
+# because Mongo has to compare them inside a query filter, and rendered here
+# because the reply they travel in is JSON, which has no datetime. Missing one
+# is not a rendering nuisance: the reply is encoded inside the consumer's
+# try/except, so the encode error is logged and no reply is ever published —
+# the caller then waits out its whole RPC timeout on a handled request.
+_TIMESTAMP_BLOCKS = ("lease", "recovery")
 
 
 def _serialize(document: Dict[str, Any]) -> Dict[str, Any]:
@@ -1271,7 +1469,37 @@ def _serialize(document: Dict[str, Any]) -> Dict[str, Any]:
     for field in ("created_at", "updated_at", "started_at", "finished_at"):
         if field in serialized:
             serialized[field] = _iso(serialized[field])
+    for block in _TIMESTAMP_BLOCKS:
+        value = serialized.get(block)
+        if isinstance(value, dict):
+            serialized[block] = {
+                key: _iso(inner) if isinstance(inner, datetime) else inner
+                for key, inner in value.items()
+            }
     return serialized
+
+
+def _lease(owner_id: Optional[str], now: datetime, seconds: int) -> Dict[str, Any]:
+    return {"owner_id": owner_id, "heartbeat_at": now,
+            "expires_at": _lease_expiry(now, seconds)}
+
+
+def _lease_expiry(now: datetime, seconds: int) -> datetime:
+    from datetime import timedelta
+    return now + timedelta(seconds=max(1, int(seconds)))
+
+
+def _lease_expires_at(lease: Any) -> Optional[datetime]:
+    value = lease.get("expires_at") if isinstance(lease, dict) else None
+    if isinstance(value, datetime):
+        return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+    if isinstance(value, str):
+        try:
+            parsed = datetime.fromisoformat(value)
+            return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+        except ValueError:
+            return None
+    return None
 
 
 def create_eval_store(config: RAGConfig) -> EvalStore:

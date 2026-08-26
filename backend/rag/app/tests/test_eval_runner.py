@@ -64,6 +64,7 @@ def build_config(**overrides: Any) -> SimpleNamespace:
         "eval_runs_collection": "eval_runs",
         "eval_max_dataset_items": 1000,
         "eval_max_query_length": 2000,
+        "eval_lease_seconds": 300,
         "eval_run_concurrency": 4,
         "eval_candidate_k": 20,
         "eval_validate_labels": True,
@@ -1017,6 +1018,25 @@ def test_end_to_end_run_reports_answer_quality_and_retrieval():
     assert quality["hallucination_rate"] == pytest.approx(0.5)
     assert quality["hallucination_severe_rate"] == pytest.approx(0.5)
     assert quality["items_judged"] == 2
+
+
+def test_guardrail_blocked_items_are_separate_from_failures_and_answer_denominators():
+    store, runner, _, dataset_id = build()
+    runner.graph_runner = FakeGraphRunner({
+        **GRAPH_RESULTS,
+        "first": {"outcome": "guardrail_blocked", "guardrail_stage": "input", "sources": []},
+    })
+
+    run = run_end_to_end(runner, dataset_id)
+    stored = fetch(store, run["run_id"])
+    blocked = next(row for row in stored["per_item"] if row["query"] == "first")
+
+    assert blocked["outcome"] == "guardrail_blocked"
+    assert blocked["guardrail_stage"] == "input"
+    assert blocked["error"] is None
+    assert stored["results"]["items_guardrail_blocked"] == 1
+    assert stored["results"]["items_failed"] == 0
+    assert stored["results"]["answer_quality"]["items_unjudged"] == 0
 
 
 def test_end_to_end_turns_are_kept_out_of_the_live_turn_facts():

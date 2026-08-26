@@ -65,6 +65,17 @@ class DummyLogger:
         return None
 
 
+class RecordingLogger(DummyLogger):
+    def __init__(self):
+        self.events: List[str] = []
+
+    def info(self, event, *args, **kwargs):
+        self.events.append(event)
+
+    def exception(self, event, *args, **kwargs):
+        self.events.append(event)
+
+
 class FakeBackendClient:
     def __init__(self):
         self.calls: List[Dict[str, Any]] = []
@@ -359,6 +370,8 @@ def test_extended_flow_runs_second_retrieval_and_revises_once():
 
 def test_error_path_emits_single_terminal_error():
     service, backend, _ = build_service()
+    logger = RecordingLogger()
+    service.graph_runner.logger = logger
     backend.fail_generation = True
     request = service.build_request({"question": "Break generation", "mode": "regular"})
     emitter = CollectingConversationEmitter(request)
@@ -369,6 +382,45 @@ def test_error_path_emits_single_terminal_error():
     assert result["error"] == "generation failed"
     assert len(terminal_events) == 1
     assert terminal_events[0]["type"] == "error"
+    assert "conversation graph execution failed" in logger.events
+
+
+def test_input_guardrail_block_is_a_structured_outcome_not_a_graph_failure():
+    service, backend, _ = build_service()
+    logger = RecordingLogger()
+    service.graph_runner.logger = logger
+
+    async def block_input(request, text, stage):
+        return {"blocked": stage == "input", "message": "sensitive request", "stage": stage}
+
+    backend.risk_scan = block_input
+    request = service.build_request({"question": "private text", "mode": "regular"})
+    result = asyncio.run(service.graph_runner.run(request, CollectingConversationEmitter(request)))
+
+    assert result["outcome"] == "guardrail_blocked"
+    assert result["guardrail_stage"] == "input"
+    assert "error" not in result
+    assert "conversation graph execution failed" not in logger.events
+    assert "conversation guardrail blocked" in logger.events
+
+
+def test_output_guardrail_block_preserves_its_stage_in_the_result():
+    service, backend, _ = build_service()
+
+    async def block_output(request, text, stage):
+        return {
+            "blocked": stage == "output",
+            "safe_output": "Safe response",
+            "message": "blocked",
+            "stage": stage,
+        }
+
+    backend.risk_scan = block_output
+    request = service.build_request({"question": "normal question", "mode": "regular"})
+    result = asyncio.run(service.graph_runner.run(request, CollectingConversationEmitter(request)))
+
+    assert result["outcome"] == "guardrail_blocked"
+    assert result["guardrail_stage"] == "output"
 
 
 def test_checkpoint_restore_resumes_from_after_generation_without_retrieval():

@@ -15,7 +15,7 @@ import zipfile
 from typing import Any, Dict, Iterable, Mapping
 
 from app.services.benchmark_summary import summarize_benchmark
-from app.services.eval_store import EvalStore, EvalValidationError
+from app.services.eval_store import EvalNotFound, EvalStore, EvalValidationError
 
 MAX_EXPORT_BYTES = 8 * 1024 * 1024
 MAX_TEXT_BYTES = 16 * 1024
@@ -33,12 +33,11 @@ def build_benchmark_export(store: EvalStore, benchmark_id: str) -> Dict[str, str
     the admin and tenant predicates, including for every phase run.
     """
     benchmark = store.get_benchmark_run(benchmark_id)
-    dataset = store.get_dataset(str(benchmark.get("dataset_id") or ""))
     runs = _phase_runs(store, benchmark.get("phases"))
     summary = summarize_benchmark(benchmark, runs=runs)
     documents: Dict[str, Any] = {
         "manifest.json": benchmark.get("manifest"),
-        "dataset.json": _dataset_evidence(dataset, benchmark),
+        "dataset.json": _dataset_evidence(store, benchmark),
         "validation.json": {run["run_id"]: run.get("label_validation") for run in runs},
         "summary.json": summary,
         "metrics.json": benchmark.get("operational_metrics"),
@@ -67,8 +66,25 @@ def _phase_runs(store: EvalStore, phases: Any) -> list[Dict[str, Any]]:
     return runs
 
 
-def _dataset_evidence(dataset: Mapping[str, Any], benchmark: Mapping[str, Any]) -> Dict[str, Any]:
+def _dataset_evidence(store: EvalStore, benchmark: Mapping[str, Any]) -> Dict[str, Any]:
+    snapshot = benchmark.get("dataset_snapshot")
+    if isinstance(snapshot, Mapping):
+        return {"provenance": "immutable_benchmark_snapshot", **dict(snapshot)}
+
+    # Old documents have no immutable labels.  They remain exportable, but a
+    # live Golden Set is explicitly evidence of *today's* labels only.
+    try:
+        dataset = store.get_dataset(str(benchmark.get("dataset_id") or ""))
+    except EvalNotFound:
+        return {
+            "provenance": "legacy_snapshot_missing_dataset_deleted",
+            "dataset_id": benchmark.get("dataset_id"),
+            "benchmark_dataset_version": benchmark.get("dataset_version"),
+            "benchmark_dataset_sha256": benchmark.get("dataset_sha256"),
+            "items": None,
+        }
     return {
+        "provenance": "legacy_current_dataset_dependent",
         "dataset_id": dataset.get("dataset_id"),
         "dataset_version": dataset.get("dataset_version"),
         "dataset_sha256": dataset.get("dataset_sha256"),
@@ -213,8 +229,10 @@ def _safe_name(value: str) -> str:
 
 _README = """# RAGForge benchmark diagnostic export
 
-This archive contains a tenant-scoped benchmark's immutable evidence where it
-was recorded, plus the current canonical dataset. `null` means unmeasured or
-unavailable, never zero. Per-item files contain bounded scoring and retrieval
-lineage only; raw document/context text and answer text are excluded.
+This archive contains a tenant-scoped benchmark's recorded evidence. New
+benchmarks export their immutable canonical scoring snapshot. Legacy exports
+state explicitly when their dataset evidence depends on today's Golden Set or
+when that Golden Set has been deleted. `null` means unmeasured or unavailable,
+never zero. Per-item files contain bounded scoring and retrieval lineage only;
+raw document/context text and answer text are excluded.
 """

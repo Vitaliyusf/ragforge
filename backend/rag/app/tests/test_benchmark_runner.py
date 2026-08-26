@@ -52,6 +52,8 @@ from app.services.eval_store import (
     EvalNotFound,
     EvalStore,
     EvalValidationError,
+    canonical_items,
+    dataset_fingerprint,
 )
 from shared.auth import AuthIdentity
 from shared.context import bound_context
@@ -92,6 +94,7 @@ def build_config(**overrides: Any) -> SimpleNamespace:
         "eval_benchmark_runs_collection": "eval_benchmark_runs",
         "eval_max_dataset_items": 1000,
         "eval_max_query_length": 2000,
+        "eval_lease_seconds": 300,
         "eval_run_concurrency": 4,
         "eval_candidate_k": 20,
         "eval_validate_labels": True,
@@ -308,6 +311,64 @@ def test_each_phase_run_carries_both_modes_and_its_benchmark():
 
 # ── Progress ──────────────────────────────────────────────────────────────
 
+def test_a_benchmark_captures_only_its_immutable_canonical_scoring_snapshot():
+    store, orchestrator, _, dataset_id = build(
+        items=[
+            {
+                "item_id": "authoring-id",
+                "query": "first",
+                "relevant_chunk_ids": ["c1"],
+                "notes": "private annotation",
+                "created_by": "admin-a",
+            }
+        ]
+    )
+
+    benchmark = fetch(
+        store,
+        run_benchmark(orchestrator, dataset_id, [PHASE_RETRIEVAL_BASE])["benchmark_id"],
+    )
+    snapshot = benchmark["dataset_snapshot"]
+
+    assert snapshot["dataset_id"] == dataset_id
+    assert snapshot["dataset_version"] == benchmark["dataset_version"]
+    assert snapshot["dataset_sha256"] == benchmark["dataset_sha256"]
+    assert dataset_fingerprint(snapshot["items"]) == snapshot["dataset_sha256"]
+    # The snapshot is the canonical scoring form of the stored dataset — the
+    # items as they were normalized at import, which is what the run scored.
+    with bound_context(**ADMIN.to_dict()):
+        stored = store.get_dataset(dataset_id)["items"]
+    assert canonical_items(snapshot["items"]) == canonical_items(stored)
+    # The phase executes this snapshot, so item identity has to survive it;
+    # the fingerprint assertion above proves it stays outside the hash.
+    assert snapshot["items"][0]["item_id"] == stored[0]["item_id"]
+    assert "notes" not in snapshot["items"][0]
+    assert "created_by" not in snapshot["items"][0]
+
+
+def test_benchmark_phase_rows_keep_the_item_identity_they_were_scored_under():
+    """The snapshot a phase executes must not erase per-item identity.
+
+    Rows are the only per-item evidence a drill-down or export has, and an
+    ``item_id`` shared by every row cannot be joined back to a golden set
+    item. The unscorable lookup is keyed by the same field, so one blank id
+    would also let a single stale label mark the whole phase unscorable.
+    """
+    store, orchestrator, _, dataset_id = build()
+
+    benchmark = fetch(
+        store,
+        run_benchmark(orchestrator, dataset_id, [PHASE_RETRIEVAL_BASE])["benchmark_id"],
+    )
+    with bound_context(**ADMIN.to_dict()):
+        dataset_ids = {item["item_id"] for item in store.get_dataset(dataset_id)["items"]}
+        run = store.get_run(str(benchmark["phases"][0]["run_id"]))
+
+    scored_ids = [row.get("item_id") for row in run["per_item"]]
+    assert len(set(scored_ids)) == len(scored_ids)
+    assert set(scored_ids) == dataset_ids
+
+
 def test_a_benchmark_returns_immediately_in_queued_state():
     """A synchronous orchestration would blow the gateway timeout."""
     store, orchestrator, _, dataset_id = build(graph=FakeGraphRunner())
@@ -320,6 +381,48 @@ def test_a_benchmark_returns_immediately_in_queued_state():
 
     with bound_context(**ADMIN.to_dict()):
         asyncio.run(_go())
+
+
+def test_running_phase_persists_truthful_item_progress_without_poll_writes():
+    blocker = asyncio.Event()
+    store, orchestrator, _, dataset_id = build(backend=FakeBackend(block=blocker))
+
+    async def _go():
+        benchmark = await orchestrator.start_benchmark(dataset_id, [PHASE_RETRIEVAL_BASE])
+        for _ in range(20):
+            await asyncio.sleep(0)
+            progress = fetch(store, benchmark["benchmark_id"])["progress"]
+            if progress["current_phase"] == PHASE_RETRIEVAL_BASE:
+                break
+        else:
+            raise AssertionError("benchmark did not enter its retrieval phase")
+
+        before = fetch(store, benchmark["benchmark_id"])["progress"]
+        again = fetch(store, benchmark["benchmark_id"])["progress"]
+        assert before == again  # reads never manufacture progress
+        assert before["items_completed"] == 0
+        assert before["items_in_flight"] == len(ITEMS)
+        assert before["phase_started_at"]
+        assert before["last_progress_at"]
+
+        blocker.set()
+        await asyncio.gather(*list(orchestrator._tasks))
+        return fetch(store, benchmark["benchmark_id"])
+
+    with bound_context(**ADMIN.to_dict()):
+        completed = asyncio.run(_go())
+
+    progress = completed["progress"]
+    assert progress["items_completed"] == len(ITEMS)
+    assert progress["items_in_flight"] == 0
+    assert progress["items_succeeded"] == len(ITEMS)
+    assert (
+        progress["items_succeeded"]
+        + progress["items_guardrail_blocked"]
+        + progress["items_failed"]
+        + progress["items_timed_out"]
+        == progress["items_completed"]
+    )
 
 
 def test_progress_counts_every_phase_and_only_the_reachable_items():

@@ -9,6 +9,7 @@ something applied to rows afterwards.
 """
 from __future__ import annotations
 
+import json
 from types import SimpleNamespace
 from typing import Any, Dict, List
 
@@ -44,8 +45,10 @@ def build_store(**overrides: Any) -> EvalStore:
         "conversation_store_type": "in_memory",
         "eval_datasets_collection": "eval_datasets",
         "eval_runs_collection": "eval_runs",
+        "eval_benchmark_runs_collection": "eval_benchmark_runs",
         "eval_max_dataset_items": 1000,
         "eval_max_query_length": 2000,
+        "eval_lease_seconds": 300,
         "mongodb_url": "mongodb://localhost:27017/",
         "mongodb_database": "rag",
         "mongodb_max_retries": 1,
@@ -270,6 +273,38 @@ def test_deleting_a_dataset_keeps_its_runs():
 
 
 # ── Runs ──────────────────────────────────────────────────────────────────
+
+def test_everything_the_store_hands_back_survives_the_json_reply_envelope():
+    """Store output is published as JSON over RPC, which has no datetime.
+
+    A value that cannot be encoded is not a rendering nuisance: the reply is
+    built inside the consumer's try/except, so the encode error is logged and
+    *no reply is ever published*. The caller then waits out its full RPC
+    timeout on a request the service actually handled.
+    """
+    store = build_store()
+    with bound_context(**ADMIN_A.to_dict()):
+        dataset = store.create_dataset("A", None, ITEMS)
+        dataset_id = dataset["dataset_id"]
+        run = store.create_run(dataset_id, {"top_k_documents": 6}, "chunk_id")
+        benchmark = store.create_benchmark_run(
+            dataset_id,
+            [{"name": "retrieval_base", "status": "queued"}],
+            {"items_total": len(ITEMS), "items_completed": 0},
+        )
+        replies = [
+            dataset,
+            run,
+            benchmark,
+            store.get_run(run["run_id"]),
+            store.list_runs(dataset_id),
+            store.get_benchmark_run(benchmark["benchmark_id"]),
+            store.list_benchmark_runs(dataset_id),
+        ]
+
+    for reply in replies:
+        json.dumps(reply)
+
 
 def test_a_new_run_opens_in_running_state_with_its_snapshot():
     store = build_store()

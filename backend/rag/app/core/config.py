@@ -94,6 +94,10 @@ class RAGConfig(BaseSettings):
     # bottleneck, and an unbounded fan-out over a 200-item dataset buries it
     # while live traffic is still being served by the same instance.
     eval_run_concurrency: int = 4
+    # A process-local eval worker must renew this lease while it is doing
+    # work.  Startup reconciliation closes stale work rather than guessing
+    # whether an interrupted scorer can safely be replayed.
+    eval_lease_seconds: int = 300
     # How many candidates a retrieval eval asks the vector store for.
     #
     # Deliberately separate from `top_k_documents`, which sizes the context an

@@ -43,6 +43,14 @@ from app.services.metrics_facts import (
 )
 from shared.metrics import METRICS
 
+
+class GuardrailBlockedError(Exception):
+    """A deliberate safety decision, not a graph execution failure."""
+
+    def __init__(self, stage: str) -> None:
+        self.stage = stage
+        super().__init__(f"{stage} guardrail blocked the request")
+
 try:  # pragma: no cover
     from langgraph.graph import END, StateGraph
 
@@ -198,6 +206,28 @@ class ConversationGraphRunner:
                 self._record_turn_metrics(
                     request, result, runtime, emitter, time.monotonic() - t0
                 )
+            return result
+        except GuardrailBlockedError as exc:
+            self.logger.info(
+                "conversation guardrail blocked",
+                data={
+                    "outcome": "guardrail_blocked",
+                    "guardrail_stage": exc.stage,
+                    "conversation_id": request.conversation_id,
+                    "turn_id": request.turn_id,
+                    "request_id": request.request_id,
+                },
+            )
+            self._save_checkpoint(
+                request, state, runtime.get("current_node", "unknown"), "guardrail_blocked",
+                "guardrail_blocked", {"outcome": "guardrail_blocked", "guardrail_stage": exc.stage},
+            )
+            result = {
+                "answer": "", "sources": [], "review": {}, "citation_metrics": {},
+                "outcome": "guardrail_blocked", "guardrail_stage": exc.stage,
+            }
+            if record_metrics:
+                self._record_turn_metrics(request, result, runtime, emitter, time.monotonic() - t0)
             return result
         except Exception as exc:
             failed_node = runtime.get("current_node", "unknown")
@@ -895,6 +925,8 @@ class ConversationGraphRunner:
             "citation_metrics": self._citation_metrics(state),
             "trace_events": state.get("trace_events", []),
             "debug_payloads": state.get("debug_payloads", {}),
+            "outcome": state.get("outcome", "success"),
+            "guardrail_stage": state.get("guardrail_stage"),
         }
 
     def _citation_metrics(self, state: ConversationState) -> Dict[str, Any]:
@@ -951,7 +983,7 @@ class ConversationGraphRunner:
         debug_payloads = self._append_debug(state, input_safety_flags=scan)
         if scan.get("blocked"):
             runtime["guardrail_blocked"] = True
-            raise ValueError(scan.get("message", "Input blocked by guardrails"))
+            raise GuardrailBlockedError("input")
         snapshot = copy.deepcopy(state)
         snapshot["user_message"] = user_message
         snapshot["debug_payloads"] = debug_payloads
@@ -1369,6 +1401,16 @@ class ConversationGraphRunner:
         runtime["guardrail_blocked"] = bool(response.get("blocked"))
         draft_answer = dict(state.get("draft_answer", {}))
         if response.get("blocked"):
+            self.logger.info(
+                "conversation guardrail blocked",
+                data={
+                    "outcome": "guardrail_blocked",
+                    "guardrail_stage": "output",
+                    "conversation_id": request.conversation_id,
+                    "turn_id": request.turn_id,
+                    "request_id": request.request_id,
+                },
+            )
             draft_answer["text"] = response.get("safe_output") or "I can't help with that request."
         debug_payloads = self._append_debug(
             state,
@@ -1378,6 +1420,8 @@ class ConversationGraphRunner:
         return {
             "draft_answer": draft_answer,
             "debug_payloads": debug_payloads,
+            "outcome": "guardrail_blocked" if response.get("blocked") else "success",
+            "guardrail_stage": "output" if response.get("blocked") else None,
             "_meta": {
                 "message": "Output guardrails completed",
                 "debug_excerpt": response.get("message") or ("blocked" if response.get("blocked") else "clear"),

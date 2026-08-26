@@ -53,7 +53,7 @@ _AT_K_METRICS = ("recall_at_k", "precision_at_k", "hit_rate_at_k", "ndcg_at_k")
 
 # Per-item counters every eval run writes. Their sum is how many items the
 # phase actually reached.
-_ITEM_COUNTERS = ("evaluated", "skipped", "unscorable", "failed")
+_ITEM_COUNTERS = ("evaluated", "skipped", "unscorable", "guardrail_blocked", "failed")
 
 # Answer-quality fields that arrive as ``{"mean", "counted", "excluded"}``
 # from `citation_metrics.aggregate_mean`, and the ones that are a bare rate.
@@ -172,7 +172,7 @@ def _retrieval_block(results: Mapping[str, Any]) -> Dict[str, Any]:
 def _items_block(results: Mapping[str, Any]) -> Dict[str, Any]:
     """The phase's denominators, with the total it reached.
 
-    ``reached`` is the sum of the four counters and not the dataset size: an
+    ``reached`` is the sum of the outcome counters and not the dataset size: an
     item the phase never got to is not evidence of anything, and putting the
     dataset size here would make every rate look better than it is.
     """

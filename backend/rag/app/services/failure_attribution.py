@@ -205,6 +205,8 @@ def classify_item(row: Dict[str, Any]) -> Dict[str, Any]:
         counts and branch reasons — never chunk or answer text, because item
         rows are read by every admin who opens the run.
     """
+    if row.get("outcome") == "guardrail_blocked":
+        return _attribution(CATEGORY_NOT_APPLICABLE, reason="guardrail_blocked")
     if row.get("unscorable"):
         return _attribution(CATEGORY_STALE_LABELS, reason="labels_unreachable")
     if row.get("error"):

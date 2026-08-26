@@ -57,8 +57,20 @@ from __future__ import annotations
 
 import asyncio
 import time
+from uuid import uuid4
 from dataclasses import dataclass, field
-from typing import Any, Dict, FrozenSet, List, Optional, Set, Tuple
+from typing import (
+    Any,
+    Awaitable,
+    Callable,
+    Dict,
+    FrozenSet,
+    List,
+    Mapping,
+    Optional,
+    Set,
+    Tuple,
+)
 
 from app.core.config import RAGConfig
 from app.services import retrieval_metrics
@@ -522,6 +534,7 @@ class EvalRunner:
         # reason rather than silently downgraded to a retrieval run whose
         # answer-quality columns would all be blank.
         self.graph_runner = graph_runner
+        self.owner_id = f"eval-{uuid4()}"
         # Strong references to in-flight runs. asyncio only holds a weak
         # reference to a task, so without this set a run can be garbage
         # collected mid-execution and silently never finish.
@@ -746,12 +759,24 @@ class EvalRunner:
         task.add_done_callback(self._tasks.discard)
         return prepared.run
 
+    def recover_stale_runs(self) -> List[Dict[str, Any]]:
+        """Close expired work at startup; partial eval scoring is not replayable."""
+        recovered = self.store.recover_stale_runs(self.owner_id)
+        for run in recovered:
+            self._log(
+                "eval_runner:recovery",
+                "Stale lease claimed; eval run interrupted",
+                {"run_id": run.get("run_id"), "benchmark_id": run.get("benchmark_id")},
+            )
+        return recovered
+
     async def open_run(
         self,
         dataset_id: str,
         mode: str = MODE_RETRIEVAL,
         pipeline_mode: Optional[str] = None,
         benchmark_id: Optional[str] = None,
+        dataset_snapshot: Optional[Mapping[str, Any]] = None,
     ) -> "PreparedRun":
         """Validate and open a run document without executing it.
 
@@ -767,6 +792,9 @@ class EvalRunner:
                 defaults to :data:`PIPELINE_REGULAR` for an ``end_to_end``
                 run and stays ``None`` for a ``retrieval`` one, which drives
                 no pipeline.
+            dataset_snapshot: Immutable canonical scoring labels supplied by
+                a benchmark. Ordinary eval runs leave this as ``None`` and
+                read the live tenant-scoped dataset.
 
         Raises:
             EvalValidationError: On an unknown evaluation or pipeline mode,
@@ -795,9 +823,14 @@ class EvalRunner:
             )
         if mode == MODE_END_TO_END:
             pipeline_mode = pipeline_mode or PIPELINE_REGULAR
-        # Raises EvalAccessDenied / EvalNotFound before anything is written,
-        # so a refused request leaves no run document behind.
-        dataset = self.store.get_dataset(dataset_id)
+        # A benchmark supplies its immutable canonical scoring snapshot so a
+        # later Golden Set edit (or deletion) cannot change a queued phase.
+        # Ordinary eval runs retain the live-dataset lookup.
+        dataset = (
+            dict(dataset_snapshot)
+            if dataset_snapshot is not None
+            else self.store.get_dataset(dataset_id)
+        )
         identity = identity_from_context(required=True)
         items = dataset.get("items") or []
         if not items:
@@ -836,6 +869,7 @@ class EvalRunner:
             mode=mode,
             pipeline_mode=pipeline_mode,
             benchmark_id=benchmark_id,
+            owner_id=self.owner_id,
             # Snapshot, not a reference: the dataset can be edited between
             # this run and the next time anybody reads it, and a run that
             # re-reported its dataset's *current* labels would quietly
@@ -862,6 +896,9 @@ class EvalRunner:
         match_mode: str,
         mode: str = MODE_RETRIEVAL,
         pipeline_mode: Optional[str] = None,
+        on_item_completed: Optional[
+            Callable[[Dict[str, Any]], Awaitable[None]]
+        ] = None,
     ) -> Dict[str, Any]:
         """Score every item, then close the run.
 
@@ -881,6 +918,7 @@ class EvalRunner:
             read back the document it just caused to be written.
         """
         tenant_id = identity.tenant_id
+        self.store.heartbeat_run(run_id, tenant_id, self.owner_id)
         # The same bound as retrieval mode, deliberately not raised for
         # end_to_end: that mode is heavier per item, not more entitled to
         # concurrency, and it shares the live LLM the application is serving.
@@ -913,6 +951,7 @@ class EvalRunner:
                             mode,
                             unscorable=str(item.get("item_id") or "") in report.unscorable,
                             pipeline_mode=pipeline_mode,
+                            on_item_completed=on_item_completed,
                         )
                         for item in items
                     )
@@ -1013,6 +1052,9 @@ class EvalRunner:
         *,
         unscorable: bool = False,
         pipeline_mode: Optional[str] = None,
+        on_item_completed: Optional[
+            Callable[[Dict[str, Any]], Awaitable[None]]
+        ] = None,
     ) -> Dict[str, Any]:
         """Retrieve for one item, score it, and persist the row.
 
@@ -1053,10 +1095,12 @@ class EvalRunner:
             # the live index no longer offers.
             "unscorable": unscorable,
             "error": None,
+            "outcome": "success",
+            "guardrail_stage": None,
         }
         if unscorable:
             row["failure_attribution"] = classify_item(row)
-            self.store.append_item_result(run_id, tenant_id, row)
+            await self._persist_item_result(run_id, tenant_id, row, on_item_completed)
             return row
 
         trace = RetrievalTrace.from_config(self.config)
@@ -1107,15 +1151,20 @@ class EvalRunner:
                     ids = retrieved_ids(eligible, item_mode)
         except Exception as exc:  # noqa: BLE001 - one item, not the run
             row["error"] = str(exc)
+            row["outcome"] = "failed"
             row["latency_ms"] = (time.monotonic() - started) * 1000
             row["retrieval_trace"] = trace.to_payload()
             row["failure_attribution"] = classify_item(row)
-            self.store.append_item_result(run_id, tenant_id, row)
+            await self._persist_item_result(run_id, tenant_id, row, on_item_completed)
             return row
 
         row["latency_ms"] = (time.monotonic() - started) * 1000
         row["retrieval_trace"] = trace.to_payload()
         row["retrieved_ids"] = ids[:MAX_ROW_IDS]
+        if row["outcome"] == "guardrail_blocked":
+            row["failure_attribution"] = classify_item(row)
+            await self._persist_item_result(run_id, tenant_id, row, on_item_completed)
+            return row
         if relevant:
             deduped = retrieval_metrics.dedupe(ids)
             row["first_hit_rank"] = next(
@@ -1131,8 +1180,21 @@ class EvalRunner:
         # drill-down renders, and a category derived twice from two different
         # inputs is a category that can disagree with itself.
         row["failure_attribution"] = classify_item(row)
-        self.store.append_item_result(run_id, tenant_id, row)
+        await self._persist_item_result(run_id, tenant_id, row, on_item_completed)
         return row
+
+    async def _persist_item_result(
+        self,
+        run_id: str,
+        tenant_id: str,
+        row: Dict[str, Any],
+        on_item_completed: Optional[Callable[[Dict[str, Any]], Awaitable[None]]],
+    ) -> None:
+        """Write a terminal row, then notify its owning orchestration once."""
+        self.store.append_item_result(run_id, tenant_id, row)
+        self.store.heartbeat_run(run_id, tenant_id, self.owner_id)
+        if on_item_completed is not None:
+            await on_item_completed(row)
 
     async def _run_graph_item(
         self,
@@ -1169,6 +1231,8 @@ class EvalRunner:
         row["citation_precision"] = citations.get("citation_precision")
         row["citation_recall"] = citations.get("citation_recall")
         row["citation_count"] = citations.get("citation_count")
+        row["outcome"] = result.get("outcome", "success")
+        row["guardrail_stage"] = result.get("guardrail_stage")
         return retrieved_ids(eligible_chunks({"chunks": result.get("sources") or []}), item_mode)
 
     def _log(self, event: str, message: str, data: Dict[str, Any]) -> None:
@@ -1204,7 +1268,12 @@ class PreparedRun:
         """The opened run's id."""
         return str(self.run.get("run_id") or "")
 
-    async def execute(self) -> Dict[str, Any]:
+    async def execute(
+        self,
+        on_item_completed: Optional[
+            Callable[[Dict[str, Any]], Awaitable[None]]
+        ] = None,
+    ) -> Dict[str, Any]:
         """Execute the run to completion and return how it closed."""
         return await self.runner.execute_run(
             self.run_id,
@@ -1213,6 +1282,7 @@ class PreparedRun:
             self.match_mode,
             self.mode,
             self.pipeline_mode,
+            on_item_completed,
         )
 
 
@@ -1270,7 +1340,11 @@ def aggregate(rows: List[Dict[str, Any]], mode: str = MODE_RETRIEVAL) -> Dict[st
     scored = [row for row in rows if row.get("scores")]
     skipped = sum(1 for row in rows if row.get("skipped"))
     unscorable = sum(1 for row in rows if row.get("unscorable"))
-    failed = sum(1 for row in rows if row.get("error"))
+    blocked = sum(1 for row in rows if row.get("outcome") == "guardrail_blocked")
+    failed = sum(
+        1 for row in rows
+        if row.get("outcome", "failed" if row.get("error") else "success") == "failed"
+    )
     latencies = [
         row["latency_ms"] for row in rows if isinstance(row.get("latency_ms"), (int, float))
     ]
@@ -1290,6 +1364,7 @@ def aggregate(rows: List[Dict[str, Any]], mode: str = MODE_RETRIEVAL) -> Dict[st
         "items_evaluated": len(scored),
         "items_skipped": skipped,
         "items_unscorable": unscorable,
+        "items_guardrail_blocked": blocked,
         "items_failed": failed,
         "mean_latency_ms": _mean(latencies),
         # Where the failures were, not just how many. Reported for every run
@@ -1308,6 +1383,7 @@ def _answer_quality(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
     counting it as "not hallucinating" would flatter every run in which the
     judge was flaky.
     """
+    rows = [row for row in rows if row.get("outcome") != "guardrail_blocked"]
     verdicts = [row.get("hallucination_verdict") for row in rows]
     judged = [verdict for verdict in verdicts if verdict is not None]
     hallucinating = sum(1 for verdict in judged if verdict != "none")

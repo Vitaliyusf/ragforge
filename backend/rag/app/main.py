@@ -79,6 +79,9 @@ async def lifespan(app: FastAPI):
     # Idempotent: stamps version/fingerprint onto golden sets uploaded before
     # eval datasets were versioned, leaving already-stamped ones untouched.
     eval_store.backfill_dataset_fingerprints()
+    # In-process tasks disappear on a restart. Reconciliation keeps their
+    # persisted records truthful before accepting new benchmark work.
+    await benchmark_runner.reconcile_startup()
     await rpc_client.connect()
 
     _consumer = MessageQueueFactory.create_consumer(config)

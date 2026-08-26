@@ -27,6 +27,8 @@ class ConversationState(TypedDict):
     answer_review: Dict[str, Any]
     trace_events: List[Dict[str, Any]]
     debug_payloads: Dict[str, Any]
+    outcome: str
+    guardrail_stage: Optional[str]
 
 
 @dataclass
@@ -109,4 +111,6 @@ def build_initial_state(request: ConversationRequest) -> ConversationState:
         answer_review={},
         trace_events=[],
         debug_payloads={},
+        outcome="success",
+        guardrail_stage=None,
     )

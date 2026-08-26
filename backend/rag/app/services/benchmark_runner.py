@@ -43,6 +43,7 @@ import asyncio
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Set, Tuple
+from uuid import uuid4
 
 from app.core.config import RAGConfig
 from app.services.benchmark_manifest import build_benchmark_manifest
@@ -67,12 +68,14 @@ from app.services.eval_store import (
     BENCHMARK_FAILED,
     BENCHMARK_INTERRUPTED,
     BENCHMARK_PARTIAL,
+    BENCHMARK_QUEUED,
     BENCHMARK_RUNNING,
     RUN_FAILED,
     EvalAccessDenied,
     EvalNotFound,
     EvalStore,
     EvalValidationError,
+    benchmark_dataset_snapshot,
 )
 from shared.auth import AuthIdentity, identity_from_context
 from shared.context import bound_context
@@ -282,12 +285,6 @@ def plan_phases(
 def build_progress(phases: List[Dict[str, Any]], item_count: int) -> Dict[str, Any]:
     """Count the phase table into the progress block.
 
-    ``items_completed`` advances **at phase boundaries**, not per item: the
-    orchestrator learns an item finished only when the run it belongs to
-    reports, and inventing a finer figure would mean polling a document this
-    process is already causing to be written. A caller wanting per-item
-    progress reads the phase's own run, which appends every row as it lands.
-
     ``items_total`` counts only the phases that can run. Including a phase
     this build refuses to execute would put a denominator on the page that
     can never be reached.
@@ -297,7 +294,7 @@ def build_progress(phases: List[Dict[str, Any]], item_count: int) -> Dict[str, A
         for phase in phases
         if phase["status"] not in (PHASE_UNSUPPORTED,)
     ]
-    done_items = sum(_phase_item_count(phase) for phase in phases)
+    item_progress = _item_progress(phases)
     return {
         "total_phases": len(phases),
         "executable_phases": len(executable),
@@ -313,8 +310,73 @@ def build_progress(phases: List[Dict[str, Any]], item_count: int) -> Dict[str, A
         ),
         "items_per_phase": item_count,
         "items_total": item_count * len(executable),
-        "items_completed": done_items,
+        **item_progress,
     }
+
+
+def initial_phase_progress(item_count: int, started_at: str) -> Dict[str, Any]:
+    """The truthful zero/N state for one phase before its first completion."""
+    return {
+        "items_completed": 0,
+        "items_in_flight": item_count,
+        "items_succeeded": 0,
+        "items_guardrail_blocked": 0,
+        "items_failed": 0,
+        "items_timed_out": 0,
+        "phase_started_at": started_at,
+        "last_progress_at": started_at,
+    }
+
+
+def _item_progress(phases: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Sum persisted per-phase terminal counters without inventing an item order."""
+    keys = (
+        "items_completed",
+        "items_succeeded",
+        "items_guardrail_blocked",
+        "items_failed",
+        "items_timed_out",
+    )
+    totals = {key: 0 for key in keys}
+    active: Optional[Dict[str, Any]] = None
+    last_progress_at: Optional[str] = None
+    for phase in phases:
+        progress = phase.get("item_progress") or {}
+        if progress:
+            for key in keys:
+                totals[key] += int(progress.get(key) or 0)
+        else:
+            # Legacy phase records predate item-level counters. Their final
+            # aggregate is the only evidence available, so retain it safely.
+            totals["items_completed"] += _phase_item_count(phase)
+            results = phase.get("results") or {}
+            totals["items_guardrail_blocked"] += int(
+                results.get("items_guardrail_blocked") or 0
+            )
+            totals["items_failed"] += int(results.get("items_failed") or 0)
+            totals["items_succeeded"] += int(results.get("items_evaluated") or 0)
+        if phase.get("status") == PHASE_RUNNING:
+            active = progress
+        timestamp = progress.get("last_progress_at")
+        if timestamp and (last_progress_at is None or timestamp > last_progress_at):
+            last_progress_at = timestamp
+    return {
+        **totals,
+        "items_in_flight": int((active or {}).get("items_in_flight") or 0),
+        "phase_started_at": (active or {}).get("phase_started_at"),
+        "last_progress_at": last_progress_at,
+    }
+
+
+def _item_outcome_key(row: Dict[str, Any]) -> str:
+    """Map an eval row's mutually exclusive terminal outcome to a counter."""
+    if row.get("outcome") == "timed_out":
+        return "items_timed_out"
+    if row.get("outcome") == "guardrail_blocked":
+        return "items_guardrail_blocked"
+    if row.get("outcome") == "failed":
+        return "items_failed"
+    return "items_succeeded"
 
 
 def benchmark_status(phases: List[Dict[str, Any]]) -> str:
@@ -348,7 +410,7 @@ def _count(phases: List[Dict[str, Any]], status: str) -> int:
 def _phase_item_count(phase: Dict[str, Any]) -> int:
     """How many items one finished phase actually got through.
 
-    Every row an eval run writes lands in exactly one of the four counters,
+    Every row an eval run writes lands in exactly one of the outcome counters,
     so their sum is the number of items the phase reached — zero for a phase
     refused before scoring, which is what a stale-label failure looks like.
     """
@@ -359,6 +421,7 @@ def _phase_item_count(phase: Dict[str, Any]) -> int:
             "items_evaluated",
             "items_skipped",
             "items_unscorable",
+            "items_guardrail_blocked",
             "items_failed",
         )
     )
@@ -383,10 +446,76 @@ class BenchmarkRunner:
         self.eval_runner = eval_runner
         self.logger = logger
         self.snapshotter = snapshotter or NullBenchmarkPrometheusSnapshotter()
+        self.owner_id = f"benchmark-{uuid4()}"
         # Strong references to in-flight orchestrations, for the reason
         # `EvalRunner` keeps them: asyncio holds only a weak reference to a
         # task, and a collected orchestration would stop mid-phase.
         self._tasks: Set[asyncio.Task] = set()
+
+    async def reconcile_startup(self) -> None:
+        """Make persisted in-process work truthful after a process restart.
+
+        The current runner has no durable per-item checkpoint from which it
+        can safely replay a phase.  We therefore preserve terminal phase
+        evidence and explicitly interrupt every unresolved phase, never
+        creating another eval run for a stored ``run_id``.
+        """
+        recovered = self.eval_runner.recover_stale_runs()
+        recovered_ids = {str(run.get("run_id")) for run in recovered}
+        stale_benchmarks = {
+            str(benchmark["benchmark_id"]): benchmark
+            for benchmark in self.store.stale_benchmarks()
+        }
+        for benchmark in self.store.active_benchmarks():
+            if str(benchmark["benchmark_id"]) not in stale_benchmarks:
+                self._log(
+                    "benchmark_runner:recovery",
+                    "Fresh lease kept",
+                    {"benchmark_id": benchmark.get("benchmark_id")},
+                )
+        for benchmark in stale_benchmarks.values():
+            phases = [dict(phase) for phase in benchmark.get("phases") or []]
+            changed = False
+            for phase in phases:
+                if phase.get("status") in (PHASE_COMPLETED, PHASE_PARTIAL, PHASE_FAILED,
+                                           PHASE_SKIPPED, PHASE_UNSUPPORTED, PHASE_INTERRUPTED):
+                    self._log(
+                        "benchmark_runner:recovery",
+                        "Completed phase preserved",
+                        {"benchmark_id": benchmark.get("benchmark_id"), "phase": phase.get("name")},
+                    )
+                    continue
+                # A nonterminal phase is never replayed on startup.  Its
+                # existing run_id is durable duplicate-prevention evidence;
+                # no run_id means the former worker did not reach a safe
+                # ownership boundary either.
+                phase["status"] = PHASE_INTERRUPTED
+                phase["finished_at"] = phase.get("finished_at") or _now_iso()
+                phase["reason"] = (
+                    "Recovery could not prove a safe idempotent resume boundary"
+                )
+                changed = True
+            if not changed and str(benchmark.get("status")) != BENCHMARK_QUEUED:
+                self._log(
+                    "benchmark_runner:recovery",
+                    "Duplicate recovery skipped",
+                    {"benchmark_id": benchmark.get("benchmark_id")},
+                )
+                continue
+            tenant_id = str(benchmark["tenant_id"])
+            item_count = int((benchmark.get("progress") or {}).get("items_total") or 0)
+            self.store.finish_benchmark_run(
+                str(benchmark["benchmark_id"]), tenant_id,
+                status=BENCHMARK_INTERRUPTED, phases=phases,
+                progress=build_progress(phases, item_count),
+                error="Benchmark interrupted during process restart; safe resume was not proven",
+            )
+            self._log(
+                "benchmark_runner:recovery",
+                "Benchmark interrupted after reconciliation",
+                {"benchmark_id": benchmark.get("benchmark_id"),
+                 "recovered_eval_runs": sum(1 for phase in phases if str(phase.get("run_id")) in recovered_ids)},
+            )
 
     @property
     def graph_available(self) -> bool:
@@ -476,6 +605,7 @@ class BenchmarkRunner:
             raise EvalValidationError("Dataset has no items to evaluate")
 
         plan = plan_phases(phases, graph_available=self.graph_available)
+        dataset_snapshot = benchmark_dataset_snapshot(dataset)
         benchmark = self.store.create_benchmark_run(
             dataset_id,
             plan,
@@ -484,8 +614,9 @@ class BenchmarkRunner:
             # the dataset can be edited while later phases are still running,
             # and a benchmark whose phases described different label sets
             # would be uncomparable against itself.
-            dataset_version=dataset.get("dataset_version"),
-            dataset_sha256=dataset.get("dataset_sha256"),
+            dataset_version=dataset_snapshot["dataset_version"],
+            dataset_sha256=dataset_snapshot["dataset_sha256"],
+            dataset_snapshot=dataset_snapshot,
             # Captured here rather than per phase: every phase of one
             # benchmark runs on the same build against the same corpus, and
             # a manifest per phase would invite the reader to compare copies
@@ -497,6 +628,7 @@ class BenchmarkRunner:
                 phases=[str(phase["name"]) for phase in plan],
             ),
             operational_metrics={"before": None, "after": None},
+            owner_id=self.owner_id,
         )
 
         task = asyncio.create_task(
@@ -506,6 +638,7 @@ class BenchmarkRunner:
                 dataset_id,
                 plan,
                 len(items),
+                dataset_snapshot,
             )
         )
         self._tasks.add(task)
@@ -519,6 +652,7 @@ class BenchmarkRunner:
         dataset_id: str,
         phases: List[Dict[str, Any]],
         item_count: int,
+        dataset_snapshot: Dict[str, Any],
     ) -> Dict[str, Any]:
         """Run each queued phase in order and close the benchmark.
 
@@ -533,6 +667,7 @@ class BenchmarkRunner:
         real and the ones never reached were never attempted.
         """
         tenant_id = identity.tenant_id
+        self.store.heartbeat_benchmark(benchmark_id, tenant_id, self.owner_id)
         operational_metrics = {"before": await self._capture_snapshot(), "after": None}
         self.store.record_benchmark_operational_metrics(
             benchmark_id, tenant_id, operational_metrics
@@ -548,6 +683,7 @@ class BenchmarkRunner:
                     progress=build_progress(phases, item_count),
                     started=True,
                 )
+                self.store.heartbeat_benchmark(benchmark_id, tenant_id, self.owner_id)
                 for phase in phases:
                     if phase["status"] == PHASE_UNSUPPORTED:
                         continue
@@ -556,7 +692,8 @@ class BenchmarkRunner:
                         phase["reason"] = aborted
                         continue
                     aborted = await self._run_phase(
-                        benchmark_id, tenant_id, dataset_id, phase, phases, item_count
+                        benchmark_id, tenant_id, dataset_id, phase, phases, item_count,
+                        dataset_snapshot,
                     )
 
             status = benchmark_status(phases)
@@ -620,6 +757,7 @@ class BenchmarkRunner:
         phase: Dict[str, Any],
         phases: List[Dict[str, Any]],
         item_count: int,
+        dataset_snapshot: Dict[str, Any],
     ) -> Optional[str]:
         """Execute one phase to completion, mutating its record in place.
 
@@ -632,6 +770,7 @@ class BenchmarkRunner:
         """
         phase["status"] = PHASE_RUNNING
         phase["started_at"] = _now_iso()
+        phase["item_progress"] = initial_phase_progress(item_count, phase["started_at"])
         self.store.record_benchmark_progress(
             benchmark_id,
             tenant_id,
@@ -646,6 +785,7 @@ class BenchmarkRunner:
                 phase["evaluation_mode"],
                 phase["pipeline_mode"],
                 benchmark_id=benchmark_id,
+                dataset_snapshot=dataset_snapshot,
             )
         except (EvalValidationError, EvalNotFound, EvalAccessDenied) as exc:
             # The phase never opened a run, so there is nothing to attribute
@@ -653,7 +793,28 @@ class BenchmarkRunner:
             return self._fail_phase(phase, str(exc))
 
         phase["run_id"] = prepared.run_id
-        summary = await prepared.execute()
+        progress_lock = asyncio.Lock()
+
+        async def record_item(row: Dict[str, Any]) -> None:
+            # Eval tasks finish concurrently. Serializing only this small
+            # read/modify/write prevents lost increments while retaining the
+            # runner's configured retrieval concurrency.
+            async with progress_lock:
+                progress = phase["item_progress"]
+                progress["items_completed"] += 1
+                progress["items_in_flight"] -= 1
+                progress[_item_outcome_key(row)] += 1
+                progress["last_progress_at"] = _now_iso()
+                self.store.record_benchmark_progress(
+                    benchmark_id,
+                    tenant_id,
+                    status=BENCHMARK_RUNNING,
+                    phases=phases,
+                    progress=build_progress(phases, item_count),
+                )
+                self.store.heartbeat_benchmark(benchmark_id, tenant_id, self.owner_id)
+
+        summary = await prepared.execute(on_item_completed=record_item)
         phase["finished_at"] = _now_iso()
         results = summary.get("results") or {}
         phase["results"] = results
