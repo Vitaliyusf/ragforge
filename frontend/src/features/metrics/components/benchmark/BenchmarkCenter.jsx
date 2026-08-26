@@ -15,7 +15,7 @@ const PHASE_LABELS = {
 const TERMINAL_EXPORTABLE = new Set(['completed', 'partial', 'failed', 'interrupted'])
 
 export default function BenchmarkCenter({ datasetId, datasetName, ready }) {
-  const { benchmark, error, busy, start, download } = useBenchmarkRuns(datasetId)
+  const { benchmark, history, error, busy, start, select, download } = useBenchmarkRuns(datasetId)
   const [confirmOpen, setConfirmOpen] = useState(false)
   const phases = benchmark?.phases || []
   const progress = benchmark?.progress || {}
@@ -54,10 +54,34 @@ export default function BenchmarkCenter({ datasetId, datasetName, ready }) {
         </div>}
         {benchmark.error && <p className="mt-3 text-[13px]" style={{ color: 'var(--danger)' }}>{benchmark.error}</p>}
       </>}
+      <BenchmarkHistory history={history} selectedId={benchmark?.benchmark_id} busy={busy} onSelect={select} onDownload={download} />
       {error && <p className="mt-3 text-[13px]" style={{ color: 'var(--danger)' }}>{error}</p>}
       <ConfirmModal open={confirmOpen} onOpenChange={setConfirmOpen} title="Run the full benchmark?" description="This runs the retrieval check first. End-to-end phases may call the configured model after the free check succeeds." confirmLabel="Start benchmark" onConfirm={() => { setConfirmOpen(false); start() }} />
     </Card>
   )
+}
+
+function BenchmarkHistory({ history = [], selectedId, busy, onSelect, onDownload }) {
+  return <section className="mt-5 border-t pt-4" style={{ borderColor: 'var(--border)' }}>
+    <h3 className="text-sm font-medium">Benchmark history</h3>
+    {history.length === 0 && <p className="mt-2 text-[13px]" style={{ color: 'var(--fg-muted)' }}>No benchmark runs yet. Start a benchmark to build its server-backed history.</p>}
+    {history.length > 0 && <ul className="mt-2 space-y-2">
+      {history.map((run) => {
+        const terminal = TERMINAL_EXPORTABLE.has(run.status)
+        const current = run.benchmark_id === selectedId
+        const phase = run.phases?.find((item) => item.status === 'running')
+        return <li key={run.benchmark_id} className="flex min-w-0 items-center gap-2 rounded border p-2 text-[13px]" style={{ borderColor: 'var(--border)' }}>
+          <div className="min-w-0 flex-1">
+            <div className="flex min-w-0 items-center gap-2"><span className="truncate font-medium">{run.dataset_name || run.dataset?.name || 'Golden Set'}</span><Badge dot>{run.status}</Badge></div>
+            <p className="truncate text-xs" style={{ color: 'var(--fg-muted)' }}>{formatTimestamp(run.created_at || run.started_at || run.finished_at)} · {run.dataset_version ? `v${run.dataset_version} · ` : ''}{run.benchmark_id}</p>
+            {phase && <p className="truncate text-xs" style={{ color: 'var(--fg-muted)' }}>Current phase: {PHASE_LABELS[phase.name] || phase.name}</p>}
+          </div>
+          <Button variant={current ? 'secondary' : 'ghost'} size="sm" disabled={busy || current} onClick={() => onSelect(run.benchmark_id)}>View</Button>
+          {terminal && <Button variant="secondary" size="sm" disabled={busy} onClick={() => onDownload(run.benchmark_id)}>Download ZIP</Button>}
+        </li>
+      })}
+    </ul>}
+  </section>
 }
 
 function PhaseProgress({ phase, progress }) {
@@ -81,6 +105,11 @@ function PhaseProgress({ phase, progress }) {
 function ageSeconds(value) {
   const timestamp = Date.parse(value || '')
   return Number.isFinite(timestamp) ? Math.max(0, Math.floor((Date.now() - timestamp) / 1000)) : null
+}
+
+function formatTimestamp(value) {
+  const timestamp = Date.parse(value || '')
+  return Number.isFinite(timestamp) ? new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }).format(timestamp) : 'Unknown time'
 }
 
 function formatElapsed(value) { const seconds = ageSeconds(value); return seconds === null ? null : formatAge(seconds) }

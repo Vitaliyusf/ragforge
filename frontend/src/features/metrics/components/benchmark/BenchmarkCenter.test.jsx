@@ -8,7 +8,7 @@ vi.mock('../../hooks/useBenchmarkRuns', () => ({ useBenchmarkRuns: mockUseBenchm
 import BenchmarkCenter from './BenchmarkCenter'
 
 function setup(benchmark = null, overrides = {}) {
-  const state = { benchmark, error: null, busy: false, start: vi.fn(), download: vi.fn(), ...overrides }
+  const state = { benchmark, history: [], error: null, busy: false, start: vi.fn(), select: vi.fn(), download: vi.fn(), ...overrides }
   mockUseBenchmarkRuns.mockReturnValue(state)
   render(<BenchmarkCenter datasetId="dataset-1" datasetName="Support" ready />)
   return state
@@ -25,7 +25,7 @@ describe('BenchmarkCenter', () => {
   })
 
   it('keeps the action blocked until a golden set is ready', () => {
-    mockUseBenchmarkRuns.mockReturnValue({ benchmark: null, error: null, busy: false, start: vi.fn(), download: vi.fn() })
+    mockUseBenchmarkRuns.mockReturnValue({ benchmark: null, history: [], error: null, busy: false, start: vi.fn(), select: vi.fn(), download: vi.fn() })
     render(<BenchmarkCenter datasetId="" ready={false} />)
     expect(screen.getByRole('button', { name: /run full benchmark/i })).toBeDisabled()
     expect(screen.getByText(/import and validate/i)).toBeInTheDocument()
@@ -57,5 +57,26 @@ describe('BenchmarkCenter', () => {
     expect(screen.getByText(/Golden Set \/ Dataset: Support/)).toBeInTheDocument()
     expect(screen.getByText(/Benchmark Run:/)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /diagnostic zip/i })).toBeInTheDocument()
+  })
+
+  it('renders newest-first history, selects terminal runs, and downloads by id', async () => {
+    const user = userEvent.setup()
+    const state = setup({ benchmark_id: 'active', status: 'running', progress: {}, phases: [] }, { history: [
+      { benchmark_id: 'newest', dataset_name: 'A very long golden set name that must truncate safely', dataset_version: 3, status: 'completed', created_at: '2026-08-26T20:14:00Z', phases: [] },
+      { benchmark_id: 'active', dataset_name: 'Smoke30', status: 'running', phases: [{ name: 'retrieval_base', status: 'running' }] },
+      { benchmark_id: 'failed-run', dataset_name: 'Smoke30', status: 'failed', phases: [] },
+    ] })
+    expect(screen.getByText('Benchmark history')).toBeInTheDocument()
+    expect(screen.getAllByRole('listitem')[0]).toHaveTextContent('newest')
+    expect(screen.getByText(/Current phase: Retrieval baseline/)).toBeInTheDocument()
+    await user.click(screen.getAllByRole('button', { name: 'View' })[0])
+    expect(state.select).toHaveBeenCalledWith('newest')
+    await user.click(screen.getAllByRole('button', { name: 'Download ZIP' })[1])
+    expect(state.download).toHaveBeenCalledWith('failed-run')
+  })
+
+  it('explains an empty history clearly', () => {
+    setup()
+    expect(screen.getByText(/No benchmark runs yet/)).toBeInTheDocument()
   })
 })

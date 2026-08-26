@@ -27,7 +27,7 @@ describe('useBenchmarkRuns polling', () => {
     ] })
     const { result } = renderHook(() => useBenchmarkRuns('dataset-1'))
     await act(async () => {})
-    expect(metricsService.listBenchmarkRuns).toHaveBeenCalledWith(expect.objectContaining({ datasetId: 'dataset-1' }))
+    expect(metricsService.listBenchmarkRuns).toHaveBeenCalledWith(expect.objectContaining({ datasetId: 'dataset-1', limit: 20 }))
     expect(result.current.benchmark).toEqual(expect.objectContaining({ benchmark_id: 'active' }))
   })
 
@@ -36,6 +36,42 @@ describe('useBenchmarkRuns polling', () => {
     const { result } = renderHook(() => useBenchmarkRuns('dataset-1'))
     await act(async () => {})
     expect(result.current.benchmark).toEqual(expect.objectContaining({ benchmark_id: 'latest' }))
+  })
+
+  it('reconstructs bounded history from the server after a remount', async () => {
+    metricsService.listBenchmarkRuns.mockResolvedValue({ benchmarks: [
+      { benchmark_id: 'newest', status: 'completed' }, { benchmark_id: 'older', status: 'failed' },
+    ] })
+    const first = renderHook(() => useBenchmarkRuns('dataset-1'))
+    await act(async () => {})
+    first.unmount()
+    const second = renderHook(() => useBenchmarkRuns('dataset-1'))
+    await act(async () => {})
+    expect(metricsService.listBenchmarkRuns).toHaveBeenCalledTimes(2)
+    expect(second.result.current.history).toEqual(expect.arrayContaining([
+      expect.objectContaining({ benchmark_id: 'newest' }), expect.objectContaining({ benchmark_id: 'older' }),
+    ]))
+  })
+
+  it('selects a historical run without starting another benchmark', async () => {
+    metricsService.listBenchmarkRuns.mockResolvedValue({ benchmarks: [{ benchmark_id: 'current', status: 'completed' }] })
+    metricsService.getBenchmarkRun.mockResolvedValue({ benchmark: { benchmark_id: 'older', status: 'failed', phases: [] } })
+    const { result } = renderHook(() => useBenchmarkRuns('dataset-1'))
+    await act(async () => {})
+    await act(async () => { await result.current.select('older') })
+    expect(metricsService.getBenchmarkRun).toHaveBeenCalledWith('older', expect.any(Object))
+    expect(metricsService.startBenchmarkRun).not.toHaveBeenCalled()
+    expect(result.current.benchmark).toEqual(expect.objectContaining({ benchmark_id: 'older' }))
+  })
+
+  it('preserves the selected run when loading history fails', async () => {
+    metricsService.listBenchmarkRuns.mockResolvedValue({ benchmarks: [{ benchmark_id: 'current', status: 'completed' }] })
+    metricsService.getBenchmarkRun.mockRejectedValue(new Error('Network unavailable'))
+    const { result } = renderHook(() => useBenchmarkRuns('dataset-1'))
+    await act(async () => {})
+    await act(async () => { await result.current.select('older') })
+    expect(result.current.benchmark).toEqual(expect.objectContaining({ benchmark_id: 'current' }))
+    expect(result.current.error).toBe('Network unavailable')
   })
 
   it('keeps the last known run when a polling update fails', async () => {
