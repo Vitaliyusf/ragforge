@@ -27,8 +27,12 @@ import EvalPanel, {
 } from './EvalPanel'
 
 const SNAPSHOT = {
+  snapshot_version: 2,
   top_k_documents: 6,
-  reranker_enabled: true,
+  context_k: 6,
+  retrieval_strategy: 'dense_vector',
+  reranker_active: false,
+  pass_two_active: true,
   embedding_model: null,
   unobserved: ['embedding_model'],
 }
@@ -226,7 +230,12 @@ describe('EvalPanel config comparison', () => {
     ...COMPLETED_RUN,
     run_id: 'r-1',
     started_at: '2026-08-24T10:00:00Z',
-    config_snapshot: { ...SNAPSHOT, top_k_documents: 3, reranker_enabled: false },
+    config_snapshot: {
+      ...SNAPSHOT,
+      top_k_documents: 3,
+      context_k: 3,
+      pass_two_active: false,
+    },
   }
 
   it('warns when the two most recent runs used different settings', () => {
@@ -235,7 +244,7 @@ describe('EvalPanel config comparison', () => {
     expect(screen.getByText('Configuration changed between runs')).toBeInTheDocument()
     expect(screen.getByText(/not a measure of retrieval quality alone/)).toBeInTheDocument()
     expect(screen.getByText('Top-k documents')).toBeInTheDocument()
-    expect(screen.getByText('Reranker')).toBeInTheDocument()
+    expect(screen.getByText('Answer context depth')).toBeInTheDocument()
   })
 
   it('renders booleans as words rather than true/false', () => {

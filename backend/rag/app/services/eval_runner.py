@@ -66,6 +66,8 @@ from app.services.citation_metrics import aggregate_mean
 from app.services.conversation_events import CollectingConversationEmitter
 from app.services.conversation_types import ConversationRequest
 from app.services.eval_store import (
+    MODE_END_TO_END,
+    MODE_RETRIEVAL,
     RUN_COMPLETED,
     RUN_FAILED,
     EvalAccessDenied,
@@ -94,9 +96,10 @@ K_VALUES: Tuple[int, ...] = (1, 3, 5, 10, 20)
 
 # Run modes. `retrieval` is the default everywhere it is optional: the
 # phase-5 promise of a free run must be what a caller gets by saying
-# nothing.
-MODE_RETRIEVAL = "retrieval"
-MODE_END_TO_END = "end_to_end"
+# nothing. The two names are imported from `eval_store` and re-exported for
+# the callers that already read them off this module: `build_config_snapshot`
+# branches on the mode, and one definition keeps the snapshot and the runner
+# from ever disagreeing about how "end_to_end" is spelled.
 EVAL_MODES = (MODE_RETRIEVAL, MODE_END_TO_END)
 
 # Which conversation pipeline an `end_to_end` run drives. A **different axis**

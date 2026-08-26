@@ -300,16 +300,37 @@ export const EVAL_METRIC_LABELS = {
 }
 
 export const CONFIG_SNAPSHOT_LABELS = {
-  top_k_documents: 'Top-k documents',
-  reranker_enabled: 'Reranker',
-  reranker_top_k: 'Reranker top-k',
-  hybrid_search_enabled: 'Hybrid search',
-  hybrid_search_alpha: 'Hybrid alpha',
-  min_similarity_threshold: 'Min similarity',
+  snapshot_version: 'Snapshot version',
   mode: 'Run mode',
+  pipeline_mode: 'Pipeline',
+  top_k_documents: 'Top-k documents',
+  candidate_k: 'Candidate depth',
+  context_k: 'Answer context depth',
+  retrieval_strategy: 'Retrieval strategy',
+  hybrid_search_active: 'Hybrid search active',
+  hybrid_search_alpha_applied: 'Hybrid alpha applied',
+  reranker_active: 'Reranker active',
+  reranker_implementation: 'Reranker implementation',
+  reranker_model: 'Reranker model',
+  merge_kept_k: 'Merge kept-k',
+  min_similarity_threshold_applied: 'Min similarity applied',
+  pass_two_active: 'Pass two active',
+  pass_two_chunk_threshold: 'Pass two chunk threshold',
+  pass_two_score_threshold: 'Pass two score threshold',
   embedding_model: 'Embedding model',
+  embedding_vector_size: 'Embedding vector size',
   vector_collection: 'Vector collection',
   chunk_strategy: 'Chunk strategy',
+  chunk_size: 'Chunk size',
+  chunk_overlap: 'Chunk overlap',
+  // Only ever present on a snapshot stored before the effective-config
+  // fields above replaced them. Kept so a historical run's diff reads as
+  // something other than a raw key name.
+  reranker_enabled: 'Reranker (legacy flag)',
+  reranker_top_k: 'Reranker top-k (legacy flag)',
+  hybrid_search_enabled: 'Hybrid search (legacy flag)',
+  hybrid_search_alpha: 'Hybrid alpha (legacy flag)',
+  min_similarity_threshold: 'Min similarity (legacy flag)',
 }
 
 export const EVAL_MODE_LABELS = {

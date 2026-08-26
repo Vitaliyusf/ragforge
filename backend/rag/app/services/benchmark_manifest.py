@@ -19,6 +19,14 @@ by default. Each allowlisted env name is additionally checked against
 ``LANGSMITH_API_KEY`` to the allowlist fails on import rather than in
 production.
 
+**Recorded is what runs, never what a legacy flag declares.** ``RAGConfig``
+carries reranker and hybrid-search fields its own comment marks as legacy
+compatibility flags, defaulted to true and read by no retrieval code. The
+retrieval section takes those values from
+:mod:`app.services.effective_retrieval` instead, so a benchmark cannot
+attribute its numbers to a reranker or a hybrid retriever that was not in the
+request path.
+
 **Unknown is ``null``, never a guess.** rag cannot see the embedding model,
 the chunk strategy or the LLM from inside its own process; it sees them only
 when deployment injects them. A missing value is stored as ``None`` and its
@@ -46,12 +54,22 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Mapping, Optional, Tuple
 
 from app.core.config import RAGConfig
+from app.services.effective_retrieval import (
+    EFFECTIVE_RETRIEVAL_FIELDS,
+    effective_retrieval_config,
+)
 
 # Bumped when the manifest's *shape* changes, so a stored manifest read back
 # a year later can be interpreted under the rules it was written with. It is
 # not a version for the values themselves — those are already self-describing
 # through `unobserved`.
-MANIFEST_VERSION = 1
+#
+# Version 2 replaced the legacy `reranker_*` / `hybrid_search_*` /
+# `min_similarity_threshold` values in the retrieval section with the
+# effective ones. A stored version 1 manifest still reads back fine — nothing
+# reads a manifest to drive behavior — but its retrieval section must be
+# interpreted as config's declaration rather than as what ran.
+MANIFEST_VERSION = 2
 
 # Longest env value copied into a manifest. A model identifier is tens of
 # characters; anything far larger is a mistake or a payload, and neither
@@ -147,19 +165,25 @@ _ENV_FIELDS: Dict[str, Dict[str, Tuple[Tuple[str, ...], str]]] = {
 # also carries `internal_auth_secret` and `mongodb_url`.
 _CONFIG_RETRIEVAL_FIELDS = (
     "top_k_documents",
-    "min_similarity_threshold",
-    "reranker_enabled",
-    "reranker_top_k",
-    "hybrid_search_enabled",
-    "hybrid_search_alpha",
     "enable_retrieval_bypass",
-    "pass_two_chunk_threshold",
-    "pass_two_score_threshold",
     "eval_candidate_k",
     "eval_run_concurrency",
     "eval_validate_labels",
     "eval_stale_label_policy",
 )
+
+# The rest of the retrieval section describes what the pipeline *does*, not
+# what config declares. `reranker_enabled`, `reranker_top_k`,
+# `hybrid_search_enabled`, `hybrid_search_alpha` and
+# `min_similarity_threshold` are deliberately absent from the list above:
+# `RAGConfig` marks the first four as legacy compatibility flags and no
+# retrieval code reads any of the five, so a manifest reporting them as this
+# benchmark's settings attributed its numbers to stages that never ran. The
+# honest values come from `effective_retrieval_config`, whose own nulls are
+# findings rather than gaps and are therefore exempt from `unobserved`. The
+# manifest describes the deployed pipeline, which does run the conversation
+# graph, so `pipeline_active` is true; a single eval run inside the benchmark
+# records its own narrower answer in its `config_snapshot`.
 
 # Fail fast on an unsafe allowlist entry.
 for _section_fields in _ENV_FIELDS.values():
@@ -204,12 +228,20 @@ def _unobserved_paths(sections: Mapping[str, Mapping[str, Any]]) -> List[str]:
 
     A reader must treat a path listed here as "not recorded" and refuse to
     call two benchmarks equal on it, the way a config diff does.
+
+    The effective-retrieval fields are exempt because their nulls mean the
+    opposite: "no reranker model exists", "no similarity floor is applied".
+    Those are findings the manifest is confident about, and listing them as
+    unseen would turn a proven absence back into an unknown — the same
+    confusion, pointed the other way, that reporting a legacy flag as an
+    active reranker created.
     """
     return sorted(
         f"{section}.{field}"
         for section, values in sections.items()
         for field, value in values.items()
         if value is None
+        and not (section == "retrieval" and field in EFFECTIVE_RETRIEVAL_FIELDS)
     )
 
 
@@ -262,6 +294,7 @@ def build_benchmark_manifest(
     retrieval = {
         field: getattr(config, field, None) for field in _CONFIG_RETRIEVAL_FIELDS
     }
+    retrieval.update(effective_retrieval_config(config, pipeline_active=True))
 
     software = {
         # Interpreter and OS only. Not `platform.node()`: a hostname
