@@ -22,7 +22,13 @@ from typing import Any, Awaitable, Callable, Dict, Optional, Protocol, runtime_c
 import aio_pika
 import aio_pika.abc
 
-from .auth import attach_internal_auth_context, verify_internal_ticket_from_envelope
+from .auth import (
+    AuthError,
+    AuthIdentity,
+    ROLE_SERVICE,
+    attach_internal_auth_context,
+    verify_internal_ticket_from_envelope,
+)
 from .context import bound_context
 
 logger = logging.getLogger(__name__)
@@ -107,7 +113,11 @@ class BaseRabbitMQConsumer:
             if correlation_id:
                 ctx["correlation_id"] = correlation_id
 
-            identity = verify_internal_ticket_from_envelope(body)
+            try:
+                identity = verify_internal_ticket_from_envelope(body)
+            except AuthError as exc:
+                await self._handle_auth_failure(exc, reply_to, correlation_id)
+                return
             if identity is not None:
                 ctx.update(identity.to_dict())
 
@@ -129,6 +139,71 @@ class BaseRabbitMQConsumer:
                         "Handler failed for message on queue '%s'", self.config.rabbitmq_queue
                     )
                     raise  # triggers nack via message.process(requeue=False)
+
+    async def _handle_auth_failure(
+        self,
+        error: AuthError,
+        reply_to: str,
+        correlation_id: str,
+    ) -> None:
+        """Return a safe, authenticated RPC error or nack fire-and-forget input."""
+        code = error.code
+        logger.warning(
+            "Internal RPC auth failure on queue '%s' (code=%s)",
+            self.config.rabbitmq_queue,
+            code,
+        )
+        if not reply_to or not correlation_id:
+            raise error
+        if self._channel is None:
+            logger.error(
+                "Auth failure reply could not be sent on queue '%s' (code=%s)",
+                self.config.rabbitmq_queue,
+                code,
+            )
+            raise error
+
+        reply: Dict[str, Any] = {
+            "message_type": "reply",
+            "source_service": self.config.rabbitmq_queue,
+            "correlation_id": correlation_id,
+            "success": False,
+            "payload": {},
+            "error": {
+                "code": code,
+                "message": {
+                    "internal_auth_expired": "Internal authentication context expired",
+                    "internal_auth_required": "Internal authentication context required",
+                }.get(code, "Internal authentication context invalid"),
+            },
+        }
+        service_identity = AuthIdentity(
+            tenant_id="internal",
+            user_id=f"{self.config.rabbitmq_queue}-service",
+            role=ROLE_SERVICE,
+        )
+        try:
+            attach_internal_auth_context(reply, identity=service_identity)
+            await self._channel.default_exchange.publish(
+                aio_pika.Message(
+                    body=json.dumps(reply).encode(),
+                    correlation_id=correlation_id,
+                    content_type="application/json",
+                ),
+                routing_key=reply_to,
+            )
+        except Exception:
+            logger.exception(
+                "Auth failure reply could not be sent on queue '%s' (code=%s)",
+                self.config.rabbitmq_queue,
+                code,
+            )
+            raise
+        logger.info(
+            "Auth failure reply sent on queue '%s' (code=%s)",
+            self.config.rabbitmq_queue,
+            code,
+        )
 
     async def stop(self) -> None:
         """Close the connection gracefully."""

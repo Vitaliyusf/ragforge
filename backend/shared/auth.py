@@ -33,6 +33,10 @@ MINIMUM_SECRET_BYTES = 32
 class AuthError(ValueError):
     """Raised when credentials or a signed identity context are invalid."""
 
+    def __init__(self, message: str, *, code: str = "internal_auth_invalid") -> None:
+        super().__init__(message)
+        self.code = code
+
 
 @dataclass(frozen=True)
 class AuthIdentity:
@@ -216,7 +220,10 @@ def verify_auth_ticket(
     if payload["iat"] > current_time + clock_skew_seconds:
         raise AuthError("authentication ticket is not active yet")
     if payload["exp"] <= current_time - clock_skew_seconds:
-        raise AuthError("authentication ticket has expired")
+        raise AuthError(
+            "authentication ticket has expired",
+            code="internal_auth_expired",
+        )
     for key, expected_value in (required_claims or {}).items():
         supplied_value = payload.get(key)
         if isinstance(expected_value, str) and isinstance(supplied_value, str):
@@ -266,7 +273,10 @@ def verify_internal_ticket_from_envelope(
     ticket = envelope.get("auth_context")
     if not ticket:
         if auth_required:
-            raise AuthError("signed authentication context is required")
+            raise AuthError(
+                "signed authentication context is required",
+                code="internal_auth_required",
+            )
         return None
     secret = os.getenv("INTERNAL_AUTH_SECRET", "")
     return verify_auth_ticket(

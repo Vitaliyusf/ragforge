@@ -144,6 +144,13 @@ async def lifespan(app: FastAPI):
         return await loop.run_in_executor(None, copy_context().run, _embedding_handler.process_request_with_reply, body, reply_to, correlation_id)
 
     await _rpc_consumer.start(_handle_rpc)
+    _logger.log("main:readiness", "RabbitMQ RPC consumer connected", {
+        "queue": _config.rabbitmq_queue,
+    })
+    if _embedding_model and _embedding_model.is_loaded() and _rpc_consumer.is_connected():
+        _logger.log("main:readiness", "Embedding readiness changed from false to true", {
+            "ready_for_rpc": True,
+        })
 
     try:
         yield
@@ -176,6 +183,7 @@ if _HAS_METRICS:
 app.include_router(create_health_router(
     get_producer=lambda: _producer,
     get_model=lambda: _embedding_model,
+    get_rpc_consumer=lambda: _rpc_consumer,
 ))
 
 if __name__ == "__main__":

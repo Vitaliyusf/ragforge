@@ -5,7 +5,14 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from shared.auth import AuthIdentity, attach_internal_auth_context
+from shared.auth import (
+    AuthError,
+    AuthIdentity,
+    attach_internal_auth_context,
+    internal_envelope_digest,
+    sign_auth_ticket,
+    verify_internal_ticket_from_envelope,
+)
 from shared.context import bound_context
 from shared.rabbitmq_base import BaseRabbitMQConsumer, BaseRabbitMQProducer
 
@@ -28,6 +35,38 @@ def require_signed_internal_messages(monkeypatch: pytest.MonkeyPatch) -> None:
 def signed_message(payload: Dict[str, Any]) -> Dict[str, Any]:
     with bound_context(**TEST_IDENTITY.to_dict()):
         return attach_internal_auth_context(dict(payload), secret=TEST_SECRET)
+
+
+def expired_message(payload: Dict[str, Any]) -> Dict[str, Any]:
+    body = dict(payload)
+    body["auth_context"] = sign_auth_ticket(
+        TEST_IDENTITY,
+        secret=TEST_SECRET,
+        audience="internal",
+        purpose="request",
+        issuer="ragapp-internal",
+        ttl_seconds=1,
+        now=1,
+        extra_claims={"payload_sha256": internal_envelope_digest(body)},
+    )
+    return body
+
+
+def mock_incoming_message(
+    body: Dict[str, Any],
+    *,
+    reply_to: str = "amq.rabbitmq.reply.auth",
+    correlation_id: str = "corr-auth",
+) -> MagicMock:
+    message = MagicMock()
+    message.body = json.dumps(body).encode()
+    message.reply_to = reply_to
+    message.correlation_id = correlation_id
+    message.process = MagicMock(return_value=AsyncMock(
+        __aenter__=AsyncMock(return_value=None),
+        __aexit__=AsyncMock(return_value=False),
+    ))
+    return message
 
 
 class FakeConfig:
@@ -114,3 +153,93 @@ async def test_producer_reply_publishes_to_default_exchange() -> None:
     published_body = json.loads(call_args.args[0].body)
     assert published_body["result"] == "ok"
     assert published_body["auth_context"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("body", "expected_code"),
+    [
+        (expired_message({"action": "test"}), "internal_auth_expired"),
+        ({"action": "test"}, "internal_auth_required"),
+    ],
+)
+async def test_rpc_auth_failure_returns_safe_signed_reply(
+    body: Dict[str, Any],
+    expected_code: str,
+) -> None:
+    consumer = BaseRabbitMQConsumer(FakeConfig())
+    mock_channel = AsyncMock()
+    mock_channel.default_exchange = AsyncMock()
+    consumer._channel = mock_channel
+    handler = AsyncMock()
+
+    await consumer._dispatch(mock_incoming_message(body), handler)
+
+    handler.assert_not_awaited()
+    published = mock_channel.default_exchange.publish.await_args
+    assert published.kwargs["routing_key"] == "amq.rabbitmq.reply.auth"
+    reply_message = published.args[0]
+    assert reply_message.correlation_id == "corr-auth"
+    reply = json.loads(reply_message.body)
+    assert reply["success"] is False
+    assert reply["error"]["code"] == expected_code
+    assert "ticket" not in json.dumps(reply).lower()
+    identity = verify_internal_ticket_from_envelope(reply, required=True)
+    assert identity is not None
+    assert identity.is_service
+
+
+@pytest.mark.asyncio
+async def test_invalid_signature_rpc_returns_auth_invalid_reply() -> None:
+    body = signed_message({"action": "test"})
+    replacement = "x" if body["auth_context"][-1] != "x" else "y"
+    body["auth_context"] = f"{body['auth_context'][:-1]}{replacement}"
+    consumer = BaseRabbitMQConsumer(FakeConfig())
+    mock_channel = AsyncMock()
+    mock_channel.default_exchange = AsyncMock()
+    consumer._channel = mock_channel
+    handler = AsyncMock()
+
+    await consumer._dispatch(mock_incoming_message(body), handler)
+
+    handler.assert_not_awaited()
+    reply = json.loads(mock_channel.default_exchange.publish.await_args.args[0].body)
+    assert reply["error"] == {
+        "code": "internal_auth_invalid",
+        "message": "Internal authentication context invalid",
+    }
+    verify_internal_ticket_from_envelope(reply, required=True)
+
+
+@pytest.mark.asyncio
+async def test_fire_and_forget_auth_failure_does_not_invent_reply() -> None:
+    consumer = BaseRabbitMQConsumer(FakeConfig())
+    mock_channel = AsyncMock()
+    mock_channel.default_exchange = AsyncMock()
+    consumer._channel = mock_channel
+
+    with pytest.raises(AuthError):
+        await consumer._dispatch(
+            mock_incoming_message(
+                expired_message({"action": "test"}),
+                reply_to="",
+                correlation_id="",
+            ),
+            AsyncMock(),
+        )
+
+    mock_channel.default_exchange.publish.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_unexpected_handler_failure_still_raises_without_reply() -> None:
+    consumer = BaseRabbitMQConsumer(FakeConfig())
+    mock_channel = AsyncMock()
+    mock_channel.default_exchange = AsyncMock()
+    consumer._channel = mock_channel
+    handler = AsyncMock(side_effect=RuntimeError("handler failed"))
+
+    with pytest.raises(RuntimeError, match="handler failed"):
+        await consumer._dispatch(mock_incoming_message(signed_message({"action": "test"})), handler)
+
+    mock_channel.default_exchange.publish.assert_not_awaited()

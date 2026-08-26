@@ -84,6 +84,15 @@ def extract_message_payload(message: Optional[Dict[str, Any]]) -> Dict[str, Any]
     return make_json_safe(message)
 
 
+class DownstreamRPCError(RuntimeError):
+    """A verified downstream RPC reply reported a structured failure."""
+
+    def __init__(self, code: str, message: str) -> None:
+        self.code = code
+        self.message = message
+        super().__init__(f"{code}: {message}")
+
+
 def extract_reply_payload(message: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     """Normalize a reply message into a payload dict."""
     if not isinstance(message, dict):
@@ -94,8 +103,13 @@ def extract_reply_payload(message: Optional[Dict[str, Any]]) -> Dict[str, Any]:
             if message.get("source_service") == "llm_agent":
                 return normalize_llm_agent_response(payload)
             return payload
-        error = message.get("error") or "Service request failed"
-        raise RuntimeError(str(error))
+        error = message.get("error")
+        if isinstance(error, dict):
+            raise DownstreamRPCError(
+                str(error.get("code") or "downstream_error"),
+                str(error.get("message") or "Service request failed"),
+            )
+        raise DownstreamRPCError("downstream_error", str(error or "Service request failed"))
     data = message.get("data")
     if isinstance(data, dict):
         return make_json_safe(data)
