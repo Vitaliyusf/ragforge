@@ -99,7 +99,9 @@ def test_what_rag_can_observe_is_never_reported_as_unknown(config):
 
     assert manifest["retrieval"]["top_k_documents"] == config.top_k_documents
     assert manifest["retrieval"]["eval_candidate_k"] == config.eval_candidate_k
-    assert manifest["retrieval"]["reranker_enabled"] == config.reranker_enabled
+    # Including the effective fields whose value is a null finding: "no
+    # reranker model" is something the manifest knows, not something it
+    # failed to capture.
     assert not [
         path for path in manifest["unobserved"] if path.startswith("retrieval.")
     ]
@@ -276,3 +278,41 @@ def test_the_shipped_allowlist_passes_its_own_guard():
         for names, _kind in section.values():
             for name in names:
                 assert _assert_safe_name(name) == name
+
+
+def test_the_retrieval_section_reports_what_runs_not_the_legacy_flags(config):
+    """`RAGConfig` defaults `reranker_enabled` and `hybrid_search_enabled` to
+    true and no retrieval code reads either. A manifest that copied them
+    would attribute a benchmark's numbers to a reranker and a hybrid
+    retriever that were never in the request path."""
+    assert config.reranker_enabled is True
+    assert config.hybrid_search_enabled is True
+
+    retrieval = build_benchmark_manifest(config, env={})["retrieval"]
+
+    assert retrieval["retrieval_strategy"] == "dense_vector"
+    assert retrieval["hybrid_search_active"] is False
+    assert retrieval["reranker_active"] is False
+    assert retrieval["reranker_model"] is None
+    # The legacy values are gone rather than recorded as inactive: a field
+    # naming a stage that does not exist has no honest value.
+    for legacy in (
+        "reranker_enabled",
+        "reranker_top_k",
+        "hybrid_search_enabled",
+        "hybrid_search_alpha",
+        "min_similarity_threshold",
+    ):
+        assert legacy not in retrieval
+
+
+def test_the_manifest_describes_the_pipeline_stages_a_benchmark_drives(config):
+    """A manifest covers the deployed pipeline, which does run the graph, so
+    its merge and pass-two settings are the production ones."""
+    retrieval = build_benchmark_manifest(config, env={})["retrieval"]
+
+    assert retrieval["reranker_implementation"] == "score_order_merge"
+    assert retrieval["context_k"] == config.top_k_documents
+    assert retrieval["merge_kept_k"] == config.top_k_documents * 2
+    assert retrieval["pass_two_active"] is True
+    assert retrieval["pass_two_score_threshold"] == config.pass_two_score_threshold

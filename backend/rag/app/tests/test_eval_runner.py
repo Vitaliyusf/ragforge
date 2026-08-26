@@ -309,10 +309,76 @@ def test_the_run_captures_a_config_snapshot_naming_what_it_cannot_see():
     # Recorded separately from the production depth: the run's ranking was
     # drawn from twenty candidates, not from the six an answer is built from.
     assert snapshot["candidate_k"] == 20
-    assert snapshot["reranker_enabled"] is True
+    assert snapshot["retrieval_strategy"] == "dense_vector"
     # Not stored as a silent null: a diff must not read two unknown embedding
     # models as a match.
     assert "embedding_model" in snapshot["unobserved"]
+    assert "chunk_size" in snapshot["unobserved"]
+
+
+def test_a_retrieval_run_cannot_claim_a_reranker_a_legacy_flag_turned_on():
+    """The acceptance criterion at the run level. `reranker_enabled` and
+    `hybrid_search_enabled` default to true and nothing in the request path
+    reads either, so a run must not report them as what produced its
+    numbers."""
+    store, runner, _, dataset_id = build()
+    assert runner.config.reranker_enabled is True
+    assert runner.config.hybrid_search_enabled is True
+
+    run = execute(runner, dataset_id)
+    snapshot = fetch(store, run["run_id"])["config_snapshot"]
+
+    assert snapshot["reranker_active"] is False
+    assert snapshot["reranker_model"] is None
+    assert snapshot["hybrid_search_active"] is False
+    for legacy in (
+        "reranker_enabled",
+        "reranker_top_k",
+        "hybrid_search_enabled",
+        "hybrid_search_alpha",
+        "min_similarity_threshold",
+    ):
+        assert legacy not in snapshot
+
+
+def test_a_retrieval_run_records_no_stage_it_never_reached():
+    """It issues one `search_chunks` call: no merge, no pass two, no answer
+    context. The production values for those would name work it never did."""
+    store, runner, _, dataset_id = build()
+
+    run = execute(runner, dataset_id)
+    snapshot = fetch(store, run["run_id"])["config_snapshot"]
+
+    assert snapshot["context_k"] is None
+    assert snapshot["merge_kept_k"] is None
+    assert snapshot["pass_two_active"] is False
+    assert snapshot["pass_two_score_threshold"] is None
+    # None of those nulls is a gap in what rag could see, so none of them may
+    # appear alongside the env-sourced fields that genuinely are.
+    for field in ("context_k", "merge_kept_k", "reranker_model"):
+        assert field not in snapshot["unobserved"]
+
+
+def test_a_stored_snapshot_written_before_versioning_reads_back_as_version_one():
+    """Older run documents stay readable. The legacy keys are left exactly as
+    that run recorded them — they are its provenance — and the stamp is what
+    tells a reader to interpret them as config's declaration rather than as a
+    claim about what ran."""
+    store, runner, _, dataset_id = build()
+    run = execute(runner, dataset_id)
+    legacy_snapshot = {"top_k_documents": 6, "reranker_enabled": True}
+    with bound_context(**ADMIN.to_dict()):
+        stored = store._find_one(
+            store.config.eval_runs_collection,
+            {"tenant_id": ADMIN.tenant_id, "run_id": run["run_id"]},
+        )
+        stored["config_snapshot"] = legacy_snapshot
+
+        snapshot = store.get_run(run["run_id"])["config_snapshot"]
+
+    assert snapshot["snapshot_version"] == 1
+    assert snapshot["reranker_enabled"] is True
+    assert snapshot["top_k_documents"] == 6
 
 
 def test_the_run_snapshots_the_dataset_version_and_fingerprint():
@@ -969,6 +1035,11 @@ def test_end_to_end_mode_is_recorded_in_the_config_snapshot():
     # production one — claiming the eval depth would name a candidate pool
     # this run never saw.
     assert stored["config_snapshot"]["candidate_k"] == 6
+    # This mode does drive the graph, so the stages it reaches are recorded
+    # with their real settings rather than as null.
+    assert stored["config_snapshot"]["context_k"] == 6
+    assert stored["config_snapshot"]["reranker_implementation"] == "score_order_merge"
+    assert stored["config_snapshot"]["pass_two_active"] is True
 
 
 def test_end_to_end_respects_the_phase_five_concurrency_bound():

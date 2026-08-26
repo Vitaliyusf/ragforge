@@ -15,6 +15,16 @@ Security invariants, identical in spirit to :mod:`app.services.metrics_query`:
   ``$match`` of every pipeline — never a filter applied to rows in Python.
 - An explicit ``tenant_id`` argument must equal the caller's own.
 
+**Why ``config_snapshot`` records what ran, not what config declares.**
+``RAGConfig`` still carries reranker and hybrid-search flags its own comment
+marks as legacy compatibility fields; they default to true and no retrieval
+code reads them. A snapshot that copied them made every run claim a reranker
+and a hybrid retriever that were never in the request path. The retrieval
+half of the snapshot therefore comes from
+:mod:`app.services.effective_retrieval`, which derives what the pipeline
+actually does, and stage settings a run never reached are recorded as
+``None`` rather than as the production values it skipped.
+
 **Why ``config_snapshot`` is honest about what it cannot see.** Two runs are
 only comparable if they ran under the same retrieval configuration, so the
 snapshot is taken from live config at run start rather than from user input.
@@ -52,6 +62,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from uuid import uuid4
 
 from app.core.config import RAGConfig
+from app.services.effective_retrieval import effective_retrieval_config
 from app.services.golden_set_parser import (
     DEFAULT_MAX_INPUT_BYTES,
     GoldenSetValidationError,
@@ -98,11 +109,37 @@ BENCHMARK_INTERRUPTED = "interrupted"
 
 # Settings rag cannot observe from its own process. Read from the environment
 # where it happens to expose them; named in `unobserved` when it does not.
+# The same env names `benchmark_manifest` reads, deliberately: a run whose
+# snapshot disagreed with its own benchmark's manifest about the embedding
+# model would make both unusable.
 _ENV_SNAPSHOT_FIELDS = {
     "embedding_model": ("EMBEDDING_MODEL", "EMBEDDING_MODEL_NAME"),
+    "embedding_vector_size": ("VECTOR_DB_VECTOR_SIZE",),
     "vector_collection": ("VECTOR_DB_COLLECTION_NAME",),
     "chunk_strategy": ("CHUNK_STRATEGY",),
+    # Two runs whose chunking differed are not comparable at any k, and
+    # strategy alone does not capture that: the same splitter at 512 and at
+    # 2048 characters produces different retrieval entirely.
+    "chunk_size": ("CHUNK_SIZE",),
+    "chunk_overlap": ("CHUNK_OVERLAP",),
 }
+
+# Bumped when the snapshot's *shape* changes, so a stored snapshot read back
+# later can be interpreted under the rules it was written with. Version 1 is
+# the pre-versioning shape, which reported `reranker_enabled`,
+# `reranker_top_k`, `hybrid_search_enabled` and `hybrid_search_alpha`
+# straight from config. Those four are gone from version 2: they were legacy
+# compatibility flags no retrieval code reads, and a snapshot claiming an
+# active reranker on their authority described a stage that never ran. See
+# :mod:`app.services.effective_retrieval`.
+CONFIG_SNAPSHOT_VERSION = 2
+
+# How much of the stack a run measured. Defined here rather than in
+# `eval_runner` because `build_config_snapshot` branches on it and
+# `eval_runner` already imports this module — the reverse import would be a
+# cycle. `eval_runner` re-exports both names under its own spelling.
+MODE_RETRIEVAL = "retrieval"
+MODE_END_TO_END = "end_to_end"
 
 
 class EvalAccessDenied(PermissionError):
@@ -173,20 +210,33 @@ def build_config_snapshot(
             pipeline for it would invent a comparison axis it never varied.
 
     Returns:
-        The observed settings, plus ``unobserved``: the names of the fields
-        rag cannot see from its own process. A UI comparing two snapshots
-        must treat an entry in ``unobserved`` as "unknown", not as a match.
+        ``snapshot_version``, the run's mode and depths, the effective
+        retrieval fields from
+        :func:`app.services.effective_retrieval.effective_retrieval_config`,
+        the env-sourced embedding/chunking/vector metadata, and
+        ``unobserved``: the names of the fields rag cannot see from its own
+        process. A UI comparing two snapshots must treat an entry in
+        ``unobserved`` as "unknown", not as a match. A ``None`` **not** named
+        there is the opposite — a positive finding that the thing is absent.
+
+        A snapshot stored before ``snapshot_version`` existed is version 1
+        and carries the legacy ``reranker_enabled`` / ``hybrid_search_*``
+        keys instead. It is still readable: nothing reads a snapshot back to
+        drive behavior, and a diff between the two shapes reports the key set
+        changing rather than failing.
     """
     snapshot: Dict[str, Any] = {
+        "snapshot_version": CONFIG_SNAPSHOT_VERSION,
         "mode": mode,
         "pipeline_mode": pipeline_mode,
         "top_k_documents": config.top_k_documents,
         "candidate_k": candidate_k,
-        "reranker_enabled": config.reranker_enabled,
-        "reranker_top_k": config.reranker_top_k,
-        "hybrid_search_enabled": config.hybrid_search_enabled,
-        "hybrid_search_alpha": config.hybrid_search_alpha,
-        "min_similarity_threshold": config.min_similarity_threshold,
+        # What executed, not what config's legacy compatibility flags claim.
+        # Only an `end_to_end` run drives the conversation graph; a retrieval
+        # run's single `search_chunks` call reaches no merge stage, no pass
+        # two and no answer context, so those are recorded as null rather
+        # than as production settings this run never exercised.
+        **effective_retrieval_config(config, pipeline_active=mode == MODE_END_TO_END),
     }
     unobserved: List[str] = []
     for field, env_names in _ENV_SNAPSHOT_FIELDS.items():
@@ -194,6 +244,10 @@ def build_config_snapshot(
         snapshot[field] = value
         if value is None:
             unobserved.append(field)
+    # Only the env-sourced fields can land here. The effective-config nulls
+    # above are findings — "no reranker model", "this run built no answer
+    # context" — and listing them as unseen would turn a proven absence back
+    # into an unknown.
     snapshot["unobserved"] = unobserved
     return snapshot
 
@@ -1154,6 +1208,18 @@ def _normalize_run(document: Dict[str, Any]) -> Dict[str, Any]:
     be a guess presented as evidence — and a wrong fingerprint on a historical
     run is worse than a blank one, which the UI can label "not recorded".
     """
+    snapshot = document.get("config_snapshot")
+    if isinstance(snapshot, dict) and "snapshot_version" not in snapshot:
+        # Not a guess: a snapshot written before the key existed *is*
+        # version 1 by definition, and stamping it lets a reader interpret
+        # its legacy `reranker_enabled` / `hybrid_search_*` keys under the
+        # rules they were written with instead of mistaking them for claims
+        # about what ran. Left untouched otherwise — the values themselves
+        # are that run's provenance and are never rewritten.
+        document = {
+            **document,
+            "config_snapshot": {"snapshot_version": 1, **snapshot},
+        }
     return {
         "dataset_version": None,
         "dataset_sha256": None,
