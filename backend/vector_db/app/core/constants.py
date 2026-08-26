@@ -28,6 +28,7 @@ class VectorAction(str, Enum):
     DELETE_CHUNKS = "delete_chunks"
     INITIALIZE_COLLECTION = "initialize_collection"
     GET_METRICS = "get_metrics"
+    VERIFY_CHUNK_IDS = "verify_chunk_ids"
 
 
 # ---------------------------------------------------------------------------
@@ -148,6 +149,21 @@ ALLOWED_CALLER_FILTERS: frozenset = frozenset({
     "page",
     "section",
 })
+
+# ---------------------------------------------------------------------------
+# Label verification
+# ---------------------------------------------------------------------------
+
+# The only payload fields an id-existence lookup may be keyed on. Anything
+# else would turn `verify_chunk_ids` into a general payload query, which is
+# exactly the arbitrary-scroll capability it must not become.
+VERIFIABLE_ID_FIELDS: frozenset = frozenset({"chunk_id", "file_id"})
+
+# Cap on how many ids one verification request may name, per field. A golden
+# set is tens to hundreds of labels; a request naming more is not a golden
+# set, and an unbounded list would let a caller scroll the collection one
+# guessed id at a time in a single round trip.
+MAX_VERIFY_IDS = 1000
 
 # ---------------------------------------------------------------------------
 # Misc

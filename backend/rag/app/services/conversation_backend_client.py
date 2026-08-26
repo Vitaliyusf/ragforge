@@ -279,6 +279,45 @@ class ConversationBackendClient:
             timeout=self.config.internal_request_timeout,
         )
 
+    async def verify_label_ids(
+        self,
+        request: ConversationRequest,
+        chunk_ids: Optional[list] = None,
+        file_ids: Optional[list] = None,
+    ) -> Dict[str, Any]:
+        """Ask vector_db which golden-set label ids still exist.
+
+        Read-only and used only by the eval harness. No filter is sent: the
+        vector service scopes the lookup from the identity the envelope is
+        signed with, so this call can only ever report on the caller's own
+        tenant. Nothing here touches the retrieval path — a run that skips
+        validation retrieves exactly as it did before.
+
+        Args:
+            request: Carries the ids the envelope is traced with.
+            chunk_ids: Labelled chunk ids to check.
+            file_ids: Labelled file ids to check.
+
+        Returns:
+            The vector_db reply body: ``chunk_ids`` and ``file_ids``, each
+            with ``present``, ``retrievable`` and ``missing``.
+        """
+        payload = {
+            "chunk_ids": list(chunk_ids or []),
+            "file_ids": list(file_ids or []),
+            "request_id": request.request_id,
+            "trace_id": request.trace_id,
+        }
+        return await self._send_request(
+            routing_key=self.config.vector_db_routing_key,
+            target_service="vector_db",
+            action="verify_chunk_ids",
+            payload=payload,
+            request=request,
+            message_type="query",
+            timeout=self.config.internal_request_timeout,
+        )
+
     async def query_rewrite(
         self,
         request: ConversationRequest,

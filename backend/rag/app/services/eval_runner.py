@@ -33,6 +33,17 @@ measurement can see. They are kept separate so that tuning one never silently
 redefines the other, and the depth a run used is recorded in its
 ``config_snapshot``.
 
+**Golden-set labels are verified before anything is scored.** A dataset
+labelled against an older index can name chunks or files that reindexing or
+a chunking change has since removed. Retrieval cannot return an id that no
+longer exists, so scoring such a label as a miss reports a recall regression
+that never happened — the worst kind, because it looks exactly like a real
+one. Each run therefore asks vector_db which of its labelled ids still exist
+in its own tenant, records the answer on the run, and refuses to score
+against labels the index cannot reach. See :func:`classify_labels` for the
+three states a label can be in and :data:`STALE_POLICIES` for what a run
+does about them.
+
 Eligibility filtering is replicated here rather than reused from
 ``ConversationGraph._normalize_chunks``. That method increments the live
 ``rag_chunks_considered_total`` and ``rag_chunks_filtered_total`` counters,
@@ -46,7 +57,8 @@ from __future__ import annotations
 
 import asyncio
 import time
-from typing import Any, Dict, List, Optional, Set, Tuple
+from dataclasses import dataclass, field
+from typing import Any, Dict, FrozenSet, List, Optional, Set, Tuple
 
 from app.core.config import RAGConfig
 from app.services import retrieval_metrics
@@ -80,6 +92,26 @@ EVAL_MODES = (MODE_RETRIEVAL, MODE_END_TO_END)
 MATCH_CHUNK = "chunk_id"
 MATCH_FILE = "file_id"
 MATCH_MIXED = "mixed"
+
+# What a run does when its golden set names labels the index cannot reach.
+#
+# `fail` is the default. A dataset whose ground truth has rotted is not
+# measuring retrieval any more, and the failure mode this feature exists to
+# prevent — a confident recall drop caused by relabelling rather than by
+# retrieval — is exactly what a partial run would still produce for the
+# items it did keep. Nothing in the existing product UX argues for partial
+# runs here: a run is cheap to repeat once the labels are fixed.
+STALE_POLICY_FAIL = "fail"
+# `mark_unscorable` keeps the run and excludes the affected items from every
+# mean, reporting them under their own count. It never scores them as
+# misses.
+STALE_POLICY_UNSCORABLE = "mark_unscorable"
+STALE_POLICIES = (STALE_POLICY_FAIL, STALE_POLICY_UNSCORABLE)
+
+# Why a run's labels were not verified, when they were not.
+NOT_CHECKED_DISABLED = "disabled"
+NOT_CHECKED_NO_LABELS = "no_labels"
+NOT_CHECKED_UNAVAILABLE = "unavailable"
 
 # How many retrieved ids one per-item row keeps for the drill-down. Equal to
 # max(K_VALUES) so the row always shows every rank the run scores; it is a
@@ -170,6 +202,198 @@ def dataset_match_mode(items: List[Dict[str, Any]]) -> str:
     if all(item.get("relevant_file_ids") for item in items):
         return MATCH_FILE
     return MATCH_MIXED
+
+
+def label_targets(
+    items: List[Dict[str, Any]],
+    match_mode: str,
+) -> Tuple[Set[str], Set[str]]:
+    """The chunk ids and file ids a run will actually score against.
+
+    Only the ids that will be *used* are collected. A mixed-mode dataset
+    whose item carries both kinds is scored on its chunk ids alone, so
+    verifying its file ids would report drift in labels no score depends on.
+    """
+    chunk_ids: Set[str] = set()
+    file_ids: Set[str] = set()
+    for item in items:
+        ids = relevant_ids(item, match_mode)
+        if not ids:
+            continue
+        if item_match_mode(item, match_mode) == MATCH_CHUNK:
+            chunk_ids.update(ids)
+        else:
+            file_ids.update(ids)
+    return chunk_ids, file_ids
+
+
+def _unreachable_sets(verified: Dict[str, Any], field_name: str) -> Tuple[Set[str], Set[str]]:
+    """The missing and present-but-barred ids vector_db reported for one field."""
+    report = (verified or {}).get(field_name) or {}
+    present = {str(value) for value in report.get("present") or []}
+    retrievable = {str(value) for value in report.get("retrievable") or []}
+    missing = {str(value) for value in report.get("missing") or []}
+    return missing, present - retrievable
+
+
+@dataclass
+class LabelReport:
+    """How a run's golden-set labels checked out against the live index.
+
+    ``summary`` is what gets stored on the run and rendered. ``unscorable``
+    is the full set of affected item ids, kept in memory only: the stored
+    id lists are capped for size, and marking items unscorable from a capped
+    list would silently score some of them anyway.
+    """
+
+    summary: Dict[str, Any]
+    unscorable: FrozenSet[str] = field(default_factory=frozenset)
+
+    @property
+    def blocking(self) -> bool:
+        """Whether this report must stop the run under its own policy."""
+        return (
+            self.summary.get("policy") == STALE_POLICY_FAIL
+            and bool(self.summary.get("unscorable_item_count"))
+        )
+
+
+def _unchecked_report(reason: str, policy: str, error: Optional[str] = None) -> LabelReport:
+    """A report for labels that were never verified.
+
+    Every count is ``None`` rather than ``0``. Zero is a measurement — "we
+    looked and found nothing stale" — and claiming it for a check that never
+    ran is the one thing a warning state must not do.
+    """
+    return LabelReport(
+        summary={
+            "checked": False,
+            "reason": reason,
+            "error": error,
+            "policy": policy,
+            "labels_checked": None,
+            "stale_label_count": None,
+            "stale_item_count": None,
+            "stale_ids": [],
+            "stale_item_ids": [],
+            "unretrievable_label_count": None,
+            "unretrievable_item_count": None,
+            "unretrievable_ids": [],
+            "unscorable_item_count": 0,
+            "truncated": False,
+        }
+    )
+
+
+def classify_labels(
+    items: List[Dict[str, Any]],
+    match_mode: str,
+    verified: Dict[str, Any],
+    *,
+    policy: str = STALE_POLICY_FAIL,
+    max_reported_ids: int = 50,
+) -> LabelReport:
+    """Sort every label into valid, stale, or present-but-unreachable.
+
+    Three states, kept apart because they mean different things to whoever
+    reads the run:
+
+    - **valid** — the id exists in this tenant's collection and retrieval is
+      allowed to return it. Scoring it is meaningful.
+    - **stale** — the id is not in the collection at all. Reindexing or a
+      chunking change dropped it, or it was never in this tenant. Retrieval
+      can never return it, so a miss on it measures nothing.
+    - **unreachable** — the id exists but is barred from retrieval by the
+      same policy gate search applies (``retrieval_allowed`` false, or a
+      ``removed`` review status). Also unscoreable, and reported separately
+      because "we deleted it" and "we suppressed it" call for different
+      fixes.
+
+    Args:
+        items: The dataset's normalized items.
+        match_mode: The run's match mode.
+        verified: The vector_db reply, keyed ``chunk_ids`` / ``file_ids``.
+        policy: One of :data:`STALE_POLICIES`, recorded in the summary.
+        max_reported_ids: Cap on each stored id list. Counts stay exact.
+
+    Returns:
+        A :class:`LabelReport`.
+    """
+    missing_chunks, barred_chunks = _unreachable_sets(verified, "chunk_ids")
+    missing_files, barred_files = _unreachable_sets(verified, "file_ids")
+
+    stale_ids: Set[str] = set()
+    barred_ids: Set[str] = set()
+    stale_items: Set[str] = set()
+    barred_items: Set[str] = set()
+    labels_checked = 0
+
+    for item in items:
+        ids = relevant_ids(item, match_mode)
+        if not ids:
+            continue
+        labels_checked += len(ids)
+        chunk_level = item_match_mode(item, match_mode) == MATCH_CHUNK
+        missing = ids & (missing_chunks if chunk_level else missing_files)
+        barred = ids & (barred_chunks if chunk_level else barred_files)
+        item_id = str(item.get("item_id") or "")
+        if missing:
+            stale_ids.update(missing)
+            stale_items.add(item_id)
+        if barred:
+            barred_ids.update(barred)
+            barred_items.add(item_id)
+
+    unscorable = stale_items | barred_items
+    reported = sorted(unscorable)[:max_reported_ids]
+    truncated = (
+        len(stale_ids) > max_reported_ids
+        or len(barred_ids) > max_reported_ids
+        or len(unscorable) > max_reported_ids
+    )
+    return LabelReport(
+        summary={
+            "checked": True,
+            "reason": None,
+            "error": None,
+            "policy": policy,
+            "labels_checked": labels_checked,
+            "stale_label_count": len(stale_ids),
+            "stale_item_count": len(stale_items),
+            "stale_ids": sorted(stale_ids)[:max_reported_ids],
+            "stale_item_ids": reported,
+            "unretrievable_label_count": len(barred_ids),
+            "unretrievable_item_count": len(barred_items),
+            "unretrievable_ids": sorted(barred_ids)[:max_reported_ids],
+            "unscorable_item_count": len(unscorable),
+            "truncated": truncated,
+        },
+        unscorable=frozenset(unscorable),
+    )
+
+
+def stale_label_error(summary: Dict[str, Any]) -> str:
+    """The message a fail-fast run closes with. Names the counts, not a guess."""
+    return (
+        f"Refused before scoring: {summary.get('unscorable_item_count')} item(s) "
+        f"reference golden-set labels the active index cannot return "
+        f"({summary.get('stale_label_count')} label(s) no longer exist, "
+        f"{summary.get('unretrievable_label_count')} exist but are excluded from "
+        "retrieval). Re-label the dataset against the current index, or set "
+        f"eval_stale_label_policy to {STALE_POLICY_UNSCORABLE!r} to score the "
+        "remaining items and report these separately."
+    )
+
+
+def stale_label_policy(config: Any) -> str:
+    """The configured policy, falling back to fail-fast on an unknown value.
+
+    An unrecognised setting must not quietly become the permissive branch:
+    that would turn a typo into silently-scored stale labels, which is the
+    exact failure this module exists to prevent.
+    """
+    configured = str(getattr(config, "eval_stale_label_policy", STALE_POLICY_FAIL) or "")
+    return configured if configured in STALE_POLICIES else STALE_POLICY_FAIL
 
 
 def eligible_chunks(response: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -413,10 +637,28 @@ class EvalRunner:
         semaphore = asyncio.Semaphore(max(1, self.config.eval_run_concurrency))
         try:
             with bound_context(**identity.to_dict()):
+                # Before anything is retrieved: a run that scores against
+                # labels the index cannot return is not measuring retrieval.
+                report = await self._validate_labels(identity, items, match_mode)
+                self.store.record_label_validation(run_id, tenant_id, report.summary)
+                if report.blocking:
+                    self.store.finish_run(
+                        run_id,
+                        tenant_id,
+                        status=RUN_FAILED,
+                        error=stale_label_error(report.summary),
+                    )
+                    return
                 rows = await asyncio.gather(
                     *(
                         self._score_item(
-                            run_id, identity, item, match_mode, semaphore, mode
+                            run_id,
+                            identity,
+                            item,
+                            match_mode,
+                            semaphore,
+                            mode,
+                            unscorable=str(item.get("item_id") or "") in report.unscorable,
                         )
                         for item in items
                     )
@@ -433,6 +675,63 @@ class EvalRunner:
             self._log("eval_runner:execute", "Eval run failed", {"error": str(exc)})
             self.store.finish_run(run_id, tenant_id, status=RUN_FAILED, error=str(exc))
 
+    async def _validate_labels(
+        self,
+        identity: AuthIdentity,
+        items: List[Dict[str, Any]],
+        match_mode: str,
+    ) -> LabelReport:
+        """Check the dataset's labels against the live index.
+
+        One RPC for the whole dataset, before the first embed call, so the
+        cost is a single round trip however large the golden set is.
+
+        **A check that could not be made is a warning, not a failure.** If
+        vector_db is unreachable or does not know the action, the run
+        proceeds and records ``checked: False`` with the reason, and the
+        panel says the labels were not verified. Failing instead would make
+        every eval run depend on a newly deployed action, and an eval harness
+        that cannot run is not safer than one that says what it did not
+        check.
+        """
+        policy = stale_label_policy(self.config)
+        if not getattr(self.config, "eval_validate_labels", True):
+            return _unchecked_report(NOT_CHECKED_DISABLED, policy)
+
+        chunk_ids, file_ids = label_targets(items, match_mode)
+        if not chunk_ids and not file_ids:
+            return _unchecked_report(NOT_CHECKED_NO_LABELS, policy)
+
+        request = ConversationRequest(
+            user_message="",
+            mode="regular",
+            tenant_id=identity.tenant_id,
+            user_id=identity.user_id,
+            role=identity.role,
+            admin_id=identity.admin_id,
+        )
+        try:
+            verified = await self.backend_client.verify_label_ids(
+                request,
+                sorted(chunk_ids),
+                sorted(file_ids),
+            )
+        except Exception as exc:  # noqa: BLE001 - an unchecked run, not a failed one
+            self._log(
+                "eval_runner:validate_labels",
+                "Golden-set labels could not be verified",
+                {"error": str(exc)},
+            )
+            return _unchecked_report(NOT_CHECKED_UNAVAILABLE, policy, str(exc))
+
+        return classify_labels(
+            items,
+            match_mode,
+            verified,
+            policy=policy,
+            max_reported_ids=int(getattr(self.config, "eval_max_reported_stale_ids", 50)),
+        )
+
     async def _score_item(
         self,
         run_id: str,
@@ -441,6 +740,8 @@ class EvalRunner:
         match_mode: str,
         semaphore: asyncio.Semaphore,
         mode: str = MODE_RETRIEVAL,
+        *,
+        unscorable: bool = False,
     ) -> Dict[str, Any]:
         """Retrieve for one item, score it, and persist the row.
 
@@ -450,6 +751,11 @@ class EvalRunner:
 
         A failed item is recorded and does not abort the run — one bad query
         should not discard the other 199 results.
+
+        An ``unscorable`` item is not retrieved at all. Its ground truth
+        names ids the index cannot return, so every metric over it would be
+        a measurement of the labels rather than of retrieval — and spending
+        an embed call to produce one would be paying for a wrong number.
         """
         tenant_id = identity.tenant_id
         query = str(item.get("query") or "")
@@ -466,8 +772,15 @@ class EvalRunner:
             "recall_at_10": None,
             "latency_ms": None,
             "skipped": not relevant,
+            # Distinct from `skipped`, which means "this item was never
+            # labelled". An unscorable item *is* labelled — against chunks
+            # the live index no longer offers.
+            "unscorable": unscorable,
             "error": None,
         }
+        if unscorable:
+            self.store.append_item_result(run_id, tenant_id, row)
+            return row
 
         started = time.monotonic()
         try:
@@ -567,9 +880,11 @@ def _item_scores(ids: List[str], relevant: Set[str]) -> Dict[str, Dict[str, floa
 def aggregate(rows: List[Dict[str, Any]], mode: str = MODE_RETRIEVAL) -> Dict[str, Any]:
     """Average the per-item scores into the run's ``results``.
 
-    Unlabelled and failed items are **excluded from every mean**, not counted
-    as zeros, and both counts are reported alongside. A half-labelled dataset
-    should be visible as a small denominator, never as a retrieval regression.
+    Unlabelled, unscorable and failed items are **excluded from every mean**,
+    not counted as zeros, and each count is reported alongside. A
+    half-labelled dataset should be visible as a small denominator, never as
+    a retrieval regression — and neither should a dataset whose labels the
+    index no longer holds.
 
     An ``end_to_end`` run adds answer-quality figures under
     ``answer_quality``, each with the count of items it was measured over —
@@ -578,6 +893,7 @@ def aggregate(rows: List[Dict[str, Any]], mode: str = MODE_RETRIEVAL) -> Dict[st
     """
     scored = [row for row in rows if row.get("scores")]
     skipped = sum(1 for row in rows if row.get("skipped"))
+    unscorable = sum(1 for row in rows if row.get("unscorable"))
     failed = sum(1 for row in rows if row.get("error"))
     latencies = [
         row["latency_ms"] for row in rows if isinstance(row.get("latency_ms"), (int, float))
@@ -597,6 +913,7 @@ def aggregate(rows: List[Dict[str, Any]], mode: str = MODE_RETRIEVAL) -> Dict[st
         "mrr": _mean([row.get("reciprocal_rank") for row in scored]),
         "items_evaluated": len(scored),
         "items_skipped": skipped,
+        "items_unscorable": unscorable,
         "items_failed": failed,
         "mean_latency_ms": _mean(latencies),
         **({"answer_quality": _answer_quality(rows)} if mode == MODE_END_TO_END else {}),

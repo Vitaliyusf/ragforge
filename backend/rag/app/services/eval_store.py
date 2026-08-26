@@ -568,12 +568,40 @@ class EvalStore:
             "match_mode": match_mode,
             "mode": mode,
             "config_snapshot": config_snapshot,
+            # Filled in by `record_label_validation` before any item is
+            # scored. It lives beside `results` rather than inside it so a
+            # run that was refused for stale labels — and therefore has no
+            # results at all — still says why.
+            "label_validation": None,
             "results": {},
             "per_item": [],
             "error": None,
         }
         self._insert(self.config.eval_runs_collection, document)
         return _serialize(document)
+
+    def record_label_validation(
+        self,
+        run_id: str,
+        tenant_id: str,
+        validation: Dict[str, Any],
+    ) -> None:
+        """Persist how the run's golden-set labels checked out.
+
+        Written before scoring starts, so a run refused for stale labels
+        carries the evidence for the refusal, and a run that proceeded
+        carries proof that its labels were verified — or, when the check
+        could not be made, that they were not.
+
+        Takes ``tenant_id`` explicitly for the same reason
+        :meth:`append_item_result` does: the caller is a background task with
+        no request context left to read an identity from.
+        """
+        self._update_one(
+            self.config.eval_runs_collection,
+            {"tenant_id": tenant_id, "run_id": run_id},
+            {"label_validation": validation},
+        )
 
     def append_item_result(self, run_id: str, tenant_id: str, row: Dict[str, Any]) -> None:
         """Persist one finished item as it completes.
@@ -897,6 +925,10 @@ def _normalize_run(document: Dict[str, Any]) -> Dict[str, Any]:
     return {
         "dataset_version": None,
         "dataset_sha256": None,
+        # None, not an empty result: a run recorded before stale-label
+        # detection existed was never checked, and saying "no stale labels"
+        # on its behalf would be a claim nobody made.
+        "label_validation": None,
         **document,
     }
 

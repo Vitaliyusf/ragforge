@@ -6,8 +6,10 @@ from unittest.mock import Mock, call
 import numpy as np
 import pytest
 
+from app.core.constants import MAX_VERIFY_IDS
 from app.core.errors import InvalidVectorError
 from app.core.logging_config import ServiceLogger
+from app.db.implementations.in_memory import InMemoryVectorStore
 from app.db.implementations.qdrant import INDEXED_FIELDS, QdrantVectorStore
 from app.db.interfaces import IVectorStore
 from app.messaging.interfaces import IProducer
@@ -711,3 +713,237 @@ def test_service_raises_invalid_vector_error_for_empty_query(vector_service):
     """The service should reject empty query vectors before hitting the store."""
     with pytest.raises(InvalidVectorError, match="query_vector is required"):
         vector_service.search_chunks([])
+
+
+# -- Golden-set label verification ----------------------------------------
+#
+# `verify_chunk_ids` exists so the eval harness can tell a retrieval miss
+# from a benchmark label whose chunk no longer exists. It must never become
+# a way to look outside the caller's own tenant, so most of what follows is
+# about what it refuses rather than what it returns.
+
+
+ADMIN_A = {"tenant_id": "tenant-a", "user_id": "admin-a", "role": "admin", "admin_id": "admin-a"}
+ADMIN_B = {"tenant_id": "tenant-b", "user_id": "admin-b", "role": "admin", "admin_id": "admin-b"}
+
+
+@pytest.fixture
+def live_service(mock_producer, mock_logger):
+    """A vector service over a real in-memory store, for existence checks."""
+    return VectorService(
+        vector_store=InMemoryVectorStore(),
+        producer=mock_producer,
+        service_logger=mock_logger,
+        upsert_completed_topic="vector_db.upsert.completed",
+        files_topic="files.requests",
+        request_topic="vector_db.requests",
+        upsert_requested_topic="vector_db.upsert.requested",
+        delete_requested_topic="vector_db.delete.requested",
+        service_name="vector_db",
+    )
+
+
+def seed(service, identity, *chunks):
+    """Upsert chunks as one identity, so ownership is the trusted kind."""
+    with bound_context(**identity):
+        service.upsert_chunks(list(chunks))
+
+
+def test_an_existing_chunk_id_verifies_as_present_and_retrievable(live_service):
+    seed(live_service, ADMIN_A, build_chunk(chunk_id="chunk-live"))
+
+    with bound_context(**ADMIN_A):
+        result = live_service.verify_chunk_ids(chunk_ids=["chunk-live"])
+
+    assert result["chunk_ids"]["present"] == ["chunk-live"]
+    assert result["chunk_ids"]["retrievable"] == ["chunk-live"]
+    assert result["chunk_ids"]["missing"] == []
+
+
+def test_a_deleted_chunk_id_verifies_as_missing(live_service):
+    """The whole point: reindexing dropped the chunk the label names."""
+    seed(live_service, ADMIN_A, build_chunk(chunk_id="chunk-gone"))
+    with bound_context(**ADMIN_A):
+        live_service.delete_chunks({"file_id": "file-1"})
+        result = live_service.verify_chunk_ids(chunk_ids=["chunk-gone"])
+
+    assert result["chunk_ids"]["missing"] == ["chunk-gone"]
+    assert result["chunk_ids"]["present"] == []
+
+
+def test_file_ids_are_verified_as_well_as_chunk_ids(live_service):
+    """A file-level golden set labels files, and drifts the same way."""
+    seed(live_service, ADMIN_A, build_chunk(chunk_id="chunk-1", file_id="file-kept"))
+
+    with bound_context(**ADMIN_A):
+        result = live_service.verify_chunk_ids(file_ids=["file-kept", "file-dropped"])
+
+    assert result["file_ids"]["present"] == ["file-kept"]
+    assert result["file_ids"]["missing"] == ["file-dropped"]
+    # The chunk field was not asked about and reports nothing, rather than
+    # borrowing the file answer.
+    assert result["chunk_ids"] == {"present": [], "retrievable": [], "missing": []}
+
+
+def test_another_tenants_chunk_id_is_indistinguishable_from_a_deleted_one(live_service):
+    """Cross-tenant ids must not be verifiable - existence is information."""
+    seed(
+        live_service,
+        ADMIN_B,
+        build_chunk(
+            chunk_id="chunk-b",
+            tenant_id="tenant-b",
+            owner_user_id="user-b",
+            owner_admin_id="admin-b",
+        ),
+    )
+
+    with bound_context(**ADMIN_A):
+        result = live_service.verify_chunk_ids(chunk_ids=["chunk-b"])
+
+    assert result["chunk_ids"]["missing"] == ["chunk-b"]
+    assert result["chunk_ids"]["present"] == []
+
+
+def test_verification_scope_comes_from_the_identity_not_the_payload(
+    vector_service,
+    mock_vector_store,
+):
+    """There is no filter argument to forge, and the scope is the caller's."""
+    mock_vector_store.lookup_ids.return_value = {"present": [], "retrievable": []}
+
+    with bound_context(**ADMIN_A):
+        vector_service.verify_chunk_ids(chunk_ids=["c1"])
+
+    field, values, filters = mock_vector_store.lookup_ids.call_args.args
+    assert field == "chunk_id"
+    assert values == ["c1"]
+    assert filters == {"tenant_id": "tenant-a", "owner_admin_id": "admin-a"}
+
+
+def test_verification_fails_closed_without_an_identity_in_production(
+    vector_service,
+    monkeypatch,
+):
+    monkeypatch.setenv("INTERNAL_AUTH_REQUIRED", "true")
+    with pytest.raises(AuthError, match="identity is missing"):
+        vector_service.verify_chunk_ids(chunk_ids=["c1"])
+
+
+def test_verification_without_any_id_is_refused(vector_service):
+    """An empty request is the one shape that would mean 'show me anything'."""
+    with bound_context(**ADMIN_A):
+        with pytest.raises(InvalidVectorError, match="chunk_ids, file_ids, or both"):
+            vector_service.verify_chunk_ids()
+
+
+def test_a_chunk_barred_from_retrieval_is_present_but_not_retrievable(live_service):
+    """Neither a deleted label nor a reachable one - a third state."""
+    seed(
+        live_service,
+        ADMIN_A,
+        build_chunk(chunk_id="chunk-blocked", review_status="removed"),
+    )
+
+    with bound_context(**ADMIN_A):
+        result = live_service.verify_chunk_ids(chunk_ids=["chunk-blocked"])
+
+    assert result["chunk_ids"]["present"] == ["chunk-blocked"]
+    assert result["chunk_ids"]["retrievable"] == []
+    assert result["chunk_ids"]["missing"] == []
+
+
+def test_lookup_ids_refuses_a_field_that_is_not_an_id(live_service):
+    """`text` would turn an existence check into a content query."""
+    with pytest.raises(ValueError, match="not a verifiable id field"):
+        live_service.vector_store.lookup_ids("text", ["anything"])
+
+
+def test_lookup_ids_refuses_more_ids_than_the_cap(live_service):
+    with pytest.raises(ValueError, match="the limit is"):
+        live_service.vector_store.lookup_ids(
+            "chunk_id", [f"c{index}" for index in range(MAX_VERIFY_IDS + 1)]
+        )
+
+
+def test_qdrant_lookup_bounds_the_scroll_to_the_ids_that_were_asked_about(
+    mock_qdrant_client,
+):
+    """Without the id condition this would be an arbitrary collection scroll."""
+    store = QdrantVectorStore(vector_size=3)
+    mock_qdrant_client.scroll.return_value = (
+        [
+            SimpleNamespace(
+                id="p1",
+                payload={
+                    "chunk_id": "c1",
+                    "retrieval_allowed": True,
+                    "review_status": "clean",
+                },
+            )
+        ],
+        None,
+    )
+
+    result = store.lookup_ids(
+        "chunk_id", ["c1", "c2"], {"tenant_id": "tenant-a", "owner_admin_id": "admin-a"}
+    )
+
+    scroll_filter = mock_qdrant_client.scroll.call_args.kwargs["scroll_filter"]
+    conditions = {
+        condition.key: condition.match.model_dump() for condition in scroll_filter.must
+    }
+    assert conditions["chunk_id"] == {"any": ["c1", "c2"]}
+    assert conditions["tenant_id"] == {"value": "tenant-a"}
+    assert conditions["owner_admin_id"] == {"value": "admin-a"}
+    # No chunk text is read back: an existence check needs the id and the two
+    # safety flags, and nothing else.
+    assert mock_qdrant_client.scroll.call_args.kwargs["with_payload"] == [
+        "chunk_id",
+        "retrieval_allowed",
+        "review_status",
+    ]
+    assert result == {"present": ["c1"], "retrievable": ["c1"]}
+
+
+def test_verify_chunk_ids_replies_over_rpc_with_the_shared_envelope(
+    vector_service,
+    mock_vector_store,
+):
+    mock_vector_store.lookup_ids.return_value = {"present": ["c1"], "retrievable": ["c1"]}
+    request = build_envelope(
+        action="verify_chunk_ids",
+        message_type="query",
+        payload={"chunk_ids": ["c1", "c2"]},
+    )
+
+    with bound_context(**ADMIN_A):
+        reply = vector_service.process_request(request)
+
+    assert reply["success"] is True
+    assert reply["action"] == "verify_chunk_ids"
+    assert reply["payload"]["chunk_ids"]["present"] == ["c1"]
+    assert reply["payload"]["chunk_ids"]["missing"] == ["c2"]
+
+
+def test_verify_chunk_ids_rpc_refuses_an_empty_request(vector_service):
+    request = build_envelope(
+        action="verify_chunk_ids",
+        message_type="query",
+        payload={"chunk_ids": [], "file_ids": []},
+    )
+
+    with bound_context(**ADMIN_A):
+        reply = vector_service.process_request(request)
+
+    assert reply["success"] is False
+    assert "chunk_ids, file_ids, or both are required" in reply["error"]["message"]
+
+
+def test_search_still_asks_the_store_for_a_ranked_search(vector_service, mock_vector_store):
+    """Verification is additive: retrieval's own call is unchanged."""
+    with bound_context(**ADMIN_A):
+        vector_service.search_chunks([0.1, 0.2, 0.3], top_k=7)
+
+    assert mock_vector_store.search_chunks.call_args.kwargs["top_k"] == 7
+    mock_vector_store.lookup_ids.assert_not_called()

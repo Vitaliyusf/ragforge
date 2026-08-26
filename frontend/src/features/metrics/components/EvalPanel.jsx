@@ -26,11 +26,18 @@ import {
   EVAL_MODE_LABELS,
   FILE_MATCH_NOTE,
   GOLDEN_SET_HELP,
+  LABEL_CHECK_REASONS,
+  LABELS_VERIFIED_NOTE,
   MATCH_MODE_LABELS,
+  MAX_STALE_IDS_SHOWN,
   RUN_STATUS_LABELS,
   RUN_STATUS_VARIANTS,
+  STALE_LABEL_NOTE,
+  UNCHECKED_LABELS_NOTE,
   UNOBSERVED_NOTE,
   UNPRICED_MODEL_NOTE,
+  UNRETRIEVABLE_LABEL_NOTE,
+  UNSCORABLE_ITEM_NOTE,
   UNVERSIONED_RUN_NOTE,
   formatCost,
   formatCount,
@@ -74,12 +81,14 @@ export function diffSnapshots(current, previous) {
  *
  * Failures rank above misses, misses above weak hits, and unscoreable items
  * sink to the bottom — they are not retrieval failures and putting them at
- * the top would bury the ones that are.
+ * the top would bury the ones that are. An item excluded for stale labels
+ * sinks for the same reason: its chunk is gone, which is a dataset problem,
+ * not a ranking one.
  */
 function worstFirst(rows) {
   const rank = (row) => {
     if (row?.error) return -1
-    if (row?.skipped) return Number.POSITIVE_INFINITY
+    if (row?.skipped || row?.unscorable) return Number.POSITIVE_INFINITY
     return typeof row?.reciprocal_rank === 'number' ? row.reciprocal_rank : 0
   }
   return [...(rows || [])].sort((a, b) => rank(a) - rank(b))
@@ -332,6 +341,8 @@ export default function EvalPanel() {
         )}
       </Card>
 
+      {run?.run_id && <LabelValidation validation={run.label_validation} />}
+
       {configDiff.length > 0 && (
         <ConfigDiff diff={configDiff} unobserved={runs[0]?.config_snapshot?.unobserved} />
       )}
@@ -355,8 +366,8 @@ export default function EvalPanel() {
               // The denominator behind every mean above. A high recall over
               // three items is not a measurement of anything.
               subLabel={`${formatCount(run.results.items_skipped)} skipped, ${formatCount(
-                run.results.items_failed
-              )} failed`}
+                run.results.items_unscorable
+              )} unscorable, ${formatCount(run.results.items_failed)} failed`}
             />
             <StatCard
               label={EVAL_METRIC_LABELS.mean_latency_ms}
@@ -518,6 +529,115 @@ export function DatasetProvenance({ run, dataset }) {
   )
 }
 
+/**
+ * Whether this run's ground truth still exists in the live index.
+ *
+ * The panel's job here is to keep two things apart that a recall number
+ * cannot: retrieval failed to rank a chunk that is there, versus the chunk
+ * is gone and no retriever could have found it. The second one is a dataset
+ * problem, and reading it as a regression is how a team spends a week
+ * tuning a retriever that never broke.
+ *
+ * A run recorded before this check existed carries no validation at all and
+ * renders nothing, rather than claiming its labels were fine.
+ */
+export function LabelValidation({ validation }) {
+  if (!validation) return null
+
+  if (!validation.checked) {
+    return (
+      <Callout tone="warning" icon={AlertTriangle} title="Labels were not verified">
+        <p>{UNCHECKED_LABELS_NOTE}</p>
+        {LABEL_CHECK_REASONS[validation.reason] && (
+          <p className="mt-1">{LABEL_CHECK_REASONS[validation.reason]}</p>
+        )}
+        {validation.error && (
+          <p className="mt-1 font-mono text-[12px]">{validation.error}</p>
+        )}
+      </Callout>
+    )
+  }
+
+  const stale = validation.stale_label_count || 0
+  const barred = validation.unretrievable_label_count || 0
+  if (!stale && !barred) {
+    return (
+      <p className="text-[12px]" style={{ color: 'var(--fg-soft)' }}>
+        {LABELS_VERIFIED_NOTE}
+      </p>
+    )
+  }
+
+  return (
+    <Callout tone="danger" icon={AlertTriangle} title="Benchmark labels no longer exist">
+      <p>{STALE_LABEL_NOTE}</p>
+      <dl className="mt-3 flex flex-wrap gap-6">
+        <div>
+          <dt className="label-xs">Stale labels</dt>
+          <dd className="mt-0.5 font-semibold tabular-nums">{formatCount(stale)}</dd>
+        </div>
+        <div>
+          <dt className="label-xs">Items affected</dt>
+          <dd className="mt-0.5 font-semibold tabular-nums">
+            {formatCount(validation.stale_item_count)}
+          </dd>
+        </div>
+        {barred > 0 && (
+          <div>
+            <dt className="label-xs">Excluded from retrieval</dt>
+            <dd className="mt-0.5 font-semibold tabular-nums">{formatCount(barred)}</dd>
+          </div>
+        )}
+      </dl>
+      <IdList label="Missing ids" ids={validation.stale_ids} />
+      {barred > 0 && (
+        <>
+          <IdList label="Unreachable ids" ids={validation.unretrievable_ids} />
+          <p className="mt-1">{UNRETRIEVABLE_LABEL_NOTE}</p>
+        </>
+      )}
+      {validation.truncated && (
+        <p className="mt-1 text-[12px]">
+          The counts above are exact; the ids are a sample.
+        </p>
+      )}
+    </Callout>
+  )
+}
+
+/** A capped, monospaced list of affected ids. */
+function IdList({ label, ids }) {
+  const shown = (ids || []).slice(0, MAX_STALE_IDS_SHOWN)
+  if (!shown.length) return null
+  return (
+    <p className="mt-2 font-mono text-[12px]">
+      {label}: {shown.join(', ')}
+      {(ids || []).length > shown.length ? ', …' : ''}
+    </p>
+  )
+}
+
+/** A bordered notice in one of the panel's two alert tones. */
+function Callout({ tone, icon: Icon, title, children }) {
+  const color = tone === 'danger' ? 'var(--danger)' : 'var(--warning)'
+  return (
+    <div
+      className="rounded-xl px-4 py-3 text-[13px]"
+      style={{
+        background: tone === 'danger' ? 'var(--danger-soft)' : 'var(--warning-soft)',
+        border: `1px solid ${color}40`,
+        color,
+      }}
+    >
+      <p className="flex items-center gap-2 text-[15px] font-semibold">
+        <Icon size={15} />
+        {title}
+      </p>
+      <div className="mt-1.5">{children}</div>
+    </div>
+  )
+}
+
 /** Answer-quality results, shown only for an end-to-end run. */
 function AnswerQuality({ quality }) {
   const judged = quality?.items_judged ?? 0
@@ -619,7 +739,7 @@ function ItemTable({ rows }) {
     <Card>
       <CardHeader
         title="Per-item results"
-        description="Worst first. A missing rank means retrieval never returned a labelled chunk."
+        description="Worst first. A missing rank means retrieval never returned a labelled chunk — unless the row says the label itself is gone."
       />
       <div className="overflow-x-auto">
         <table className="w-full text-[13px]">
@@ -646,6 +766,11 @@ function ItemTable({ rows }) {
                   {row.skipped && !row.error && (
                     <span className="ml-2 text-[12px]" style={{ color: 'var(--fg-soft)' }}>
                       not labelled — excluded from every average
+                    </span>
+                  )}
+                  {row.unscorable && !row.error && (
+                    <span className="ml-2 text-[12px]" style={{ color: 'var(--warning)' }}>
+                      {UNSCORABLE_ITEM_NOTE}
                     </span>
                   )}
                 </th>

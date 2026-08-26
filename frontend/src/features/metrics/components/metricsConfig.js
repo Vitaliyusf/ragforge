@@ -294,6 +294,7 @@ export const EVAL_METRIC_LABELS = {
   hit_rate_at_k: 'Hit rate@k',
   items_evaluated: 'Items scored',
   items_skipped: 'Items skipped',
+  items_unscorable: 'Items unscorable',
   items_failed: 'Items failed',
   mean_latency_ms: 'Mean retrieval latency',
 }
@@ -392,6 +393,52 @@ export const UNVERSIONED_RUN_NOTE =
 export const DATASET_DRIFT_NOTE =
   'The dataset has been edited since this run: a new run would score a ' +
   'different set of labels, so the two are not directly comparable.'
+
+// ---------------------------------------------------------------------------
+// Golden-set label validation
+// ---------------------------------------------------------------------------
+
+/**
+ * The distinction the whole feature exists to draw.
+ *
+ * A retrieval miss means the retriever failed to rank a chunk that is there.
+ * A stale label means the chunk is not there at all, so nothing the
+ * retriever could have done would have found it. They look identical on a
+ * recall chart and mean opposite things about the system.
+ */
+export const STALE_LABEL_NOTE =
+  'These items are not retrieval misses. The chunks their labels name are ' +
+  'no longer in the index, so no retriever could have returned them. ' +
+  'Re-label the dataset against the current index before comparing scores.'
+
+/** Shown for labels that still exist but retrieval is not allowed to return. */
+export const UNRETRIEVABLE_LABEL_NOTE =
+  'These labels still exist but are excluded from retrieval — removed in ' +
+  'review, or not retrieval-allowed. They are unreachable for a different ' +
+  'reason than a deleted label, and need a different fix.'
+
+/** Shown when a run scored without its labels having been verified. */
+export const UNCHECKED_LABELS_NOTE =
+  'This run scored without checking its labels against the live index, so a ' +
+  'label deleted by reindexing would read here as a retrieval miss.'
+
+/** Why a run's labels were not verified. Keyed by the stored `reason`. */
+export const LABEL_CHECK_REASONS = {
+  disabled: 'Label verification is switched off for this deployment.',
+  no_labels: 'This run had no labelled ids to verify.',
+  unavailable: 'The vector store could not be reached to verify them.',
+}
+
+/** Shown on the per-item row of an item excluded for stale labels. */
+export const UNSCORABLE_ITEM_NOTE = 'benchmark label no longer exists — not a retrieval miss'
+
+/** Confirmation that a run's ground truth was checked and held up. */
+export const LABELS_VERIFIED_NOTE =
+  'Every labelled id was found in the live index, so no score below is a ' +
+  'missing label in disguise.'
+
+/** How many affected ids one warning card lists before it stops. */
+export const MAX_STALE_IDS_SHOWN = 12
 
 /** Render a boolean setting as a word rather than "true"/"false". */
 export function formatSetting(value) {

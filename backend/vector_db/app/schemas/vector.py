@@ -3,6 +3,8 @@ from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field, model_validator
 
+from app.core.constants import MAX_VERIFY_IDS
+
 
 KafkaMessageType = Literal["command", "query", "reply", "event", "stream_event"]
 ChunkReviewStatus = Literal[
@@ -118,6 +120,28 @@ class SearchChunksPayload(BaseModel):
     model_config = {"extra": "ignore"}
 
 
+class VerifyChunkIdsPayload(BaseModel):
+    """Read-only existence check for caller-supplied chunk and file ids.
+
+    **There is deliberately no ``filters`` field.** Scope is derived entirely
+    from the caller's trusted identity in ``VectorService``, so this payload
+    offers no way to widen a lookup beyond the caller's own tenant. It is the
+    reason this action is not a scroll: a caller can only ask about ids it
+    already holds, and only within the scope it could already search.
+    """
+
+    chunk_ids: List[str] = Field(default_factory=list, max_length=MAX_VERIFY_IDS)
+    file_ids: List[str] = Field(default_factory=list, max_length=MAX_VERIFY_IDS)
+
+    @model_validator(mode="after")
+    def validate_targets(self) -> "VerifyChunkIdsPayload":
+        if not self.chunk_ids and not self.file_ids:
+            raise ValueError("chunk_ids, file_ids, or both are required")
+        return self
+
+    model_config = {"extra": "ignore"}
+
+
 class UpsertChunksPayload(BaseModel):
     """Canonical upsert request payload."""
 
@@ -156,6 +180,14 @@ class SearchChunksRequest(KafkaEnvelopeBase):
     action: Literal["search_chunks"] = "search_chunks"
     reply_to: str
     payload: SearchChunksPayload
+
+
+class VerifyChunkIdsRequest(KafkaEnvelopeBase):
+    """Canonical RPC request for golden-set label verification."""
+
+    message_type: Literal["query"] = "query"
+    action: Literal["verify_chunk_ids"] = "verify_chunk_ids"
+    payload: VerifyChunkIdsPayload
 
 
 class UpsertChunksRequest(KafkaEnvelopeBase):
