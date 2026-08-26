@@ -69,7 +69,8 @@ from app.services.effective_retrieval import (
 # effective ones. A stored version 1 manifest still reads back fine — nothing
 # reads a manifest to drive behavior — but its retrieval section must be
 # interpreted as config's declaration rather than as what ran.
-MANIFEST_VERSION = 2
+# Version 3 adds the allowlisted LLM quantization used by the served runtime.
+MANIFEST_VERSION = 3
 
 # Longest env value copied into a manifest. A model identifier is tens of
 # characters; anything far larger is a mistake or a payload, and neither
@@ -153,6 +154,7 @@ _ENV_FIELDS: Dict[str, Dict[str, Tuple[Tuple[str, ...], str]]] = {
         "implementation": (("LLM_IMPLEMENTATION",), "str"),
         "chat_model": (("RAG_CHAT_MODEL",), "str"),
         "max_model_len": (("VLLM_MAX_MODEL_LEN",), "int"),
+        "quantization": (("VLLM_QUANTIZATION",), "str"),
     },
 }
 

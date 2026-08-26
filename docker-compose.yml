@@ -202,6 +202,8 @@ services:
       UPLOAD_DIR: /app/uploads
       LOG_DIR: /app/logs
       MAX_UPLOAD_BYTES: ${MAX_UPLOAD_BYTES:-26214400}
+      CHUNK_SIZE: ${CHUNK_SIZE:-1200}
+      CHUNK_OVERLAP: ${CHUNK_OVERLAP:-200}
       GENERATE_QUESTIONS_TOPIC: generate_questions_requests
       PYTHONPATH: /app
     volumes:
@@ -235,6 +237,7 @@ services:
       LOG_DIR: /app/logs
       FILES_SERVICE_URL: http://files:8005
       METADATA_FETCH_TIMEOUT: ${METADATA_FETCH_TIMEOUT:-5.0}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-intfloat/multilingual-e5-small}
     volumes:
       - uploads_data:/app/uploads
       - logs_data:/app/logs
@@ -289,6 +292,11 @@ services:
     build:
       context: .
       dockerfile: backend/rag/Dockerfile
+      args:
+        RAGFORGE_GIT_SHA: ${RAGFORGE_GIT_SHA:-}
+        RAGFORGE_GIT_BRANCH: ${RAGFORGE_GIT_BRANCH:-}
+        RAGFORGE_BUILD_TIMESTAMP: ${RAGFORGE_BUILD_TIMESTAMP:-}
+        RAGFORGE_IMAGE_TAG: ${RAGFORGE_IMAGE_TAG:-}
     ports:
       - "127.0.0.1:${PUBLIC_RAG_PORT:-8004}:8004"
     environment:
@@ -298,6 +306,18 @@ services:
       MONGODB_URL: mongodb://rag:${MONGO_RAG_PASSWORD}@mongodb:27017/rag?authSource=rag
       FRONTEND_URL: ${FRONTEND_PUBLIC_URL:-http://localhost:3000}
       LOG_DIR: /app/logs
+      RAGFORGE_IMAGE_TAG: ${RAGFORGE_IMAGE_TAG:-}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-intfloat/multilingual-e5-small}
+      VECTOR_DB_VECTOR_SIZE: ${VECTOR_DB_VECTOR_SIZE:-384}
+      VECTOR_DB_COLLECTION_NAME: ${VECTOR_DB_COLLECTION_NAME:-vectors}
+      VECTOR_STORE_TYPE: ${VECTOR_STORE_TYPE:-qdrant}
+      CHUNK_STRATEGY: fixed_character_windows
+      CHUNK_SIZE: ${CHUNK_SIZE:-1200}
+      CHUNK_OVERLAP: ${CHUNK_OVERLAP:-200}
+      LLM_IMPLEMENTATION: ${LLM_IMPLEMENTATION:-vllm}
+      RAG_CHAT_MODEL: ${VLLM_MODEL:-RedHatAI/Qwen3.5-4B-quantized.w4a16}
+      VLLM_MAX_MODEL_LEN: ${VLLM_MAX_MODEL_LEN:-10240}
+      VLLM_QUANTIZATION: ${VLLM_QUANTIZATION:-compressed-tensors}
       RERANKER_ENABLED: ${RERANKER_ENABLED:-false}
       RERANKER_TOP_K: ${RERANKER_TOP_K:-5}
       # Chunks fed into the answer prompt. With the reranker disabled this is the
