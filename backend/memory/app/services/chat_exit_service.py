@@ -6,13 +6,6 @@ from typing import Any, Dict, List, Optional
 
 import httpx
 
-# Qwen3-style reasoning models emit a <think>…</think> block before their answer.
-# On a small token budget the thinking exhausts the allowance and the model
-# returns null content, so titles/summaries silently fall back to "New Chat".
-# Utility calls don't need reasoning, so we turn it off at the chat template.
-_DISABLE_REASONING_KWARGS = {"enable_thinking": False}
-_THINK_BLOCK = re.compile(r"<think>.*?</think>", re.DOTALL)
-
 from app.agent.memory_agent import MemoryAgent
 from app.core.config import settings
 from app.core.errors import DatabaseError
@@ -20,6 +13,13 @@ from app.core.logging_config import ServiceLogger
 from app.services.chat_service import ChatService
 from app.services.memory_service import LongTermMemoryService
 from app.services.message_service import MessageService
+
+# Qwen3-style reasoning models emit a <think>…</think> block before their answer.
+# On a small token budget the thinking exhausts the allowance and the model
+# returns null content, so titles/summaries silently fall back to "New Chat".
+# Utility calls don't need reasoning, so we turn it off at the chat template.
+_DISABLE_REASONING_KWARGS = {"enable_thinking": False}
+_THINK_BLOCK = re.compile(r"<think>.*?</think>", re.DOTALL)
 
 
 def _normalize_vllm_base_url(base_url: str) -> str:

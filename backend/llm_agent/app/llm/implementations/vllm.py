@@ -43,7 +43,6 @@ class VLLMClient(ILLMClient):
             raise RuntimeError(f"Request timed out after {invocation.timeout} seconds") from exc
 
     def _invoke_vllm(self, invocation: LLMInvocation) -> LLMGenerationResult:
-        request_type = invocation.metadata.get("request_type")
         payload = {
             "model": invocation.model,
             "prompt": f"{invocation.to_prompt()}{_NO_THINK_SUFFIX}",
