@@ -394,6 +394,20 @@ def test_an_empty_dataset_is_refused_before_a_run_is_opened():
         assert store.list_runs() == []
 
 
+def test_unresolved_authoring_filenames_are_refused_before_a_run_is_opened():
+    store, runner, _, dataset_id = build(
+        items=[{"item_id": "q1", "query": "Where?", "expected_file_names": ["guide.md"]}]
+    )
+
+    async def _go():
+        with pytest.raises(EvalValidationError, match="unresolved expected_file_names"):
+            await runner.start_run(dataset_id)
+
+    with bound_context(**ADMIN.to_dict()):
+        asyncio.run(_go())
+        assert store.list_runs() == []
+
+
 # ── Concurrency ───────────────────────────────────────────────────────────
 
 def test_concurrency_stays_within_the_semaphore_bound():

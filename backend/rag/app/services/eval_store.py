@@ -2,8 +2,9 @@
 
 Two collections, both admin-only and both scoped to exactly one tenant:
 
-- ``eval_datasets`` — the golden set: a name and a list of items, each a
-  query plus the chunk or file ids a human judged relevant to it.
+- ``eval_datasets`` — the golden set: a name and a list of canonical items.
+  Items may carry resolved chunk/file ids or unresolved authoring filenames;
+  the latter are preserved for a later resolution step and cannot be run yet.
 - ``eval_runs`` — one execution of one dataset, carrying the config it ran
   under, its aggregate results, and a per-item row for drill-down.
 
@@ -51,6 +52,12 @@ from typing import Any, Dict, List, Optional, Tuple
 from uuid import uuid4
 
 from app.core.config import RAGConfig
+from app.services.golden_set_parser import (
+    DEFAULT_MAX_INPUT_BYTES,
+    GoldenSetValidationError,
+    normalize_golden_set_items,
+    parse_golden_set,
+)
 from shared.auth import AuthIdentity, identity_from_context
 
 try:
@@ -83,7 +90,7 @@ class EvalAccessDenied(PermissionError):
     """The caller is not an administrator of the tenant being addressed."""
 
 
-class EvalValidationError(ValueError):
+class EvalValidationError(GoldenSetValidationError):
     """An uploaded dataset was rejected. The message says which item and why."""
 
 
@@ -181,81 +188,26 @@ def normalize_items(
 
     Returns:
         Normalized items, each with an ``item_id``, ``query``,
-        ``relevant_chunk_ids``, ``relevant_file_ids``, the optional
-        ``expected_answer`` / ``expected_claims`` an ``end_to_end`` run
-        reads, and ``notes``.
+        ``relevant_chunk_ids``, ``relevant_file_ids``, unresolved
+        ``expected_file_names``, the optional ``expected_answer`` /
+        ``expected_claims`` an ``end_to_end`` run reads, authoring metadata,
+        and ``notes``. List fields are always lists and absent optional scalar
+        fields are always ``None``.
 
     Raises:
         EvalValidationError: On any violation, naming the offending index.
     """
-    if not isinstance(raw_items, list) or not raw_items:
-        raise EvalValidationError("A dataset must contain at least one item")
-    if len(raw_items) > max_items:
-        raise EvalValidationError(
-            f"Dataset has {len(raw_items)} items; the limit is {max_items}"
-        )
-
-    normalized: List[Dict[str, Any]] = []
-    seen_ids: set[str] = set()
-    for index, raw in enumerate(raw_items):
-        if not isinstance(raw, dict):
-            raise EvalValidationError(f"Item {index} is not an object")
-
-        query = raw.get("query")
-        if not isinstance(query, str) or not query.strip():
-            raise EvalValidationError(f"Item {index} has no query")
-        if len(query) > max_query_length:
-            raise EvalValidationError(
-                f"Item {index} has a {len(query)}-character query; "
-                f"the limit is {max_query_length}"
+    try:
+        return [
+            dict(item)
+            for item in normalize_golden_set_items(
+                raw_items,
+                max_items=max_items,
+                max_query_length=max_query_length,
             )
-
-        chunk_ids = _string_list(raw.get("relevant_chunk_ids"), index, "relevant_chunk_ids")
-        file_ids = _string_list(raw.get("relevant_file_ids"), index, "relevant_file_ids")
-        # The whole point of a golden set is the ground truth. An item with
-        # no relevant id cannot be scored, and accepting it would inflate
-        # `items_skipped` on every future run for no benefit.
-        if not chunk_ids and not file_ids:
-            raise EvalValidationError(
-                f"Item {index} lists no relevant_chunk_ids or relevant_file_ids"
-            )
-
-        item_id = str(raw.get("item_id") or uuid4())
-        if item_id in seen_ids:
-            raise EvalValidationError(f"Item {index} repeats item_id {item_id!r}")
-        seen_ids.add(item_id)
-
-        notes = raw.get("notes")
-        expected_answer = raw.get("expected_answer")
-        expected_claims = _string_list(raw.get("expected_claims"), index, "expected_claims")
-        normalized.append(
-            {
-                "item_id": item_id,
-                "query": query.strip(),
-                "relevant_chunk_ids": chunk_ids,
-                "relevant_file_ids": file_ids,
-                # Both optional and used only by an `end_to_end` run. A
-                # retrieval run never reads them, so a dataset without them
-                # stays valid and scores exactly as it did before.
-                "expected_answer": str(expected_answer) if expected_answer else None,
-                "expected_claims": expected_claims,
-                "notes": str(notes) if notes else None,
-            }
-        )
-    return normalized
-
-
-def _string_list(value: Any, index: int, field: str) -> List[str]:
-    """Coerce one id field to a list of non-empty strings.
-
-    Raises:
-        EvalValidationError: If the value is present but not a list.
-    """
-    if value is None:
-        return []
-    if not isinstance(value, list):
-        raise EvalValidationError(f"Item {index}: {field} must be a list")
-    return [str(item) for item in value if str(item).strip()]
+        ]
+    except GoldenSetValidationError as exc:
+        raise EvalValidationError(str(exc)) from exc
 
 
 # The first version every dataset carries, and the version assumed for a
@@ -272,6 +224,8 @@ _SCORING_FIELDS = (
     "expected_claims",
 )
 
+_OPTIONAL_SCORING_FIELDS = ("expected_file_names", "answerable")
+
 
 def canonical_items(items: Any) -> List[Dict[str, Any]]:
     """Reduce dataset items to the content a run's scores depend on.
@@ -279,11 +233,13 @@ def canonical_items(items: Any) -> List[Dict[str, Any]]:
     Two datasets whose canonical form is equal will score identically, and
     that is the only property the fingerprint claims. Concretely:
 
-    - Only :data:`_SCORING_FIELDS` survive. ``item_id`` is excluded because
+    - Only scoring fields survive. ``item_id`` is excluded because
       it is a uuid minted at upload when the file did not supply one: keeping
       it would give two uploads of the *same* labels two different hashes,
       which is precisely the false alarm the fingerprint exists to avoid.
       ``notes`` is excluded because it is human annotation no scorer reads.
+      Unresolved filenames and ``answerable`` are included when supplied;
+      absent values are omitted to keep pre-import fingerprints stable.
     - Id and claim lists are de-duplicated and sorted: they are matched as
       sets, so their order never reaches a score.
     - Items themselves are sorted by their canonical form, because the run
@@ -304,6 +260,13 @@ def canonical_items(items: Any) -> List[Dict[str, Any]]:
                 entry[field] = None
             else:
                 entry[field] = str(value)
+        for field in _OPTIONAL_SCORING_FIELDS:
+            value = item.get(field)
+            if isinstance(value, list):
+                if value:
+                    entry[field] = sorted({str(element) for element in value})
+            elif value is not None:
+                entry[field] = value
         canonical.append(entry)
     canonical.sort(key=_canonical_json)
     return canonical
@@ -378,6 +341,28 @@ class EvalStore:
         }
         self._insert(self.config.eval_datasets_collection, document)
         return _serialize(document)
+
+    def import_dataset(
+        self,
+        name: str,
+        description: Optional[str],
+        content: Any,
+        source_format: str,
+    ) -> Dict[str, Any]:
+        """Parse and store a JSON or JSONL Golden Set."""
+        try:
+            items = parse_golden_set(
+                content,
+                source_format,
+                max_input_bytes=int(
+                    getattr(self.config, "eval_max_dataset_bytes", DEFAULT_MAX_INPUT_BYTES)
+                ),
+                max_items=self.config.eval_max_dataset_items,
+                max_query_length=self.config.eval_max_query_length,
+            )
+        except GoldenSetValidationError as exc:
+            raise EvalValidationError(str(exc)) from exc
+        return self.create_dataset(name, description, items)
 
     def list_datasets(self) -> List[Dict[str, Any]]:
         """List the tenant's datasets, newest first, without their items.

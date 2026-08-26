@@ -103,6 +103,7 @@ class RAGConfig(BaseSettings):
     # reason `metrics_query` re-validates its window on arrival.
     eval_max_dataset_items: int = 1000
     eval_max_query_length: int = 2000
+    eval_max_dataset_bytes: int = 5 * 1024 * 1024
 
     # Stale-label detection.
     #
