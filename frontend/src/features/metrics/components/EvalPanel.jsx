@@ -347,7 +347,7 @@ export default function EvalPanel() {
         )}
       </Card>
 
-      <BenchmarkCenter datasetId={datasetId} datasetName={dataset?.name} ready={Boolean(datasetId)} />
+      <BenchmarkCenter datasetId={datasetId} datasetName={dataset?.name} itemCount={dataset?.item_count} ready={Boolean(datasetId)} />
 
       {run?.run_id && <LabelValidation validation={run.label_validation} />}
 

@@ -251,6 +251,10 @@ def build_benchmark_manifest(
     dataset: Optional[Mapping[str, Any]] = None,
     item_count: Optional[int] = None,
     phases: Optional[List[str]] = None,
+    requested_profile: Optional[str] = None,
+    executable_phases: Optional[List[str]] = None,
+    unsupported_phases: Optional[List[str]] = None,
+    skipped_phases: Optional[List[str]] = None,
     env: Optional[Mapping[str, str]] = None,
 ) -> Dict[str, Any]:
     """Capture what a benchmark is about to run under.
@@ -290,6 +294,12 @@ def build_benchmark_manifest(
         "item_count": item_count,
         "phases": list(phases) if phases else None,
     }
+    execution = {
+        "requested_profile": requested_profile,
+        "executable_phases": list(executable_phases or []),
+        "unsupported_phases": list(unsupported_phases or []),
+        "skipped_phases": list(skipped_phases or []),
+    }
 
     retrieval = {
         field: getattr(config, field, None) for field in _CONFIG_RETRIEVAL_FIELDS
@@ -308,6 +318,7 @@ def build_benchmark_manifest(
     sections: Dict[str, Dict[str, Any]] = {
         "build": build,
         "dataset": dataset_section,
+        "execution": execution,
         "retrieval": retrieval,
         "embedding": _env_section(_ENV_FIELDS["embedding"], environment),
         "chunking": _env_section(_ENV_FIELDS["chunking"], environment),

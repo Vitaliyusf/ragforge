@@ -84,12 +84,12 @@ export function useBenchmarkRuns(datasetId) {
     return () => { clearInterval(timer); controller.abort(); document.removeEventListener('visibilitychange', onVisibility) }
   }, [benchmark?.benchmark_id, benchmark?.status, load])
 
-  const start = useCallback(async (phases) => {
+  const start = useCallback(async (profile) => {
     if (!datasetId) return null
     controllerRef.current?.abort()
     setBusy(true)
     try {
-      const response = await metricsService.startBenchmarkRun(datasetId, phases)
+      const response = await metricsService.startBenchmarkRun(datasetId, profile)
       const next = response?.benchmark || null
       setBenchmark(next)
       remember(next)

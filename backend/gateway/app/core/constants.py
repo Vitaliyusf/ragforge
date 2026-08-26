@@ -108,6 +108,16 @@ class BenchmarkPhase(str, Enum):
     END_TO_END_EXTENDED = "end_to_end_extended"
 
 
+class BenchmarkProfile(str, Enum):
+    """Stable benchmark execution profiles mirrored by the rag service."""
+
+    QUICK_RETRIEVAL = "quick_retrieval"
+    SMOKE_QUALITY = "smoke_quality"
+    FULL_QUALITY = "full_quality"
+    EXTENDED_COMPARISON = "extended_comparison"
+    FULL_DIAGNOSTIC = "full_diagnostic"
+
+
 class MetricsWindow(str, Enum):
     """Allowed lookback windows for the admin metrics routes.
 

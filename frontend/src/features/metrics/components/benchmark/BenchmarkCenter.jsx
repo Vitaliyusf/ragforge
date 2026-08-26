@@ -13,11 +13,21 @@ const PHASE_LABELS = {
   retrieval_base: 'Retrieval baseline', retrieval_extended: 'Extended retrieval',
   end_to_end_regular: 'End-to-end', end_to_end_extended: 'Extended end-to-end',
 }
+const PROFILES = [
+  { id: 'quick_retrieval', label: 'Quick Retrieval', phases: ['retrieval_base'], cost: 'Fast' },
+  { id: 'smoke_quality', label: 'Smoke Quality', phases: ['end_to_end_regular'], cost: 'Moderate' },
+  { id: 'full_quality', label: 'Full Quality', phases: ['retrieval_base', 'end_to_end_regular'], cost: 'Moderate' },
+  { id: 'extended_comparison', label: 'Extended Comparison', phases: ['end_to_end_regular', 'end_to_end_extended'], cost: 'Expensive' },
+  { id: 'full_diagnostic', label: 'Full Diagnostic - Expensive', phases: ['retrieval_base', 'end_to_end_regular', 'end_to_end_extended'], cost: 'Expensive' },
+]
+const PROFILES_BY_ID = Object.fromEntries(PROFILES.map((profile) => [profile.id, profile]))
 const TERMINAL_EXPORTABLE = new Set(['completed', 'partial', 'failed', 'interrupted'])
 
-export default function BenchmarkCenter({ datasetId, datasetName, ready }) {
+export default function BenchmarkCenter({ datasetId, datasetName, itemCount, ready }) {
   const { benchmark, history, error, busy, start, select, download } = useBenchmarkRuns(datasetId)
   const [confirmOpen, setConfirmOpen] = useState(false)
+  const [profileId, setProfileId] = useState('full_quality')
+  const selectedProfile = PROFILES_BY_ID[profileId]
   const phases = benchmark?.phases || []
   const progress = benchmark?.progress || {}
   const running = benchmark && !TERMINAL_EXPORTABLE.has(benchmark.status)
@@ -35,7 +45,7 @@ export default function BenchmarkCenter({ datasetId, datasetName, ready }) {
       <CardHeader title="Benchmark center" description="Prepare a golden set, then run the diagnostic phases in their safe order." action={
         <div className="flex gap-2">
           <Button size="sm" onClick={() => setConfirmOpen(true)} disabled={!ready || busy || running} leftIcon={<Play size={13} />}>
-            {running ? 'Benchmark running…' : 'Run full benchmark'}
+            {running ? 'Benchmark running…' : 'Start benchmark'}
           </Button>
           <Button variant="secondary" size="sm" onClick={() => download()} disabled={!TERMINAL_EXPORTABLE.has(benchmark?.status) || busy} leftIcon={<Download size={13} />}>
             Download Diagnostic ZIP
@@ -45,8 +55,22 @@ export default function BenchmarkCenter({ datasetId, datasetName, ready }) {
       <p className="text-[13px]" style={{ color: 'var(--fg-muted)' }}>
         {ready ? `Golden Set / Dataset: ${datasetName || 'Selected golden set'} is ready for a Benchmark Run.` : 'Import and validate a Golden Set / Dataset before starting a Benchmark Run.'}
       </p>
+      <div className="mt-3 grid gap-2 text-[13px] sm:grid-cols-[minmax(0,220px)_1fr]">
+        <label className="grid gap-1">
+          <span className="font-medium">Profile</span>
+          <select aria-label="Profile" value={profileId} onChange={(event) => setProfileId(event.target.value)} disabled={busy || running} className="rounded border bg-transparent px-2 py-1.5" style={{ borderColor: 'var(--border)' }}>
+            {PROFILES.map((profile) => <option key={profile.id} value={profile.id}>{profile.label}</option>)}
+          </select>
+        </label>
+        <div className="rounded border p-2" style={{ borderColor: 'var(--border)' }}>
+          <p className="font-medium">{selectedProfile.label} · {selectedProfile.cost}</p>
+          <p style={{ color: 'var(--fg-muted)' }}>{selectedProfile.phases.map((phase) => PHASE_LABELS[phase]).join(' + ')}</p>
+          <p style={{ color: 'var(--fg-muted)' }}>{Number.isFinite(itemCount) ? `${itemCount} items` : 'Dataset item count unavailable'}</p>
+          {selectedProfile.cost === 'Expensive' && <p className="mt-1" style={{ color: 'var(--warning, #b7791f)' }}>Expensive: runs Regular and Extended E2E over the selected dataset.</p>}
+        </div>
+      </div>
       {benchmark && <>
-        <div className="mt-3 flex items-center gap-2 text-[13px]"><Badge dot>{benchmark.status}</Badge><span>Benchmark Run: {completedPhases} / {executableTotal} executable phases complete</span></div>
+        <div className="mt-3 flex items-center gap-2 text-[13px]"><Badge dot>{benchmark.status}</Badge><span>Benchmark Run: {completedPhases} / {executableTotal} executable phases complete</span>{benchmark.profile && <span>· {PROFILES_BY_ID[benchmark.profile]?.label || benchmark.profile}</span>}</div>
         {running && <p className="mt-2 text-[13px]" style={{ color: 'var(--fg-muted)' }}>Safe to leave this page. The benchmark runs on the server and progress is saved automatically.</p>}
         <ul className="mt-3 space-y-1 text-[13px]">
           {phases.map((phase) => <li key={phase.name} className="flex justify-between gap-4"><span>{PHASE_LABELS[phase.name] || phase.name}</span><span style={{ color: 'var(--fg-muted)' }}>{phase.status}{phase.reason || phase.error ? ` — ${phase.reason || phase.error}` : ''}</span></li>)}
@@ -61,7 +85,7 @@ export default function BenchmarkCenter({ datasetId, datasetName, ready }) {
       </>}
       <BenchmarkHistory history={history} selectedId={benchmark?.benchmark_id} busy={busy} onSelect={select} onDownload={download} />
       {error && <p className="mt-3 text-[13px]" style={{ color: 'var(--danger)' }}>{error}</p>}
-      <ConfirmModal open={confirmOpen} onOpenChange={setConfirmOpen} title="Run the full benchmark?" description="This runs the retrieval check first. End-to-end phases may call the configured model after the free check succeeds." confirmLabel="Start benchmark" onConfirm={() => { setConfirmOpen(false); start() }} />
+      <ConfirmModal open={confirmOpen} onOpenChange={setConfirmOpen} title={`Run ${selectedProfile.label}?`} description={`${selectedProfile.phases.map((phase) => PHASE_LABELS[phase]).join(' + ')} over ${Number.isFinite(itemCount) ? `${itemCount} items` : 'the selected dataset'}.${selectedProfile.cost === 'Expensive' ? ' This is an expensive profile.' : ''}`} confirmLabel="Start benchmark" onConfirm={() => { setConfirmOpen(false); start(selectedProfile.id) }} />
     </Card>
   )
 }
@@ -77,7 +101,7 @@ function BenchmarkHistory({ history = [], selectedId, busy, onSelect, onDownload
         const phase = run.phases?.find((item) => item.status === 'running')
         return <li key={run.benchmark_id} className="flex min-w-0 items-center gap-2 rounded border p-2 text-[13px]" style={{ borderColor: 'var(--border)' }}>
           <div className="min-w-0 flex-1">
-            <div className="flex min-w-0 items-center gap-2"><span className="truncate font-medium">{run.dataset_name || run.dataset?.name || 'Golden Set'}</span><Badge dot>{run.status}</Badge></div>
+            <div className="flex min-w-0 items-center gap-2"><span className="truncate font-medium">{run.dataset_name || run.dataset?.name || 'Golden Set'}</span><Badge dot>{run.status}</Badge>{run.profile && <span>{PROFILES_BY_ID[run.profile]?.label || run.profile}</span>}</div>
             <p className="truncate text-xs" style={{ color: 'var(--fg-muted)' }}>{formatTimestamp(run.created_at || run.started_at || run.finished_at)} · {run.dataset_version ? `v${run.dataset_version} · ` : ''}{run.benchmark_id}</p>
             {phase && <p className="truncate text-xs" style={{ color: 'var(--fg-muted)' }}>Current phase: {PHASE_LABELS[phase.name] || phase.name}</p>}
           </div>

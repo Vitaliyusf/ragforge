@@ -1012,6 +1012,7 @@ class EvalStore:
         manifest: Optional[Dict[str, Any]] = None,
         operational_metrics: Optional[Dict[str, Any]] = None,
         owner_id: Optional[str] = None,
+        profile: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Open a benchmark document in ``queued`` state and return it.
 
@@ -1064,6 +1065,7 @@ class EvalStore:
             "started_at": None,
             "finished_at": None,
             "status": BENCHMARK_QUEUED,
+            "profile": profile,
             "phases": phases,
             "progress": progress,
             "manifest": manifest,
@@ -1540,6 +1542,7 @@ def _normalize_benchmark(document: Dict[str, Any]) -> Dict[str, Any]:
         **progress,
     }
     return {
+        "profile": None,
         "manifest": None,
         "operational_metrics": None,
         # Legacy benchmarks did not retain their scoring labels.  Keep this
