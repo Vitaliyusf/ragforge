@@ -1,0 +1,84 @@
+{
+  "schema_version": 1,
+  "contracts": [
+    {
+      "id": "CON-001",
+      "name": "Browser \u2192 Gateway REST",
+      "owner": "gateway",
+      "caller": "frontend",
+      "callee": "gateway",
+      "transport": "HTTP",
+      "canonical_locations": [
+        "frontend/src/lib/http/client.js",
+        "backend/gateway/app/rest"
+      ],
+      "rule": "Frontend normally calls Gateway, not internal services."
+    },
+    {
+      "id": "CON-002",
+      "name": "Gateway \u2192 backend RPC",
+      "owner": "gateway/shared",
+      "caller": "gateway",
+      "callee": "backend services",
+      "transport": "RabbitMQ",
+      "canonical_locations": [
+        "backend/gateway/app",
+        "backend/shared"
+      ],
+      "rule": "Reuse existing RPC/envelope/auth path."
+    },
+    {
+      "id": "CON-003",
+      "name": "RAG downstream calls",
+      "owner": "rag",
+      "caller": "rag",
+      "callee": "embedding/vector_db/memory/llm_agent",
+      "transport": "service RPC",
+      "canonical_locations": [
+        "backend/rag/app/services/conversation_backend_client.py"
+      ],
+      "rule": "Extend existing backend client when adding RAG downstream operations."
+    },
+    {
+      "id": "CON-004",
+      "name": "Durable ingestion pipeline",
+      "owner": "files/embedding/vector_db",
+      "caller": "files",
+      "callee": "embedding/vector_db",
+      "transport": "Kafka",
+      "canonical_locations": [
+        "backend/shared/kafka_base.py",
+        "backend/files",
+        "backend/embedding",
+        "backend/vector_db"
+      ],
+      "rule": "Critical flow targets at-least-once + idempotency."
+    },
+    {
+      "id": "CON-005",
+      "name": "Prometheus metrics",
+      "owner": "shared/gateway",
+      "caller": "services",
+      "callee": "Prometheus/Gateway metrics",
+      "transport": "scrape/query",
+      "canonical_locations": [
+        "backend/shared/metrics.py",
+        "backend/gateway/app/services/metrics_service.py"
+      ],
+      "rule": "No tenant/run/file/chunk/trace IDs as labels."
+    },
+    {
+      "id": "CON-006",
+      "name": "RAG eval persistence",
+      "owner": "rag",
+      "caller": "eval runner",
+      "callee": "eval store/Mongo",
+      "transport": "in-process repository",
+      "canonical_locations": [
+        "backend/rag/app/services/eval_runner.py",
+        "backend/rag/app/services/eval_store.py"
+      ],
+      "rule": "Benchmark extensions reuse current eval dataset/run store."
+    }
+  ]
+}
