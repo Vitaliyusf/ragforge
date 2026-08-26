@@ -7,6 +7,7 @@ import pytest
 
 from app.core.errors import DatabaseException
 from app.db._base import BaseRepository
+from app.db._chunks import ChunksRepositoryMixin
 from app.db._files import FilesRepositoryMixin
 from app.utils.common import validate_managed_file_path
 from shared.context import bound_context
@@ -28,6 +29,10 @@ class RecordingCollection(FakeCollection):
 
 
 class ScopedFilesRepository(FilesRepositoryMixin, BaseRepository):
+    pass
+
+
+class ScopedChunksRepository(ChunksRepositoryMixin, BaseRepository):
     pass
 
 
@@ -98,6 +103,36 @@ def test_filename_lookup_is_tenant_scoped_for_an_authorized_admin() -> None:
 
     assert collection.query == {"tenant_id": "tenant-a"}
     assert collection.projection == {"_id": 0, "file_id": 1, "filename": 1}
+
+
+def test_eval_file_readiness_lookup_is_tenant_scoped() -> None:
+    collection = RecordingCollection()
+    repository = ScopedFilesRepository(collection)
+
+    with bound_context(
+        tenant_id="tenant-a", user_id="admin-a", role="admin", admin_id="admin-a"
+    ):
+        assert repository.get_eval_file_records(["file-a"]) == []
+
+    assert collection.query == {
+        "$and": [{"tenant_id": "tenant-a"}, {"file_id": {"$in": ["file-a"]}}]
+    }
+
+
+def test_eval_chunk_lookup_is_tenant_scoped_without_owner_narrowing() -> None:
+    primary = FakeCollection()
+    chunks = RecordingCollection()
+    repository = ScopedChunksRepository(primary)
+    repository.file_chunks_collection = chunks
+
+    with bound_context(
+        tenant_id="tenant-a", user_id="admin-a", role="admin", admin_id="admin-a"
+    ):
+        assert repository.get_eval_chunk_records(["file-a"]) == []
+
+    assert chunks.query == {
+        "$and": [{"tenant_id": "tenant-a"}, {"file_id": {"$in": ["file-a"]}}]
+    }
 
 
 def test_user_cannot_forge_document_owner() -> None:

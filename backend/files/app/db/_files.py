@@ -123,6 +123,33 @@ class FilesRepositoryMixin:
         except Exception as exc:
             raise DatabaseException(f"Failed to get file labels: {exc}") from exc
 
+    def get_eval_file_records(self, file_ids: List[str]) -> List[Dict[str, Any]]:
+        """Return readiness fields for golden-set files in the caller's tenant.
+
+        Evaluation datasets are tenant-wide and admin-only, so owner scoping is
+        deliberately disabled while the mandatory tenant predicate remains.
+        """
+        if not file_ids:
+            return []
+        try:
+            files = self.collection.find(
+                self._scope_filter(
+                    {"file_id": {"$in": list(dict.fromkeys(file_ids))}},
+                    owner_scope=False,
+                ),
+                {
+                    "_id": 0,
+                    "file_id": 1,
+                    "status": 1,
+                    "review_status": 1,
+                    "stage.embedding": 1,
+                    "stage.vector": 1,
+                },
+            )
+            return [serialize(file_doc) for file_doc in files]
+        except Exception as exc:
+            raise DatabaseException(f"Failed to get eval file readiness: {exc}") from exc
+
     def get_by_id(self, file_id: str) -> Optional[Dict[str, Any]]:
         """Return a serialized file document by ``file_id``."""
         try:

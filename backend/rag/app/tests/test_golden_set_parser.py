@@ -38,6 +38,7 @@ def test_json_authoring_format_normalizes_to_the_canonical_schema():
             "expected_file_names": ["doc.md"],
             "expected_answer": "30 days.",
             "expected_claims": ["Refunds are available for 30 days."],
+            "unresolved_expected_facts": [],
             "difficulty": "medium",
             "answerable": True,
             "tags": ["factual"],

@@ -74,7 +74,7 @@ from app.services.eval_store import (
     EvalValidationError,
     build_config_snapshot,
 )
-from app.services.golden_set_parser import prepare_file_labels
+from app.services.golden_set_parser import prepare_chunk_labels, prepare_file_labels
 from shared.auth import AuthIdentity, identity_from_context
 from shared.context import bound_context
 
@@ -611,19 +611,63 @@ class EvalRunner:
             reply = await self.backend_client.resolve_file_labels(request, labels)
             resolutions = reply.get("resolutions") or []
 
-        result = prepare_file_labels(items, resolutions)
-        counts = result["counts"]
+        file_result = prepare_file_labels(items, resolutions)
+        prepared_items = file_result["items"]
+        identity = identity_from_context(required=True)
+        request = ConversationRequest(
+            user_message="",
+            mode="regular",
+            tenant_id=identity.tenant_id,
+            user_id=identity.user_id,
+            role=identity.role,
+            admin_id=identity.admin_id,
+        )
+        chunk_requests = [
+            {
+                "item_id": str(item.get("item_id") or ""),
+                "file_ids": list(item.get("relevant_file_ids") or []),
+                "facts": list(item.get("expected_claims") or []),
+            }
+            for item in prepared_items
+            if item.get("answerable") is not False and item.get("relevant_file_ids")
+        ]
+        chunk_resolutions: List[Dict[str, Any]] = []
+        if chunk_requests:
+            reply = await self.backend_client.resolve_chunk_labels(request, chunk_requests)
+            chunk_resolutions = reply.get("resolutions") or []
+        chunk_result = prepare_chunk_labels(prepared_items, chunk_resolutions)
+        counts = file_result["counts"]
+        blocking = file_result["blocking"] or chunk_result["blocking"]
         validation = {
             **validation,
-            "valid": not result["blocking"],
-            "valid_items": counts["ready"] + counts["unanswerable"],
-            "invalid_items": counts["unresolved"] + counts["ambiguous"],
-            "errors": [*validation.get("errors", []), *result["errors"]],
+            "valid": not blocking,
+            "valid_items": max(
+                0,
+                counts["ready"]
+                + counts["unanswerable"]
+                - chunk_result["counts"]["unready_items"],
+            ),
+            "invalid_items": (
+                counts["unresolved"]
+                + counts["ambiguous"]
+                + chunk_result["counts"]["unready_items"]
+            ),
+            "errors": [
+                *validation.get("errors", []),
+                *file_result["errors"],
+                *chunk_result["errors"],
+            ],
+            "warnings": chunk_result["warnings"],
         }
         return {
-            "items": result["items"],
+            "items": chunk_result["items"],
             "validation": validation,
-            "preparation": {**counts, "blocking": result["blocking"]},
+            "preparation": {
+                **counts,
+                **chunk_result["counts"],
+                "blocking": blocking,
+                "warnings": chunk_result["warnings"],
+            },
         }
 
     # ------------------------------------------------------------------
