@@ -1,62 +1,94 @@
-# Shared Memory Update Protocol — Security-Hardened
+# Shared Memory Update Protocol — Security-Hardened and Low-Noise
 
-## Data classification
+## Classification
 
 ### Public-safe tracked memory
-Only sanitized architecture facts, capability locations, contracts and durable decisions that are safe to publish.
+Only sanitized durable project knowledge:
+- service ownership;
+- canonical capabilities;
+- contracts;
+- architecture decisions;
+- stable gotchas/current-state facts.
 
 ### Private operational memory
-Write these only to `.agent-private/`:
-- handoff/history
-- known bugs
-- technical debt
-- failed approaches
-- unreleased incident/root-cause details
-- security findings
+Write only to gitignored `.agent-private/`:
+- handoff/history;
+- unresolved bugs;
+- technical debt;
+- failed approaches;
+- unreleased incident/root-cause/security details.
 
-## Never persist in either memory
-- passwords, API keys, cookies, session/auth tokens, private keys
-- raw `.env` values
-- raw customer/user documents or prompts
-- personal/customer email addresses unless explicitly required and approved
-- raw production logs containing identifiers/tokens
-- secrets copied from command output
-- absolute local paths containing usernames/home directories
-- raw user text when a neutral technical paraphrase is enough
+## Never persist
+- passwords/API keys/cookies/session tokens/private keys;
+- raw `.env` values;
+- raw customer/user documents or prompts;
+- raw production logs with identifiers/tokens;
+- secrets copied from command output;
+- absolute local paths containing usernames/home directories when a repo-relative path is enough;
+- chat transcripts.
 
-## Before work
-1. If continuing prior work, read `.agent-private/HANDOFF.md` if it exists.
-2. Search relevant public decisions/capabilities/contracts.
-3. Search `.agent-private/BUGS.json`, `TECH_DEBT.json`, `FAILED_APPROACHES.json` if present.
-4. Query the brain before creating a new implementation.
-5. Refresh generated indexes if missing/stale.
+## Read policy
+Do not load all memory on every task.
 
-## After meaningful write work
-Always:
-1. Run relevant tests/checks.
-2. `python scripts/ai/rebuild_repo_brain.py`
-3. Update `.agent-private/HANDOFF.md`.
-4. Append one compact line to `.agent-private/CHANGE_HISTORY.jsonl`.
-5. `python scripts/ai/validate_ai_memory.py`
+Read only when relevant:
+- continuation → `.agent-private/HANDOFF.md`;
+- architecture decision → `DECISIONS.json`;
+- known bug/debt → matching private registry;
+- failed approach → matching private registry.
 
-Conditionally:
-- public-safe durable architecture decision → `docs/ai/memory/DECISIONS.json`
-- security-sensitive/private decision → private memory, not tracked
-- unresolved bug → `.agent-private/BUGS.json`
-- technical debt → `.agent-private/TECH_DEBT.json`
-- failed/rejected approach → `.agent-private/FAILED_APPROACHES.json`
-- new canonical capability → `CAPABILITIES.json`
-- changed service/contract → `SERVICES.json` / `CONTRACTS.json`
+Do not read full `CHANGE_HISTORY.jsonl` for normal work.
+
+## Write timing
+Do not update memory while implementation is still moving.
+
+Required order:
+
+```text
+code complete
+→ focused tests
+→ affected service tests
+→ final diff review
+→ memory updates
+→ rebuild once
+→ validate once
+→ final response
+```
+
+If code changes after memory update, validate the code first, then refresh memory once at the end.
+
+## Handoff/history
+Prefer:
+
+```bash
+python scripts/ai/record_handoff.py ...
+```
+
+Do not manually read and rewrite full handoff/history unless the helper cannot represent the required state.
+
+Keep summary short and technical.
+
+## Public registry updates
+Update `CAPABILITIES.json`, `SERVICES.json`, `CONTRACTS.json`, `DECISIONS.json` only when the task creates/changes durable canonical behavior.
+
+Do not touch public memory merely because files changed.
 
 ## Security vulnerability rule
-Unfixed vulnerability details are private by default. Do not commit exploit details, vulnerable endpoints, credentials, customer impact, or reproduction payloads to a public repository.
+Unfixed vulnerability details are private by default.
+Never commit exploit details, vulnerable endpoints, credentials, customer impact or reproduction payloads to the public repository.
 
 ## Evidence
-Every record requires safe evidence: source-relative path/symbol, test name, task ID, sanitized benchmark ID or eventual PR/commit.
+Use safe evidence:
+- repo-relative source path/symbol;
+- test name;
+- task ID;
+- sanitized benchmark ID;
+- eventual PR/commit.
 
-## Handoff
-Do not copy chat transcripts. Use short technical paraphrases. Never include raw secrets/logs.
+## Final validation
 
-## Decisions / failed approaches
-Accepted decisions remain authoritative until superseded or a documented revisit condition is met.
-Do not retry a failed approach unless a revisit condition is true or the user explicitly requests reevaluation.
+```bash
+python scripts/ai/rebuild_repo_brain.py
+python scripts/ai/validate_ai_memory.py
+```
+
+Run this final pair once after memory is stable.

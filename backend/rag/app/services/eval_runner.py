@@ -90,6 +90,20 @@ MODE_RETRIEVAL = "retrieval"
 MODE_END_TO_END = "end_to_end"
 EVAL_MODES = (MODE_RETRIEVAL, MODE_END_TO_END)
 
+# Which conversation pipeline an `end_to_end` run drives. A **different axis**
+# from the evaluation mode above, and deliberately not merged with it: the
+# evaluation mode says how much of the stack a run measured, the pipeline mode
+# says which variant of the stack it measured. Collapsing them into one
+# enumeration is what makes "extended" ambiguous between "a deeper pipeline"
+# and "a more expensive measurement".
+#
+# `None` is a legitimate value, not a missing one: a `retrieval` run issues a
+# single pipeline-independent `search_chunks` call, so it drives no pipeline
+# at all. Recording `regular` for it would claim a variable the run never set.
+PIPELINE_REGULAR = "regular"
+PIPELINE_EXTENDED = "extended"
+PIPELINE_MODES = (PIPELINE_REGULAR, PIPELINE_EXTENDED)
+
 MATCH_CHUNK = "chunk_id"
 MATCH_FILE = "file_id"
 MATCH_MIXED = "mixed"
@@ -151,7 +165,7 @@ ERROR_NOT_FOUND = "not_found"
 ERROR_FORBIDDEN = "forbidden"
 
 
-def _error_reply(kind: str, message: str) -> Dict[str, Any]:
+def error_reply(kind: str, message: str) -> Dict[str, Any]:
     """Report a refusal without tripping the shared error envelope.
 
     ``build_reply_envelope`` turns any ``error`` key into an unsuccessful
@@ -554,6 +568,7 @@ class EvalRunner:
                     "run": await self.start_run(
                         str(payload.get("dataset_id") or ""),
                         str(payload.get("mode") or MODE_RETRIEVAL),
+                        payload.get("pipeline_mode") or None,
                     )
                 }
             if action == LIST_EVAL_RUNS:
@@ -564,13 +579,13 @@ class EvalRunner:
                 }
             if action == GET_EVAL_RUN:
                 return {"run": self.store.get_run(str(payload.get("run_id") or ""))}
-            return _error_reply(ERROR_VALIDATION, f"Unsupported eval action: {action!r}")
+            return error_reply(ERROR_VALIDATION, f"Unsupported eval action: {action!r}")
         except EvalValidationError as exc:
-            return _error_reply(ERROR_VALIDATION, str(exc))
+            return error_reply(ERROR_VALIDATION, str(exc))
         except EvalNotFound as exc:
-            return _error_reply(ERROR_NOT_FOUND, str(exc))
+            return error_reply(ERROR_NOT_FOUND, str(exc))
         except EvalAccessDenied as exc:
-            return _error_reply(ERROR_FORBIDDEN, str(exc))
+            return error_reply(ERROR_FORBIDDEN, str(exc))
 
     async def _prepare_import(self, content: Any, source_format: str) -> Dict[str, Any]:
         """Parse, resolve tenant-scoped filenames, and report import readiness."""
@@ -678,6 +693,7 @@ class EvalRunner:
         self,
         dataset_id: str,
         mode: str = MODE_RETRIEVAL,
+        pipeline_mode: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Open a run and execute it in the background.
 
@@ -688,10 +704,48 @@ class EvalRunner:
         Args:
             dataset_id: The dataset to execute.
             mode: ``retrieval`` (default, LLM-free) or ``end_to_end``.
+            pipeline_mode: ``regular``, ``extended``, or ``None`` to let the
+                run's evaluation mode decide.
 
         Raises:
             EvalValidationError: On an unknown mode, or on ``end_to_end``
                 with no graph available to run.
+        """
+        prepared = await self.open_run(dataset_id, mode, pipeline_mode)
+        task = asyncio.create_task(prepared.execute())
+        self._tasks.add(task)
+        task.add_done_callback(self._tasks.discard)
+        return prepared.run
+
+    async def open_run(
+        self,
+        dataset_id: str,
+        mode: str = MODE_RETRIEVAL,
+        pipeline_mode: Optional[str] = None,
+        benchmark_id: Optional[str] = None,
+    ) -> "PreparedRun":
+        """Validate and open a run document without executing it.
+
+        Split out of :meth:`start_run` so that a caller which needs to know
+        when the run finished — the benchmark orchestrator, which must not
+        start an expensive phase until the cheap one has reported — can await
+        it directly instead of polling the store it just wrote to.
+
+        Args:
+            dataset_id: The dataset to execute.
+            mode: ``retrieval`` (default, LLM-free) or ``end_to_end``.
+            pipeline_mode: Which conversation pipeline to drive. ``None``
+                defaults to :data:`PIPELINE_REGULAR` for an ``end_to_end``
+                run and stays ``None`` for a ``retrieval`` one, which drives
+                no pipeline.
+
+        Raises:
+            EvalValidationError: On an unknown evaluation or pipeline mode,
+                on ``end_to_end`` with no graph available to run, or on a
+                pipeline mode asked of a ``retrieval`` run, whose single
+                ``search_chunks`` call the pipeline cannot influence.
+            benchmark_id: The benchmark this run is a phase of, recorded on
+                the run document. ``None`` for a run started on its own.
         """
         if mode not in EVAL_MODES:
             raise EvalValidationError(f"Unsupported eval run mode: {mode!r}")
@@ -699,6 +753,19 @@ class EvalRunner:
             raise EvalValidationError(
                 "end_to_end runs are unavailable: no conversation graph is wired"
             )
+        if pipeline_mode is not None and pipeline_mode not in PIPELINE_MODES:
+            raise EvalValidationError(f"Unsupported pipeline mode: {pipeline_mode!r}")
+        if pipeline_mode is not None and mode != MODE_END_TO_END:
+            # Refused rather than ignored. A retrieval run's ranking comes
+            # from one `search_chunks` call that the conversation pipeline
+            # never touches, so accepting the argument would let two runs
+            # record different pipelines while having executed identically.
+            raise EvalValidationError(
+                "pipeline_mode applies to end_to_end runs only: a retrieval "
+                "run issues one pipeline-independent search"
+            )
+        if mode == MODE_END_TO_END:
+            pipeline_mode = pipeline_mode or PIPELINE_REGULAR
         # Raises EvalAccessDenied / EvalNotFound before anything is written,
         # so a refused request leaves no run document behind.
         dataset = self.store.get_dataset(dataset_id)
@@ -734,9 +801,12 @@ class EvalRunner:
                     if mode == MODE_END_TO_END
                     else candidate_depth(self.config)
                 ),
+                pipeline_mode=pipeline_mode,
             ),
             match_mode,
             mode=mode,
+            pipeline_mode=pipeline_mode,
+            benchmark_id=benchmark_id,
             # Snapshot, not a reference: the dataset can be edited between
             # this run and the next time anybody reads it, and a run that
             # re-reported its dataset's *current* labels would quietly
@@ -745,21 +815,25 @@ class EvalRunner:
             dataset_sha256=dataset.get("dataset_sha256"),
         )
 
-        task = asyncio.create_task(
-            self._execute(run["run_id"], identity, items, match_mode, mode)
+        return PreparedRun(
+            run=run,
+            runner=self,
+            identity=identity,
+            items=items,
+            match_mode=match_mode,
+            mode=mode,
+            pipeline_mode=pipeline_mode,
         )
-        self._tasks.add(task)
-        task.add_done_callback(self._tasks.discard)
-        return run
 
-    async def _execute(
+    async def execute_run(
         self,
         run_id: str,
         identity: AuthIdentity,
         items: List[Dict[str, Any]],
         match_mode: str,
         mode: str = MODE_RETRIEVAL,
-    ) -> None:
+        pipeline_mode: Optional[str] = None,
+    ) -> Dict[str, Any]:
         """Score every item, then close the run.
 
         The identity is re-bound explicitly rather than left to task context
@@ -770,6 +844,12 @@ class EvalRunner:
         Wrapped so that **no exception can leave the run in ``running``** —
         that state is indistinguishable from a run still in progress, which
         is what makes a stuck eval dashboard useless.
+
+        Returns:
+            How the run closed: ``run_id``, terminal ``status``, aggregated
+            ``results`` and ``error``. The same facts the store now holds,
+            handed back so an orchestrator awaiting the run does not have to
+            read back the document it just caused to be written.
         """
         tenant_id = identity.tenant_id
         # The same bound as retrieval mode, deliberately not raised for
@@ -783,13 +863,14 @@ class EvalRunner:
                 report = await self._validate_labels(identity, items, match_mode)
                 self.store.record_label_validation(run_id, tenant_id, report.summary)
                 if report.blocking:
+                    error = stale_label_error(report.summary)
                     self.store.finish_run(
                         run_id,
                         tenant_id,
                         status=RUN_FAILED,
-                        error=stale_label_error(report.summary),
+                        error=error,
                     )
-                    return
+                    return _run_summary(run_id, RUN_FAILED, {}, error)
                 rows = await asyncio.gather(
                     *(
                         self._score_item(
@@ -800,21 +881,38 @@ class EvalRunner:
                             semaphore,
                             mode,
                             unscorable=str(item.get("item_id") or "") in report.unscorable,
+                            pipeline_mode=pipeline_mode,
                         )
                         for item in items
                     )
                 )
             failed = _all_failed(rows)
+            status = RUN_FAILED if failed else RUN_COMPLETED
+            results = aggregate(rows, mode)
+            error = _first_error(rows) if failed else None
             self.store.finish_run(
                 run_id,
                 tenant_id,
-                status=RUN_FAILED if failed else RUN_COMPLETED,
-                results=aggregate(rows, mode),
-                error=_first_error(rows) if failed else None,
+                status=status,
+                results=results,
+                error=error,
             )
+            return _run_summary(run_id, status, results, error)
+        except asyncio.CancelledError:
+            # A cancelled run is still a closed run. Left in `running` it
+            # would look like work still in flight after the loop that was
+            # doing it is gone.
+            self.store.finish_run(
+                run_id,
+                tenant_id,
+                status=RUN_FAILED,
+                error="Eval run was cancelled before it finished",
+            )
+            raise
         except Exception as exc:  # noqa: BLE001 - the run must always close
             self._log("eval_runner:execute", "Eval run failed", {"error": str(exc)})
             self.store.finish_run(run_id, tenant_id, status=RUN_FAILED, error=str(exc))
+            return _run_summary(run_id, RUN_FAILED, {}, str(exc))
 
     async def _validate_labels(
         self,
@@ -883,6 +981,7 @@ class EvalRunner:
         mode: str = MODE_RETRIEVAL,
         *,
         unscorable: bool = False,
+        pipeline_mode: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Retrieve for one item, score it, and persist the row.
 
@@ -928,7 +1027,11 @@ class EvalRunner:
             async with semaphore:
                 request = ConversationRequest(
                     user_message=query,
-                    mode="regular",
+                    # The pipeline the run declared. A retrieval run passes
+                    # None and falls back to `regular`, which its single
+                    # `search_chunks` call does not read — the field is only
+                    # load-bearing once the graph is what executes the item.
+                    mode=pipeline_mode or PIPELINE_REGULAR,
                     tenant_id=tenant_id,
                     user_id=identity.user_id,
                     role=identity.role,
@@ -998,6 +1101,61 @@ class EvalRunner:
     def _log(self, event: str, message: str, data: Dict[str, Any]) -> None:
         if self.logger is not None:
             self.logger.log(event, message, data)
+
+
+@dataclass
+class PreparedRun:
+    """A validated, persisted run that has not started executing yet.
+
+    Everything that can be refused — an unknown mode, a missing graph, an
+    unresolved dataset — has already been refused by the time one of these
+    exists, and the run document is already in the store. What is left is the
+    work, which :meth:`execute` performs and awaits.
+
+    This is what lets the benchmark orchestrator run phases in order: it
+    needs the ``run_id`` immediately, to record which run a phase became, and
+    it needs to know when that run finished, to decide whether the next phase
+    should start at all.
+    """
+
+    run: Dict[str, Any]
+    runner: "EvalRunner"
+    identity: AuthIdentity
+    items: List[Dict[str, Any]]
+    match_mode: str
+    mode: str = MODE_RETRIEVAL
+    pipeline_mode: Optional[str] = None
+
+    @property
+    def run_id(self) -> str:
+        """The opened run's id."""
+        return str(self.run.get("run_id") or "")
+
+    async def execute(self) -> Dict[str, Any]:
+        """Execute the run to completion and return how it closed."""
+        return await self.runner.execute_run(
+            self.run_id,
+            self.identity,
+            self.items,
+            self.match_mode,
+            self.mode,
+            self.pipeline_mode,
+        )
+
+
+def _run_summary(
+    run_id: str,
+    status: str,
+    results: Dict[str, Any],
+    error: Optional[str],
+) -> Dict[str, Any]:
+    """How one run closed, for a caller that awaited it."""
+    return {
+        "run_id": run_id,
+        "status": status,
+        "results": results or {},
+        "error": error,
+    }
 
 
 def _item_scores(ids: List[str], relevant: Set[str]) -> Dict[str, Dict[str, float]]:

@@ -23,6 +23,8 @@ from app.services.eval_runner import (
     MATCH_MIXED,
     MODE_END_TO_END,
     MODE_RETRIEVAL,
+    PIPELINE_EXTENDED,
+    PIPELINE_REGULAR,
     STALE_POLICY_FAIL,
     STALE_POLICY_UNSCORABLE,
     EvalRunner,
@@ -770,7 +772,11 @@ class FakeGraphRunner:
 
     async def run(self, request, emitter, resume=False, record_metrics=True):
         self.calls.append(
-            {"query": request.user_message, "record_metrics": record_metrics}
+            {
+                "query": request.user_message,
+                "record_metrics": record_metrics,
+                "pipeline_mode": request.mode,
+            }
         )
         await asyncio.sleep(0)
         return self.results.get(request.user_message, {})
@@ -852,6 +858,68 @@ def test_an_unknown_mode_is_refused():
 
     with bound_context(**ADMIN.to_dict()):
         asyncio.run(_go())
+
+
+def test_a_retrieval_run_records_no_pipeline_it_did_not_drive():
+    """Its one search is not routed through a conversation pipeline."""
+    store, runner, _, dataset_id = build()
+
+    run = fetch(store, execute(runner, dataset_id)["run_id"])
+
+    assert run["pipeline_mode"] is None
+    assert run["config_snapshot"]["pipeline_mode"] is None
+
+
+def test_a_pipeline_mode_on_a_retrieval_run_is_refused_not_ignored():
+    """Accepting it would let identical runs record different pipelines."""
+    store, runner, _, dataset_id = build()
+
+    async def _go():
+        with pytest.raises(EvalValidationError):
+            await runner.start_run(dataset_id, MODE_RETRIEVAL, PIPELINE_EXTENDED)
+
+    with bound_context(**ADMIN.to_dict()):
+        asyncio.run(_go())
+
+
+def test_an_unknown_pipeline_mode_is_refused():
+    store, runner, _, dataset_id = build()
+    runner.graph_runner = FakeGraphRunner(GRAPH_RESULTS)
+
+    async def _go():
+        with pytest.raises(EvalValidationError):
+            await runner.start_run(dataset_id, MODE_END_TO_END, "turbo")
+
+    with bound_context(**ADMIN.to_dict()):
+        asyncio.run(_go())
+
+
+def test_an_end_to_end_run_defaults_to_the_regular_pipeline():
+    """Saying nothing must not leave the axis unrecorded."""
+    store, runner, _, dataset_id = build()
+    runner.graph_runner = FakeGraphRunner(GRAPH_RESULTS)
+
+    run = fetch(store, run_end_to_end(runner, dataset_id)["run_id"])
+
+    assert run["pipeline_mode"] == PIPELINE_REGULAR
+
+
+def test_an_extended_run_drives_the_extended_pipeline():
+    store, runner, _, dataset_id = build()
+    runner.graph_runner = FakeGraphRunner(GRAPH_RESULTS)
+
+    async def _go():
+        run = await runner.start_run(dataset_id, MODE_END_TO_END, PIPELINE_EXTENDED)
+        await asyncio.gather(*list(runner._tasks))
+        return run
+
+    with bound_context(**ADMIN.to_dict()):
+        run = asyncio.run(_go())
+
+    assert fetch(store, run["run_id"])["pipeline_mode"] == PIPELINE_EXTENDED
+    assert {call["pipeline_mode"] for call in runner.graph_runner.calls} == {
+        PIPELINE_EXTENDED
+    }
 
 
 def test_end_to_end_run_reports_answer_quality_and_retrieval():

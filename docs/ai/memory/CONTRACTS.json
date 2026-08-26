@@ -79,20 +79,6 @@
         "backend/rag/app/services/eval_store.py"
       ],
       "rule": "Benchmark extensions reuse current eval dataset/run store."
-    },
-    {
-      "id": "CON-007",
-      "name": "RAG eval preparation to Files",
-      "owner": "rag/files",
-      "caller": "RAG eval runner",
-      "callee": "Files",
-      "transport": "service RPC",
-      "canonical_locations": [
-        "backend/rag/app/services/conversation_backend_client.py",
-        "backend/files/app/services/_file_query.py",
-        "backend/files/app/db/_chunks.py"
-      ],
-      "rule": "Resolve exact fact labels and file readiness only through authenticated tenant-scoped Files queries; never return chunk text."
     }
   ]
 }

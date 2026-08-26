@@ -81,6 +81,33 @@ class EvalRunMode(str, Enum):
     END_TO_END = "end_to_end"
 
 
+class EvalPipelineMode(str, Enum):
+    """Which conversation pipeline an ``end_to_end`` eval run drives.
+
+    A different axis from :class:`EvalRunMode`, which says how much of the
+    stack a run measures. A ``retrieval`` run drives no pipeline at all — its
+    single search is not routed through one — so leaving this unset is the
+    correct answer for it, not a missing value.
+    """
+    REGULAR = "regular"
+    EXTENDED = "extended"
+
+
+class BenchmarkPhase(str, Enum):
+    """The phases a full diagnostic benchmark can be asked for.
+
+    Mirrors ``PHASE_SPECS`` in the rag service's
+    ``app/services/benchmark_runner.py``, which cannot import gateway code —
+    the same arrangement as :class:`RagAction`. Naming a phase here does not
+    promise it will run: rag decides which phases this build can execute
+    truthfully and records the rest as ``unsupported`` with the reason.
+    """
+    RETRIEVAL_BASE = "retrieval_base"
+    RETRIEVAL_EXTENDED = "retrieval_extended"
+    END_TO_END_REGULAR = "end_to_end_regular"
+    END_TO_END_EXTENDED = "end_to_end_extended"
+
+
 class MetricsWindow(str, Enum):
     """Allowed lookback windows for the admin metrics routes.
 
@@ -162,6 +189,11 @@ class RagAction(str, Enum):
     START_EVAL_RUN = "start_eval_run"
     LIST_EVAL_RUNS = "list_eval_runs"
     GET_EVAL_RUN = "get_eval_run"
+    # Full diagnostic benchmark orchestration. Each phase it runs is an
+    # ordinary eval run, reachable through the eval actions above.
+    START_BENCHMARK_RUN = "start_benchmark_run"
+    LIST_BENCHMARK_RUNS = "list_benchmark_runs"
+    GET_BENCHMARK_RUN = "get_benchmark_run"
 
 
 class VectorDbAction(str, Enum):

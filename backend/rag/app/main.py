@@ -21,6 +21,7 @@ from app.messaging.rag_rpc_handler import build_reply_envelope, extract_request_
 from app.messaging.rpc_client import RabbitMQRPCClient
 from app.rest.routes import api_router
 from app.rest.v1.rag import get_rag_service
+from app.services.benchmark_runner import BENCHMARK_ACTIONS, create_benchmark_runner
 from app.services.conversation_backend_client import ConversationBackendClient
 from app.services.conversation_persistence import create_conversation_store
 from app.services.conversation_tracing import ConversationTracer
@@ -59,6 +60,10 @@ eval_store = create_eval_store(config)
 eval_runner = create_eval_runner(
     config, eval_store, backend_client, logger, rag_service.graph_runner
 )
+# The orchestrator owns no scoring of its own: every phase it runs is an eval
+# run opened through the runner above, so a benchmark phase and a hand-started
+# run are produced by the same code and can be compared.
+benchmark_runner = create_benchmark_runner(config, eval_store, eval_runner, logger)
 
 
 # ---------------------------------------------------------------------------
@@ -95,6 +100,10 @@ async def lifespan(app: FastAPI):
         if action in EVAL_ACTIONS:
             payload = extract_request_payload(body, correlation_id)
             result = await eval_runner.handle(action, payload)
+            return build_reply_envelope(body, result, correlation_id)
+        if action in BENCHMARK_ACTIONS:
+            payload = extract_request_payload(body, correlation_id)
+            result = await benchmark_runner.handle(action, payload)
             return build_reply_envelope(body, result, correlation_id)
 
         request = rag_service.build_request(extract_request_payload(body, correlation_id))

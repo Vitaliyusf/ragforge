@@ -1,16 +1,18 @@
-# RAGForge Backend Instructions
+# Backend Instructions
 
 Applies to `backend/**`.
 
-- Python 3.11 is the current CI/runtime baseline until an explicit upgrade task changes it.
-- Prefer typed boundaries: Pydantic for transport/config; Protocol/ABC only when a real substitutable contract exists.
-- Keep async request paths non-blocking. Use async clients or deliberate bounded offload for sync work.
-- Lifespan owns clients, pools, consumers, executors and shutdown. Avoid new module-global runtime singletons.
-- Mongo queries/writes must preserve trusted tenant/owner scope and appropriate indexes.
-- Kafka durable workflows target at-least-once + idempotency; do not claim exactly-once without evidence.
-- RabbitMQ remains RPC and Kafka durable pipeline/events unless an explicit decision changes this.
-- Do not duplicate envelope/auth/retry/logging infrastructure that belongs in `backend/shared`.
-- Run the touched service test suite; use `docs/ai/TESTING.md`.
+Follow the root `AGENTS.md`.
 
 ## Validation
-Follow root progressive validation. Prefer `python scripts/ai/check.py fast ...` while iterating and `python scripts/ai/check.py service ...` once near task completion. Avoid repeated isolated `uv` environments.
+- During implementation: changed-file Ruff + focused tests only.
+- Do not run every backend service locally.
+- Run an affected service suite once only for a cross-cutting/high-risk change in that service.
+- Shared/backend-wide validation belongs to CI unless the task explicitly changes shared infrastructure/contracts.
+- Do not run mypy outside a justified typed-contract/CI scope merely because Python changed.
+- Environment collection/plugin failure is `BLOCKED`, not permission to skip tests.
+
+## Architecture
+- Preserve tenant/auth boundaries.
+- Prefer existing repositories/services/RPC contracts.
+- Avoid new cross-service coupling unless required by the task.

@@ -78,6 +78,7 @@ class RAGConfig(BaseSettings):
     metrics_turn_facts_collection: str = "metrics_turn_facts"
     eval_datasets_collection: str = "eval_datasets"
     eval_runs_collection: str = "eval_runs"
+    eval_benchmark_runs_collection: str = "eval_benchmark_runs"
 
     # Admin metrics retention
     metrics_retention_days: int = 90

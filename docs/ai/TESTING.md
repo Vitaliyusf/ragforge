@@ -1,261 +1,213 @@
-# RAGForge Testing and Validation
+# RAGForge Testing Policy — CI-Delegated / Low-Token
 
-The goal is to preserve correctness while minimizing repeated dependency setup, execution time and agent-context output.
-
-## Core rule
-Use progressive validation:
+## Principle
 
 ```text
-during coding
-→ focused checks
-
-task complete
-→ affected service suite
-
-shared/release-wide change
-→ full validation
+Test what changed.
+Do not make the coding agent re-run the whole CI pipeline.
 ```
 
-CI remains the authoritative clean-environment validation.
+The agent owns fast, relevant validation.
+GitHub CI owns broad clean-environment validation.
 
-## Development environment
-Normal agent iterations must reuse:
-1. repository `.venv` if present;
-2. otherwise the currently active Python environment.
+## Level 0 — NO-OP audit
 
-Do not normally run:
+When current code already satisfies a task:
 
-```bash
-uv run --isolated --python 3.11 --with-requirements ...
-```
-
-for every Ruff/mypy/pytest invocation.
-
-Fresh isolated dependency resolution belongs in CI or an explicit dependency/reproducibility task.
-
-## Docker
-Docker does not automatically save tokens or time.
-
-Recommended split:
-
-```text
-Docker:
-- MongoDB
-- Kafka
-- RabbitMQ
-- Qdrant
-- vLLM
-- integration/system dependencies
-
-Local .venv:
-- Ruff
-- mypy
-- focused pytest
-- service pytest when dependencies permit
-```
-
-Use Docker for integration tests that genuinely require the containerized stack.
-Avoid rebuilding or creating a new test container for routine static/unit checks.
-
-# Validation helper
-
-Use:
-
-```bash
-python scripts/ai/check.py ...
-```
-
-It intentionally:
-- captures normal command output;
-- prints one compact PASS line on success;
-- prints only the relevant tail on failure;
-- avoids flooding Claude/Codex context.
-
-## Tier 1 — FAST
-Use repeatedly while implementing.
+Run only acceptance-focused tests.
 
 Example:
 
-```bash
-python scripts/ai/check.py fast rag \
-  --files backend/rag/app/services/golden_set_parser.py \
-          backend/rag/app/services/eval_runner.py \
-  --tests app/tests/test_golden_set_parser.py
+```text
+BMARK-05 already implemented
+→ hash/version tests
+→ stale-label test
+→ historical-run test
+→ done
 ```
 
-When mypy is justified:
+Do not run:
+- full RAG suite;
+- full gateway suite;
+- full frontend suite;
+- production build;
+- repo-wide Ruff;
+- full mypy;
+- memory rebuild unless memory actually changed.
 
-```bash
-python scripts/ai/check.py fast rag \
-  --files backend/rag/app/services/golden_set_parser.py \
-          backend/rag/app/services/eval_runner.py \
-  --tests app/tests/test_golden_set_parser.py \
-  --mypy
+Expected final status:
+
+```text
+NO-OP VERIFIED
 ```
 
-Tier 1 should normally include:
-- changed-file Ruff;
-- focused regression/unit tests;
-- optional focused mypy.
+## Level 1 — Focused implementation tests
 
-Do not run the full service suite after every code edit.
-
-## Mypy policy
-Run mypy when:
-- public/internal typed contracts changed;
-- Pydantic/config/schema models changed;
-- the changed module is already covered by mypy;
-- task acceptance explicitly requires type checking.
-
-Do not run mypy mechanically for every Python edit.
-
-## Tier 2 — SERVICE
-Run once near task completion.
-
-RAG:
+Use while coding.
 
 ```bash
-python scripts/ai/check.py service rag
+python scripts/ai/check.py focused rag \
+  --files backend/rag/app/services/eval_runner.py \
+          backend/rag/app/services/eval_store.py \
+  --tests app/tests/test_eval_runner.py \
+          app/tests/test_eval_store.py
 ```
 
-Gateway:
+This runs:
+- Ruff on changed Python files;
+- only the named test files.
+
+Add mypy only if justified:
 
 ```bash
-python scripts/ai/check.py service gateway
+... --mypy
 ```
 
-Files:
+Do not rerun a PASS unless later edits can invalidate it.
+
+## Level 2 — Affected service
+
+Use once near completion only for cross-cutting/high-risk service changes.
 
 ```bash
-python scripts/ai/check.py service files
+python scripts/ai/check.py affected rag
 ```
 
-Embedding:
+Examples that justify this:
+- new RPC/action;
+- repository/storage changes;
+- tenant/security boundary;
+- runner lifecycle/concurrency;
+- broad service contract.
 
-```bash
-python scripts/ai/check.py service embedding
-```
+Examples that usually do not:
+- small pure helper;
+- local parser change;
+- text/UI-only change;
+- no-op audit.
 
-Vector DB:
+## Level 3 — Full
 
-```bash
-python scripts/ai/check.py service vector_db
-```
-
-Memory:
-
-```bash
-python scripts/ai/check.py service memory
-```
-
-LLM Agent:
-
-```bash
-python scripts/ai/check.py service llm_agent
-```
-
-Frontend:
-
-```bash
-python scripts/ai/check.py service frontend
-```
-
-For production-impacting frontend changes:
-
-```bash
-python scripts/ai/check.py service frontend --build
-```
-
-If a task changes multiple services/contracts, run the affected service suites.
-
-## Tier 3 — FULL
-Use only when:
-- shared infrastructure/contracts changed;
-- task acceptance explicitly requires repo-wide validation;
-- doing final release/PR verification.
+Rare locally.
 
 ```bash
 python scripts/ai/check.py full --fail-fast
 ```
 
-Do not run this repeatedly during normal task implementation.
+Use only for:
+- explicit CI-equivalent local validation;
+- broad shared infrastructure/contracts;
+- runtime/dependency/CI changes;
+- release verification.
 
-## Direct CI-equivalent commands
-Use these only when debugging the helper or when a task explicitly needs the raw command.
+## Environment doctor
 
-### Ruff
-
-```bash
-ruff check backend/
-```
-
-### Backend service tests
-
-From `backend/<service>`:
+Run once per task before the first Python validation:
 
 ```bash
-PYTHONPATH="$PWD:$PWD/.." pytest app/tests -q
+python scripts/ai/check.py doctor
 ```
 
-Services:
-- embedding
-- files
-- gateway
-- llm_agent
-- memory
-- rag
-- vector_db
+Do not repeatedly probe:
+- `.venv`;
+- `py`;
+- `python3`;
+- `uv`;
+- pytest plugin combinations.
 
-### Shared tests
+If the environment cannot collect tests normally:
 
-From `backend/`:
+```text
+BLOCKED
+```
+
+Do not disable plugin autoload and call the suite green.
+
+## Ruff
+
+Normal task:
+
+```text
+changed files only
+```
+
+Do not run `ruff check backend/` locally just to validate an unrelated feature.
+Repo-wide lint belongs to CI unless lint cleanup is the task.
+
+## Mypy
+
+Run only when:
+- typed contracts changed;
+- schema/config/Pydantic models changed;
+- touched code is in the normal mypy scope;
+- task acceptance requires it.
+
+Do not repeatedly shrink the scope to get a green result.
+
+## Frontend
+
+During coding:
 
 ```bash
-PYTHONPATH="$PWD" pytest shared/tests -q
+npm test -- <specific-test-file>
 ```
 
-Run shared tests from `backend/`, not `backend/shared/`.
+Do not run full frontend tests locally by default.
 
-### Frontend
-
-```bash
-cd frontend
-npm test
-```
-
-Production-impacting frontend changes:
+Run:
 
 ```bash
 npm run build
 ```
 
-## Output discipline
-Passing:
+only for production-impacting/cross-cutting frontend changes.
+
+## Pytest integrity
+
+Authoritative validation must not use:
+- `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1`;
+- broad `-k "not ..."` exclusions;
+- hidden collection errors;
+- skipped failing async coverage.
+
+Diagnostic runs may investigate an environment issue, but must be reported as diagnostic only.
+
+## Output
+
+PASS:
+
 ```text
 Ruff: PASS
 Pytest focused: PASS
 Overall: PASS
 ```
 
-Failing:
+BLOCKED:
+
 ```text
-Pytest focused: FAIL
-<only relevant tail/error>
+Pytest: BLOCKED
+<first actionable environment error>
+Overall: BLOCKED
 ```
 
-Rules:
-- no dependency install/resolution output unless the install itself is the task;
-- no full passing pytest transcript;
-- no full mypy transcript on success;
-- during iteration prefer `--maxfail=1`;
-- never hide or weaken a real failure.
+FAIL:
+- show only relevant failure tail;
+- stop after first useful failure during implementation.
 
-## Brain/security validation
-After meaningful AI-brain/memory changes:
+## Recommended task flow
 
-```bash
-python scripts/ai/rebuild_repo_brain.py
-python scripts/ai/validate_ai_memory.py
+```text
+read task
+→ audit current implementation
+→ NO-OP? acceptance tests only → done
+
+otherwise:
+targeted implementation
+→ focused tests
+→ focused tests again only if later edits invalidate them
+→ optional affected-service suite once
+→ final diff
+→ memory once
+→ PR
+→ GitHub CI broad validation
 ```
-
-Generated index JSON and `.agent-private/` remain gitignored.

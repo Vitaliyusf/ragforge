@@ -338,6 +338,7 @@ class MetricsService(BaseRPCService):
         self,
         dataset_id: str,
         mode: str = "retrieval",
+        pipeline_mode: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Start a run and return its ``run_id`` immediately.
 
@@ -350,9 +351,58 @@ class MetricsService(BaseRPCService):
             mode: ``retrieval`` (default, LLM-free and free of charge) or
                 ``end_to_end``, which generates and judges an answer per
                 item. rag validates the value again on arrival.
+            pipeline_mode: ``regular`` or ``extended`` for an ``end_to_end``
+                run. Omitted for a ``retrieval`` run, whose single search no
+                pipeline routes — rag refuses the combination rather than
+                ignoring it, so a run never records a pipeline it did not
+                drive.
         """
         return await self._eval(
-            RagAction.START_EVAL_RUN, {"dataset_id": dataset_id, "mode": mode}
+            RagAction.START_EVAL_RUN,
+            {
+                "dataset_id": dataset_id,
+                "mode": mode,
+                "pipeline_mode": pipeline_mode,
+            },
+        )
+
+    async def start_benchmark_run(
+        self,
+        dataset_id: str,
+        phases: Optional[List[str]] = None,
+    ) -> Dict[str, Any]:
+        """Start a full diagnostic benchmark and return it immediately.
+
+        The benchmark runs its phases sequentially on rag, each as an
+        ordinary eval run, so this call returns a ``queued`` document and the
+        client polls :meth:`get_benchmark_run` for progress.
+
+        Args:
+            dataset_id: The dataset every phase executes.
+            phases: Which phases to include, or ``None`` for all of them.
+                Phases this build cannot run truthfully come back recorded as
+                ``unsupported`` with a reason rather than silently omitted.
+        """
+        return await self._eval(
+            RagAction.START_BENCHMARK_RUN,
+            {"dataset_id": dataset_id, "phases": phases},
+        )
+
+    async def list_benchmark_runs(
+        self,
+        dataset_id: Optional[str] = None,
+        limit: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """List benchmarks newest first."""
+        return await self._eval(
+            RagAction.LIST_BENCHMARK_RUNS,
+            {"dataset_id": dataset_id, "limit": limit},
+        )
+
+    async def get_benchmark_run(self, benchmark_id: str) -> Dict[str, Any]:
+        """Fetch one benchmark with its phase table and progress counters."""
+        return await self._eval(
+            RagAction.GET_BENCHMARK_RUN, {"benchmark_id": benchmark_id}
         )
 
     @staticmethod
