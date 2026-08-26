@@ -149,3 +149,33 @@ Read only the requested task file under `docs/ai/tasks/`.
 
 - **VECTOR-01** — Versioned incremental vector index lifecycle — `feat/vector-index-lifecycle`
 - **VECTOR-02** — Qdrant operation optimizations — `perf/qdrant-operations`
+
+# TASK_INDEX patch
+
+Add these entries near the existing BMARK-15 task:
+
+```md
+- **BMARK-15A** — Benchmark accounting, per-item outcome export, and strict JSON evidence — `fix/benchmark-evidence-accounting`
+- **BMARK-15B** — Honest latency semantics and LLM critical-path telemetry — `feat/benchmark-latency-telemetry`
+- **BMARK-15C** — Benchmark provenance completeness and strict comparison compatibility — `fix/benchmark-provenance-compatibility`
+```
+
+Keep the existing `BMARK-15` as the final benchmark hardening gate before Baseline V1.
+
+Add a new `## GEN` section if one does not already exist:
+
+```md
+## GEN
+
+- **GEN-01** — Remove avoidable LLM queue serialization — `perf/llm-queue-concurrency`
+- **GEN-02** — Tune vLLM request concurrency with controlled A/B measurements — `perf/vllm-concurrency`
+- **GEN-03** — Per-request-type LLM output budgets — `perf/llm-action-token-budgets`
+- **GEN-04** — Benchmark execution profiles and expensive-phase control — `feat/benchmark-run-profiles`
+- **GEN-05** — Optional post-generation LLM call reduction — `perf/post-generation-review`
+```
+
+Recommended status note for GEN-05:
+
+```text
+OPTIONAL — run only if GEN-01..04 do not reduce latency enough.
+```

@@ -1095,8 +1095,10 @@ class EvalRunner:
             # the live index no longer offers.
             "unscorable": unscorable,
             "error": None,
+            "error_class": None,
             "outcome": "success",
             "guardrail_stage": None,
+            "timed_out": False,
         }
         if unscorable:
             row["failure_attribution"] = classify_item(row)
@@ -1151,7 +1153,9 @@ class EvalRunner:
                     ids = retrieved_ids(eligible, item_mode)
         except Exception as exc:  # noqa: BLE001 - one item, not the run
             row["error"] = str(exc)
-            row["outcome"] = "failed"
+            row["error_class"] = type(exc).__name__
+            row["timed_out"] = isinstance(exc, TimeoutError)
+            row["outcome"] = "timed_out" if row["timed_out"] else "failed"
             row["latency_ms"] = (time.monotonic() - started) * 1000
             row["retrieval_trace"] = trace.to_payload()
             row["failure_attribution"] = classify_item(row)
@@ -1348,6 +1352,38 @@ def aggregate(rows: List[Dict[str, Any]], mode: str = MODE_RETRIEVAL) -> Dict[st
     latencies = [
         row["latency_ms"] for row in rows if isinstance(row.get("latency_ms"), (int, float))
     ]
+    outcomes_known = all("outcome" in row for row in rows)
+    execution: Dict[str, Any] = {
+        "total": len(rows),
+        "succeeded": 0 if outcomes_known else None,
+        "guardrail_blocked": 0 if outcomes_known else None,
+        "failed": 0 if outcomes_known else None,
+        "timed_out": 0 if outcomes_known else None,
+        "interrupted": 0 if outcomes_known else None,
+    }
+    if outcomes_known:
+        for row in rows:
+            outcome = row["outcome"]
+            key = "succeeded" if outcome == "success" else str(outcome)
+            if key not in execution:
+                key = "failed"
+            execution[key] += 1
+
+    scoring = {
+        "dataset_items": len(rows),
+        "scored": len(scored),
+        "skipped": 0,
+        "unscorable": 0,
+    }
+    for row in rows:
+        if row.get("scores"):
+            continue
+        if row.get("skipped"):
+            scoring["skipped"] += 1
+        else:
+            # A labelled item that produced no score (for example because an
+            # execution guardrail blocked it) is unscorable for this run.
+            scoring["unscorable"] += 1
 
     def mean_at_k(metric: str) -> Dict[str, Optional[float]]:
         return {
@@ -1366,6 +1402,11 @@ def aggregate(rows: List[Dict[str, Any]], mode: str = MODE_RETRIEVAL) -> Dict[st
         "items_unscorable": unscorable,
         "items_guardrail_blocked": blocked,
         "items_failed": failed,
+        # Execution and scoring are deliberately independent, mutually
+        # exclusive axes. Keep the legacy counters above for readers that
+        # predate this contract, but never add them together as one total.
+        "execution": execution,
+        "scoring": scoring,
         "mean_latency_ms": _mean(latencies),
         # Where the failures were, not just how many. Reported for every run
         # and every benchmark phase — a phase stores exactly this dict — so

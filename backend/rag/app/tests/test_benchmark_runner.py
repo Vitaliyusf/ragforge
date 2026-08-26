@@ -33,6 +33,7 @@ from app.services.benchmark_runner import (
     PHASE_UNSUPPORTED,
     START_BENCHMARK_RUN,
     BenchmarkRunner,
+    _phase_item_count,
     benchmark_status,
     plan_phases,
 )
@@ -462,6 +463,20 @@ def test_every_supported_phase_produces_its_own_run():
     assert len(set(run_ids)) == 3
     assert plan[PHASE_RETRIEVAL_EXTENDED]["run_id"] is None
     assert plan[PHASE_RETRIEVAL_BASE]["results"]["items_evaluated"] == 2
+
+
+def test_legacy_phase_item_count_does_not_add_scoring_and_execution_axes():
+    phase = {
+        "results": {
+            "items_evaluated": 24,
+            "items_skipped": 6,
+            "items_unscorable": 0,
+            "items_guardrail_blocked": 2,
+            "items_failed": 0,
+        }
+    }
+
+    assert _phase_item_count(phase) == 30
 
 
 def test_a_benchmark_is_listed_and_fetched_within_its_tenant():

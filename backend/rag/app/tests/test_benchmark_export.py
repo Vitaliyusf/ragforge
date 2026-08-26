@@ -8,7 +8,13 @@ import zipfile
 
 import pytest
 
-from app.services.benchmark_export import MAX_TEXT_BYTES, build_benchmark_export
+from app.services.benchmark_export import (
+    MAX_TEXT_BYTES,
+    _json_bytes,
+    _sanitize,
+    _trace_evidence,
+    build_benchmark_export,
+)
 from app.services.benchmark_runner import PHASE_RETRIEVAL_BASE
 from app.services.eval_store import EvalNotFound
 from app.tests.test_benchmark_runner import ADMIN, build, run_benchmark
@@ -119,6 +125,64 @@ def test_export_excludes_answers_and_redacts_secrets():
     assert "private answer" not in text
     assert "do-not-export" not in text
     assert "[redacted]" in text
+
+
+def test_per_item_export_identifies_guardrail_outcome_and_stage():
+    evidence = _trace_evidence(
+        [
+            {
+                "item_id": "blocked-1",
+                "outcome": "guardrail_blocked",
+                "guardrail_stage": "input",
+                "timed_out": False,
+                "error_class": None,
+                "query": "private prompt",
+            }
+        ]
+    )
+
+    assert evidence == [
+        {
+            "item_id": "blocked-1",
+            "outcome": "guardrail_blocked",
+            "guardrail_stage": "input",
+            "timed_out": False,
+            "error_class": None,
+        }
+    ]
+
+
+def test_legacy_per_item_export_uses_null_for_unknown_outcome_fields():
+    evidence = _trace_evidence([{"item_id": "legacy-1", "skipped": True}])
+
+    assert evidence[0]["outcome"] is None
+    assert evidence[0]["guardrail_stage"] is None
+    assert evidence[0]["timed_out"] is None
+    assert evidence[0]["error_class"] is None
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        float("nan"),
+        float("inf"),
+        float("-inf"),
+        "NaN",
+        "+Inf",
+        "-Inf",
+        "Infinity",
+        "+Infinity",
+        "-Infinity",
+    ],
+)
+def test_non_finite_numeric_and_string_evidence_becomes_null(value):
+    truncation = {"text_fields_truncated": 0, "examples": []}
+    sanitized = _sanitize(
+        {"sample": [value]}, path="metrics.json", truncation=truncation
+    )
+
+    assert sanitized == {"sample": [None]}
+    assert json.loads(_json_bytes(sanitized)) == {"sample": [None]}
 
 
 def test_export_reports_text_truncation_explicitly():

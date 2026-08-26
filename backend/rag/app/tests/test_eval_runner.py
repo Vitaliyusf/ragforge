@@ -1036,6 +1036,20 @@ def test_guardrail_blocked_items_are_separate_from_failures_and_answer_denominat
     assert blocked["error"] is None
     assert stored["results"]["items_guardrail_blocked"] == 1
     assert stored["results"]["items_failed"] == 0
+    assert stored["results"]["execution"] == {
+        "total": 2,
+        "succeeded": 1,
+        "guardrail_blocked": 1,
+        "failed": 0,
+        "timed_out": 0,
+        "interrupted": 0,
+    }
+    assert stored["results"]["scoring"] == {
+        "dataset_items": 2,
+        "scored": 1,
+        "skipped": 0,
+        "unscorable": 1,
+    }
     assert stored["results"]["answer_quality"]["items_unjudged"] == 0
 
 

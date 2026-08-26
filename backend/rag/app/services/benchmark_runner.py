@@ -408,23 +408,25 @@ def _count(phases: List[Dict[str, Any]], status: str) -> int:
 
 
 def _phase_item_count(phase: Dict[str, Any]) -> int:
-    """How many items one finished phase actually got through.
-
-    Every row an eval run writes lands in exactly one of the outcome counters,
-    so their sum is the number of items the phase reached — zero for a phase
-    refused before scoring, which is what a stale-label failure looks like.
-    """
+    """How many item observations one phase recorded, without axis overlap."""
     results = phase.get("results") or {}
-    return sum(
+    execution = results.get("execution")
+    if isinstance(execution, dict):
+        return int(execution.get("total") or 0)
+
+    # Legacy aggregates mixed scoring eligibility and execution outcomes.
+    # Neither axis alone is a complete historical execution account, but the
+    # larger one is the honest lower bound and, unlike their sum, cannot count
+    # the same blocked/skipped row twice.
+    scoring = sum(
         int(results.get(key) or 0)
-        for key in (
-            "items_evaluated",
-            "items_skipped",
-            "items_unscorable",
-            "items_guardrail_blocked",
-            "items_failed",
-        )
+        for key in ("items_evaluated", "items_skipped", "items_unscorable")
     )
+    outcomes = sum(
+        int(results.get(key) or 0)
+        for key in ("items_evaluated", "items_guardrail_blocked", "items_failed")
+    )
+    return max(scoring, outcomes)
 
 
 class BenchmarkRunner:

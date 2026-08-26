@@ -22,6 +22,17 @@ MAX_EXPORT_BYTES = 8 * 1024 * 1024
 MAX_TEXT_BYTES = 16 * 1024
 MAX_TRUNCATION_EXAMPLES = 100
 _SECRET_KEY = re.compile(r"(?:secret|password|api[_-]?key|token|authorization)", re.I)
+_NON_FINITE_STRINGS = {
+    "nan",
+    "+nan",
+    "-nan",
+    "inf",
+    "+inf",
+    "-inf",
+    "infinity",
+    "+infinity",
+    "-infinity",
+}
 
 
 class BenchmarkExportTooLarge(EvalValidationError):
@@ -162,6 +173,10 @@ def _trace_evidence(rows: Any) -> list[Any]:
         "skipped",
         "unscorable",
         "error",
+        "error_class",
+        "outcome",
+        "guardrail_stage",
+        "timed_out",
         "scores",
         "retrieval_trace",
         "groundedness",
@@ -170,11 +185,15 @@ def _trace_evidence(rows: Any) -> list[Any]:
         "unsupported_claim_count",
         "hallucination_verdict",
     )
-    return [
-        {key: row.get(key) for key in allowed if key in row}
-        for row in (rows if isinstance(rows, list) else [])
-        if isinstance(row, Mapping)
-    ]
+    evidence = []
+    for row in rows if isinstance(rows, list) else []:
+        if not isinstance(row, Mapping):
+            continue
+        exported = {key: row.get(key) for key in allowed if key in row}
+        for key in ("outcome", "guardrail_stage", "timed_out", "error_class"):
+            exported.setdefault(key, None)
+        evidence.append(exported)
+    return evidence
 
 
 def _errors(benchmark: Mapping[str, Any], runs: Iterable[Mapping[str, Any]]) -> Dict[str, Any]:
@@ -256,6 +275,8 @@ def _sanitize(
     if isinstance(value, float) and not math.isfinite(value):
         return None
     if isinstance(value, str):
+        if value.strip().lower() in _NON_FINITE_STRINGS:
+            return None
         encoded = value.encode("utf-8")
         if len(encoded) <= MAX_TEXT_BYTES:
             return value
