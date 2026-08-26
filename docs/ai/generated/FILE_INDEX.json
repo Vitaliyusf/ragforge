@@ -1,0 +1,5073 @@
+{
+  "schema_version": 1,
+  "files": [
+    {
+      "path": ".claude/settings.json",
+      "size": 711,
+      "lines": 32,
+      "ext": ".json",
+      "sha1": "511c112fbd50be856640a3301e4906254bbe7be7"
+    },
+    {
+      "path": ".claude/settings.local.json",
+      "size": 6486,
+      "lines": 79,
+      "ext": ".json",
+      "sha1": "d82aab34d679f4e1dc4fc09522cbc2e4388c9def"
+    },
+    {
+      "path": ".github/workflows/ci.yml",
+      "size": 4913,
+      "lines": 130,
+      "ext": ".yml",
+      "sha1": "c17ada2a8df147bd1467b890b056f6aedef0c578"
+    },
+    {
+      "path": "AGENTS.md",
+      "size": 4064,
+      "lines": 96,
+      "ext": ".md",
+      "sha1": "b30e7bc61b2280363da7092c3992d1b724c15efd"
+    },
+    {
+      "path": "CLAUDE.md",
+      "size": 491,
+      "lines": 9,
+      "ext": ".md",
+      "sha1": "5720c30299a3e07778446ce9e6d262663f47e939"
+    },
+    {
+      "path": "README.md",
+      "size": 11980,
+      "lines": 237,
+      "ext": ".md",
+      "sha1": "e55e08aefba1d27f073b0b0ce6bdcdf1868d2145"
+    },
+    {
+      "path": "backend/AGENTS.md",
+      "size": 939,
+      "lines": 14,
+      "ext": ".md",
+      "sha1": "95944efc52eaae4e19b601d45d29dfdf800a0002"
+    },
+    {
+      "path": "backend/CLAUDE.md",
+      "size": 98,
+      "lines": 5,
+      "ext": ".md",
+      "sha1": "584ab267804743383f02fe967423219cf034e46d"
+    },
+    {
+      "path": "backend/embedding/app/__init__.py",
+      "size": 33,
+      "lines": 2,
+      "ext": ".py",
+      "sha1": "900fdb38b630b620fea218a505e4c5ac39adeb75"
+    },
+    {
+      "path": "backend/embedding/app/config.py",
+      "size": 5266,
+      "lines": 104,
+      "ext": ".py",
+      "sha1": "34effbba12266fdefe8b6ada77b3b1fc83aca900"
+    },
+    {
+      "path": "backend/embedding/app/consumers.py",
+      "size": 5727,
+      "lines": 146,
+      "ext": ".py",
+      "sha1": "a93d193e621370e1d9f86ec8495a8f79bbe5a56d"
+    },
+    {
+      "path": "backend/embedding/app/core/__init__.py",
+      "size": 0,
+      "lines": 1,
+      "ext": ".py",
+      "sha1": "da39a3ee5e6b4b0d3255bfef95601890afd80709"
+    },
+    {
+      "path": "backend/embedding/app/core/constants.py",
+      "size": 522,
+      "lines": 20,
+      "ext": ".py",
+      "sha1": "749298d7f8b88eb5e458084d97634e6f2264b4b5"
+    },
+    {
+      "path": "backend/embedding/app/core/cors.py",
+      "size": 604,
+      "lines": 17,
+      "ext": ".py",
+      "sha1": "9797483bf7cb62a416fec1c8a2433134f994783c"
+    },
+    {
+      "path": "backend/embedding/app/core/exceptions.py",
+      "size": 911,
+      "lines": 40,
+      "ext": ".py",
+      "sha1": "3d032b8231948d48228597e8b92e9f434e1987c2"
+    },
+    {
+      "path": "backend/embedding/app/core/logging_config.py",
+      "size": 332,
+      "lines": 12,
+      "ext": ".py",
+      "sha1": "e69f7b314146a51b2ac859bfb5faf874acc3c2d1"
+    },
+    {
+      "path": "backend/embedding/app/embedding/__init__.py",
+      "size": 56,
+      "lines": 2,
+      "ext": ".py",
+      "sha1": "4dc21b4a37061e10907fdb7596cd86d1da5caafc"
+    },
+    {
+      "path": "backend/embedding/app/embedding/factories.py",
+      "size": 1712,
+      "lines": 48,
+      "ext": ".py",
+      "sha1": "cebd5c89d9956addb5edb4b36a8a409252f24ad5"
+    },
+    {
+      "path": "backend/embedding/app/embedding/implementations/__init__.py",
+      "size": 39,
+      "lines": 2,
+      "ext": ".py",
+      "sha1": "60ff222b8ec3b5f2663a6fdc0e248ad3a7642f4c"
+    },
+    {
+      "path": "backend/embedding/app/embedding/implementations/langchain.py",
+      "size": 1463,
+      "lines": 47,
+      "ext": ".py",
+      "sha1": "70d5e73b30bfc69482ed61dbafa4b60a0bb89275"
+    },
+    {
+      "path": "backend/embedding/app/embedding/implementations/sentence_transformers.py",
+      "size": 2049,
+      "lines": 57,
+      "ext": ".py",
+      "sha1": "2c1c914656063adf9ffdc8f61ac399390f71322f"
+    },
+    {
+      "path": "backend/embedding/app/embedding/interfaces.py",
+      "size": 1107,
+      "lines": 40,
+      "ext": ".py",
+      "sha1": "c399a65dafc60b474287c50b013efc8e299d512f"
+    },
+    {
+      "path": "backend/embedding/app/extraction/__init__.py",
+      "size": 56,
+      "lines": 2,
+      "ext": ".py",
+      "sha1": "bebda6c8eded99e417c2c5109c5fe52d0713f04c"
+    },
+    {
+      "path": "backend/embedding/app/extraction/factories.py",
+      "size": 1727,
+      "lines": 51,
+      "ext": ".py",
+      "sha1": "e6f2bbce76f315662ce0f7302cd15dc8707b160d"
+    },
+    {
+      "path": "backend/embedding/app/extraction/implementations/__init__.py",
+      "size": 39,
+      "lines": 2,
+      "ext": ".py",
+      "sha1": "757294a76d985f86010f33d7057d49c6252db8c2"
+    },
+    {
+      "path": "backend/embedding/app/extraction/implementations/doc.py",
+      "size": 907,
+      "lines": 33,
+      "ext": ".py",
+      "sha1": "a7ffe0b4c145967e19e8f0a3d4e275495ae0720e"
+    },
+    {
+      "path": "backend/embedding/app/extraction/implementations/docx.py",
+      "size": 982,
+      "lines": 34,
+      "ext": ".py",
+      "sha1": "8f14ddac97eb19792ac31975e125611a08bcdcad"
+    },
+    {
+      "path": "backend/embedding/app/extraction/implementations/md.py",
+      "size": 716,
+      "lines": 21,
+      "ext": ".py",
+      "sha1": "7796254dbcdd2331451bfae8d73509e7e9b5d358"
+    },
+    {
+      "path": "backend/embedding/app/extraction/implementations/pdf.py",
+      "size": 1598,
+      "lines": 47,
+      "ext": ".py",
+      "sha1": "68096cd05925074c2d7abe04b3919fb76827ba21"
+    },
+    {
+      "path": "backend/embedding/app/extraction/implementations/txt.py",
+      "size": 570,
+      "lines": 19,
+      "ext": ".py",
+      "sha1": "9bd186eb122710adf2fd05120ec1ef09814721b6"
+    },
+    {
+      "path": "backend/embedding/app/extraction/interfaces.py",
+      "size": 984,
+      "lines": 39,
+      "ext": ".py",
+      "sha1": "de219a931be38a4a97b874a8e1ab4dd38fb6baa5"
+    },
+    {
+      "path": "backend/embedding/app/handlers.py",
+      "size": 18315,
+      "lines": 491,
+      "ext": ".py",
+      "sha1": "aeb805047a5fddfb8a36f20e7e402ca9283d19dc"
+    },
+    {
+      "path": "backend/embedding/app/logger.py",
+      "size": 1445,
+      "lines": 44,
+      "ext": ".py",
+      "sha1": "85b9bebacb41c938cca3ca59b5e771d150680819"
+    },
+    {
+      "path": "backend/embedding/app/main.py",
+      "size": 6978,
+      "lines": 185,
+      "ext": ".py",
+      "sha1": "9093e057ebf5faa74b45d24c09ca8b62ed5994e9"
+    },
+    {
+      "path": "backend/embedding/app/messaging/__init__.py",
+      "size": 54,
+      "lines": 2,
+      "ext": ".py",
+      "sha1": "0dc1ee0aaf1100a01e00a8a8f2c4266eab11819d"
+    },
+    {
+      "path": "backend/embedding/app/messaging/embedding_kafka.py",
+      "size": 4479,
+      "lines": 118,
+      "ext": ".py",
+      "sha1": "fcdf83708f9de30e8ed288743f5476e7f917d0b7"
+    },
+    {
+      "path": "backend/embedding/app/messaging/factories.py",
+      "size": 1634,
+      "lines": 39,
+      "ext": ".py",
+      "sha1": "200bdb63a3e9908a4c8b76e21c61c259a2171e03"
+    },
+    {
+      "path": "backend/embedding/app/messaging/implementations/__init__.py",
+      "size": 37,
+      "lines": 2,
+      "ext": ".py",
+      "sha1": "23b8c9439efee7d5b50e01ea75e8dd9d33600051"
+    },
+    {
+      "path": "backend/embedding/app/messaging/implementations/kafka.py",
+      "size": 802,
+      "lines": 26,
+      "ext": ".py",
+      "sha1": "54b5270eb995bdfd5b2d54a4df185b6151674b63"
+    },
+    {
+      "path": "backend/embedding/app/messaging/implementations/rabbitmq.py",
+      "size": 485,
+      "lines": 14,
+      "ext": ".py",
+      "sha1": "1b556abda93e8e2071211336bb6a6b57506af048"
+    },
+    {
+      "path": "backend/embedding/app/messaging/interfaces.py",
+      "size": 1002,
+      "lines": 42,
+      "ext": ".py",
+      "sha1": "0b4379be617889d31e807337aa99b44d5ce3dfd2"
+    },
+    {
+      "path": "backend/embedding/app/messaging/threadsafe_rabbitmq.py",
+      "size": 1110,
+      "lines": 38,
+      "ext": ".py",
+      "sha1": "d9d91802f53a8108b24814486e7bdef9e7c176b0"
+    },
+    {
+      "path": "backend/embedding/app/models.py",
+      "size": 450,
+      "lines": 21,
+      "ext": ".py",
+      "sha1": "f87fc07a7ce637b90e61683301e433c5f79a8bcc"
+    },
+    {
+      "path": "backend/embedding/app/rest/__init__.py",
+      "size": 0,
+      "lines": 1,
+      "ext": ".py",
+      "sha1": "da39a3ee5e6b4b0d3255bfef95601890afd80709"
+    },
+    {
+      "path": "backend/embedding/app/rest/v1/__init__.py",
+      "size": 0,
+      "lines": 1,
+      "ext": ".py",
+      "sha1": "da39a3ee5e6b4b0d3255bfef95601890afd80709"
+    },
+    {
+      "path": "backend/embedding/app/rest/v1/health.py",
+      "size": 891,
+      "lines": 31,
+      "ext": ".py",
+      "sha1": "d655d9753b9f80139e50ee990f217379a38cfbcb"
+    },
+    {
+      "path": "backend/embedding/app/schemas/__init__.py",
+      "size": 0,
+      "lines": 1,
+      "ext": ".py",
+      "sha1": "da39a3ee5e6b4b0d3255bfef95601890afd80709"
+    },
+    {
+      "path": "backend/embedding/app/schemas/embedding_job.py",
+      "size": 5173,
+      "lines": 141,
+      "ext": ".py",
+      "sha1": "c272ab464c64702a89681fbdcf14f14784b4156f"
+    },
+    {
+      "path": "backend/embedding/app/schemas/legacy.py",
+      "size": 331,
+      "lines": 19,
+      "ext": ".py",
+      "sha1": "b313497cd681e181d1582299deff73ac6e668e8f"
+    },
+    {
+      "path": "backend/embedding/app/services/__init__.py",
+      "size": 0,
+      "lines": 1,
+      "ext": ".py",
+      "sha1": "da39a3ee5e6b4b0d3255bfef95601890afd80709"
+    },
+    {
+      "path": "backend/embedding/app/services/base.py",
+      "size": 675,
+      "lines": 24,
+      "ext": ".py",
+      "sha1": "3245678e3b82bf384ba7b066a4ea7caf31056555"
+    },
+    {
+      "path": "backend/embedding/app/services/embedding_handler.py",
+      "size": 11611,
+      "lines": 282,
+      "ext": ".py",
+      "sha1": "769b92d1bcd9cee9e33ef575eb9a3ab653cfa823"
+    },
+    {
+      "path": "backend/embedding/app/services/embedding_job_publisher.py",
+      "size": 9357,
+      "lines": 249,
+      "ext": ".py",
+      "sha1": "81209478c92406c4d16c98d8159ef331a49fb874"
+    },
+    {
+      "path": "backend/embedding/app/services/embedding_job_service.py",
+      "size": 12234,
+      "lines": 301,
+      "ext": ".py",
+      "sha1": "aeab0d0b6a37ad790659f2fccd30664e2e6b5b2f"
+    },
+    {
+      "path": "backend/embedding/app/services/embedding_job_tracing.py",
+      "size": 2141,
+      "lines": 69,
+      "ext": ".py",
+      "sha1": "dfc57252d3acebc9e085bfca0abc980a3326286a"
+    },
+    {
+      "path": "backend/embedding/app/services/embedding_job_worker.py",
+      "size": 1382,
+      "lines": 40,
+      "ext": ".py",
+      "sha1": "88ec2c58ec26f1b5956f0d68271a57ea0fc5da84"
+    },
+    {
+      "path": "backend/embedding/app/services/extraction_handler.py",
+      "size": 6445,
+      "lines": 165,
+      "ext": ".py",
+      "sha1": "99c067cc501eabe6930c1f11bd9a273cccc0ee1f"
+    },
+    {
+      "path": "backend/embedding/app/tests/test_config.py",
+      "size": 907,
+      "lines": 28,
+      "ext": ".py",
+      "sha1": "1d4c9dcaa7ffe5912ab23f8c295aba0662e708e2"
+    },
+    {
+      "path": "backend/embedding/app/tests/test_embedding_job_pipeline.py",
+      "size": 21849,
+      "lines": 654,
+      "ext": ".py",
+      "sha1": "2b994bfa063912e9f0b6955acf9ba34098418931"
+    },
+    {
+      "path": "backend/embedding/app/utils.py",
+      "size": 600,
+      "lines": 17,
+      "ext": ".py",
+      "sha1": "5b3b96c87b903446dde54939e965ce2a82c6308a"
+    },
+    {
+      "path": "backend/embedding/app/utils/__init__.py",
+      "size": 0,
+      "lines": 1,
+      "ext": ".py",
+      "sha1": "da39a3ee5e6b4b0d3255bfef95601890afd80709"
+    },
+    {
+      "path": "backend/embedding/app/utils/chunking.py",
+      "size": 7359,
+      "lines": 199,
+      "ext": ".py",
+      "sha1": "414a8c707a6fb5d98a5fdfcf9c65592e11509c3c"
+    },
+    {
+      "path": "backend/files/app/__init__.py",
+      "size": 29,
+      "lines": 2,
+      "ext": ".py",
+      "sha1": "b94378eaf22347333460d2ac05a5bed5710469b0"
+    },
+    {
+      "path": "backend/files/app/consumers.py",
+      "size": 2372,
+      "lines": 70,
+      "ext": ".py",
+      "sha1": "5a39d333fffbd6de74aed3517dd4f78b0b9cc965"
+    },
+    {
+      "path": "backend/files/app/core/__init__.py",
+      "size": 470,
+      "lines": 23,
+      "ext": ".py",
+      "sha1": "5e6a949aeaae1c2943aedb023f8c22f9e54ca494"
+    },
+    {
+      "path": "backend/files/app/core/config.py",
+      "size": 6685,
+      "lines": 175,
+      "ext": ".py",
+      "sha1": "0ce76453e857e834def4d0b16988f8262e5e49d0"
+    },
+    {
+      "path": "backend/files/app/core/constants.py",
+      "size": 976,
+      "lines": 30,
+      "ext": ".py",
+      "sha1": "fa25a3e3e045cb420732e79f0e21edc984524fc4"
+    },
+    {
+      "path": "backend/files/app/core/deps.py",
+      "size": 578,
+      "lines": 17,
+      "ext": ".py",
+      "sha1": "0b1064191ff416a153c0c525245fce818e67755d"
+    },
+    {
+      "path": "backend/files/app/core/errors.py",
+      "size": 290,
+      "lines": 10,
+      "ext": ".py",
+      "sha1": "1c05bbe787881d8df550013f70047f285e4c2053"
+    },
+    {
+      "path": "backend/files/app/core/exception_handlers.py",
+      "size": 1099,
+      "lines": 26,
+      "ext": ".py",
+      "sha1": "7309877f809ab931b95cc470c99e13231505ad1b"
+    },
+    {
+      "path": "backend/files/app/core/logging_config.py",
+      "size": 531,
+      "lines": 19,
+      "ext": ".py",
+      "sha1": "bc71dbb5eea969d5ced72620b6de8d89fd6e6ce6"
+    },
+    {
+      "path": "backend/files/app/db/__init__.py",
+      "size": 49,
+      "lines": 2,
+      "ext": ".py",
+      "sha1": "4db43bebfa87cc57af8798f152cf0d604102711c"
+    },
+    {
+      "path": "backend/files/app/db/_audit.py",
+      "size": 3320,
+      "lines": 84,
+      "ext": ".py",
+      "sha1": "ff703e37ad3b639f694e1cb92b3f8d8fd8f34c49"
+    },
+    {
+      "path": "backend/files/app/db/_base.py",
+      "size": 8835,
+      "lines": 223,
+      "ext": ".py",
+      "sha1": "909433500f70f2198a7a5a93ed8634b7567d4392"
+    },
+    {
+      "path": "backend/files/app/db/_chunks.py",
+      "size": 3204,
+      "lines": 72,
+      "ext": ".py",
+      "sha1": "9cad9a96ee979024415fb104bb81e1be790f063a"
+    },
+    {
+      "path": "backend/files/app/db/_files.py",
+      "size": 7738,
+      "lines": 177,
+      "ext": ".py",
+      "sha1": "b5d5ac6e7d38e2f290fabfab3e916009208aad39"
+    },
+    {
+      "path": "backend/files/app/db/_review.py",
+      "size": 7932,
+      "lines": 191,
+      "ext": ".py",
+      "sha1": "4ab67a54847b583a505d2130bb31ea112a68c698"
+    },
+    {
+      "path": "backend/files/app/db/_tasks.py",
+      "size": 4228,
+      "lines": 93,
+      "ext": ".py",
+      "sha1": "c204a24b5f7b06695a73e8143faa5b945066a9e3"
+    },
+    {
+      "path": "backend/files/app/db/repository.py",
+      "size": 3920,
+      "lines": 101,
+      "ext": ".py",
+      "sha1": "ab5ea3750f5dfce40d25a711d01ed2258c01adca"
+    },
+    {
+      "path": "backend/files/app/db/session.py",
+      "size": 2319,
+      "lines": 83,
+      "ext": ".py",
+      "sha1": "dd3ed862b63132be12c8eaeadf1e4249a4534242"
+    },
+    {
+      "path": "backend/files/app/main.py",
+      "size": 5563,
+      "lines": 170,
+      "ext": ".py",
+      "sha1": "2e0d3871d3cd34f842a4bfe0a8bf34406894b133"
+    },
+    {
+      "path": "backend/files/app/messaging/__init__.py",
+      "size": 54,
+      "lines": 2,
+      "ext": ".py",
+      "sha1": "0dc1ee0aaf1100a01e00a8a8f2c4266eab11819d"
+    },
+    {
+      "path": "backend/files/app/messaging/factories.py",
+      "size": 703,
+      "lines": 19,
+      "ext": ".py",
+      "sha1": "49bbabe219c897337a356385995a262c20eeb2cc"
+    },
+    {
+      "path": "backend/files/app/messaging/implementations/__init__.py",
+      "size": 37,
+      "lines": 2,
+      "ext": ".py",
+      "sha1": "23b8c9439efee7d5b50e01ea75e8dd9d33600051"
+    },
+    {
+      "path": "backend/files/app/messaging/implementations/kafka_pipeline.py",
+      "size": 675,
+      "lines": 24,
+      "ext": ".py",
+      "sha1": "455bcec3eb6c6bd4bcce233d56d43bdd4706941f"
+    },
+    {
+      "path": "backend/files/app/messaging/implementations/rabbitmq.py",
+      "size": 577,
+      "lines": 18,
+      "ext": ".py",
+      "sha1": "11caaabda7fca4043f53463b5de4d58137700fe0"
+    },
+    {
+      "path": "backend/files/app/messaging/interfaces.py",
+      "size": 1002,
+      "lines": 42,
+      "ext": ".py",
+      "sha1": "0b4379be617889d31e807337aa99b44d5ce3dfd2"
+    },
+    {
+      "path": "backend/files/app/rest/__init__.py",
+      "size": 22,
+      "lines": 2,
+      "ext": ".py",
+      "sha1": "c6a39d397101a4cd9408a4dd8d036650d6f66933"
+    },
+    {
+      "path": "backend/files/app/rest/routes.py",
+      "size": 325,
+      "lines": 11,
+      "ext": ".py",
+      "sha1": "dec86cfe635ddf21ff937a3971bdf546461d993c"
+    },
+    {
+      "path": "backend/files/app/rest/v1/__init__.py",
+      "size": 21,
+      "lines": 2,
+      "ext": ".py",
+      "sha1": "933d20c1cdfbfce4696f94f287debe38e6e0bd79"
+    },
+    {
+      "path": "backend/files/app/rest/v1/files.py",
+      "size": 1044,
+      "lines": 34,
+      "ext": ".py",
+      "sha1": "1966e43f176ac57806d8ce4c4becff7e6364f8f0"
+    },
+    {
+      "path": "backend/files/app/rest/v1/health.py",
+      "size": 867,
+      "lines": 33,
+      "ext": ".py",
+      "sha1": "3218425a3a01900e870b51d58ca68e2343cb5e12"
+    },
+    {
+      "path": "backend/files/app/schemas/__init__.py",
+      "size": 56,
+      "lines": 2,
+      "ext": ".py",
+      "sha1": "736fc7e14e0ad2ceef87973673529ec376365405"
+    },
+    {
+      "path": "backend/files/app/schemas/file.py",
+      "size": 1996,
+      "lines": 60,
+      "ext": ".py",
+      "sha1": "4e94f03ac00970e1e8256bea98e124729e9a8174"
+    },
+    {
+      "path": "backend/files/app/services/__init__.py",
+      "size": 37,
+      "lines": 2,
+      "ext": ".py",
+      "sha1": "bc830d46994329afaa395a6af230a9ebcea82159"
+    },
+    {
+      "path": "backend/files/app/services/_file_delete.py",
+      "size": 6643,
+      "lines": 147,
+      "ext": ".py",
+      "sha1": "e52a6fa2bb7de6c08da1bf3b255b2e0060b9fb8b"
+    },
+    {
+      "path": "backend/files/app/services/_file_handler_base.py",
+      "size": 9749,
+      "lines": 255,
+      "ext": ".py",
+      "sha1": "1c9d61a6826b613a1ae67f2acb55ddc0a00c6779"
+    },
+    {
+      "path": "backend/files/app/services/_file_ingestion.py",
+      "size": 7694,
+      "lines": 184,
+      "ext": ".py",
+      "sha1": "000706e001b10f1d72066070efdb9126696d2309"
+    },
+    {
+      "path": "backend/files/app/services/_file_query.py",
+      "size": 3536,
+      "lines": 75,
+      "ext": ".py",
+      "sha1": "9476189f5f7994d7329347e86155cde36a5c5503"
+    },
+    {
+      "path": "backend/files/app/services/_file_review.py",
+      "size": 5320,
+      "lines": 110,
+      "ext": ".py",
+      "sha1": "92bfb7289f63aa0c2794e38ea55c09a09df9a2d1"
+    },
+    {
+      "path": "backend/files/app/services/_file_update.py",
+      "size": 1876,
+      "lines": 44,
+      "ext": ".py",
+      "sha1": "2896b3bac5502656dc06fe9084b15eab2e72462a"
+    },
+    {
+      "path": "backend/files/app/services/file_handlers.py",
+      "size": 1142,
+      "lines": 28,
+      "ext": ".py",
+      "sha1": "4691ffe060c108d74dd92d7daa3287465871573c"
+    },
+    {
+      "path": "backend/files/app/services/file_ingestion_graph.py",
+      "size": 46613,
+      "lines": 1139,
+      "ext": ".py",
+      "sha1": "debe02ef79a7e7994a54916022be8c7b28a89488"
+    },
+    {
+      "path": "backend/files/app/services/file_service.py",
+      "size": 9394,
+      "lines": 198,
+      "ext": ".py",
+      "sha1": "3cc25be5848f6658ca033bb35e4a638dd79a34c8"
+    },
+    {
+      "path": "backend/files/app/services/graph_types.py",
+      "size": 778,
+      "lines": 30,
+      "ext": ".py",
+      "sha1": "a380ce9896aac84992019358593efdaad0cd2158"
+    },
+    {
+      "path": "backend/files/app/services/issue_detector.py",
+      "size": 5584,
+      "lines": 122,
+      "ext": ".py",
+      "sha1": "fd1a6801daec3c6acc491b1102f075aee140f166"
+    },
+    {
+      "path": "backend/files/app/services/metrics_query.py",
+      "size": 17281,
+      "lines": 435,
+      "ext": ".py",
+      "sha1": "2236bf63113438d8281533d95d83843573dc5f0f"
+    },
+    {
+      "path": "backend/files/app/tests/__init__.py",
+      "size": 18,
+      "lines": 2,
+      "ext": ".py",
+      "sha1": "dda4c27bbc05b3f88b153b73864574f75030b4b6"
+    },
+    {
+      "path": "backend/files/app/tests/test_db_error_contract.py",
+      "size": 6958,
+      "lines": 242,
+      "ext": ".py",
+      "sha1": "b4369e56842bef45028de9c4d37112b19a66e160"
+    },
+    {
+      "path": "backend/files/app/tests/test_metrics_query.py",
+      "size": 7812,
+      "lines": 215,
+      "ext": ".py",
+      "sha1": "5860ec61a8eeb04fc04de7475e0146a23044fbdf"
+    },
+    {
+      "path": "backend/files/app/tests/test_review_flow.py",
+      "size": 31562,
+      "lines": 856,
+      "ext": ".py",
+      "sha1": "eb5e20e07ad6464b23a34902fced66089c650af3"
+    },
+    {
+      "path": "backend/files/app/tests/test_tenant_scope.py",
+      "size": 3748,
+      "lines": 116,
+      "ext": ".py",
+      "sha1": "d4db141ad9c3570d653980c50ab5263c4fcece43"
+    },
+    {
+      "path": "backend/files/app/utils/__init__.py",
+      "size": 25,
+      "lines": 2,
+      "ext": ".py",
+      "sha1": "06849be59b8ca810b04f3d5b6ee35a88f04c9652"
+    },
+    {
+      "path": "backend/files/app/utils/common.py",
+      "size": 12173,
+      "lines": 382,
+      "ext": ".py",
+      "sha1": "af45967176966cc9a43c136bde1d148b446502f9"
+    },
+    {
+      "path": "backend/gateway/app/__init__.py",
+      "size": 31,
+      "lines": 2,
+      "ext": ".py",
+      "sha1": "a167d4b9ae0621f710a265a06309285a410e8a01"
+    },
+    {
+      "path": "backend/gateway/app/core/__init__.py",
+      "size": 29,
+      "lines": 2,
+      "ext": ".py",
+      "sha1": "5b6159e0c002275c67a00265febe596826f61057"
+    },
+    {
+      "path": "backend/gateway/app/core/auth.py",
+      "size": 2148,
+      "lines": 62,
+      "ext": ".py",
+      "sha1": "24355bff87f1983617bc5c9b7691b1486d327b11"
+    },
+    {
+      "path": "backend/gateway/app/core/config.py",
+      "size": 8514,
+      "lines": 207,
+      "ext": ".py",
+      "sha1": "da9e3e2af63fac49bd5d5d8e9933a59bf0e409df"
+    },
+    {
+      "path": "backend/gateway/app/core/constants.py",
+      "size": 8073,
+      "lines": 198,
+      "ext": ".py",
+      "sha1": "a37b07bf862d639e19b006a5ad1e709afafb5987"
+    },
+    {
+      "path": "backend/gateway/app/core/correlation.py",
+      "size": 2475,
+      "lines": 76,
+      "ext": ".py",
+      "sha1": "50440381e7b07a7bce2ecf8e481016391b6d4fb3"
+    },
+    {
+      "path": "backend/gateway/app/core/deps.py",
+      "size": 3552,
+      "lines": 105,
+      "ext": ".py",
+      "sha1": "2f24868726128643e92d3a3fc24ab82e3ae7e226"
+    },
+    {
+      "path": "backend/gateway/app/core/errors.py",
+      "size": 2100,
+      "lines": 71,
+      "ext": ".py",
+      "sha1": "5e3f9050ff84c25cfaa1fc322e6ee0a1a880a6fb"
+    },
+    {
+      "path": "backend/gateway/app/core/exception_handlers.py",
+      "size": 4686,
+      "lines": 120,
+      "ext": ".py",
+      "sha1": "979d3d642d2e180bd767d95f1d5f27c75fd041a4"
+    },
+    {
+      "path": "backend/gateway/app/core/http_middleware.py",
+      "size": 3342,
+      "lines": 96,
+      "ext": ".py",
+      "sha1": "f989f79abbc6d369be655670aab2571abe2f69e9"
+    },
+    {
+      "path": "backend/gateway/app/core/logging_config.py",
+      "size": 332,
+      "lines": 12,
+      "ext": ".py",
+      "sha1": "febfe211f6fe4872041a286f24755fd9bfc6df73"
+    },
+    {
+      "path": "backend/gateway/app/core/rabbitmq_client.py",
+      "size": 2873,
+      "lines": 88,
+      "ext": ".py",
+      "sha1": "a13ad3f7f1533818a407799e90dc552057771b06"
+    },
+    {
+      "path": "backend/gateway/app/core/request_context.py",
+      "size": 1624,
+      "lines": 57,
+      "ext": ".py",
+      "sha1": "7745adc76a8b278d6345350a64f421025ce62b51"
+    },
+    {
+      "path": "backend/gateway/app/core/rpc_client.py",
+      "size": 6691,
+      "lines": 165,
+      "ext": ".py",
+      "sha1": "174c07ab821e8e23c1b9d57bcbea9b982d4c023d"
+    },
+    {
+      "path": "backend/gateway/app/db/__init__.py",
+      "size": 46,
+      "lines": 2,
+      "ext": ".py",
+      "sha1": "6516036d4deafd3d85a7d360bead5ec9f2188e5a"
+    },
+    {
+      "path": "backend/gateway/app/db/session.py",
+      "size": 1151,
+      "lines": 40,
+      "ext": ".py",
+      "sha1": "3a0ddde735263c806a4ac6818e33d4f10bbd29b0"
+    },
+    {
+      "path": "backend/gateway/app/main.py",
+      "size": 6093,
+      "lines": 141,
+      "ext": ".py",
+      "sha1": "649823d252f8da3002628e5871d79ac863e9bcb4"
+    },
+    {
+      "path": "backend/gateway/app/messaging/__init__.py",
+      "size": 54,
+      "lines": 2,
+      "ext": ".py",
+      "sha1": "0dc1ee0aaf1100a01e00a8a8f2c4266eab11819d"
+    },
+    {
+      "path": "backend/gateway/app/messaging/factories.py",
+      "size": 355,
+      "lines": 13,
+      "ext": ".py",
+      "sha1": "46b9751acf145fc590a3fb8bcaeca413d45c503d"
+    },
+    {
+      "path": "backend/gateway/app/messaging/implementations/__init__.py",
+      "size": 37,
+      "lines": 2,
+      "ext": ".py",
+      "sha1": "23b8c9439efee7d5b50e01ea75e8dd9d33600051"
+    },
+    {
+      "path": "backend/gateway/app/messaging/implementations/rabbitmq.py",
+      "size": 82,
+      "lines": 2,
+      "ext": ".py",
+      "sha1": "41db6de357995610d3f3c00f77cc495d710692c6"
+    },
+    {
+      "path": "backend/gateway/app/messaging/interfaces.py",
+      "size": 1002,
+      "lines": 42,
+      "ext": ".py",
+      "sha1": "0b4379be617889d31e807337aa99b44d5ce3dfd2"
+    },
+    {
+      "path": "backend/gateway/app/rest/__init__.py",
+      "size": 46,
+      "lines": 2,
+      "ext": ".py",
+      "sha1": "2322388954633968f34b0520c3d62d4896bf9134"
+    },
+    {
+      "path": "backend/gateway/app/rest/routes.py",
+      "size": 1139,
+      "lines": 28,
+      "ext": ".py",
+      "sha1": "db62b3e87214af5abb3b4c1a805187169a329958"
+    },
+    {
+      "path": "backend/gateway/app/rest/v1/__init__.py",
+      "size": 28,
+      "lines": 2,
+      "ext": ".py",
+      "sha1": "5e3694200d90a7f93622dd25e461b9f8bd606dfd"
+    },
+    {
+      "path": "backend/gateway/app/rest/v1/admin_users.py",
+      "size": 2708,
+      "lines": 74,
+      "ext": ".py",
+      "sha1": "d0fdd1e00d4707842e3153d24c1d5f2e1ffb8dfc"
+    },
+    {
+      "path": "backend/gateway/app/rest/v1/auth.py",
+      "size": 6042,
+      "lines": 179,
+      "ext": ".py",
+      "sha1": "e18091ae10c3bf9cbc569632628bad979b5c3892"
+    },
+    {
+      "path": "backend/gateway/app/rest/v1/chat.py",
+      "size": 642,
+      "lines": 23,
+      "ext": ".py",
+      "sha1": "69760d4f9e1088415925ec3cfa54ec0b3defc36e"
+    },
+    {
+      "path": "backend/gateway/app/rest/v1/chat_history.py",
+      "size": 2985,
+      "lines": 108,
+      "ext": ".py",
+      "sha1": "a52a9c0658de6fa25cc771a4456c6dbb1d776902"
+    },
+    {
+      "path": "backend/gateway/app/rest/v1/config.py",
+      "size": 2693,
+      "lines": 93,
+      "ext": ".py",
+      "sha1": "d2e5aa7bbe3db0ef0e9addf2c6c07add0236947e"
+    },
+    {
+      "path": "backend/gateway/app/rest/v1/files.py",
+      "size": 5467,
+      "lines": 172,
+      "ext": ".py",
+      "sha1": "b735d981179bdac8a05a98b30e07740c46c74ee9"
+    },
+    {
+      "path": "backend/gateway/app/rest/v1/health.py",
+      "size": 1973,
+      "lines": 62,
+      "ext": ".py",
+      "sha1": "bd11ed896da4ccec8e9ea615266770eafadd5d2e"
+    },
+    {
+      "path": "backend/gateway/app/rest/v1/llm.py",
+      "size": 929,
+      "lines": 26,
+      "ext": ".py",
+      "sha1": "79efe0f0d412b08192a4589e84d650c9c891f5f0"
+    },
+    {
+      "path": "backend/gateway/app/rest/v1/logs.py",
+      "size": 1174,
+      "lines": 35,
+      "ext": ".py",
+      "sha1": "1b1d74e29788f2d8f87d39c6e8cd5ad81e47f02c"
+    },
+    {
+      "path": "backend/gateway/app/rest/v1/long_term_memory.py",
+      "size": 3600,
+      "lines": 113,
+      "ext": ".py",
+      "sha1": "07327f10da5a3c1ffebc0b97fb815bc932230cf1"
+    },
+    {
+      "path": "backend/gateway/app/rest/v1/metrics.py",
+      "size": 12223,
+      "lines": 334,
+      "ext": ".py",
+      "sha1": "9536bfcd713a9c8f5c46c928eb388d9648382ad7"
+    },
+    {
+      "path": "backend/gateway/app/rest/v1/models.py",
+      "size": 2623,
+      "lines": 85,
+      "ext": ".py",
+      "sha1": "7b15f224056eca2f5ade0d32b6c6ab05a0653869"
+    },
+    {
+      "path": "backend/gateway/app/rest/v1/models_legacy.py",
+      "size": 939,
+      "lines": 28,
+      "ext": ".py",
+      "sha1": "7e80c967af244ec91386261e80f022bdaf2fd651"
+    },
+    {
+      "path": "backend/gateway/app/rest/v1/rag.py",
+      "size": 1184,
+      "lines": 41,
+      "ext": ".py",
+      "sha1": "4eadab12579b1f732d82a85813a85c68d9f10e9d"
+    },
+    {
+      "path": "backend/gateway/app/schemas/__init__.py",
+      "size": 476,
+      "lines": 21,
+      "ext": ".py",
+      "sha1": "6cebe7b8fabc73e4e10cab6d7040502ff010d3a4"
+    },
+    {
+      "path": "backend/gateway/app/schemas/auth.py",
+      "size": 1962,
+      "lines": 74,
+      "ext": ".py",
+      "sha1": "a2383bc502a751e88f452b138319c8da0e2885d3"
+    },
+    {
+      "path": "backend/gateway/app/schemas/chat.py",
+      "size": 1246,
+      "lines": 26,
+      "ext": ".py",
+      "sha1": "5b868b3e6f6cc5b76c5cb9dc5d88554882814b41"
+    },
+    {
+      "path": "backend/gateway/app/schemas/common.py",
+      "size": 2405,
+      "lines": 44,
+      "ext": ".py",
+      "sha1": "1fdc251cbd1d416f1fb4d31acf90011b743ddea6"
+    },
+    {
+      "path": "backend/gateway/app/schemas/file.py",
+      "size": 2560,
+      "lines": 60,
+      "ext": ".py",
+      "sha1": "7fad6109167ac795ef67739056d86365d61fbf9a"
+    },
+    {
+      "path": "backend/gateway/app/schemas/message.py",
+      "size": 671,
+      "lines": 18,
+      "ext": ".py",
+      "sha1": "e335a94302f055bac235ffbc1784ceb7c88d331f"
+    },
+    {
+      "path": "backend/gateway/app/services/__init__.py",
+      "size": 32,
+      "lines": 2,
+      "ext": ".py",
+      "sha1": "f343483081f8c358e99f271207d62939f9b576d0"
+    },
+    {
+      "path": "backend/gateway/app/services/auth_service.py",
+      "size": 20128,
+      "lines": 497,
+      "ext": ".py",
+      "sha1": "413eff6b382b83a9b8a988ed6380774e3dbc263a"
+    },
+    {
+      "path": "backend/gateway/app/services/base.py",
+      "size": 1761,
+      "lines": 56,
+      "ext": ".py",
+      "sha1": "b1a340c1268f7421d5dc80b0cb455e32b3009c8f"
+    },
+    {
+      "path": "backend/gateway/app/services/chat_history_service.py",
+      "size": 2976,
+      "lines": 76,
+      "ext": ".py",
+      "sha1": "7782ef864fc2b424029acd52d4a685907636c87d"
+    },
+    {
+      "path": "backend/gateway/app/services/chat_service.py",
+      "size": 11071,
+      "lines": 270,
+      "ext": ".py",
+      "sha1": "da946eecc5fba89dc7cfe8c3a727fc6e1e12ac7d"
+    },
+    {
+      "path": "backend/gateway/app/services/config_management_service.py",
+      "size": 2981,
+      "lines": 71,
+      "ext": ".py",
+      "sha1": "c86ec9fe4fdd156bcd1b89aa86b9f0475366bb03"
+    },
+    {
+      "path": "backend/gateway/app/services/file_service.py",
+      "size": 7327,
+      "lines": 184,
+      "ext": ".py",
+      "sha1": "1108d7e3c1cdf1ab22e5cb163054060085daca51"
+    },
+    {
+      "path": "backend/gateway/app/services/log_service.py",
+      "size": 5158,
+      "lines": 117,
+      "ext": ".py",
+      "sha1": "89ab0fc989367329b628946d89bf248ddf49081e"
+    },
+    {
+      "path": "backend/gateway/app/services/long_term_memory_service.py",
+      "size": 2802,
+      "lines": 77,
+      "ext": ".py",
+      "sha1": "2b4e9f8d6d68080d87c330b6b1e61152b347b500"
+    },
+    {
+      "path": "backend/gateway/app/services/metrics_service.py",
+      "size": 30573,
+      "lines": 784,
+      "ext": ".py",
+      "sha1": "c2acf4a6cc22ab18a8537ef820938a58735ebf02"
+    },
+    {
+      "path": "backend/gateway/app/services/model_management_service.py",
+      "size": 3328,
+      "lines": 78,
+      "ext": ".py",
+      "sha1": "af941efe9eb685b7ca0e64881929cd7298982dfc"
+    },
+    {
+      "path": "backend/gateway/app/services/prometheus_client.py",
+      "size": 4363,
+      "lines": 123,
+      "ext": ".py",
+      "sha1": "61e2b70bf5b6e01c4bb087da4b9346a51ce30967"
+    },
+    {
+      "path": "backend/gateway/app/services/promql.py",
+      "size": 10596,
+      "lines": 183,
+      "ext": ".py",
+      "sha1": "cbae85ad54d623a548726b68ba45dba28af3a4ba"
+    },
+    {
+      "path": "backend/gateway/app/services/rag_service.py",
+      "size": 1096,
+      "lines": 29,
+      "ext": ".py",
+      "sha1": "2368668b6a60202b4f5a3cb1a6308eb79c337494"
+    },
+    {
+      "path": "backend/gateway/app/tests/__init__.py",
+      "size": 37,
+      "lines": 2,
+      "ext": ".py",
+      "sha1": "814244bdbdb8fbd1378773410f1feed71d1f5e1f"
+    },
+    {
+      "path": "backend/gateway/app/tests/test_auth_datetime.py",
+      "size": 542,
+      "lines": 20,
+      "ext": ".py",
+      "sha1": "e869b701a2cad9f07b21501a34a37f181c559c8a"
+    },
+    {
+      "path": "backend/gateway/app/tests/test_auth_rbac.py",
+      "size": 3667,
+      "lines": 112,
+      "ext": ".py",
+      "sha1": "3e51f6e8a252153a05239acc249a9ddd267d5a75"
+    },
+    {
+      "path": "backend/gateway/app/tests/test_auth_setup.py",
+      "size": 3957,
+      "lines": 121,
+      "ext": ".py",
+      "sha1": "ad94d76d02eb30cab44296e4d1a37c91672ec586"
+    },
+    {
+      "path": "backend/gateway/app/tests/test_backward_compatibility.py",
+      "size": 2536,
+      "lines": 72,
+      "ext": ".py",
+      "sha1": "bcf1c0fef688180e34c25a320b84c6949e954ce4"
+    },
+    {
+      "path": "backend/gateway/app/tests/test_chat.py",
+      "size": 3087,
+      "lines": 92,
+      "ext": ".py",
+      "sha1": "b86bd939d2c363b86b17861043acef4f8c1ae006"
+    },
+    {
+      "path": "backend/gateway/app/tests/test_correlation_middleware.py",
+      "size": 3051,
+      "lines": 91,
+      "ext": ".py",
+      "sha1": "825f28afdc33a672e414e6f1ddc7a5b05283251a"
+    },
+    {
+      "path": "backend/gateway/app/tests/test_files_routes.py",
+      "size": 6136,
+      "lines": 188,
+      "ext": ".py",
+      "sha1": "c91a5d48ecec1c0beaa3d8022320d3fde9375961"
+    },
+    {
+      "path": "backend/gateway/app/tests/test_logging_context.py",
+      "size": 2094,
+      "lines": 61,
+      "ext": ".py",
+      "sha1": "a2cd6c79ccad3ee4906333a7c7e11baddc255261"
+    },
+    {
+      "path": "backend/gateway/app/tests/test_long_term_memory_routes.py",
+      "size": 4668,
+      "lines": 138,
+      "ext": ".py",
+      "sha1": "f80edb8b999bfa7b58f467bbaccac302c00e7a7b"
+    },
+    {
+      "path": "backend/gateway/app/tests/test_metrics_eval_routes.py",
+      "size": 17441,
+      "lines": 473,
+      "ext": ".py",
+      "sha1": "2ae342fbe34f490050b0031f12a7a025f397ee98"
+    },
+    {
+      "path": "backend/gateway/app/tests/test_metrics_routes.py",
+      "size": 11577,
+      "lines": 322,
+      "ext": ".py",
+      "sha1": "6dbc6731fe8185322ea3edb80b80f8cd9d3aa5d0"
+    },
+    {
+      "path": "backend/gateway/app/tests/test_model_management_routes.py",
+      "size": 1503,
+      "lines": 45,
+      "ext": ".py",
+      "sha1": "14e9a126d2ad9dbdf85533e93b342254a9549c1f"
+    },
+    {
+      "path": "backend/gateway/app/tests/test_prometheus_client.py",
+      "size": 4917,
+      "lines": 151,
+      "ext": ".py",
+      "sha1": "efcc2720e74c492b415a0f37e968be11245eeaff"
+    },
+    {
+      "path": "backend/gateway/app/tests/test_rag_routes.py",
+      "size": 2564,
+      "lines": 77,
+      "ext": ".py",
+      "sha1": "128f2e4e7e59016d486970b7f000335516927a43"
+    },
+    {
+      "path": "backend/gateway/app/utils/__init__.py",
+      "size": 115,
+      "lines": 5,
+      "ext": ".py",
+      "sha1": "35bf58993ba8b5c2868c75c2ae820aca996eb042"
+    },
+    {
+      "path": "backend/gateway/app/utils/common.py",
+      "size": 657,
+      "lines": 19,
+      "ext": ".py",
+      "sha1": "e9d80289797971fe52a22d250cd8b560021dd68e"
+    },
+    {
+      "path": "backend/gateway/scripts/provision_tenant.py",
+      "size": 1742,
+      "lines": 53,
+      "ext": ".py",
+      "sha1": "11f5aa11e81aaace7b10ce8be647df73e5981996"
+    },
+    {
+      "path": "backend/llm_agent/app/__init__.py",
+      "size": 33,
+      "lines": 2,
+      "ext": ".py",
+      "sha1": "add043bc444c1c2a262fab0478c62e056d1bbb6b"
+    },
+    {
+      "path": "backend/llm_agent/app/cache/__init__.py",
+      "size": 98,
+      "lines": 5,
+      "ext": ".py",
+      "sha1": "a13ef01a1857d6b112e62a8602e271fbdc1d07bb"
+    },
+    {
+      "path": "backend/llm_agent/app/cache/factories.py",
+      "size": 518,
+      "lines": 15,
+      "ext": ".py",
+      "sha1": "dba681681ec41855b0ef2b7f7f3d37fcd26c7ec8"
+    },
+    {
+      "path": "backend/llm_agent/app/cache/interfaces.py",
+      "size": 773,
+      "lines": 25,
+      "ext": ".py",
+      "sha1": "d1b56a83a32d564f77efe745749136a53cf17cf0"
+    },
+    {
+      "path": "backend/llm_agent/app/cache/memory.py",
+      "size": 1051,
+      "lines": 34,
+      "ext": ".py",
+      "sha1": "fea63862d188c3b07460ca032ddb92cd50c328db"
+    },
+    {
+      "path": "backend/llm_agent/app/core/__init__.py",
+      "size": 399,
+      "lines": 18,
+      "ext": ".py",
+      "sha1": "bc9e54c72ee0e0ad6b424c1ecb85df6478f35709"
+    },
+    {
+      "path": "backend/llm_agent/app/core/config.py",
+      "size": 9649,
+      "lines": 205,
+      "ext": ".py",
+      "sha1": "4e85afdde10ff0cb23789c89fe082ceb025a6e91"
+    },
+    {
+      "path": "backend/llm_agent/app/core/constants.py",
+      "size": 1537,
+      "lines": 54,
+      "ext": ".py",
+      "sha1": "f5e14298d4f23df24afd960aa5b01c436b968af3"
+    },
+    {
+      "path": "backend/llm_agent/app/core/deps.py",
+      "size": 2014,
+      "lines": 61,
+      "ext": ".py",
+      "sha1": "d49f347e3c1a656136519aae55c78e259e6b482b"
+    },
+    {
+      "path": "backend/llm_agent/app/core/errors.py",
+      "size": 3358,
+      "lines": 94,
+      "ext": ".py",
+      "sha1": "71a793e7117e1bbf61996aba4ce7dd036161ceed"
+    },
+    {
+      "path": "backend/llm_agent/app/core/exception_handlers.py",
+      "size": 1771,
+      "lines": 55,
+      "ext": ".py",
+      "sha1": "b78f2c7d294a121e1e5b6a158e8ad85aed74bc96"
+    },
+    {
+      "path": "backend/llm_agent/app/core/exceptions.py",
+      "size": 449,
+      "lines": 17,
+      "ext": ".py",
+      "sha1": "edb3ebf2873cfd896cf52b42fbfffb9eab357650"
+    },
+    {
+      "path": "backend/llm_agent/app/core/llm_error_utils.py",
+      "size": 2032,
+      "lines": 61,
+      "ext": ".py",
+      "sha1": "28ebef00dde0f6c485849cda1126ec79e437a791"
+    },
+    {
+      "path": "backend/llm_agent/app/core/logging_config.py",
+      "size": 509,
+      "lines": 18,
+      "ext": ".py",
+      "sha1": "4431b74ed5b9e181be057820f09040e933a6b242"
+    },
+    {
+      "path": "backend/llm_agent/app/core/safety.py",
+      "size": 1564,
+      "lines": 57,
+      "ext": ".py",
+      "sha1": "e42e36a838e95d74a805164c0b683c674b1c0e40"
+    },
+    {
+      "path": "backend/llm_agent/app/core/tracing.py",
+      "size": 5517,
+      "lines": 187,
+      "ext": ".py",
+      "sha1": "0cd505a1d7b86cfc092f0128bf9a99bf3a175504"
+    },
+    {
+      "path": "backend/llm_agent/app/db/__init__.py",
+      "size": 185,
+      "lines": 5,
+      "ext": ".py",
+      "sha1": "d274133c57a57a32edd4de25e4335fac3209ef8a"
+    },
+    {
+      "path": "backend/llm_agent/app/db/session.py",
+      "size": 2092,
+      "lines": 88,
+      "ext": ".py",
+      "sha1": "bf5337e1691abc9c1f697d10aab707dae90407de"
+    },
+    {
+      "path": "backend/llm_agent/app/interfaces.py",
+      "size": 272,
+      "lines": 7,
+      "ext": ".py",
+      "sha1": "fa17896754c248897654cb39912b51f6483bd090"
+    },
+    {
+      "path": "backend/llm_agent/app/llm/__init__.py",
+      "size": 51,
+      "lines": 2,
+      "ext": ".py",
+      "sha1": "f3766d1ffb4729ac456338db7410f271b0859d19"
+    },
+    {
+      "path": "backend/llm_agent/app/llm/_prompt_registry_helpers.py",
+      "size": 2273,
+      "lines": 56,
+      "ext": ".py",
+      "sha1": "f980a837aa01f244fa26aa2a78d88a174589e792"
+    },
+    {
+      "path": "backend/llm_agent/app/llm/factories.py",
+      "size": 1562,
+      "lines": 40,
+      "ext": ".py",
+      "sha1": "c51e32b18b7cec2753d7ce57e40c6a0ef76f4e6a"
+    },
+    {
+      "path": "backend/llm_agent/app/llm/implementations/__init__.py",
+      "size": 34,
+      "lines": 2,
+      "ext": ".py",
+      "sha1": "b9d3f569ed4683b217656dc046534fb5a6c67690"
+    },
+    {
+      "path": "backend/llm_agent/app/llm/implementations/huggingface.py",
+      "size": 6668,
+      "lines": 179,
+      "ext": ".py",
+      "sha1": "a24a032b04b27524782fe2e0363a00262730a739"
+    },
+    {
+      "path": "backend/llm_agent/app/llm/implementations/ollama.py",
+      "size": 5648,
+      "lines": 154,
+      "ext": ".py",
+      "sha1": "170b22647a66e22cb1410cf45579f1b6dfb94880"
+    },
+    {
+      "path": "backend/llm_agent/app/llm/implementations/queued_llm.py",
+      "size": 4107,
+      "lines": 113,
+      "ext": ".py",
+      "sha1": "3b9708513d63290470e865cf934bdf80c3a42925"
+    },
+    {
+      "path": "backend/llm_agent/app/llm/implementations/vllm.py",
+      "size": 9247,
+      "lines": 212,
+      "ext": ".py",
+      "sha1": "31b78c0bc53de1e8947984c5b3ab810344253c3b"
+    },
+    {
+      "path": "backend/llm_agent/app/llm/interfaces.py",
+      "size": 2796,
+      "lines": 100,
+      "ext": ".py",
+      "sha1": "514fd5fa4e897c1c5d9a267afcfa730b9f6012dc"
+    },
+    {
+      "path": "backend/llm_agent/app/llm/prompt_registry.py",
+      "size": 7101,
+      "lines": 167,
+      "ext": ".py",
+      "sha1": "284c0389438614db6ff344d93e079dbaf3b50047"
+    },
+    {
+      "path": "backend/llm_agent/app/llm/prompts/__init__.py",
+      "size": 1021,
+      "lines": 37,
+      "ext": ".py",
+      "sha1": "c8f17a22028f4f2a3b54ee59216777e9340a768f"
+    },
+    {
+      "path": "backend/llm_agent/app/llm/prompts/_base.py",
+      "size": 12068,
+      "lines": 357,
+      "ext": ".py",
+      "sha1": "5e6624bb52ae57732a410c325836440b2d51a596"
+    },
+    {
+      "path": "backend/llm_agent/app/llm/prompts/answer_evaluation.py",
+      "size": 10319,
+      "lines": 267,
+      "ext": ".py",
+      "sha1": "69da91d0294e8b803f50869b8fc6e7fd479752e2"
+    },
+    {
+      "path": "backend/llm_agent/app/llm/prompts/answer_generation.py",
+      "size": 6536,
+      "lines": 165,
+      "ext": ".py",
+      "sha1": "27befc0949053c6aadcdbd893c46ab4b0c6fde10"
+    },
+    {
+      "path": "backend/llm_agent/app/llm/prompts/content_risk.py",
+      "size": 3221,
+      "lines": 79,
+      "ext": ".py",
+      "sha1": "7efc3370d89ceab0cdaa182548eb2a09cddceeac"
+    },
+    {
+      "path": "backend/llm_agent/app/llm/prompts/memory_extraction.py",
+      "size": 1128,
+      "lines": 29,
+      "ext": ".py",
+      "sha1": "579adc188337d00736db92bdddb58ecf85e4847d"
+    },
+    {
+      "path": "backend/llm_agent/app/llm/prompts/query_rewrite.py",
+      "size": 1139,
+      "lines": 33,
+      "ext": ".py",
+      "sha1": "4b737b779698ecd1df0a1215a7b6acd126d99cac"
+    },
+    {
+      "path": "backend/llm_agent/app/main.py",
+      "size": 7231,
+      "lines": 182,
+      "ext": ".py",
+      "sha1": "ae00c877cd2afbef9d6b5dbeaacb7779d68f7b06"
+    },
+    {
+      "path": "backend/llm_agent/app/messaging/__init__.py",
+      "size": 54,
+      "lines": 2,
+      "ext": ".py",
+      "sha1": "0dc1ee0aaf1100a01e00a8a8f2c4266eab11819d"
+    },
+    {
+      "path": "backend/llm_agent/app/messaging/base_handler.py",
+      "size": 11528,
+      "lines": 281,
+      "ext": ".py",
+      "sha1": "a32e07fa12a1b60fc4793bc9cb92a052e1f54d79"
+    },
+    {
+      "path": "backend/llm_agent/app/messaging/config_handler.py",
+      "size": 3657,
+      "lines": 88,
+      "ext": ".py",
+      "sha1": "806bf0d6f1f679c0b559568900dc23f8c6c6483d"
+    },
+    {
+      "path": "backend/llm_agent/app/messaging/factories.py",
+      "size": 547,
+      "lines": 15,
+      "ext": ".py",
+      "sha1": "3c8bd3968beff9d2cad798aabe1a28aacc84d62b"
+    },
+    {
+      "path": "backend/llm_agent/app/messaging/handlers.py",
+      "size": 634,
+      "lines": 19,
+      "ext": ".py",
+      "sha1": "2a2b448379243e8972a4a69ba283010ad1043ca2"
+    },
+    {
+      "path": "backend/llm_agent/app/messaging/implementations/__init__.py",
+      "size": 37,
+      "lines": 2,
+      "ext": ".py",
+      "sha1": "23b8c9439efee7d5b50e01ea75e8dd9d33600051"
+    },
+    {
+      "path": "backend/llm_agent/app/messaging/implementations/rabbitmq.py",
+      "size": 1009,
+      "lines": 33,
+      "ext": ".py",
+      "sha1": "1ce643c030d7d0d643e330efaf21e084f56c6af6"
+    },
+    {
+      "path": "backend/llm_agent/app/messaging/interfaces.py",
+      "size": 1002,
+      "lines": 42,
+      "ext": ".py",
+      "sha1": "0b4379be617889d31e807337aa99b44d5ce3dfd2"
+    },
+    {
+      "path": "backend/llm_agent/app/messaging/llm_handler.py",
+      "size": 8616,
+      "lines": 224,
+      "ext": ".py",
+      "sha1": "b31ef8f03a624d51895d87aaa9c2344a81d65466"
+    },
+    {
+      "path": "backend/llm_agent/app/messaging/metadata_handler.py",
+      "size": 2964,
+      "lines": 82,
+      "ext": ".py",
+      "sha1": "8e74e1d40dbf244aef765a778a9f1760199233b1"
+    },
+    {
+      "path": "backend/llm_agent/app/messaging/model_handler.py",
+      "size": 4373,
+      "lines": 106,
+      "ext": ".py",
+      "sha1": "90812bfef45d984eadf12ea3378c83ea993998f6"
+    },
+    {
+      "path": "backend/llm_agent/app/messaging/questions_handler.py",
+      "size": 3549,
+      "lines": 93,
+      "ext": ".py",
+      "sha1": "fcb8f33cae9acc3abdd9cec54710274d9c7fff31"
+    },
+    {
+      "path": "backend/llm_agent/app/messaging/summary_handler.py",
+      "size": 3392,
+      "lines": 89,
+      "ext": ".py",
+      "sha1": "b7c2afa97d5c9e0e9db8194f747c41fe9862a701"
+    },
+    {
+      "path": "backend/llm_agent/app/rest/__init__.py",
+      "size": 30,
+      "lines": 2,
+      "ext": ".py",
+      "sha1": "07544b79bdda129d3f59e7eec2c8bd57482455d8"
+    },
+    {
+      "path": "backend/llm_agent/app/rest/routes.py",
+      "size": 412,
+      "lines": 20,
+      "ext": ".py",
+      "sha1": "6989e4d3c4c71491610369a0e7e4e3e1b591092f"
+    },
+    {
+      "path": "backend/llm_agent/app/rest/v1/__init__.py",
+      "size": 21,
+      "lines": 2,
+      "ext": ".py",
+      "sha1": "933d20c1cdfbfce4696f94f287debe38e6e0bd79"
+    },
+    {
+      "path": "backend/llm_agent/app/rest/v1/health.py",
+      "size": 1186,
+      "lines": 37,
+      "ext": ".py",
+      "sha1": "c2c803d5b7066969a2b096f13ae4e87d1c29db40"
+    },
+    {
+      "path": "backend/llm_agent/app/schemas/__init__.py",
+      "size": 722,
+      "lines": 24,
+      "ext": ".py",
+      "sha1": "a90f4714a0f1dec430911aa8535130be8aaa65a8"
+    },
+    {
+      "path": "backend/llm_agent/app/schemas/llm.py",
+      "size": 10873,
+      "lines": 376,
+      "ext": ".py",
+      "sha1": "98b5066bb734bb70c3f216a0c7a58279a51c0c6a"
+    },
+    {
+      "path": "backend/llm_agent/app/schemas/metadata.py",
+      "size": 1106,
+      "lines": 26,
+      "ext": ".py",
+      "sha1": "3bbd9a55b6ba11786cba8e2909206ab6b965ff1b"
+    },
+    {
+      "path": "backend/llm_agent/app/schemas/summary.py",
+      "size": 709,
+      "lines": 18,
+      "ext": ".py",
+      "sha1": "cbb71b62e2d30a8685df5fd11f9c9e0fe164cc87"
+    },
+    {
+      "path": "backend/llm_agent/app/services/__init__.py",
+      "size": 428,
+      "lines": 15,
+      "ext": ".py",
+      "sha1": "97c682ff290a6d24be03634f645006aa8baabd4e"
+    },
+    {
+      "path": "backend/llm_agent/app/services/base.py",
+      "size": 546,
+      "lines": 21,
+      "ext": ".py",
+      "sha1": "352aa69e1d075a946b019ce2d527ec754fd43da6"
+    },
+    {
+      "path": "backend/llm_agent/app/services/config_service.py",
+      "size": 11862,
+      "lines": 305,
+      "ext": ".py",
+      "sha1": "b652f56b9275212a31084bb108c20ad970700b2d"
+    },
+    {
+      "path": "backend/llm_agent/app/services/llm_service.py",
+      "size": 24007,
+      "lines": 577,
+      "ext": ".py",
+      "sha1": "38bc43182a69ecc19cf49500cbe185dfba937954"
+    },
+    {
+      "path": "backend/llm_agent/app/services/metadata_service.py",
+      "size": 13620,
+      "lines": 348,
+      "ext": ".py",
+      "sha1": "0c622dc903ea9e31a88992de9e18865e1cdacbbd"
+    },
+    {
+      "path": "backend/llm_agent/app/services/model_service.py",
+      "size": 12954,
+      "lines": 362,
+      "ext": ".py",
+      "sha1": "4d79f78e8e0ddc688eded17865f9027492a1026f"
+    },
+    {
+      "path": "backend/llm_agent/app/services/summary_service.py",
+      "size": 11035,
+      "lines": 270,
+      "ext": ".py",
+      "sha1": "a7702b552e0c2077e31631f9e38f89670f645b67"
+    },
+    {
+      "path": "backend/llm_agent/app/services/text_window.py",
+      "size": 5549,
+      "lines": 148,
+      "ext": ".py",
+      "sha1": "fc76fc5fda3e7106ed6f9b22b63ed1b83020077d"
+    },
+    {
+      "path": "backend/llm_agent/app/tests/__init__.py",
+      "size": 20,
+      "lines": 2,
+      "ext": ".py",
+      "sha1": "f934210adf326d1fe3c2ba20d38b1101ada9ed3a"
+    },
+    {
+      "path": "backend/llm_agent/app/tests/test_answer_citations.py",
+      "size": 7700,
+      "lines": 199,
+      "ext": ".py",
+      "sha1": "debd3424f5f1cbe01ba2b8a7430beb1c654ac915"
+    },
+    {
+      "path": "backend/llm_agent/app/tests/test_health.py",
+      "size": 668,
+      "lines": 26,
+      "ext": ".py",
+      "sha1": "99ff5d34d339d97b2a1328238e977c2035270f0e"
+    },
+    {
+      "path": "backend/llm_agent/app/tests/test_llm_schemas.py",
+      "size": 4396,
+      "lines": 133,
+      "ext": ".py",
+      "sha1": "7783d4af0a2ffc44b25b1714f2746f343cc8eb77"
+    },
+    {
+      "path": "backend/llm_agent/app/tests/test_llm_service.py",
+      "size": 23196,
+      "lines": 681,
+      "ext": ".py",
+      "sha1": "1e8b3ad6a98af3fe2dc5d7536eb3830243c83c02"
+    },
+    {
+      "path": "backend/llm_agent/app/tests/test_long_text_handling.py",
+      "size": 6417,
+      "lines": 173,
+      "ext": ".py",
+      "sha1": "5e8f2e09069c4f3bce760314fd18ecccfa19d2fa"
+    },
+    {
+      "path": "backend/llm_agent/app/tests/test_management_handler_compat.py",
+      "size": 6264,
+      "lines": 177,
+      "ext": ".py",
+      "sha1": "b9b15a1392601219ce7f430477eaf3d8571af384"
+    },
+    {
+      "path": "backend/llm_agent/app/tests/test_prompt_registry.py",
+      "size": 3686,
+      "lines": 86,
+      "ext": ".py",
+      "sha1": "e26a3b546ed0d8c20c7042a27ff215a290c70645"
+    },
+    {
+      "path": "backend/llm_agent/app/tests/test_rabbitmq_llm_handler.py",
+      "size": 5999,
+      "lines": 165,
+      "ext": ".py",
+      "sha1": "24aacb0671ccfd4e59edcf4b1bb12845fc384977"
+    },
+    {
+      "path": "backend/llm_agent/app/tests/test_rag_typed_contract.py",
+      "size": 3154,
+      "lines": 84,
+      "ext": ".py",
+      "sha1": "4df890f6547072d7ca43d73281cd812b886a63b8"
+    },
+    {
+      "path": "backend/llm_agent/app/tests/test_text_window.py",
+      "size": 5534,
+      "lines": 149,
+      "ext": ".py",
+      "sha1": "5cfe925100905108d5e567e412e04d76eac69b7a"
+    },
+    {
+      "path": "backend/llm_agent/app/tests/test_tracing.py",
+      "size": 2754,
+      "lines": 90,
+      "ext": ".py",
+      "sha1": "747e5e1b455c4d1eb5842d7bd180ced4e1db0252"
+    },
+    {
+      "path": "backend/llm_agent/app/tests/test_vllm_auth.py",
+      "size": 957,
+      "lines": 30,
+      "ext": ".py",
+      "sha1": "27beea1c58a962508c5dbff82c87b89df4766bae"
+    },
+    {
+      "path": "backend/llm_agent/app/utils/__init__.py",
+      "size": 117,
+      "lines": 5,
+      "ext": ".py",
+      "sha1": "5b85e023d6e7a2e3a6fc11a5a194390ce130559c"
+    },
+    {
+      "path": "backend/llm_agent/app/utils/common.py",
+      "size": 581,
+      "lines": 17,
+      "ext": ".py",
+      "sha1": "2848b24bba29fa71165a8383801f37b496f6b74d"
+    },
+    {
+      "path": "backend/llm_agent/config.json",
+      "size": 915,
+      "lines": 35,
+      "ext": ".json",
+      "sha1": "56552b05c9e0100e6166f4441cfa21221d3d57fa"
+    },
+    {
+      "path": "backend/memory/app/__init__.py",
+      "size": 30,
+      "lines": 2,
+      "ext": ".py",
+      "sha1": "0f47cc023a84f802fa6f5224776da984a9fd4186"
+    },
+    {
+      "path": "backend/memory/app/agent/__init__.py",
+      "size": 0,
+      "lines": 1,
+      "ext": ".py",
+      "sha1": "da39a3ee5e6b4b0d3255bfef95601890afd80709"
+    },
+    {
+      "path": "backend/memory/app/agent/memory_agent.py",
+      "size": 7112,
+      "lines": 201,
+      "ext": ".py",
+      "sha1": "dc366a39cc88a40133bbee096ae6227de145adf5"
+    },
+    {
+      "path": "backend/memory/app/bootstrap/__init__.py",
+      "size": 37,
+      "lines": 2,
+      "ext": ".py",
+      "sha1": "07ccd483734fa405c335b6d455ffe6c84e342063"
+    },
+    {
+      "path": "backend/memory/app/bootstrap/runtime.py",
+      "size": 3125,
+      "lines": 79,
+      "ext": ".py",
+      "sha1": "91ad1a7efbfc2016f41268db6d355a06b2cecec3"
+    },
+    {
+      "path": "backend/memory/app/config.py",
+      "size": 180,
+      "lines": 8,
+      "ext": ".py",
+      "sha1": "4d21f09413f2e922060694a57a22996420b306d4"
+    },
+    {
+      "path": "backend/memory/app/core/__init__.py",
+      "size": 0,
+      "lines": 1,
+      "ext": ".py",
+      "sha1": "da39a3ee5e6b4b0d3255bfef95601890afd80709"
+    },
+    {
+      "path": "backend/memory/app/core/config.py",
+      "size": 2162,
+      "lines": 62,
+      "ext": ".py",
+      "sha1": "ee883421bdc3f5515a3ef672273091dcc92f2b59"
+    },
+    {
+      "path": "backend/memory/app/core/errors.py",
+      "size": 607,
+      "lines": 19,
+      "ext": ".py",
+      "sha1": "efd4941c8a227fb29ae48258cc37215f5d3532ff"
+    },
+    {
+      "path": "backend/memory/app/core/logging_config.py",
+      "size": 331,
+      "lines": 12,
+      "ext": ".py",
+      "sha1": "4ef82eac41308c775eb76461432221c486719b16"
+    },
+    {
+      "path": "backend/memory/app/db/__init__.py",
+      "size": 0,
+      "lines": 1,
+      "ext": ".py",
+      "sha1": "da39a3ee5e6b4b0d3255bfef95601890afd80709"
+    },
+    {
+      "path": "backend/memory/app/db/factories.py",
+      "size": 1311,
+      "lines": 34,
+      "ext": ".py",
+      "sha1": "877dcec8efc4d436fc8e4dda3707dde3e90820d8"
+    },
+    {
+      "path": "backend/memory/app/db/implementations/__init__.py",
+      "size": 40,
+      "lines": 2,
+      "ext": ".py",
+      "sha1": "838909f59f5b0b912b8c4d3d6ef683908064a522"
+    },
+    {
+      "path": "backend/memory/app/db/implementations/mongodb.py",
+      "size": 11162,
+      "lines": 298,
+      "ext": ".py",
+      "sha1": "ec3c7125278dfb44f095f00352e2e2c4815c7c1b"
+    },
+    {
+      "path": "backend/memory/app/db/implementations/sqlite.py",
+      "size": 5826,
+      "lines": 179,
+      "ext": ".py",
+      "sha1": "7eb921f6ffcb96dadec7783fab350f6a8338cde8"
+    },
+    {
+      "path": "backend/memory/app/db/interfaces.py",
+      "size": 2385,
+      "lines": 80,
+      "ext": ".py",
+      "sha1": "db85db0417d701c07c2c17ec713e06b1ed23ee06"
+    },
+    {
+      "path": "backend/memory/app/db/session.py",
+      "size": 2797,
+      "lines": 99,
+      "ext": ".py",
+      "sha1": "7b0d059e599f05eb595385ba03190d53c7061bb2"
+    },
+    {
+      "path": "backend/memory/app/main.py",
+      "size": 996,
+      "lines": 44,
+      "ext": ".py",
+      "sha1": "0061fb45d2b5096fd930f269414cf8c6e0a59fb4"
+    },
+    {
+      "path": "backend/memory/app/messaging/__init__.py",
+      "size": 25,
+      "lines": 2,
+      "ext": ".py",
+      "sha1": "6a2402a4d5627b46228333352bb6200a6e370198"
+    },
+    {
+      "path": "backend/memory/app/messaging/factories.py",
+      "size": 484,
+      "lines": 14,
+      "ext": ".py",
+      "sha1": "2d8ea5ae34824decd7c1c0a6cc5de55d21101359"
+    },
+    {
+      "path": "backend/memory/app/messaging/implementations/__init__.py",
+      "size": 41,
+      "lines": 2,
+      "ext": ".py",
+      "sha1": "6ceb560834e13683529f8eae5d24d825e086807e"
+    },
+    {
+      "path": "backend/memory/app/messaging/implementations/rabbitmq.py",
+      "size": 460,
+      "lines": 14,
+      "ext": ".py",
+      "sha1": "25b32f955e2f23c517e424bf7a7b7aed8146e2f5"
+    },
+    {
+      "path": "backend/memory/app/messaging/interfaces.py",
+      "size": 1002,
+      "lines": 42,
+      "ext": ".py",
+      "sha1": "0b4379be617889d31e807337aa99b44d5ce3dfd2"
+    },
+    {
+      "path": "backend/memory/app/rest/__init__.py",
+      "size": 0,
+      "lines": 1,
+      "ext": ".py",
+      "sha1": "da39a3ee5e6b4b0d3255bfef95601890afd80709"
+    },
+    {
+      "path": "backend/memory/app/rest/base.py",
+      "size": 577,
+      "lines": 23,
+      "ext": ".py",
+      "sha1": "b6dcaea03a6a51b6caa8b026ce51b190158aff2c"
+    },
+    {
+      "path": "backend/memory/app/rest/controllers.py",
+      "size": 3016,
+      "lines": 75,
+      "ext": ".py",
+      "sha1": "f5f128d1fa71a1099e151f8b702c9a4edb8f6250"
+    },
+    {
+      "path": "backend/memory/app/rest/dependencies.py",
+      "size": 1166,
+      "lines": 37,
+      "ext": ".py",
+      "sha1": "6c50a54943908687b52295e668b48232fafc9725"
+    },
+    {
+      "path": "backend/memory/app/rest/routes.py",
+      "size": 194,
+      "lines": 9,
+      "ext": ".py",
+      "sha1": "478d1db94c9a19d0381ed007c622377f07146724"
+    },
+    {
+      "path": "backend/memory/app/rest/v1/__init__.py",
+      "size": 0,
+      "lines": 1,
+      "ext": ".py",
+      "sha1": "da39a3ee5e6b4b0d3255bfef95601890afd80709"
+    },
+    {
+      "path": "backend/memory/app/rest/v1/memory.py",
+      "size": 2885,
+      "lines": 77,
+      "ext": ".py",
+      "sha1": "8b39b5ae15a7f66454ded730e99641526987af25"
+    },
+    {
+      "path": "backend/memory/app/schemas/__init__.py",
+      "size": 0,
+      "lines": 1,
+      "ext": ".py",
+      "sha1": "da39a3ee5e6b4b0d3255bfef95601890afd80709"
+    },
+    {
+      "path": "backend/memory/app/schemas/chat.py",
+      "size": 705,
+      "lines": 28,
+      "ext": ".py",
+      "sha1": "94a92f153734e45f228e250395bdd506042abad1"
+    },
+    {
+      "path": "backend/memory/app/schemas/message.py",
+      "size": 1083,
+      "lines": 36,
+      "ext": ".py",
+      "sha1": "09bbcdcb89ce72248f8e1ec3144d07446e371b43"
+    },
+    {
+      "path": "backend/memory/app/services/__init__.py",
+      "size": 0,
+      "lines": 1,
+      "ext": ".py",
+      "sha1": "da39a3ee5e6b4b0d3255bfef95601890afd80709"
+    },
+    {
+      "path": "backend/memory/app/services/chat_exit_service.py",
+      "size": 12055,
+      "lines": 290,
+      "ext": ".py",
+      "sha1": "c6c0a4fc4a06c8e59bbdfdb14a60f91b28e4fae3"
+    },
+    {
+      "path": "backend/memory/app/services/chat_service.py",
+      "size": 6389,
+      "lines": 144,
+      "ext": ".py",
+      "sha1": "6267d2758337bb29f65a87797f6872d1e45541bd"
+    },
+    {
+      "path": "backend/memory/app/services/memory_handler_service.py",
+      "size": 27403,
+      "lines": 632,
+      "ext": ".py",
+      "sha1": "20a897530824d2749df2683c001a425593604f92"
+    },
+    {
+      "path": "backend/memory/app/services/memory_qdrant_service.py",
+      "size": 8144,
+      "lines": 208,
+      "ext": ".py",
+      "sha1": "72b97e6a706d9ce8aa21bd8a158ba3f682c94264"
+    },
+    {
+      "path": "backend/memory/app/services/memory_service.py",
+      "size": 57977,
+      "lines": 1289,
+      "ext": ".py",
+      "sha1": "2b5e2d6738aa324ac75ef1578794201d2aec71a9"
+    },
+    {
+      "path": "backend/memory/app/services/message_service.py",
+      "size": 3565,
+      "lines": 89,
+      "ext": ".py",
+      "sha1": "6a197ca9b948dbf4c04c8b5cb9007e6b710516a4"
+    },
+    {
+      "path": "backend/memory/app/services/tenant_scope.py",
+      "size": 1036,
+      "lines": 33,
+      "ext": ".py",
+      "sha1": "6102bce3af2beaf8e08200492a0a596de615ab5c"
+    },
+    {
+      "path": "backend/memory/app/tests/__init__.py",
+      "size": 0,
+      "lines": 1,
+      "ext": ".py",
+      "sha1": "da39a3ee5e6b4b0d3255bfef95601890afd80709"
+    },
+    {
+      "path": "backend/memory/app/tests/test_chat_exit_service.py",
+      "size": 8942,
+      "lines": 266,
+      "ext": ".py",
+      "sha1": "42c0fee46f59666b11edef1dd4d45c0d64391a03"
+    },
+    {
+      "path": "backend/memory/app/tests/test_delete_chat_handler.py",
+      "size": 2145,
+      "lines": 49,
+      "ext": ".py",
+      "sha1": "bc5954d6610bd33b502f94a02dd3e6072c2612fa"
+    },
+    {
+      "path": "backend/memory/app/tests/test_generate_title_handler.py",
+      "size": 1814,
+      "lines": 45,
+      "ext": ".py",
+      "sha1": "ad0aa6f05d5b6d5893cf2c44fc3d501397e17343"
+    },
+    {
+      "path": "backend/memory/app/tests/test_long_term_memory_service.py",
+      "size": 20298,
+      "lines": 569,
+      "ext": ".py",
+      "sha1": "cfc91a6d4f036339dc1020ec53c5bb4aea690368"
+    },
+    {
+      "path": "backend/memory/app/tests/test_memory.py",
+      "size": 5417,
+      "lines": 180,
+      "ext": ".py",
+      "sha1": "60c9aaeff19149ca312b4f2f09766414079b79ad"
+    },
+    {
+      "path": "backend/memory/app/utils/__init__.py",
+      "size": 0,
+      "lines": 1,
+      "ext": ".py",
+      "sha1": "da39a3ee5e6b4b0d3255bfef95601890afd80709"
+    },
+    {
+      "path": "backend/memory/app/utils/common.py",
+      "size": 607,
+      "lines": 17,
+      "ext": ".py",
+      "sha1": "cfc2d50536742ab146f93fdcd6940d535cda8cf1"
+    },
+    {
+      "path": "backend/rag/AGENTS.md",
+      "size": 772,
+      "lines": 14,
+      "ext": ".md",
+      "sha1": "5c8b80954e0126263ad92623ba8a642e919ab838"
+    },
+    {
+      "path": "backend/rag/CLAUDE.md",
+      "size": 94,
+      "lines": 5,
+      "ext": ".md",
+      "sha1": "17055377354f26aef073a2f68e1ff45d5ee4dcf9"
+    },
+    {
+      "path": "backend/rag/app/__init__.py",
+      "size": 27,
+      "lines": 2,
+      "ext": ".py",
+      "sha1": "81f69d35d8cf891042a8503d7f2efd7de407cb14"
+    },
+    {
+      "path": "backend/rag/app/core/__init__.py",
+      "size": 416,
+      "lines": 21,
+      "ext": ".py",
+      "sha1": "3d870ca35aba77922e8b9bf0517645bb51a3cd07"
+    },
+    {
+      "path": "backend/rag/app/core/config.py",
+      "size": 6212,
+      "lines": 148,
+      "ext": ".py",
+      "sha1": "80a466591c1454dd445b7ce30a3b74a1a2f8ced9"
+    },
+    {
+      "path": "backend/rag/app/core/deps.py",
+      "size": 866,
+      "lines": 24,
+      "ext": ".py",
+      "sha1": "c228f71eda2a88406e27945f37c7f7b9493d9b11"
+    },
+    {
+      "path": "backend/rag/app/core/errors.py",
+      "size": 288,
+      "lines": 10,
+      "ext": ".py",
+      "sha1": "a369caf9dafe9a62dabf1a0132e36d751177ffa6"
+    },
+    {
+      "path": "backend/rag/app/core/exception_handlers.py",
+      "size": 1674,
+      "lines": 54,
+      "ext": ".py",
+      "sha1": "b790dbfbbeef4e2790eb5b3b69102ca2238f4847"
+    },
+    {
+      "path": "backend/rag/app/core/logging_config.py",
+      "size": 328,
+      "lines": 12,
+      "ext": ".py",
+      "sha1": "8468b43a926c552a01da344e876e4b46a8f4f400"
+    },
+    {
+      "path": "backend/rag/app/db/__init__.py",
+      "size": 192,
+      "lines": 5,
+      "ext": ".py",
+      "sha1": "d5e663de1fba75ab06ef27f6d74053113d2ca21b"
+    },
+    {
+      "path": "backend/rag/app/db/implementations/__init__.py",
+      "size": 38,
+      "lines": 2,
+      "ext": ".py",
+      "sha1": "6376f3528f7c10bcb75ebbd24ecc2365bfd2656a"
+    },
+    {
+      "path": "backend/rag/app/db/implementations/in_memory.py",
+      "size": 1645,
+      "lines": 48,
+      "ext": ".py",
+      "sha1": "f5e51b6bcf9e78674ab3399f42d79b0465655155"
+    },
+    {
+      "path": "backend/rag/app/db/interfaces.py",
+      "size": 734,
+      "lines": 29,
+      "ext": ".py",
+      "sha1": "417df8daf795b9e5b47afc32b2a9ad4e90a1e099"
+    },
+    {
+      "path": "backend/rag/app/db/session.py",
+      "size": 627,
+      "lines": 23,
+      "ext": ".py",
+      "sha1": "0cd0c73d41bb69b090a1614984219e5f70cc09a5"
+    },
+    {
+      "path": "backend/rag/app/main.py",
+      "size": 7967,
+      "lines": 199,
+      "ext": ".py",
+      "sha1": "5c24ca77e1896de8d0be29b711b03bd7a68802e7"
+    },
+    {
+      "path": "backend/rag/app/messaging/__init__.py",
+      "size": 54,
+      "lines": 2,
+      "ext": ".py",
+      "sha1": "0dc1ee0aaf1100a01e00a8a8f2c4266eab11819d"
+    },
+    {
+      "path": "backend/rag/app/messaging/factories.py",
+      "size": 481,
+      "lines": 14,
+      "ext": ".py",
+      "sha1": "3a95c11b862ac52a0ba66587a4d2c473832b76bb"
+    },
+    {
+      "path": "backend/rag/app/messaging/implementations/__init__.py",
+      "size": 37,
+      "lines": 2,
+      "ext": ".py",
+      "sha1": "23b8c9439efee7d5b50e01ea75e8dd9d33600051"
+    },
+    {
+      "path": "backend/rag/app/messaging/implementations/rabbitmq.py",
+      "size": 457,
+      "lines": 14,
+      "ext": ".py",
+      "sha1": "ac6cdb7e053aa6f38922d65da2fc3a24f8409489"
+    },
+    {
+      "path": "backend/rag/app/messaging/rag_rpc_handler.py",
+      "size": 1850,
+      "lines": 50,
+      "ext": ".py",
+      "sha1": "5ed58b2323810108b283d6930b264f0dcfd5df84"
+    },
+    {
+      "path": "backend/rag/app/messaging/rpc_client.py",
+      "size": 8317,
+      "lines": 208,
+      "ext": ".py",
+      "sha1": "29af4abbc30d3da51ef2f2795842693167156b4f"
+    },
+    {
+      "path": "backend/rag/app/rest/__init__.py",
+      "size": 43,
+      "lines": 2,
+      "ext": ".py",
+      "sha1": "b72c7bf960298cdd652818d3cf17e5aa55c2f81d"
+    },
+    {
+      "path": "backend/rag/app/rest/routes.py",
+      "size": 328,
+      "lines": 12,
+      "ext": ".py",
+      "sha1": "f1095171316813970ded31afc8028ff3f5828be1"
+    },
+    {
+      "path": "backend/rag/app/rest/v1/__init__.py",
+      "size": 21,
+      "lines": 2,
+      "ext": ".py",
+      "sha1": "933d20c1cdfbfce4696f94f287debe38e6e0bd79"
+    },
+    {
+      "path": "backend/rag/app/rest/v1/health.py",
+      "size": 526,
+      "lines": 19,
+      "ext": ".py",
+      "sha1": "6f4db94e5b52e3f1311a5d7ec0c790bd9a940ca4"
+    },
+    {
+      "path": "backend/rag/app/rest/v1/rag.py",
+      "size": 1420,
+      "lines": 38,
+      "ext": ".py",
+      "sha1": "b621fc5bab618ee56ece5ea4e29ed62a5b1e8f07"
+    },
+    {
+      "path": "backend/rag/app/schemas/__init__.py",
+      "size": 137,
+      "lines": 5,
+      "ext": ".py",
+      "sha1": "3da64181060f42aaf545b85f25569ff8563ff070"
+    },
+    {
+      "path": "backend/rag/app/schemas/rag.py",
+      "size": 1676,
+      "lines": 44,
+      "ext": ".py",
+      "sha1": "2b1a440ac09df379269a15acaada912eda3b1c4f"
+    },
+    {
+      "path": "backend/rag/app/services/__init__.py",
+      "size": 205,
+      "lines": 6,
+      "ext": ".py",
+      "sha1": "2aba7cf4c4303caa043dd1acaefac41a11c20fb7"
+    },
+    {
+      "path": "backend/rag/app/services/base.py",
+      "size": 751,
+      "lines": 25,
+      "ext": ".py",
+      "sha1": "7bf1399deacc14891a08d865549505c7f4859ed6"
+    },
+    {
+      "path": "backend/rag/app/services/citation_metrics.py",
+      "size": 9150,
+      "lines": 246,
+      "ext": ".py",
+      "sha1": "3257c3dd2227454217676d8744a5d41f4dfc7eba"
+    },
+    {
+      "path": "backend/rag/app/services/conversation_backend_client.py",
+      "size": 20297,
+      "lines": 547,
+      "ext": ".py",
+      "sha1": "4a4df2f1823f16c9dceffbf6cb4850f79ffaa62b"
+    },
+    {
+      "path": "backend/rag/app/services/conversation_events.py",
+      "size": 4800,
+      "lines": 139,
+      "ext": ".py",
+      "sha1": "af202030ad96cee3632a07629f0d8a5be7248275"
+    },
+    {
+      "path": "backend/rag/app/services/conversation_graph.py",
+      "size": 61923,
+      "lines": 1356,
+      "ext": ".py",
+      "sha1": "2fc93dda5c8fe1b288a4778895b742ac842bb7fb"
+    },
+    {
+      "path": "backend/rag/app/services/conversation_kafka_utils.py",
+      "size": 10775,
+      "lines": 286,
+      "ext": ".py",
+      "sha1": "0105b093022f9ef4719c0b36bfedd022ff0385e7"
+    },
+    {
+      "path": "backend/rag/app/services/conversation_messages.py",
+      "size": 641,
+      "lines": 25,
+      "ext": ".py",
+      "sha1": "3d770019f6cb5032db20484652be801c459c9cf4"
+    },
+    {
+      "path": "backend/rag/app/services/conversation_persistence.py",
+      "size": 16009,
+      "lines": 392,
+      "ext": ".py",
+      "sha1": "547980e678af214ce1e467f845a5e111d502b496"
+    },
+    {
+      "path": "backend/rag/app/services/conversation_tracing.py",
+      "size": 1663,
+      "lines": 51,
+      "ext": ".py",
+      "sha1": "f879d5d5517694d2743bff35debf525a5f028934"
+    },
+    {
+      "path": "backend/rag/app/services/conversation_types.py",
+      "size": 3675,
+      "lines": 113,
+      "ext": ".py",
+      "sha1": "91b7795b806986c3bdafb7bef45d512096262a63"
+    },
+    {
+      "path": "backend/rag/app/services/eval_runner.py",
+      "size": 42219,
+      "lines": 1016,
+      "ext": ".py",
+      "sha1": "840f667585bf8a65dd5284092c4f71cedb4aa796"
+    },
+    {
+      "path": "backend/rag/app/services/eval_store.py",
+      "size": 38176,
+      "lines": 947,
+      "ext": ".py",
+      "sha1": "4b732d15319b1cfcbecd6a7f8e3b0381318a3f1a"
+    },
+    {
+      "path": "backend/rag/app/services/golden_set_parser.py",
+      "size": 12571,
+      "lines": 354,
+      "ext": ".py",
+      "sha1": "85efaac8100bd3077688ba3ce351390b0951b837"
+    },
+    {
+      "path": "backend/rag/app/services/metrics_facts.py",
+      "size": 13654,
+      "lines": 352,
+      "ext": ".py",
+      "sha1": "feae6b1a16a305a49a59a76574c5c57f0532f1a9"
+    },
+    {
+      "path": "backend/rag/app/services/metrics_query.py",
+      "size": 35753,
+      "lines": 788,
+      "ext": ".py",
+      "sha1": "8bf0ff277f2c526a0f683ff9d49c9ff46e2278f8"
+    },
+    {
+      "path": "backend/rag/app/services/rag_service.py",
+      "size": 10162,
+      "lines": 245,
+      "ext": ".py",
+      "sha1": "b82af50795a745a1bc6621ba5c7263ef5a4879be"
+    },
+    {
+      "path": "backend/rag/app/services/retrieval_metrics.py",
+      "size": 5976,
+      "lines": 167,
+      "ext": ".py",
+      "sha1": "b8155612476e60c5e03ad009966b4f733c2c4275"
+    },
+    {
+      "path": "backend/rag/app/services/websocket_service.py",
+      "size": 5833,
+      "lines": 148,
+      "ext": ".py",
+      "sha1": "bf5e95ac3067ce077e022dbd1aa38b090afbe70e"
+    },
+    {
+      "path": "backend/rag/app/tests/__init__.py",
+      "size": 33,
+      "lines": 2,
+      "ext": ".py",
+      "sha1": "d85b3dcc91e1b69acb6b53f1cdcc935ec96714e8"
+    },
+    {
+      "path": "backend/rag/app/tests/test_authorization_events.py",
+      "size": 1900,
+      "lines": 59,
+      "ext": ".py",
+      "sha1": "33a23410d9c4858811a8df3bc60e28e2524e0af1"
+    },
+    {
+      "path": "backend/rag/app/tests/test_citation_metrics.py",
+      "size": 6509,
+      "lines": 171,
+      "ext": ".py",
+      "sha1": "17bfe73592fb41f9d43827592f6b14967610f9e7"
+    },
+    {
+      "path": "backend/rag/app/tests/test_eval_runner.py",
+      "size": 35362,
+      "lines": 928,
+      "ext": ".py",
+      "sha1": "1894349d876ae6c8a253b3690b21caad50edd99c"
+    },
+    {
+      "path": "backend/rag/app/tests/test_eval_store.py",
+      "size": 24463,
+      "lines": 624,
+      "ext": ".py",
+      "sha1": "b1d68fd382da56cafab029d0c6ce90b7fa0170e3"
+    },
+    {
+      "path": "backend/rag/app/tests/test_golden_set_parser.py",
+      "size": 5624,
+      "lines": 174,
+      "ext": ".py",
+      "sha1": "8899287cdbd3ce7ac4e73050a779b9454c843d74"
+    },
+    {
+      "path": "backend/rag/app/tests/test_graph_instrumentation.py",
+      "size": 13882,
+      "lines": 368,
+      "ext": ".py",
+      "sha1": "fb6e51c3eb6e2cc97330ae1ffff2fea4ae1c1d58"
+    },
+    {
+      "path": "backend/rag/app/tests/test_metrics_facts.py",
+      "size": 6542,
+      "lines": 217,
+      "ext": ".py",
+      "sha1": "17e46af7147d7e2fa41174e175045f1038a3b81e"
+    },
+    {
+      "path": "backend/rag/app/tests/test_metrics_query.py",
+      "size": 21551,
+      "lines": 612,
+      "ext": ".py",
+      "sha1": "f0a64c65193d1690dc7dc768ca2030cd91342bca"
+    },
+    {
+      "path": "backend/rag/app/tests/test_rag.py",
+      "size": 42479,
+      "lines": 1075,
+      "ext": ".py",
+      "sha1": "0b4be9e74c4dd4241357b37bad1f950c0f8ad5d4"
+    },
+    {
+      "path": "backend/rag/app/tests/test_retrieval_metrics.py",
+      "size": 6271,
+      "lines": 153,
+      "ext": ".py",
+      "sha1": "ecb938328ae6751308c4d52bab623b61629eabdf"
+    },
+    {
+      "path": "backend/rag/app/utils/__init__.py",
+      "size": 111,
+      "lines": 5,
+      "ext": ".py",
+      "sha1": "c88a1c0af80d8c98ef639a173c94f93a44801ab8"
+    },
+    {
+      "path": "backend/rag/app/utils/common.py",
+      "size": 552,
+      "lines": 15,
+      "ext": ".py",
+      "sha1": "538475def4853fb6fcd679b9cd622d49531257cd"
+    },
+    {
+      "path": "backend/shared/__init__.py",
+      "size": 1215,
+      "lines": 41,
+      "ext": ".py",
+      "sha1": "08681fedf34ef4db987d37b9868fc4a73e529c7a"
+    },
+    {
+      "path": "backend/shared/audit.py",
+      "size": 4194,
+      "lines": 148,
+      "ext": ".py",
+      "sha1": "2e6a799cc277a4161afb2e9bf57db049c789f2e3"
+    },
+    {
+      "path": "backend/shared/auth.py",
+      "size": 10899,
+      "lines": 306,
+      "ext": ".py",
+      "sha1": "33c51e7f5c47e26a8691849627cda5563b9ec7d6"
+    },
+    {
+      "path": "backend/shared/circuit_breaker.py",
+      "size": 10302,
+      "lines": 284,
+      "ext": ".py",
+      "sha1": "4d9ad665d812d845522459272b9cd8dee193c643"
+    },
+    {
+      "path": "backend/shared/context.py",
+      "size": 2764,
+      "lines": 87,
+      "ext": ".py",
+      "sha1": "e44192767ffb25977b6e6865039c2ccc7c206474"
+    },
+    {
+      "path": "backend/shared/db_indexes.py",
+      "size": 4104,
+      "lines": 109,
+      "ext": ".py",
+      "sha1": "54af7222942e2a5b318448f9cf72130c79dfabf4"
+    },
+    {
+      "path": "backend/shared/deduplication.py",
+      "size": 4825,
+      "lines": 152,
+      "ext": ".py",
+      "sha1": "71e0ce5195e1b160eabb441c8dd75d95c7980b5c"
+    },
+    {
+      "path": "backend/shared/dlq.py",
+      "size": 7190,
+      "lines": 217,
+      "ext": ".py",
+      "sha1": "9525fb8c8876b26a459859e22c8b969754dff298"
+    },
+    {
+      "path": "backend/shared/errors.py",
+      "size": 19499,
+      "lines": 543,
+      "ext": ".py",
+      "sha1": "00b4fbeb2dd9997d8b062cd54ce8feeeb483e497"
+    },
+    {
+      "path": "backend/shared/http_auth.py",
+      "size": 1324,
+      "lines": 39,
+      "ext": ".py",
+      "sha1": "d9fd3737614e9e15e7d1d66d334b4121379ac36b"
+    },
+    {
+      "path": "backend/shared/kafka_base.py",
+      "size": 9340,
+      "lines": 248,
+      "ext": ".py",
+      "sha1": "6e64df272e21ec8f4246f63b9237003e2db63630"
+    },
+    {
+      "path": "backend/shared/logging.py",
+      "size": 11373,
+      "lines": 340,
+      "ext": ".py",
+      "sha1": "db69947d2531bc80d11c5b50d2b0ce37464c62ed"
+    },
+    {
+      "path": "backend/shared/metrics.py",
+      "size": 16674,
+      "lines": 462,
+      "ext": ".py",
+      "sha1": "35003a2c6422a3394b37b1da7f0f6c46e0391c21"
+    },
+    {
+      "path": "backend/shared/output_guard.py",
+      "size": 6440,
+      "lines": 192,
+      "ext": ".py",
+      "sha1": "21a643f8c3b40fc6659f1544fc9bbf16608de540"
+    },
+    {
+      "path": "backend/shared/prompt_guard.py",
+      "size": 10238,
+      "lines": 254,
+      "ext": ".py",
+      "sha1": "9f2fd54124a3fbfc548776ed8f7c64f7a96cfae2"
+    },
+    {
+      "path": "backend/shared/rabbitmq_base.py",
+      "size": 7621,
+      "lines": 194,
+      "ext": ".py",
+      "sha1": "1824c9e39073ad379d5c3b2b08e8d486e2e6a9d1"
+    },
+    {
+      "path": "backend/shared/rate_limiter.py",
+      "size": 10271,
+      "lines": 304,
+      "ext": ".py",
+      "sha1": "b8c60cc9d57f541a5fe7ebefb189c91d522ca1d9"
+    },
+    {
+      "path": "backend/shared/retry.py",
+      "size": 4946,
+      "lines": 163,
+      "ext": ".py",
+      "sha1": "bd1ae5e923d166840fcb766ca643ab73adb04545"
+    },
+    {
+      "path": "backend/shared/sanitization.py",
+      "size": 4973,
+      "lines": 175,
+      "ext": ".py",
+      "sha1": "d03b28308dee5d07409db3255968bde682bb3d2e"
+    },
+    {
+      "path": "backend/shared/schemas/__init__.py",
+      "size": 72,
+      "lines": 2,
+      "ext": ".py",
+      "sha1": "b7ff9a026c895c738df83f47a47c44f8b9675cfc"
+    },
+    {
+      "path": "backend/shared/schemas/message_schemas.py",
+      "size": 5768,
+      "lines": 163,
+      "ext": ".py",
+      "sha1": "8eadf53af28aef849ed05562926cf94c10cbf346"
+    },
+    {
+      "path": "backend/shared/security.py",
+      "size": 4041,
+      "lines": 124,
+      "ext": ".py",
+      "sha1": "72d82c66e7c92acd411396d8739b48a7341be079"
+    },
+    {
+      "path": "backend/shared/tests/__init__.py",
+      "size": 0,
+      "lines": 1,
+      "ext": ".py",
+      "sha1": "da39a3ee5e6b4b0d3255bfef95601890afd80709"
+    },
+    {
+      "path": "backend/shared/tests/test_auth.py",
+      "size": 4492,
+      "lines": 130,
+      "ext": ".py",
+      "sha1": "b4a6a0c586bbedbba2976168034173c1f18ebcce"
+    },
+    {
+      "path": "backend/shared/tests/test_kafka_lag.py",
+      "size": 10660,
+      "lines": 275,
+      "ext": ".py",
+      "sha1": "35f6603e65b7d129d1af2e10f18d2c9079cb8563"
+    },
+    {
+      "path": "backend/shared/tests/test_logging.py",
+      "size": 897,
+      "lines": 27,
+      "ext": ".py",
+      "sha1": "bdf9f4bbbc0699cb462cd1a781609502e272ab39"
+    },
+    {
+      "path": "backend/shared/tests/test_metrics_hooks.py",
+      "size": 5697,
+      "lines": 170,
+      "ext": ".py",
+      "sha1": "b86b60cb5d92f5513adb64b5774cc8ad52e1efce"
+    },
+    {
+      "path": "backend/shared/tests/test_rabbitmq_base.py",
+      "size": 3886,
+      "lines": 117,
+      "ext": ".py",
+      "sha1": "a50ce5b65a126474cf6a16ffdde1631a7ce762df"
+    },
+    {
+      "path": "backend/shared/tests/test_rate_limiter.py",
+      "size": 1572,
+      "lines": 45,
+      "ext": ".py",
+      "sha1": "4edfdf6af60ee3f44f511d9895116ae09842cb55"
+    },
+    {
+      "path": "backend/shared/tracing.py",
+      "size": 6056,
+      "lines": 197,
+      "ext": ".py",
+      "sha1": "bc0ae803da2057d6753ac1a1d0d6c60862873ad8"
+    },
+    {
+      "path": "backend/vector_db/app/__init__.py",
+      "size": 33,
+      "lines": 2,
+      "ext": ".py",
+      "sha1": "0a82eadb6d900bd5972152b6b803c5bd5ed41c9d"
+    },
+    {
+      "path": "backend/vector_db/app/core/__init__.py",
+      "size": 46,
+      "lines": 2,
+      "ext": ".py",
+      "sha1": "a2de8621ab7014026e10229b6bebe8a451ffb377"
+    },
+    {
+      "path": "backend/vector_db/app/core/config.py",
+      "size": 1576,
+      "lines": 49,
+      "ext": ".py",
+      "sha1": "1fb9092dd6423c19a2ddaa93e76c705eac3f2249"
+    },
+    {
+      "path": "backend/vector_db/app/core/constants.py",
+      "size": 5364,
+      "lines": 174,
+      "ext": ".py",
+      "sha1": "226cda62ef46a447030a65d08bdec8d2f1541e8d"
+    },
+    {
+      "path": "backend/vector_db/app/core/deps.py",
+      "size": 580,
+      "lines": 16,
+      "ext": ".py",
+      "sha1": "6df9d8c32961f5a96ed046bf71589cbf0c7921d1"
+    },
+    {
+      "path": "backend/vector_db/app/core/errors.py",
+      "size": 607,
+      "lines": 19,
+      "ext": ".py",
+      "sha1": "261fee06f485e84d67283351a709377f488e6698"
+    },
+    {
+      "path": "backend/vector_db/app/core/exception_handlers.py",
+      "size": 1165,
+      "lines": 35,
+      "ext": ".py",
+      "sha1": "0efef8cf64c3676b03108d9a9b4b7faca0c2214f"
+    },
+    {
+      "path": "backend/vector_db/app/core/logging_config.py",
+      "size": 334,
+      "lines": 12,
+      "ext": ".py",
+      "sha1": "e7d2b85804db7d0111854a1292b3fbd36e3b1d3e"
+    },
+    {
+      "path": "backend/vector_db/app/db/__init__.py",
+      "size": 41,
+      "lines": 2,
+      "ext": ".py",
+      "sha1": "3b0673acadb65c04e495e5693c20981108aa8e8f"
+    },
+    {
+      "path": "backend/vector_db/app/db/implementations/__init__.py",
+      "size": 36,
+      "lines": 2,
+      "ext": ".py",
+      "sha1": "d2c9a0bedb218ce4220c341e1d0066e7d68ea8b7"
+    },
+    {
+      "path": "backend/vector_db/app/db/implementations/chromadb.py",
+      "size": 8786,
+      "lines": 239,
+      "ext": ".py",
+      "sha1": "cb20c91e1645c6c8071b66c1d47cb6b86db24dbb"
+    },
+    {
+      "path": "backend/vector_db/app/db/implementations/in_memory.py",
+      "size": 7177,
+      "lines": 197,
+      "ext": ".py",
+      "sha1": "76b8e7f413c17cfbc10654a5d7422f9004ebeb30"
+    },
+    {
+      "path": "backend/vector_db/app/db/implementations/qdrant.py",
+      "size": 13447,
+      "lines": 363,
+      "ext": ".py",
+      "sha1": "c7deb0d1078dc339e5b53d8a795cd4c20f7bd865"
+    },
+    {
+      "path": "backend/vector_db/app/db/interfaces.py",
+      "size": 3988,
+      "lines": 106,
+      "ext": ".py",
+      "sha1": "22c583eb9d24cea8655cfed4cfd0e9cffbf4c3ab"
+    },
+    {
+      "path": "backend/vector_db/app/db/session.py",
+      "size": 1466,
+      "lines": 44,
+      "ext": ".py",
+      "sha1": "a73abad78af4e6fffbbfe216abd1e9d20aa39954"
+    },
+    {
+      "path": "backend/vector_db/app/main.py",
+      "size": 5367,
+      "lines": 155,
+      "ext": ".py",
+      "sha1": "914d734f50f45dbfcc3bd39e05d71b50d0221df8"
+    },
+    {
+      "path": "backend/vector_db/app/messaging/__init__.py",
+      "size": 34,
+      "lines": 2,
+      "ext": ".py",
+      "sha1": "0d3a9f97e8d48f6eed1eda952450354c85027cd4"
+    },
+    {
+      "path": "backend/vector_db/app/messaging/factories.py",
+      "size": 478,
+      "lines": 14,
+      "ext": ".py",
+      "sha1": "6b5cc86bbfb853d0d62b84f93f60edd39dd23d14"
+    },
+    {
+      "path": "backend/vector_db/app/messaging/implementations/__init__.py",
+      "size": 37,
+      "lines": 2,
+      "ext": ".py",
+      "sha1": "23b8c9439efee7d5b50e01ea75e8dd9d33600051"
+    },
+    {
+      "path": "backend/vector_db/app/messaging/implementations/kafka.py",
+      "size": 4050,
+      "lines": 110,
+      "ext": ".py",
+      "sha1": "816495bdf3aef5dc19241b5fb0244353b947044c"
+    },
+    {
+      "path": "backend/vector_db/app/messaging/implementations/rabbitmq.py",
+      "size": 447,
+      "lines": 14,
+      "ext": ".py",
+      "sha1": "a8412c4f7e2afaf1f5f403c10681d7a27f24295d"
+    },
+    {
+      "path": "backend/vector_db/app/messaging/interfaces.py",
+      "size": 1118,
+      "lines": 42,
+      "ext": ".py",
+      "sha1": "5363e5126d8d42f4a2e8d4bb47b10cf2524a6c6a"
+    },
+    {
+      "path": "backend/vector_db/app/rest/__init__.py",
+      "size": 23,
+      "lines": 2,
+      "ext": ".py",
+      "sha1": "389baab40f473efdc9c0f2c3d1946b2e70e37924"
+    },
+    {
+      "path": "backend/vector_db/app/rest/routes.py",
+      "size": 277,
+      "lines": 10,
+      "ext": ".py",
+      "sha1": "f8d93f9657c8121908fd30279769c80c9ad2869d"
+    },
+    {
+      "path": "backend/vector_db/app/rest/v1/__init__.py",
+      "size": 21,
+      "lines": 2,
+      "ext": ".py",
+      "sha1": "933d20c1cdfbfce4696f94f287debe38e6e0bd79"
+    },
+    {
+      "path": "backend/vector_db/app/rest/v1/health.py",
+      "size": 523,
+      "lines": 18,
+      "ext": ".py",
+      "sha1": "7562ba2da9a257678a4054d43679ef8a39166117"
+    },
+    {
+      "path": "backend/vector_db/app/rest/v1/vectors.py",
+      "size": 3787,
+      "lines": 104,
+      "ext": ".py",
+      "sha1": "c2888db3f7be070e660a81a5e5d0cef826966e3d"
+    },
+    {
+      "path": "backend/vector_db/app/schemas/__init__.py",
+      "size": 42,
+      "lines": 2,
+      "ext": ".py",
+      "sha1": "4dc2be5ec5d4b9fe3fd8451322bf6edc95ca544b"
+    },
+    {
+      "path": "backend/vector_db/app/schemas/vector.py",
+      "size": 8756,
+      "lines": 300,
+      "ext": ".py",
+      "sha1": "a0d238092162cfcae7f4d6cae28286019e41ca41"
+    },
+    {
+      "path": "backend/vector_db/app/services/__init__.py",
+      "size": 42,
+      "lines": 2,
+      "ext": ".py",
+      "sha1": "63887839eccde8682982411c5b3419de73075508"
+    },
+    {
+      "path": "backend/vector_db/app/services/base.py",
+      "size": 12006,
+      "lines": 304,
+      "ext": ".py",
+      "sha1": "7ec8f3e0e95ce3a86ca3eef3663da0168bd802bf"
+    },
+    {
+      "path": "backend/vector_db/app/services/vector_service.py",
+      "size": 31528,
+      "lines": 764,
+      "ext": ".py",
+      "sha1": "83602ec8a8d006ef21cc251115f1ee88f9f6a522"
+    },
+    {
+      "path": "backend/vector_db/app/tests/__init__.py",
+      "size": 20,
+      "lines": 2,
+      "ext": ".py",
+      "sha1": "f934210adf326d1fe3c2ba20d38b1101ada9ed3a"
+    },
+    {
+      "path": "backend/vector_db/app/tests/test_vectors.py",
+      "size": 34579,
+      "lines": 950,
+      "ext": ".py",
+      "sha1": "38a63630744c48526a678fe4f99ad766ab5b1005"
+    },
+    {
+      "path": "backend/vector_db/app/utils/__init__.py",
+      "size": 24,
+      "lines": 2,
+      "ext": ".py",
+      "sha1": "d6c07bbf8aaddcdffda68e06721d543df296c741"
+    },
+    {
+      "path": "backend/vector_db/app/utils/common.py",
+      "size": 607,
+      "lines": 17,
+      "ext": ".py",
+      "sha1": "cfc2d50536742ab146f93fdcd6940d535cda8cf1"
+    },
+    {
+      "path": "backend/vector_db/app/worker.py",
+      "size": 2772,
+      "lines": 71,
+      "ext": ".py",
+      "sha1": "875e996b22d1bf8853297af1948846fc9a477e28"
+    },
+    {
+      "path": "docker-compose.prod.yml",
+      "size": 1211,
+      "lines": 49,
+      "ext": ".yml",
+      "sha1": "406dca195253cf755b4b3c29ddda88bfa78624d8"
+    },
+    {
+      "path": "docker-compose.yml",
+      "size": 15621,
+      "lines": 432,
+      "ext": ".yml",
+      "sha1": "824193bb7e1e09529ebe713225ca4b65ad6809ea"
+    },
+    {
+      "path": "docker/mongo-init.js",
+      "size": 903,
+      "lines": 29,
+      "ext": ".js",
+      "sha1": "359cb53d54bb8f8a081813d8f0a588d4266e6e19"
+    },
+    {
+      "path": "docker/prometheus/prometheus.yml",
+      "size": 1561,
+      "lines": 42,
+      "ext": ".yml",
+      "sha1": "3ee1ef1293f90196cd570d25297c791fedc869a3"
+    },
+    {
+      "path": "docs/ai/BENCHMARKING.md",
+      "size": 1541,
+      "lines": 61,
+      "ext": ".md",
+      "sha1": "bcac104fa31302e8815033062ac6ca0853faa215"
+    },
+    {
+      "path": "docs/ai/DECISIONS.md",
+      "size": 1503,
+      "lines": 34,
+      "ext": ".md",
+      "sha1": "f5fec2f5f68ba5e64d0c9df8f205bfd60db389c9"
+    },
+    {
+      "path": "docs/ai/ENGINEERING_RULES.md",
+      "size": 3955,
+      "lines": 68,
+      "ext": ".md",
+      "sha1": "f4a5d65a4c44b8d3ffba7ef2e7a0bcf318ca3fe5"
+    },
+    {
+      "path": "docs/ai/INSTALL.md",
+      "size": 2893,
+      "lines": 103,
+      "ext": ".md",
+      "sha1": "212a8b0e4b13407e66b86aaf0993c62b10f8bc77"
+    },
+    {
+      "path": "docs/ai/PROJECT_CONTEXT.md",
+      "size": 2323,
+      "lines": 44,
+      "ext": ".md",
+      "sha1": "b1e3e40687af59f1beee0e067fdcef60168356a0"
+    },
+    {
+      "path": "docs/ai/QUICK_PROMPTS.md",
+      "size": 1779,
+      "lines": 67,
+      "ext": ".md",
+      "sha1": "abea223c85e4ae4bb8f25369e0614fc567ab6149"
+    },
+    {
+      "path": "docs/ai/README.md",
+      "size": 1539,
+      "lines": 43,
+      "ext": ".md",
+      "sha1": "0540ab7f9b1d683eea693288ac04cfd59d386a8d"
+    },
+    {
+      "path": "docs/ai/REPO_MAP.md",
+      "size": 3056,
+      "lines": 71,
+      "ext": ".md",
+      "sha1": "b005ae327e26027c667fa59b9923c7cbafce6c1c"
+    },
+    {
+      "path": "docs/ai/SECURITY.md",
+      "size": 1817,
+      "lines": 51,
+      "ext": ".md",
+      "sha1": "69e57fb2700cbc7ec78d39065856f8f6a818f763"
+    },
+    {
+      "path": "docs/ai/TASK_INDEX.md",
+      "size": 6299,
+      "lines": 152,
+      "ext": ".md",
+      "sha1": "f5f6c99941f9a2ebde3fc4cfdf011bfdf7e66a8a"
+    },
+    {
+      "path": "docs/ai/TASK_TEMPLATE.md",
+      "size": 633,
+      "lines": 33,
+      "ext": ".md",
+      "sha1": "3fe4a69180f7bde974f76c0a4c79ce0791c4202b"
+    },
+    {
+      "path": "docs/ai/TESTING.md",
+      "size": 1965,
+      "lines": 86,
+      "ext": ".md",
+      "sha1": "f348ff8370a363e72a98a9d03413a2faa6340844"
+    },
+    {
+      "path": "docs/ai/WORKFLOW.md",
+      "size": 2238,
+      "lines": 51,
+      "ext": ".md",
+      "sha1": "9d06f5fa653c66c39eeffbdcc7101fdec6287752"
+    },
+    {
+      "path": "docs/ai/memory/BUGS.json",
+      "size": 2446,
+      "lines": 64,
+      "ext": ".json",
+      "sha1": "6f935a6d12091f1a17e1ab99cf217bdc22bb43d5"
+    },
+    {
+      "path": "docs/ai/memory/CALL_PATHS.md",
+      "size": 1726,
+      "lines": 77,
+      "ext": ".md",
+      "sha1": "ebbb2c344e5ba8f1dd81b35997062b55f8ecb640"
+    },
+    {
+      "path": "docs/ai/memory/CAPABILITIES.json",
+      "size": 6027,
+      "lines": 229,
+      "ext": ".json",
+      "sha1": "3157eb7c5762300171de64132b8d2e44b4e59a08"
+    },
+    {
+      "path": "docs/ai/memory/CONTRACTS.json",
+      "size": 2463,
+      "lines": 85,
+      "ext": ".json",
+      "sha1": "f12b84678c21fcc74a1574d2c8b67d636b7ceba7"
+    },
+    {
+      "path": "docs/ai/memory/CURRENT_STATE.md",
+      "size": 1362,
+      "lines": 36,
+      "ext": ".md",
+      "sha1": "a1faab888fda2d0b4739a9ce4997b96beb28e03c"
+    },
+    {
+      "path": "docs/ai/memory/DECISIONS.json",
+      "size": 4101,
+      "lines": 115,
+      "ext": ".json",
+      "sha1": "2ac706a4410fbf864cb58b658e36251ac2c0620a"
+    },
+    {
+      "path": "docs/ai/memory/FAILED_APPROACHES.json",
+      "size": 1535,
+      "lines": 46,
+      "ext": ".json",
+      "sha1": "4255812c932431005ec907211edc8b28ef04e282"
+    },
+    {
+      "path": "docs/ai/memory/GOTCHAS.md",
+      "size": 1317,
+      "lines": 16,
+      "ext": ".md",
+      "sha1": "e2d6c9a0b2232ba754f18c5f30adbd3a38e88589"
+    },
+    {
+      "path": "docs/ai/memory/HANDOFF.md",
+      "size": 346,
+      "lines": 20,
+      "ext": ".md",
+      "sha1": "2c7a42a2aa8df59ac785a9deea6cdd2920ffd488"
+    },
+    {
+      "path": "docs/ai/memory/MEMORY_PROTOCOL.md",
+      "size": 2638,
+      "lines": 76,
+      "ext": ".md",
+      "sha1": "8dfdfc5ecb1112b6444904d1c8ca3c021439fb96"
+    },
+    {
+      "path": "docs/ai/memory/README.md",
+      "size": 1761,
+      "lines": 45,
+      "ext": ".md",
+      "sha1": "752a155ca8e2d2a893e9498797618b4c58f49f1c"
+    },
+    {
+      "path": "docs/ai/memory/SEARCH_HINTS.md",
+      "size": 2084,
+      "lines": 25,
+      "ext": ".md",
+      "sha1": "cd48ce46c310deaed4765907fbd820011b9e306f"
+    },
+    {
+      "path": "docs/ai/memory/SERVICES.json",
+      "size": 6100,
+      "lines": 211,
+      "ext": ".json",
+      "sha1": "1b2966a291f3e3441d46f2863596e746014062c3"
+    },
+    {
+      "path": "docs/ai/memory/TECH_DEBT.json",
+      "size": 2845,
+      "lines": 94,
+      "ext": ".json",
+      "sha1": "8c31c46be7e448944cc36f70ffd2ebebf02025e0"
+    },
+    {
+      "path": "docs/ai/tasks/AGENT-01.md",
+      "size": 984,
+      "lines": 31,
+      "ext": ".md",
+      "sha1": "c7b338ac72702dcec750ae386c666e8458584e73"
+    },
+    {
+      "path": "docs/ai/tasks/AGENT-02.md",
+      "size": 994,
+      "lines": 30,
+      "ext": ".md",
+      "sha1": "099a12b965b6e57f3bc0b15d560e855cd49e2716"
+    },
+    {
+      "path": "docs/ai/tasks/AGENT-03.md",
+      "size": 1048,
+      "lines": 30,
+      "ext": ".md",
+      "sha1": "c75ee304a0a5c65abb8fa1a4f3f74fa342795af0"
+    },
+    {
+      "path": "docs/ai/tasks/AGENT-04.md",
+      "size": 1078,
+      "lines": 31,
+      "ext": ".md",
+      "sha1": "47ebc17a5efd590b41c3c34430f9e6599aae78d1"
+    },
+    {
+      "path": "docs/ai/tasks/APP-01.md",
+      "size": 1054,
+      "lines": 29,
+      "ext": ".md",
+      "sha1": "d57459dc1d788f98bb9034c16ec6e56de657ae5a"
+    },
+    {
+      "path": "docs/ai/tasks/BENCH-01.md",
+      "size": 1000,
+      "lines": 29,
+      "ext": ".md",
+      "sha1": "c06c356b0b0701d17f7037c5b7edeaa2312c1418"
+    },
+    {
+      "path": "docs/ai/tasks/BENCH-02.md",
+      "size": 950,
+      "lines": 31,
+      "ext": ".md",
+      "sha1": "0513720d104cb849862dc0d4a14299b4d5e1e6a0"
+    },
+    {
+      "path": "docs/ai/tasks/BMARK-01.md",
+      "size": 928,
+      "lines": 29,
+      "ext": ".md",
+      "sha1": "b3116b735cdd4c5daebd9b1d7919607fbbd28233"
+    },
+    {
+      "path": "docs/ai/tasks/BMARK-02.md",
+      "size": 874,
+      "lines": 30,
+      "ext": ".md",
+      "sha1": "e7935ebcc7eba80c77b8a9c3722f6864f6cbefa1"
+    },
+    {
+      "path": "docs/ai/tasks/BMARK-03.md",
+      "size": 938,
+      "lines": 30,
+      "ext": ".md",
+      "sha1": "0d80bf7e5a749d23cf3f51bbd20d72592a702885"
+    },
+    {
+      "path": "docs/ai/tasks/BMARK-04.md",
+      "size": 1080,
+      "lines": 31,
+      "ext": ".md",
+      "sha1": "0fc9efa3ac5f6e19d8e48c91c12a4f37fb9d876d"
+    },
+    {
+      "path": "docs/ai/tasks/BMARK-05.md",
+      "size": 904,
+      "lines": 30,
+      "ext": ".md",
+      "sha1": "ea08dcf8ecc31e5cd32c3e9ba573b17233276265"
+    },
+    {
+      "path": "docs/ai/tasks/BMARK-06.md",
+      "size": 992,
+      "lines": 31,
+      "ext": ".md",
+      "sha1": "013bc13a7a2178aa75403ac0d46484000c273875"
+    },
+    {
+      "path": "docs/ai/tasks/BMARK-07.md",
+      "size": 994,
+      "lines": 30,
+      "ext": ".md",
+      "sha1": "f62fd6c09b9bca4c0115837576e7ef3c99cae623"
+    },
+    {
+      "path": "docs/ai/tasks/BMARK-08.md",
+      "size": 958,
+      "lines": 30,
+      "ext": ".md",
+      "sha1": "7fe4e3e4d05968f9e0cbbb4fe410f034a1702da0"
+    },
+    {
+      "path": "docs/ai/tasks/BMARK-09.md",
+      "size": 935,
+      "lines": 28,
+      "ext": ".md",
+      "sha1": "f2d9f8345e87874dc158ab9e57f00b1c4c7c2c82"
+    },
+    {
+      "path": "docs/ai/tasks/BMARK-10.md",
+      "size": 964,
+      "lines": 30,
+      "ext": ".md",
+      "sha1": "a6cedfc666299a8651042d4075825a45442ceba5"
+    },
+    {
+      "path": "docs/ai/tasks/BMARK-11.md",
+      "size": 970,
+      "lines": 29,
+      "ext": ".md",
+      "sha1": "0e35da95ee6b4b4237579223d76fa15ab44df8fd"
+    },
+    {
+      "path": "docs/ai/tasks/BMARK-12.md",
+      "size": 991,
+      "lines": 29,
+      "ext": ".md",
+      "sha1": "185036590b4c02d747c51d0556b366bac9c19421"
+    },
+    {
+      "path": "docs/ai/tasks/BMARK-13.md",
+      "size": 1022,
+      "lines": 30,
+      "ext": ".md",
+      "sha1": "be0dd4971d38c594c6d9ca767a50ab47c53d3722"
+    },
+    {
+      "path": "docs/ai/tasks/BMARK-14.md",
+      "size": 924,
+      "lines": 31,
+      "ext": ".md",
+      "sha1": "4d930e839d9572e53d3eefed09b5abb0b44aa3e6"
+    },
+    {
+      "path": "docs/ai/tasks/BMARK-15.md",
+      "size": 1048,
+      "lines": 28,
+      "ext": ".md",
+      "sha1": "983a87909f0725f628e14a7b19109ce83b4b5890"
+    },
+    {
+      "path": "docs/ai/tasks/CHAOS-01.md",
+      "size": 986,
+      "lines": 29,
+      "ext": ".md",
+      "sha1": "4c7824bb03439413f7d164efc725e2347278d546"
+    },
+    {
+      "path": "docs/ai/tasks/CI-01.md",
+      "size": 1020,
+      "lines": 29,
+      "ext": ".md",
+      "sha1": "3d621a1c89b0b2cb3889de21b34a617e6645f811"
+    },
+    {
+      "path": "docs/ai/tasks/CLEAN-01.md",
+      "size": 1088,
+      "lines": 30,
+      "ext": ".md",
+      "sha1": "ee69e40d30463e5457237485231c111f2d02944e"
+    },
+    {
+      "path": "docs/ai/tasks/DEPS-01.md",
+      "size": 1006,
+      "lines": 29,
+      "ext": ".md",
+      "sha1": "daaede8b1e343d1c33caa1a65c9bbaf05b11705e"
+    },
+    {
+      "path": "docs/ai/tasks/DEPS-02.md",
+      "size": 942,
+      "lines": 28,
+      "ext": ".md",
+      "sha1": "86172bc4391f8d0e599b3aa6c9a89f386db1d6eb"
+    },
+    {
+      "path": "docs/ai/tasks/DEPS-03.md",
+      "size": 917,
+      "lines": 28,
+      "ext": ".md",
+      "sha1": "af8be6fbced1fe707d90f4d12bf24e1319854939"
+    },
+    {
+      "path": "docs/ai/tasks/DEPS-04.md",
+      "size": 938,
+      "lines": 30,
+      "ext": ".md",
+      "sha1": "3be1c86752fd6dcd140439199ba6d685ca2bdeff"
+    },
+    {
+      "path": "docs/ai/tasks/DEPS-05.md",
+      "size": 940,
+      "lines": 30,
+      "ext": ".md",
+      "sha1": "89a320eee6f4bdd1a2e5dcf1fd21fea5cbb5d1dd"
+    },
+    {
+      "path": "docs/ai/tasks/DIST-01.md",
+      "size": 1086,
+      "lines": 32,
+      "ext": ".md",
+      "sha1": "5bdbd94cda820e88b322aa4a62b35d5d55135da5"
+    },
+    {
+      "path": "docs/ai/tasks/DIST-02.md",
+      "size": 1097,
+      "lines": 31,
+      "ext": ".md",
+      "sha1": "0d8afac247450395b70bba07855d2bc6c0be3a99"
+    },
+    {
+      "path": "docs/ai/tasks/DIST-03.md",
+      "size": 1040,
+      "lines": 31,
+      "ext": ".md",
+      "sha1": "eb3d7dcf444a2ca33c7bb736fbe1e94faab50921"
+    },
+    {
+      "path": "docs/ai/tasks/DOCKER-01.md",
+      "size": 1249,
+      "lines": 35,
+      "ext": ".md",
+      "sha1": "5b9d64a9847890f33f9951d6f07128819ae8ed9e"
+    },
+    {
+      "path": "docs/ai/tasks/DOCS-01.md",
+      "size": 1006,
+      "lines": 31,
+      "ext": ".md",
+      "sha1": "c068c02d3808f3bfe06e7dbc0543b0e7103cdab6"
+    },
+    {
+      "path": "docs/ai/tasks/EMBED-01.md",
+      "size": 1094,
+      "lines": 31,
+      "ext": ".md",
+      "sha1": "a3fd7fbade56204e8b7df5c6caaee130a0e852da"
+    },
+    {
+      "path": "docs/ai/tasks/EVAL-01.md",
+      "size": 1266,
+      "lines": 35,
+      "ext": ".md",
+      "sha1": "5f0c7f3c4789e2c45f74f625161c853ce38b07b2"
+    },
+    {
+      "path": "docs/ai/tasks/EVAL-02.md",
+      "size": 1127,
+      "lines": 33,
+      "ext": ".md",
+      "sha1": "8c40101c791cdd29878a45e060d34c70fd79ad5b"
+    },
+    {
+      "path": "docs/ai/tasks/EVAL-03.md",
+      "size": 1063,
+      "lines": 32,
+      "ext": ".md",
+      "sha1": "934e03f0c50e3fe2453bfb58da44bbcd2929ee71"
+    },
+    {
+      "path": "docs/ai/tasks/EVAL-04.md",
+      "size": 1069,
+      "lines": 31,
+      "ext": ".md",
+      "sha1": "c5f0033ca4d24b20c20524a3c173bf2d56689c7f"
+    },
+    {
+      "path": "docs/ai/tasks/EVAL-05.md",
+      "size": 934,
+      "lines": 32,
+      "ext": ".md",
+      "sha1": "987d1e54f580786a8203ecbcb643a66369fe19cb"
+    },
+    {
+      "path": "docs/ai/tasks/EVAL-06.md",
+      "size": 1013,
+      "lines": 31,
+      "ext": ".md",
+      "sha1": "77eec974cecbed20f1fb698679cc9c4b30755e83"
+    },
+    {
+      "path": "docs/ai/tasks/EVAL-07.md",
+      "size": 999,
+      "lines": 31,
+      "ext": ".md",
+      "sha1": "482acb1b13aabc336d392f333cff39e4d6c2d5b7"
+    },
+    {
+      "path": "docs/ai/tasks/FILES-01.md",
+      "size": 1089,
+      "lines": 29,
+      "ext": ".md",
+      "sha1": "9260988dc711376e21fb8b85a7053ec492063e59"
+    },
+    {
+      "path": "docs/ai/tasks/FRONT-01.md",
+      "size": 1103,
+      "lines": 32,
+      "ext": ".md",
+      "sha1": "7dc2d0ef144d13d0846f8a8c3a2a70d0568eb987"
+    },
+    {
+      "path": "docs/ai/tasks/FRONT-02.md",
+      "size": 1058,
+      "lines": 33,
+      "ext": ".md",
+      "sha1": "d37025390d6586506cac6d55a9c505d6d4b7fef0"
+    },
+    {
+      "path": "docs/ai/tasks/FRONT-03.md",
+      "size": 1013,
+      "lines": 29,
+      "ext": ".md",
+      "sha1": "eb5a3b7a1a3c17133739f0c35b8e2f44c31206ee"
+    },
+    {
+      "path": "docs/ai/tasks/METRICS-01.md",
+      "size": 1107,
+      "lines": 31,
+      "ext": ".md",
+      "sha1": "e663ba959375e93d2db65b641379ad7c19f3161c"
+    },
+    {
+      "path": "docs/ai/tasks/OBS-01.md",
+      "size": 996,
+      "lines": 31,
+      "ext": ".md",
+      "sha1": "b448affbe3a1ef45e257030a9f36b3a881d36060"
+    },
+    {
+      "path": "docs/ai/tasks/OBS-02.md",
+      "size": 1129,
+      "lines": 33,
+      "ext": ".md",
+      "sha1": "0fdc09a2022b688c056a92ad97a8aac148d24889"
+    },
+    {
+      "path": "docs/ai/tasks/PERF-01.md",
+      "size": 1177,
+      "lines": 34,
+      "ext": ".md",
+      "sha1": "bda3785ba531bf5a18427a22ae435c9ccdba2faa"
+    },
+    {
+      "path": "docs/ai/tasks/QUAL-01.md",
+      "size": 968,
+      "lines": 30,
+      "ext": ".md",
+      "sha1": "c704ea8029d6616cc6f91882253f3a663bbca28b"
+    },
+    {
+      "path": "docs/ai/tasks/QUAL-02.md",
+      "size": 937,
+      "lines": 31,
+      "ext": ".md",
+      "sha1": "1dd007b155f225b847b54575df8fd17e5b0980ae"
+    },
+    {
+      "path": "docs/ai/tasks/QUAL-03.md",
+      "size": 984,
+      "lines": 30,
+      "ext": ".md",
+      "sha1": "d210dc6d8ec188803483c31410d83f3a439f89e6"
+    },
+    {
+      "path": "docs/ai/tasks/RAG-01.md",
+      "size": 1018,
+      "lines": 30,
+      "ext": ".md",
+      "sha1": "b0bb3bb50eddc83fdf83064a0a591c17b3a3f8f5"
+    },
+    {
+      "path": "docs/ai/tasks/RAG-02.md",
+      "size": 1039,
+      "lines": 33,
+      "ext": ".md",
+      "sha1": "9370b4c5dcc15a9d850e5101ef8a679951a0509e"
+    },
+    {
+      "path": "docs/ai/tasks/RAG-03.md",
+      "size": 1089,
+      "lines": 34,
+      "ext": ".md",
+      "sha1": "6e63342c79977543f9a12ef82a0908694489fb37"
+    },
+    {
+      "path": "docs/ai/tasks/RAG-04.md",
+      "size": 1040,
+      "lines": 34,
+      "ext": ".md",
+      "sha1": "6cd468453541c20fb184d0954e1db09db4c56ffd"
+    },
+    {
+      "path": "docs/ai/tasks/RAG-05.md",
+      "size": 1073,
+      "lines": 34,
+      "ext": ".md",
+      "sha1": "bc8095c7b93863798d566e50ecf15596a781b535"
+    },
+    {
+      "path": "docs/ai/tasks/REFACTOR-01.md",
+      "size": 962,
+      "lines": 30,
+      "ext": ".md",
+      "sha1": "78f227cbec5fd8943d4f2e2eb2fc157ca708e2e5"
+    },
+    {
+      "path": "docs/ai/tasks/RUNTIME-01.md",
+      "size": 1066,
+      "lines": 32,
+      "ext": ".md",
+      "sha1": "71c3e4766851a4dc5eca876ba5ec5e95b556dd84"
+    },
+    {
+      "path": "docs/ai/tasks/SAFE-01.md",
+      "size": 978,
+      "lines": 31,
+      "ext": ".md",
+      "sha1": "1cce24e5c65ea0bf1a2d1817ccb9ad55668e8e16"
+    },
+    {
+      "path": "docs/ai/tasks/SHARED-01.md",
+      "size": 1097,
+      "lines": 30,
+      "ext": ".md",
+      "sha1": "0c7c216a4dd2f51d90e6beac2f6783e8b1995713"
+    },
+    {
+      "path": "docs/ai/tasks/TRACE-01.md",
+      "size": 1055,
+      "lines": 32,
+      "ext": ".md",
+      "sha1": "f6fc60cdcfb5a0fe5a50ff34f1c430bf748c1371"
+    },
+    {
+      "path": "docs/ai/tasks/TYPES-01.md",
+      "size": 1037,
+      "lines": 30,
+      "ext": ".md",
+      "sha1": "1249d42e9a1a73c800b90e34d201406873782ba6"
+    },
+    {
+      "path": "docs/ai/tasks/VECTOR-01.md",
+      "size": 1024,
+      "lines": 30,
+      "ext": ".md",
+      "sha1": "f9a0494b2d115147f77b92ea89c3dc60dd819914"
+    },
+    {
+      "path": "docs/ai/tasks/VECTOR-02.md",
+      "size": 1097,
+      "lines": 32,
+      "ext": ".md",
+      "sha1": "f9370e904dc1d22654404f9bb0bd17f48ed27663"
+    },
+    {
+      "path": "docs/design/2026-05-19-kafka-to-rabbitmq-hybrid-design.md",
+      "size": 9838,
+      "lines": 278,
+      "ext": ".md",
+      "sha1": "b0468d3bd6ba385568682dcff145bd1af839694f"
+    },
+    {
+      "path": "docs/multi-tenancy-security.md",
+      "size": 12400,
+      "lines": 190,
+      "ext": ".md",
+      "sha1": "f245fa6add347d78a5c7d71565d0e93246749ca9"
+    },
+    {
+      "path": "frontend/AGENTS.md",
+      "size": 803,
+      "lines": 14,
+      "ext": ".md",
+      "sha1": "c86b2d4104dcf266b335cb5ba7ad9b83a1db88d6"
+    },
+    {
+      "path": "frontend/CLAUDE.md",
+      "size": 99,
+      "lines": 5,
+      "ext": ".md",
+      "sha1": "716a4f12752b45a3457bf5d088bd7e7bd3c46114"
+    },
+    {
+      "path": "frontend/app/(routes)/dashboard/loading.jsx",
+      "size": 457,
+      "lines": 12,
+      "ext": ".jsx",
+      "sha1": "619c06f105c18a24c2cf8c1656af8412fa826196"
+    },
+    {
+      "path": "frontend/app/(routes)/dashboard/page.jsx",
+      "size": 194,
+      "lines": 9,
+      "ext": ".jsx",
+      "sha1": "54d4b700aa0b96428bdcf8ad34ca518be2ff7072"
+    },
+    {
+      "path": "frontend/app/(routes)/settings/page.jsx",
+      "size": 256,
+      "lines": 13,
+      "ext": ".jsx",
+      "sha1": "1dba38f59335e42942136f32b6c2b7199e576c88"
+    },
+    {
+      "path": "frontend/app/(workspace)/chat/[chatId]/page.jsx",
+      "size": 294,
+      "lines": 9,
+      "ext": ".jsx",
+      "sha1": "7339eb2a9480616a904aeb3bd5740f1c6092557d"
+    },
+    {
+      "path": "frontend/app/(workspace)/layout.jsx",
+      "size": 965,
+      "lines": 27,
+      "ext": ".jsx",
+      "sha1": "95ab69820f92df548102a6b57b5d0b7547f30dcf"
+    },
+    {
+      "path": "frontend/app/(workspace)/page.jsx",
+      "size": 203,
+      "lines": 8,
+      "ext": ".jsx",
+      "sha1": "38c6311e899477bb7c6bb7b8e2892db0c18684e8"
+    },
+    {
+      "path": "frontend/app/api/health/route.js",
+      "size": 99,
+      "lines": 5,
+      "ext": ".js",
+      "sha1": "25a9dceb04fc20e2c70558d7475d55416d3d1019"
+    },
+    {
+      "path": "frontend/app/error.jsx",
+      "size": 899,
+      "lines": 25,
+      "ext": ".jsx",
+      "sha1": "69fcfd6b46afaa3c60413074c17f6c24cf09848d"
+    },
+    {
+      "path": "frontend/app/layout.jsx",
+      "size": 1515,
+      "lines": 48,
+      "ext": ".jsx",
+      "sha1": "0793216b0a772e07b64dc91d8497b33f1d505b9b"
+    },
+    {
+      "path": "frontend/app/loading.jsx",
+      "size": 568,
+      "lines": 15,
+      "ext": ".jsx",
+      "sha1": "16ea4487a36858102328a22f31f8f3fadedb3946"
+    },
+    {
+      "path": "frontend/app/not-found.jsx",
+      "size": 1002,
+      "lines": 27,
+      "ext": ".jsx",
+      "sha1": "a8a5be3591352ff0f23ab6339e2e535ac24bf170"
+    },
+    {
+      "path": "frontend/jsconfig.json",
+      "size": 128,
+      "lines": 10,
+      "ext": ".json",
+      "sha1": "1204cdc703b99485e1067ba3b32199d64c643e71"
+    },
+    {
+      "path": "frontend/next.config.js",
+      "size": 150,
+      "lines": 8,
+      "ext": ".js",
+      "sha1": "eea6ffa50db4b094ce516e3618971356fa535cef"
+    },
+    {
+      "path": "frontend/package-lock.json",
+      "size": 236697,
+      "lines": 6624,
+      "ext": ".json",
+      "sha1": "2d573a57fd19d44d8a003d3d175e56b40a7cc899"
+    },
+    {
+      "path": "frontend/package.json",
+      "size": 1201,
+      "lines": 47,
+      "ext": ".json",
+      "sha1": "a8723e44da8ae367a6554369a1606d366f61717b"
+    },
+    {
+      "path": "frontend/postcss.config.js",
+      "size": 82,
+      "lines": 7,
+      "ext": ".js",
+      "sha1": "8860a68bc6ae8745e3db0b6d090129720e5ecc80"
+    },
+    {
+      "path": "frontend/src/components/ErrorBoundary.jsx",
+      "size": 2512,
+      "lines": 72,
+      "ext": ".jsx",
+      "sha1": "8b9b46ee7daf37e3eb090d0cc37aa5e0ed984c09"
+    },
+    {
+      "path": "frontend/src/components/ErrorBoundary.test.jsx",
+      "size": 839,
+      "lines": 33,
+      "ext": ".jsx",
+      "sha1": "6b7e71d9237cb1616a0640ff869efbecffc1c015"
+    },
+    {
+      "path": "frontend/src/components/Providers.jsx",
+      "size": 2147,
+      "lines": 70,
+      "ext": ".jsx",
+      "sha1": "3b063488fbb5d0427640da7cbcd4e5f7af78507c"
+    },
+    {
+      "path": "frontend/src/components/layout/Header.jsx",
+      "size": 14757,
+      "lines": 360,
+      "ext": ".jsx",
+      "sha1": "16411e1856224a1ad2da697405d2ab6da054d577"
+    },
+    {
+      "path": "frontend/src/components/layout/TabbedPageLayout.jsx",
+      "size": 4020,
+      "lines": 113,
+      "ext": ".jsx",
+      "sha1": "dcfcfbf92180cd2588f4bfe431f1d710a2938384"
+    },
+    {
+      "path": "frontend/src/components/ui/Badge.jsx",
+      "size": 2442,
+      "lines": 109,
+      "ext": ".jsx",
+      "sha1": "6ee6220df9c672c1c131e31598153a9dd7f7c993"
+    },
+    {
+      "path": "frontend/src/components/ui/Button.jsx",
+      "size": 2807,
+      "lines": 85,
+      "ext": ".jsx",
+      "sha1": "8cc15996eb44da97b981a2175b13058f7e244f51"
+    },
+    {
+      "path": "frontend/src/components/ui/Card.jsx",
+      "size": 2750,
+      "lines": 116,
+      "ext": ".jsx",
+      "sha1": "e7517103093810d0dbc061cef2c79d43cd41264b"
+    },
+    {
+      "path": "frontend/src/components/ui/DataDisplay.jsx",
+      "size": 2843,
+      "lines": 103,
+      "ext": ".jsx",
+      "sha1": "6ddef8b15bf4dde2a878b59670c448ab31e10582"
+    },
+    {
+      "path": "frontend/src/components/ui/EmptyState.jsx",
+      "size": 1750,
+      "lines": 53,
+      "ext": ".jsx",
+      "sha1": "d26c5bff4d01025d314916bdef18eba788faff58"
+    },
+    {
+      "path": "frontend/src/components/ui/Input.jsx",
+      "size": 3655,
+      "lines": 130,
+      "ext": ".jsx",
+      "sha1": "103c876f28112a01dbcbf42505601ec466755e3a"
+    },
+    {
+      "path": "frontend/src/components/ui/Modal.jsx",
+      "size": 5880,
+      "lines": 177,
+      "ext": ".jsx",
+      "sha1": "a798fc0b85534d651c25492d0e010dfe3c989561"
+    },
+    {
+      "path": "frontend/src/components/ui/PageHeader.jsx",
+      "size": 1463,
+      "lines": 52,
+      "ext": ".jsx",
+      "sha1": "99918d68f6b7624c3de24733edbef29f5f0ce6af"
+    },
+    {
+      "path": "frontend/src/components/ui/ProgressBar.jsx",
+      "size": 1150,
+      "lines": 47,
+      "ext": ".jsx",
+      "sha1": "08313b6bccd20fcab4642bf1beff591277fe7f66"
+    },
+    {
+      "path": "frontend/src/components/ui/Select.jsx",
+      "size": 3307,
+      "lines": 97,
+      "ext": ".jsx",
+      "sha1": "c74027fdd655779a79fce700f5f465fc5658c0dc"
+    },
+    {
+      "path": "frontend/src/components/ui/Separator.jsx",
+      "size": 387,
+      "lines": 18,
+      "ext": ".jsx",
+      "sha1": "a5e15970828033fbada0ffd62c7f1b58aa385f48"
+    },
+    {
+      "path": "frontend/src/components/ui/StatCard.jsx",
+      "size": 2291,
+      "lines": 72,
+      "ext": ".jsx",
+      "sha1": "40f0e1d0ba488f552a39688770c7983125ebda54"
+    },
+    {
+      "path": "frontend/src/components/ui/Switch.jsx",
+      "size": 2186,
+      "lines": 76,
+      "ext": ".jsx",
+      "sha1": "65cbdfecdaf726ee99f4d1452fcc725980a4a72e"
+    },
+    {
+      "path": "frontend/src/components/ui/TabSkeleton.jsx",
+      "size": 2317,
+      "lines": 60,
+      "ext": ".jsx",
+      "sha1": "c174c0c1f6dcce9ed6654f4f1a1e7418f8e0e507"
+    },
+    {
+      "path": "frontend/src/context/ThemeContext.jsx",
+      "size": 593,
+      "lines": 20,
+      "ext": ".jsx",
+      "sha1": "79ed9df890b3f0c45c0ecf3ccaf226b8d0b872b8"
+    },
+    {
+      "path": "frontend/src/features/admin/components/AdminUsersTab.jsx",
+      "size": 3856,
+      "lines": 88,
+      "ext": ".jsx",
+      "sha1": "4306748ca5fe138b2e896ca4e0f57d1a6b142bdd"
+    },
+    {
+      "path": "frontend/src/features/admin/services/adminUserService.js",
+      "size": 500,
+      "lines": 22,
+      "ext": ".js",
+      "sha1": "4c48dee2f921f5699f1278b03a5eef3f59ebfecd"
+    },
+    {
+      "path": "frontend/src/features/auth/components/LoginForm.jsx",
+      "size": 6519,
+      "lines": 188,
+      "ext": ".jsx",
+      "sha1": "c1f0c4959d48f986c405cf80b1725c9dd7d6e5c0"
+    },
+    {
+      "path": "frontend/src/features/auth/context/AuthContext.jsx",
+      "size": 2977,
+      "lines": 106,
+      "ext": ".jsx",
+      "sha1": "ca94193b618608695bd4d78df52df727f4b05704"
+    },
+    {
+      "path": "frontend/src/features/auth/hooks/useAuth.js",
+      "size": 178,
+      "lines": 9,
+      "ext": ".js",
+      "sha1": "159185efbadf4383369d0f2fe91a0cd3dda5b488"
+    },
+    {
+      "path": "frontend/src/features/auth/index.js",
+      "size": 221,
+      "lines": 5,
+      "ext": ".js",
+      "sha1": "90c0397ffbed85c726de23e3b3c7f0956d294a2f"
+    },
+    {
+      "path": "frontend/src/features/auth/services/authService.js",
+      "size": 1486,
+      "lines": 64,
+      "ext": ".js",
+      "sha1": "78295c1df02cd89bf50e253bded2355ad95b03a4"
+    },
+    {
+      "path": "frontend/src/features/chat/components/AnswerReviewCard.jsx",
+      "size": 3144,
+      "lines": 85,
+      "ext": ".jsx",
+      "sha1": "f51d57710a5debba011adce89a742e92f8c36bbd"
+    },
+    {
+      "path": "frontend/src/features/chat/components/AnswerReviewCard.test.jsx",
+      "size": 1255,
+      "lines": 34,
+      "ext": ".jsx",
+      "sha1": "769ea4b39e7f9be28010e496e09cae7a0d3f8c5a"
+    },
+    {
+      "path": "frontend/src/features/chat/components/ChatInput.jsx",
+      "size": 5296,
+      "lines": 134,
+      "ext": ".jsx",
+      "sha1": "bbdbf294df7f17d1535d91be785a5703e0085afb"
+    },
+    {
+      "path": "frontend/src/features/chat/components/ChatSidebar.jsx",
+      "size": 7586,
+      "lines": 197,
+      "ext": ".jsx",
+      "sha1": "b906c6634392ac2ac71c0d3edb0db36d43a1fa5d"
+    },
+    {
+      "path": "frontend/src/features/chat/components/ChatTab.jsx",
+      "size": 11782,
+      "lines": 314,
+      "ext": ".jsx",
+      "sha1": "10d25a12fe69a71e249caaf3c0cb2d69f0bd0218"
+    },
+    {
+      "path": "frontend/src/features/chat/components/ChatTab.test.jsx",
+      "size": 17804,
+      "lines": 487,
+      "ext": ".jsx",
+      "sha1": "c232c92f17b5ed8d35fcb4fe84bb4f6fbf23bc87"
+    },
+    {
+      "path": "frontend/src/features/chat/components/FeedbackControls.jsx",
+      "size": 3621,
+      "lines": 99,
+      "ext": ".jsx",
+      "sha1": "783244e187e772b3d813eb8ddb94f48114fe003e"
+    },
+    {
+      "path": "frontend/src/features/chat/components/MessageList.authorization.test.jsx",
+      "size": 1255,
+      "lines": 40,
+      "ext": ".jsx",
+      "sha1": "42f3417e8cc2aba99b1d23a013c752b6d44101ae"
+    },
+    {
+      "path": "frontend/src/features/chat/components/MessageList.citations.test.jsx",
+      "size": 1644,
+      "lines": 51,
+      "ext": ".jsx",
+      "sha1": "f0576a5c10a58cb675b6315d157da78025ae9c3b"
+    },
+    {
+      "path": "frontend/src/features/chat/components/MessageList.jsx",
+      "size": 16188,
+      "lines": 371,
+      "ext": ".jsx",
+      "sha1": "50cd1505108c6619a6fd59cfc433f9381c813a38"
+    },
+    {
+      "path": "frontend/src/features/chat/components/MessageMetricsModal.jsx",
+      "size": 11310,
+      "lines": 242,
+      "ext": ".jsx",
+      "sha1": "7422ba8776c4c4cca2fe13978623dda732e8311f"
+    },
+    {
+      "path": "frontend/src/features/chat/components/ModelSelector.jsx",
+      "size": 2075,
+      "lines": 59,
+      "ext": ".jsx",
+      "sha1": "7602d3ce5ae50567357eee0b95f0344c80b5b832"
+    },
+    {
+      "path": "frontend/src/features/chat/components/TraceDebugPanel.jsx",
+      "size": 5917,
+      "lines": 137,
+      "ext": ".jsx",
+      "sha1": "c96f8a495fdbaada5a9d494b1153c7680970eca1"
+    },
+    {
+      "path": "frontend/src/features/chat/components/TraceDebugPanel.test.jsx",
+      "size": 3376,
+      "lines": 75,
+      "ext": ".jsx",
+      "sha1": "82d2c766168364ef026b85a115890506cbeb75d2"
+    },
+    {
+      "path": "frontend/src/features/chat/components/trace/PipelineTab.jsx",
+      "size": 3170,
+      "lines": 81,
+      "ext": ".jsx",
+      "sha1": "d6e77b79d4c2de4d6531a5817b28c101041a9f58"
+    },
+    {
+      "path": "frontend/src/features/chat/components/trace/PromptTab.jsx",
+      "size": 3433,
+      "lines": 79,
+      "ext": ".jsx",
+      "sha1": "70bac4da8fdb608874e38b162b09b8082c56974a"
+    },
+    {
+      "path": "frontend/src/features/chat/components/trace/QualityTab.jsx",
+      "size": 2471,
+      "lines": 70,
+      "ext": ".jsx",
+      "sha1": "72703cc38e54b372eaeb60925f6059e260f382f0"
+    },
+    {
+      "path": "frontend/src/features/chat/components/trace/SourcesTab.jsx",
+      "size": 4113,
+      "lines": 96,
+      "ext": ".jsx",
+      "sha1": "cd92b902360ac6e0cde6459bb0ebe2429ad0943a"
+    },
+    {
+      "path": "frontend/src/features/chat/components/trace/shared.jsx",
+      "size": 2513,
+      "lines": 60,
+      "ext": ".jsx",
+      "sha1": "7a273ed314cb4ec3532d634706afe2dd127561c3"
+    },
+    {
+      "path": "frontend/src/features/chat/context/ChatContext.jsx",
+      "size": 20891,
+      "lines": 635,
+      "ext": ".jsx",
+      "sha1": "124900e34d5f52534c8eb693ba1a11bf959bf0b4"
+    },
+    {
+      "path": "frontend/src/features/chat/context/ChatContext.reducer.test.js",
+      "size": 4842,
+      "lines": 150,
+      "ext": ".js",
+      "sha1": "ab80c10511e5bfbe9b40ec64ea22b0db1c7f7c9d"
+    },
+    {
+      "path": "frontend/src/features/chat/context/chatConstants.js",
+      "size": 939,
+      "lines": 26,
+      "ext": ".js",
+      "sha1": "601dc6df697043952210946f85b07a553e02092d"
+    },
+    {
+      "path": "frontend/src/features/chat/context/chatHelpers.js",
+      "size": 1890,
+      "lines": 56,
+      "ext": ".js",
+      "sha1": "ba415b48dbd2e1d55871736b5e423f084ba27015"
+    },
+    {
+      "path": "frontend/src/features/chat/context/chatHelpers.test.js",
+      "size": 1090,
+      "lines": 31,
+      "ext": ".js",
+      "sha1": "78eb970722eddf2a2a381dd871a34f013fff84b2"
+    },
+    {
+      "path": "frontend/src/features/chat/context/chatReducers.js",
+      "size": 8334,
+      "lines": 276,
+      "ext": ".js",
+      "sha1": "28ffba1418c839c27e6d51bafc54f32002f3adcd"
+    },
+    {
+      "path": "frontend/src/features/chat/hooks/useChatInit.js",
+      "size": 2365,
+      "lines": 74,
+      "ext": ".js",
+      "sha1": "917d9857673233c22af380555d8ac53b1b772c75"
+    },
+    {
+      "path": "frontend/src/features/chat/hooks/useLlmReadiness.js",
+      "size": 1241,
+      "lines": 40,
+      "ext": ".js",
+      "sha1": "708b160e030386e52e4b194b6778e7350914d265"
+    },
+    {
+      "path": "frontend/src/features/chat/index.js",
+      "size": 234,
+      "lines": 5,
+      "ext": ".js",
+      "sha1": "f4ef1c97ecb33551a5343c9d4bfd5ed81bef5add"
+    },
+    {
+      "path": "frontend/src/features/chat/services/chatService.js",
+      "size": 2835,
+      "lines": 106,
+      "ext": ".js",
+      "sha1": "01bdc80bfd2d04dc94bef5051ed96ae05a84749a"
+    },
+    {
+      "path": "frontend/src/features/chat/services/llmStatusService.js",
+      "size": 279,
+      "lines": 12,
+      "ext": ".js",
+      "sha1": "e89a2bb63f239f2a105ce1dd31f471d3426be0d0"
+    },
+    {
+      "path": "frontend/src/features/chat/utils/chatMode.js",
+      "size": 320,
+      "lines": 12,
+      "ext": ".js",
+      "sha1": "fae38b67e82288233d86d7f23965be3cefa3e999"
+    },
+    {
+      "path": "frontend/src/features/chat/utils/chatMode.test.js",
+      "size": 595,
+      "lines": 17,
+      "ext": ".js",
+      "sha1": "6ac38bd59ca7f4b0f090602648b97dc6dcc33c95"
+    },
+    {
+      "path": "frontend/src/features/component-render.test.jsx",
+      "size": 2806,
+      "lines": 53,
+      "ext": ".jsx",
+      "sha1": "9dff9f45b01a7414abf7c467bdb3762f2738bcc1"
+    },
+    {
+      "path": "frontend/src/features/config/components/ConfigTab.jsx",
+      "size": 15386,
+      "lines": 391,
+      "ext": ".jsx",
+      "sha1": "2387e452f3151a062e1dcd7836e20b0185fb5a06"
+    },
+    {
+      "path": "frontend/src/features/config/index.js",
+      "size": 130,
+      "lines": 3,
+      "ext": ".js",
+      "sha1": "1caeabf34cb8d745d33303c5b3610c9050e511cf"
+    },
+    {
+      "path": "frontend/src/features/config/services/configService.js",
+      "size": 1715,
+      "lines": 67,
+      "ext": ".js",
+      "sha1": "00860e33f9b455314ffe869676d55c5532c3f12a"
+    },
+    {
+      "path": "frontend/src/features/files/components/AuditTrailPanel.jsx",
+      "size": 3672,
+      "lines": 106,
+      "ext": ".jsx",
+      "sha1": "0a5b4f13c09bf76a6f6738d2a8fe5eb8835b84ed"
+    },
+    {
+      "path": "frontend/src/features/files/components/FileCard.jsx",
+      "size": 7605,
+      "lines": 199,
+      "ext": ".jsx",
+      "sha1": "eb22e4406f1c414ecf3d02951285929e5ffa0ab2"
+    },
+    {
+      "path": "frontend/src/features/files/components/FileReviewDrawer.jsx",
+      "size": 9703,
+      "lines": 237,
+      "ext": ".jsx",
+      "sha1": "a504d36cf9b0caa948d3b8d6334b55266b1171da"
+    },
+    {
+      "path": "frontend/src/features/files/components/FilesTab.jsx",
+      "size": 21476,
+      "lines": 545,
+      "ext": ".jsx",
+      "sha1": "4eab1c6a7c257bdc88c5e6f973eb54777b15baff"
+    },
+    {
+      "path": "frontend/src/features/files/components/FilesTab.test.jsx",
+      "size": 7938,
+      "lines": 234,
+      "ext": ".jsx",
+      "sha1": "09d9619001f2dee8ef137085df07f31e7ceca8f5"
+    },
+    {
+      "path": "frontend/src/features/files/components/PipelineBar.jsx",
+      "size": 3348,
+      "lines": 89,
+      "ext": ".jsx",
+      "sha1": "3c0521630e39166dcd0a0aaf67fcc2cff8836365"
+    },
+    {
+      "path": "frontend/src/features/files/components/SummaryModal.jsx",
+      "size": 938,
+      "lines": 34,
+      "ext": ".jsx",
+      "sha1": "549310f68e96a63d0961e2b287ff9e1e26d0612a"
+    },
+    {
+      "path": "frontend/src/features/files/components/UploadTab.jsx",
+      "size": 5926,
+      "lines": 151,
+      "ext": ".jsx",
+      "sha1": "fbc55d537324d0ab2b969fe9eb888a3d16a46ccd"
+    },
+    {
+      "path": "frontend/src/features/files/components/UploadTab.test.jsx",
+      "size": 2199,
+      "lines": 69,
+      "ext": ".jsx",
+      "sha1": "485e554cff4c08b3e402bdd2162fbb20fa78e8be"
+    },
+    {
+      "path": "frontend/src/features/files/hooks/filesReducer.js",
+      "size": 6709,
+      "lines": 245,
+      "ext": ".js",
+      "sha1": "bfd309d4a07d9a99e97bffc8879e65f6d8cb6956"
+    },
+    {
+      "path": "frontend/src/features/files/hooks/useFiles.js",
+      "size": 6774,
+      "lines": 213,
+      "ext": ".js",
+      "sha1": "3289c61609d2513f5d4bb0286463e5eda6009202"
+    },
+    {
+      "path": "frontend/src/features/files/index.js",
+      "size": 168,
+      "lines": 4,
+      "ext": ".js",
+      "sha1": "931b8bcd526d3ef927bf5c1a6c172cef5df18c56"
+    },
+    {
+      "path": "frontend/src/features/files/services/fileService.js",
+      "size": 1396,
+      "lines": 53,
+      "ext": ".js",
+      "sha1": "20f9c4306689de66783927c425d2df74f908bb20"
+    },
+    {
+      "path": "frontend/src/features/health/components/CircuitBreakerPanel.jsx",
+      "size": 2623,
+      "lines": 69,
+      "ext": ".jsx",
+      "sha1": "a2018ce68b63783cb9a0b347e6aedfc9a259aa08"
+    },
+    {
+      "path": "frontend/src/features/health/components/HealthDashboard.jsx",
+      "size": 9391,
+      "lines": 210,
+      "ext": ".jsx",
+      "sha1": "0ccdbc9283f406b9a496bb2c10b00663d86fb3f1"
+    },
+    {
+      "path": "frontend/src/features/health/components/MiniSparkline.jsx",
+      "size": 555,
+      "lines": 16,
+      "ext": ".jsx",
+      "sha1": "9dd0dba8fe155f337507489ea11865b37e37bd9c"
+    },
+    {
+      "path": "frontend/src/features/health/components/RateLimiterPanel.jsx",
+      "size": 2020,
+      "lines": 50,
+      "ext": ".jsx",
+      "sha1": "541bb850627b0f5fa39955eb2d7bdbe1f6c35487"
+    },
+    {
+      "path": "frontend/src/features/health/components/ServiceCard.jsx",
+      "size": 2142,
+      "lines": 54,
+      "ext": ".jsx",
+      "sha1": "8d8d89c2f5bef25e77737e3cd2e1e3ca5a67f846"
+    },
+    {
+      "path": "frontend/src/features/health/components/healthConfig.js",
+      "size": 1318,
+      "lines": 28,
+      "ext": ".js",
+      "sha1": "3d7da8cd73cc927eda0c631234cb509713b19069"
+    },
+    {
+      "path": "frontend/src/features/health/hooks/useHealth.js",
+      "size": 1224,
+      "lines": 43,
+      "ext": ".js",
+      "sha1": "b28f11375586f24fcd3c39c265de5a2a86f1f82f"
+    },
+    {
+      "path": "frontend/src/features/health/index.js",
+      "size": 114,
+      "lines": 3,
+      "ext": ".js",
+      "sha1": "a2fe0e060e0fe69f3dbefcc88faf43aaf201272f"
+    },
+    {
+      "path": "frontend/src/features/health/services/healthService.js",
+      "size": 374,
+      "lines": 16,
+      "ext": ".js",
+      "sha1": "e9f38497724894204b12e3c0beccc53281a123fd"
+    },
+    {
+      "path": "frontend/src/features/memory/components/AddMemoryForm.jsx",
+      "size": 4271,
+      "lines": 113,
+      "ext": ".jsx",
+      "sha1": "4052133269585ef3f1216ba44842a9f34d848e68"
+    },
+    {
+      "path": "frontend/src/features/memory/components/CategoryBadge.jsx",
+      "size": 642,
+      "lines": 24,
+      "ext": ".jsx",
+      "sha1": "20a5ee8c0d2a08eb15506859c9aeaef973b4c15b"
+    },
+    {
+      "path": "frontend/src/features/memory/components/LongTermMemoryTab.jsx",
+      "size": 5278,
+      "lines": 152,
+      "ext": ".jsx",
+      "sha1": "7424e1d098d794a5e0283199cea0a58eb544f760"
+    },
+    {
+      "path": "frontend/src/features/memory/components/MemoryCard.jsx",
+      "size": 5469,
+      "lines": 133,
+      "ext": ".jsx",
+      "sha1": "ca5f04b7306a965528c37fb5404e717600fc4f0a"
+    },
+    {
+      "path": "frontend/src/features/memory/components/memoryConfig.js",
+      "size": 807,
+      "lines": 17,
+      "ext": ".js",
+      "sha1": "9d899be3565dccb1f5f44c3d98b41d783a1b3e50"
+    },
+    {
+      "path": "frontend/src/features/memory/services/memoryService.js",
+      "size": 1695,
+      "lines": 54,
+      "ext": ".js",
+      "sha1": "b5513ebc021952d9b9cae9ab5f920b9b9d5af900"
+    },
+    {
+      "path": "frontend/src/features/metrics/components/EvalPanel.jsx",
+      "size": 28663,
+      "lines": 802,
+      "ext": ".jsx",
+      "sha1": "885e43b0fb7b753bd68b176572f359d4c40700c6"
+    },
+    {
+      "path": "frontend/src/features/metrics/components/EvalPanel.test.jsx",
+      "size": 23838,
+      "lines": 686,
+      "ext": ".jsx",
+      "sha1": "282ac288d5fd1198221f7056a53a1c3132331af6"
+    },
+    {
+      "path": "frontend/src/features/metrics/components/KpiHeader.jsx",
+      "size": 4488,
+      "lines": 144,
+      "ext": ".jsx",
+      "sha1": "af9ea556251428ff96a16295685f0a26a33412e2"
+    },
+    {
+      "path": "frontend/src/features/metrics/components/LatencyPanel.jsx",
+      "size": 9430,
+      "lines": 265,
+      "ext": ".jsx",
+      "sha1": "275346254dc82a98d475f72030f6707396433bf6"
+    },
+    {
+      "path": "frontend/src/features/metrics/components/MetricsTab.jsx",
+      "size": 6085,
+      "lines": 179,
+      "ext": ".jsx",
+      "sha1": "37eba6b76b04921720c800e9513b6862aa65e931"
+    },
+    {
+      "path": "frontend/src/features/metrics/components/MetricsTab.test.jsx",
+      "size": 4962,
+      "lines": 146,
+      "ext": ".jsx",
+      "sha1": "fd907edfccf3f9ac961421df8d3eaace54e1616c"
+    },
+    {
+      "path": "frontend/src/features/metrics/components/PipelinePanel.jsx",
+      "size": 22332,
+      "lines": 551,
+      "ext": ".jsx",
+      "sha1": "3119c1ba8b0c436f4801ae62130ef995ff9f79d7"
+    },
+    {
+      "path": "frontend/src/features/metrics/components/PipelinePanel.test.jsx",
+      "size": 7764,
+      "lines": 216,
+      "ext": ".jsx",
+      "sha1": "7c2065f915937bfa1f0a9feaaffe56b3922034c0"
+    },
+    {
+      "path": "frontend/src/features/metrics/components/QualityPanel.jsx",
+      "size": 14309,
+      "lines": 360,
+      "ext": ".jsx",
+      "sha1": "2325e36f5aa5a34267e18da6a6d664b03483ed96"
+    },
+    {
+      "path": "frontend/src/features/metrics/components/QualityPanel.test.jsx",
+      "size": 6591,
+      "lines": 197,
+      "ext": ".jsx",
+      "sha1": "7b0807ad8cbff8dbe4ce056c43e5647604af4be2"
+    },
+    {
+      "path": "frontend/src/features/metrics/components/RetrievalPanel.jsx",
+      "size": 11007,
+      "lines": 318,
+      "ext": ".jsx",
+      "sha1": "cc7f7fcd908a83198a99e958ea6a22f858865341"
+    },
+    {
+      "path": "frontend/src/features/metrics/components/RetrievalPanel.test.jsx",
+      "size": 4838,
+      "lines": 118,
+      "ext": ".jsx",
+      "sha1": "3781fdf9ac880d32d42915872b2b8ab1ab2b5723"
+    },
+    {
+      "path": "frontend/src/features/metrics/components/benchmark/GoldenSetImporter.jsx",
+      "size": 6945,
+      "lines": 211,
+      "ext": ".jsx",
+      "sha1": "1fe4865e422fe7fb06de20743db9002b08aa9c5a"
+    },
+    {
+      "path": "frontend/src/features/metrics/components/benchmark/GoldenSetImporter.test.jsx",
+      "size": 4081,
+      "lines": 127,
+      "ext": ".jsx",
+      "sha1": "f61a27e8be0d2d7c3f697287915bde115608df46"
+    },
+    {
+      "path": "frontend/src/features/metrics/components/benchmark/GoldenSetValidationResult.jsx",
+      "size": 1810,
+      "lines": 60,
+      "ext": ".jsx",
+      "sha1": "bee7321ba368e2f2908527d898e02056376ead97"
+    },
+    {
+      "path": "frontend/src/features/metrics/components/charts/Histogram.jsx",
+      "size": 3022,
+      "lines": 105,
+      "ext": ".jsx",
+      "sha1": "7fa9891db8e192a332d0523bb2dfb5e006a8b5de"
+    },
+    {
+      "path": "frontend/src/features/metrics/components/charts/StageBreakdown.jsx",
+      "size": 2888,
+      "lines": 101,
+      "ext": ".jsx",
+      "sha1": "9a118b37db8b1c68794256b3bb50b563c527de41"
+    },
+    {
+      "path": "frontend/src/features/metrics/components/charts/TimeSeries.jsx",
+      "size": 6845,
+      "lines": 209,
+      "ext": ".jsx",
+      "sha1": "f77e44b8f6ab9ee5126e78ce5a6af3a644cbabef"
+    },
+    {
+      "path": "frontend/src/features/metrics/components/charts/TimeSeries.test.jsx",
+      "size": 2733,
+      "lines": 84,
+      "ext": ".jsx",
+      "sha1": "b8e9c1ede3069fa3ba341737bb64a0a91da5b959"
+    },
+    {
+      "path": "frontend/src/features/metrics/components/metricsConfig.js",
+      "size": 16234,
+      "lines": 449,
+      "ext": ".js",
+      "sha1": "c34da7aba2e8dc2cf93b4340e8f5a1605496aefe"
+    },
+    {
+      "path": "frontend/src/features/metrics/hooks/useEvalRuns.js",
+      "size": 6594,
+      "lines": 222,
+      "ext": ".js",
+      "sha1": "fe0ac774636b9a7b86fd9f0251b5148cf925a7bb"
+    },
+    {
+      "path": "frontend/src/features/metrics/hooks/useMetrics.js",
+      "size": 3829,
+      "lines": 113,
+      "ext": ".js",
+      "sha1": "78bf801c4713f1ebfc244dc8b1de6fe16df23fa4"
+    },
+    {
+      "path": "frontend/src/features/metrics/index.js",
+      "size": 118,
+      "lines": 3,
+      "ext": ".js",
+      "sha1": "077364cd822bbadf99635bebb5110e140aee8a1a"
+    },
+    {
+      "path": "frontend/src/features/metrics/services/metricsService.js",
+      "size": 3450,
+      "lines": 106,
+      "ext": ".js",
+      "sha1": "61db7a901603f91036a28e64c21093fc3105486d"
+    },
+    {
+      "path": "frontend/src/features/metrics/services/metricsService.test.js",
+      "size": 3732,
+      "lines": 115,
+      "ext": ".js",
+      "sha1": "13b0dce9e2b27114f2ee2422183c816738572f61"
+    },
+    {
+      "path": "frontend/src/features/models/components/ModelManagementTab.jsx",
+      "size": 19536,
+      "lines": 439,
+      "ext": ".jsx",
+      "sha1": "1503239f824e9944859462d8725ba1bc7fa048bb"
+    },
+    {
+      "path": "frontend/src/features/models/index.js",
+      "size": 146,
+      "lines": 3,
+      "ext": ".js",
+      "sha1": "1a3e9c97eb81297ce0e88e625c68639ecbd8f91a"
+    },
+    {
+      "path": "frontend/src/features/models/services/modelService.js",
+      "size": 1742,
+      "lines": 62,
+      "ext": ".js",
+      "sha1": "35385ac8154a226e488ed5c0f63739058f33ab60"
+    },
+    {
+      "path": "frontend/src/features/tab-render.test.jsx",
+      "size": 2274,
+      "lines": 58,
+      "ext": ".jsx",
+      "sha1": "2b710085542e2bbeb194af1b44dd3833803f28f5"
+    },
+    {
+      "path": "frontend/src/features/training/components/TrainingTab.jsx",
+      "size": 17276,
+      "lines": 450,
+      "ext": ".jsx",
+      "sha1": "50822d2ed344436295aa1d028a304897be41670b"
+    },
+    {
+      "path": "frontend/src/features/training/hooks/useTraining.js",
+      "size": 2378,
+      "lines": 83,
+      "ext": ".js",
+      "sha1": "2c3189c1c5299552a7aa370c3ffab5e20ae5585c"
+    },
+    {
+      "path": "frontend/src/features/training/index.js",
+      "size": 122,
+      "lines": 3,
+      "ext": ".js",
+      "sha1": "11dc615bf4de03b5caf628fb5c5c6f26ed3a43f5"
+    },
+    {
+      "path": "frontend/src/features/training/services/trainingService.js",
+      "size": 1454,
+      "lines": 60,
+      "ext": ".js",
+      "sha1": "0d388e17bbe239b20ab303dffa10ce66bb304fd0"
+    },
+    {
+      "path": "frontend/src/features/websocket/index.js",
+      "size": 68,
+      "lines": 2,
+      "ext": ".js",
+      "sha1": "2c539c01996bb8f085d059ccfaea525c6f73c8e6"
+    },
+    {
+      "path": "frontend/src/features/websocket/services/socketService.js",
+      "size": 10019,
+      "lines": 332,
+      "ext": ".js",
+      "sha1": "177fceaf3dcf6214669969af2c42dea4fa6d6b3b"
+    },
+    {
+      "path": "frontend/src/features/websocket/services/socketService.test.js",
+      "size": 6028,
+      "lines": 216,
+      "ext": ".js",
+      "sha1": "3dd8eb839991c35f7174708580d4bb33aa2390ff"
+    },
+    {
+      "path": "frontend/src/lib/config.js",
+      "size": 990,
+      "lines": 24,
+      "ext": ".js",
+      "sha1": "71bef23ca2d5b8e30f9a265c2313540267e47d97"
+    },
+    {
+      "path": "frontend/src/lib/http/client.js",
+      "size": 8259,
+      "lines": 295,
+      "ext": ".js",
+      "sha1": "c36f185978654734c5cddb5227bbae2ac921c8e2"
+    },
+    {
+      "path": "frontend/src/lib/http/client.test.js",
+      "size": 4716,
+      "lines": 148,
+      "ext": ".js",
+      "sha1": "5ca1786374d2b9378a4950097527f38a489fb65b"
+    },
+    {
+      "path": "frontend/src/lib/http/errors.js",
+      "size": 3310,
+      "lines": 107,
+      "ext": ".js",
+      "sha1": "922ad64a1c4ec7a0dcd4b99d9ef3f178a8be826c"
+    },
+    {
+      "path": "frontend/src/lib/http/errors.test.js",
+      "size": 1751,
+      "lines": 57,
+      "ext": ".js",
+      "sha1": "ef045ad94f14bd23de006bbdb6e95c149ac64f0d"
+    },
+    {
+      "path": "frontend/src/lib/logger.js",
+      "size": 954,
+      "lines": 35,
+      "ext": ".js",
+      "sha1": "dacf7f5591098f67557ba07ac82f444572668845"
+    },
+    {
+      "path": "frontend/src/lib/utils.js",
+      "size": 208,
+      "lines": 8,
+      "ext": ".js",
+      "sha1": "7ee98dc3ebcfef12a7c06640eaf7a8f1f4784086"
+    },
+    {
+      "path": "frontend/src/store/index.js",
+      "size": 732,
+      "lines": 28,
+      "ext": ".js",
+      "sha1": "1f3c7b793b090f283f04fb378c3f27d164abd624"
+    },
+    {
+      "path": "frontend/src/store/slices/eventsSlice.js",
+      "size": 924,
+      "lines": 31,
+      "ext": ".js",
+      "sha1": "b345add91d2db52463ec1d70f4d81cd37a689147"
+    },
+    {
+      "path": "frontend/src/store/slices/eventsSlice.test.js",
+      "size": 1195,
+      "lines": 38,
+      "ext": ".js",
+      "sha1": "eb18066f2b5b0e694815179f7f984c9b88383396"
+    },
+    {
+      "path": "frontend/src/store/slices/filesSlice.js",
+      "size": 983,
+      "lines": 35,
+      "ext": ".js",
+      "sha1": "9b34005fa517dfe0d43e412afd7026a53ad3fedf"
+    },
+    {
+      "path": "frontend/src/store/slices/logsSlice.js",
+      "size": 2638,
+      "lines": 91,
+      "ext": ".js",
+      "sha1": "834fcd5f58930d21c7f7d1f09463e7ffe08776f8"
+    },
+    {
+      "path": "frontend/src/store/slices/logsSlice.test.js",
+      "size": 1562,
+      "lines": 48,
+      "ext": ".js",
+      "sha1": "dc8405574abc746d7420ee1805fc45c294c4e61b"
+    },
+    {
+      "path": "frontend/src/test/render.jsx",
+      "size": 731,
+      "lines": 29,
+      "ext": ".jsx",
+      "sha1": "83870f7b6f09360e982c3f28f6456eb2bb458f82"
+    },
+    {
+      "path": "frontend/src/test/server.js",
+      "size": 76,
+      "lines": 4,
+      "ext": ".js",
+      "sha1": "486992c9dc71612b89e3280eec8e8ce59fb9ba8d"
+    },
+    {
+      "path": "frontend/src/utils/common.js",
+      "size": 8415,
+      "lines": 279,
+      "ext": ".js",
+      "sha1": "5f1ef60707f7ebfb894ff396ec7850dd4062cf2f"
+    },
+    {
+      "path": "frontend/src/utils/textUtils.js",
+      "size": 1236,
+      "lines": 39,
+      "ext": ".js",
+      "sha1": "e0b165c0922adf207289fc47eef7dc19a8c6bd24"
+    },
+    {
+      "path": "frontend/tailwind.config.js",
+      "size": 4756,
+      "lines": 143,
+      "ext": ".js",
+      "sha1": "c315629502921b98e6e56a670d55716b7095d0f7"
+    },
+    {
+      "path": "frontend/vitest.config.js",
+      "size": 295,
+      "lines": 16,
+      "ext": ".js",
+      "sha1": "0da337766ac1686a607600d768574a285d8e4c10"
+    },
+    {
+      "path": "frontend/vitest.setup.js",
+      "size": 2360,
+      "lines": 112,
+      "ext": ".js",
+      "sha1": "c54b93c25ffb5358fd37ce8429ef3e75be6e81be"
+    },
+    {
+      "path": "ruff.toml",
+      "size": 337,
+      "lines": 9,
+      "ext": ".toml",
+      "sha1": "a28dda592994d9832844510417a5b9febc2e6ee9"
+    },
+    {
+      "path": "scripts/ai/brain_query.py",
+      "size": 2917,
+      "lines": 63,
+      "ext": ".py",
+      "sha1": "b9b1780046ba13b54349c71389dcc11ce7332ef9"
+    },
+    {
+      "path": "scripts/ai/rebuild_repo_brain.py",
+      "size": 6102,
+      "lines": 110,
+      "ext": ".py",
+      "sha1": "1cb9640bb2dba395e9871fcbde9440e201fad2fa"
+    },
+    {
+      "path": "scripts/ai/record_handoff.py",
+      "size": 2172,
+      "lines": 56,
+      "ext": ".py",
+      "sha1": "159c1cb85de37ca291e0797dcd10a82d7327d1aa"
+    },
+    {
+      "path": "scripts/ai/validate_ai_memory.py",
+      "size": 2653,
+      "lines": 53,
+      "ext": ".py",
+      "sha1": "47690ac7a8d992473fdb1646336d3a6ab7097fb1"
+    },
+    {
+      "path": "tests/smoke_chat.js",
+      "size": 1384,
+      "lines": 61,
+      "ext": ".js",
+      "sha1": "22782cd1e14fa69ce0a265667aa4c3bb7adb625a"
+    },
+    {
+      "path": "tests/smoke_llm_service_stream.py",
+      "size": 1394,
+      "lines": 47,
+      "ext": ".py",
+      "sha1": "c5253d317c4efa4e377234bf2003688aff59d6c3"
+    },
+    {
+      "path": "tests/smoke_rabbitmq_stream.py",
+      "size": 2257,
+      "lines": 71,
+      "ext": ".py",
+      "sha1": "b9208a545bb62be6d4eedd97f901c1ee0e5c594e"
+    },
+    {
+      "path": "tests/smoke_vllm_stream.py",
+      "size": 838,
+      "lines": 30,
+      "ext": ".py",
+      "sha1": "721e1b38c499d7b4aa86bf717954e58d047092d8"
+    },
+    {
+      "path": "tests/test_public_repo_guardrails.py",
+      "size": 8722,
+      "lines": 229,
+      "ext": ".py",
+      "sha1": "8b1329937d2dd46236173d206c6a3a356ffcd1b1"
+    }
+  ]
+}

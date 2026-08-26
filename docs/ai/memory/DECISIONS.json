@@ -1,0 +1,114 @@
+{
+  "schema_version": 1,
+  "decisions": [
+    {
+      "id": "DEC-001",
+      "status": "accepted",
+      "title": "RabbitMQ for RPC; Kafka for durable async workflow/events",
+      "decision": "Keep transport roles separate by semantics.",
+      "reason": "Request/reply and durable pipeline needs differ.",
+      "do_not_do": [
+        "Do not replace both with one transport merely to simplify architecture."
+      ],
+      "revisit_if": [
+        "Measured burden outweighs benefit and migration preserves delivery semantics."
+      ],
+      "evidence": [
+        "backend/shared/kafka_base.py",
+        "docker-compose.yml"
+      ]
+    },
+    {
+      "id": "DEC-002",
+      "status": "accepted",
+      "title": "Extend existing RAG trace instead of creating a parallel diagnostic trace platform",
+      "decision": "Attach retrieval diagnostics to existing RAG trace/checkpoint/eval infrastructure.",
+      "reason": "Existing trace IDs/stage instrumentation already provide the execution backbone.",
+      "do_not_do": [
+        "Do not create a separate benchmark-only tracing platform."
+      ],
+      "revisit_if": [
+        "Existing trace contract cannot support bounded candidate lineage after a focused spike."
+      ],
+      "evidence": [
+        "backend/rag/app/services/conversation_tracing.py",
+        "backend/rag/app/services/conversation_graph.py"
+      ]
+    },
+    {
+      "id": "DEC-003",
+      "status": "accepted",
+      "title": "Golden ground truth remains eval-side",
+      "decision": "Expected files/chunks/facts never influence live retrieval.",
+      "reason": "Otherwise the benchmark contaminates the system being measured.",
+      "do_not_do": [
+        "Do not pass expected labels into production retrieval."
+      ],
+      "revisit_if": [],
+      "evidence": [
+        "backend/rag/app/services/eval_runner.py"
+      ]
+    },
+    {
+      "id": "DEC-004",
+      "status": "accepted",
+      "title": "At-least-once plus idempotency over exactly-once claims",
+      "decision": "Durable messaging correctness uses explicit replay/idempotency semantics.",
+      "reason": "End-to-end exactly-once is not proven.",
+      "do_not_do": [
+        "Do not describe the Kafka workflow as exactly-once without end-to-end evidence."
+      ],
+      "revisit_if": [
+        "A transactional end-to-end design is implemented and chaos-tested."
+      ],
+      "evidence": [
+        "backend/shared/kafka_base.py"
+      ]
+    },
+    {
+      "id": "DEC-005",
+      "status": "accepted",
+      "title": "Self-hosted API token charge is distinct from compute cost",
+      "decision": "Report API token charge separately from GPU/compute cost.",
+      "reason": "$0 token API charge does not make inference free.",
+      "do_not_do": [
+        "Do not label self-hosted inference cost as simply $0."
+      ],
+      "revisit_if": [],
+      "evidence": [
+        "backend/gateway/app/services/metrics_service.py",
+        "docker-compose.yml"
+      ]
+    },
+    {
+      "id": "DEC-006",
+      "status": "accepted",
+      "title": "Do not add infrastructure for buzzwords alone",
+      "decision": "Redis/Elasticsearch/Celery/Temporal/Kubernetes/Terraform require a concrete measured need.",
+      "reason": "The system already has significant distributed complexity.",
+      "do_not_do": [
+        "Do not add platforms solely for portfolio keywords."
+      ],
+      "revisit_if": [
+        "A scoped task demonstrates a concrete requirement and compares alternatives."
+      ],
+      "evidence": [
+        "docs/ai/DECISIONS.md"
+      ]
+    },
+    {
+      "id": "DEC-007",
+      "status": "accepted",
+      "title": "OOP is selective, not blanket",
+      "decision": "Classes for state/lifecycle/policy/repository/resource ownership; pure metrics/transforms stay functions.",
+      "reason": "Classes should encode ownership/invariants, not style theater.",
+      "do_not_do": [
+        "Do not wrap pure Recall/MRR/nDCG calculations in manager classes."
+      ],
+      "revisit_if": [],
+      "evidence": [
+        "backend/rag/app/services/retrieval_metrics.py"
+      ]
+    }
+  ]
+}

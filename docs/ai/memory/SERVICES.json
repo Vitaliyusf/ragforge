@@ -1,0 +1,210 @@
+{
+  "schema_version": 1,
+  "services": [
+    {
+      "id": "gateway",
+      "path": "backend/gateway",
+      "entrypoint": "backend/gateway/app/main.py",
+      "responsibilities": [
+        "browser-facing REST",
+        "auth/session fa\u00e7ade",
+        "service RPC fa\u00e7ade",
+        "admin metrics/eval API"
+      ],
+      "owns": [
+        "client-facing authorization boundary",
+        "REST adaptation"
+      ],
+      "calls": [
+        "rag",
+        "files",
+        "memory",
+        "embedding",
+        "vector_db",
+        "llm_agent",
+        "prometheus"
+      ],
+      "transports": [
+        "HTTP from frontend",
+        "RabbitMQ RPC to backend services"
+      ],
+      "look_first": [
+        "backend/gateway/app/core/deps.py",
+        "backend/gateway/app/services",
+        "backend/gateway/app/rest"
+      ],
+      "avoid_duplicate": "Frontend should normally use Gateway rather than call internal services directly."
+    },
+    {
+      "id": "rag",
+      "path": "backend/rag",
+      "entrypoint": "backend/rag/app/main.py",
+      "responsibilities": [
+        "Regular/Extended RAG",
+        "retrieval orchestration",
+        "generation/evaluation",
+        "conversation checkpoints",
+        "golden-set eval",
+        "RAG metrics facts"
+      ],
+      "owns": [
+        "RAG pipeline semantics",
+        "context selection",
+        "eval orchestration",
+        "RAG trace events"
+      ],
+      "calls": [
+        "embedding",
+        "vector_db",
+        "memory",
+        "llm_agent"
+      ],
+      "transports": [
+        "RabbitMQ/service RPC",
+        "streaming response path"
+      ],
+      "look_first": [
+        "backend/rag/app/services/conversation_graph.py",
+        "backend/rag/app/services/conversation_backend_client.py",
+        "backend/rag/app/services/eval_runner.py",
+        "backend/rag/app/services/eval_store.py"
+      ],
+      "avoid_duplicate": "Extend RAG's graph/eval/trace; do not recreate retrieval/eval logic in Gateway/frontend."
+    },
+    {
+      "id": "files",
+      "path": "backend/files",
+      "entrypoint": "backend/files/app/main.py",
+      "responsibilities": [
+        "file lifecycle",
+        "ingestion state",
+        "review/audit",
+        "file/chunk metadata"
+      ],
+      "owns": [
+        "file ownership/state",
+        "ingestion workflow truth"
+      ],
+      "calls": [
+        "embedding",
+        "vector_db"
+      ],
+      "transports": [
+        "RabbitMQ RPC",
+        "Kafka ingestion/events"
+      ],
+      "look_first": [
+        "backend/files/app/services/file_service.py",
+        "backend/files/app/services/file_ingestion_graph.py",
+        "backend/files/app/db"
+      ],
+      "avoid_duplicate": "File metadata/lifecycle truth belongs in Files."
+    },
+    {
+      "id": "embedding",
+      "path": "backend/embedding",
+      "entrypoint": "backend/embedding/app/main.py",
+      "responsibilities": [
+        "query/document embedding",
+        "document extraction/embedding jobs"
+      ],
+      "owns": [
+        "embedding model execution",
+        "extractor implementations"
+      ],
+      "calls": [
+        "vector_db",
+        "files metadata paths where currently required"
+      ],
+      "transports": [
+        "Kafka jobs",
+        "RabbitMQ request/reply"
+      ],
+      "look_first": [
+        "backend/embedding/app/services/embedding_job_service.py",
+        "backend/embedding/app/services/embedding_handler.py",
+        "backend/embedding/app/embedding",
+        "backend/embedding/app/extraction"
+      ],
+      "avoid_duplicate": "Do not load embedding models independently inside unrelated services when existing embedding service paths fit."
+    },
+    {
+      "id": "vector_db",
+      "path": "backend/vector_db",
+      "entrypoint": "backend/vector_db/app/main.py",
+      "responsibilities": [
+        "vector search",
+        "upsert/delete/count",
+        "Qdrant tenant/filter enforcement"
+      ],
+      "owns": [
+        "Qdrant access",
+        "vector-store abstraction"
+      ],
+      "calls": [],
+      "transports": [
+        "RabbitMQ RPC",
+        "Kafka workflow where configured"
+      ],
+      "look_first": [
+        "backend/vector_db/app/services/vector_service.py",
+        "backend/vector_db/app/db/interfaces.py",
+        "backend/vector_db/app/db/implementations/qdrant.py"
+      ],
+      "avoid_duplicate": "Do not bypass the Vector service with new direct Qdrant clients unless architecture explicitly requires it."
+    },
+    {
+      "id": "memory",
+      "path": "backend/memory",
+      "entrypoint": "backend/memory/app/main.py",
+      "responsibilities": [
+        "chat-history projection",
+        "long-term memory",
+        "memory curation agent"
+      ],
+      "owns": [
+        "memory records",
+        "memory mutation semantics",
+        "memory agent tools"
+      ],
+      "calls": [
+        "configured model path for memory curation"
+      ],
+      "transports": [
+        "RabbitMQ RPC",
+        "events/projections where configured"
+      ],
+      "look_first": [
+        "backend/memory/app/agent/memory_agent.py",
+        "backend/memory/app/services",
+        "backend/memory/app/db"
+      ],
+      "avoid_duplicate": "Long-term memory belongs here; RAG should query/call Memory rather than create another store."
+    },
+    {
+      "id": "llm_agent",
+      "path": "backend/llm_agent",
+      "entrypoint": "backend/llm_agent/app/main.py",
+      "responsibilities": [
+        "LLM generation/evaluation abstraction",
+        "provider/model implementations"
+      ],
+      "owns": [
+        "shared generation/evaluation model boundary where routed through this service"
+      ],
+      "calls": [
+        "vLLM/other configured model backend"
+      ],
+      "transports": [
+        "RabbitMQ RPC",
+        "HTTP/model backend"
+      ],
+      "look_first": [
+        "backend/llm_agent/app/llm",
+        "backend/llm_agent/app/core",
+        "backend/llm_agent/app/services"
+      ],
+      "avoid_duplicate": "Before creating a new direct model client, inspect existing LLM Agent/shared model boundary."
+    }
+  ]
+}

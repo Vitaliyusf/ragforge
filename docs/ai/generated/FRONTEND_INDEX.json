@@ -1,0 +1,3260 @@
+{
+  "schema_version": 1,
+  "symbols": [
+    {
+      "name": "AddMemoryForm",
+      "kind": "component",
+      "path": "frontend/src/features/memory/components/AddMemoryForm.jsx",
+      "line": 11,
+      "qualname": "AddMemoryForm"
+    },
+    {
+      "name": "AdminUsersTab",
+      "kind": "component",
+      "path": "frontend/src/features/admin/components/AdminUsersTab.jsx",
+      "line": 9,
+      "qualname": "AdminUsersTab"
+    },
+    {
+      "name": "AnswerQuality",
+      "kind": "component",
+      "path": "frontend/src/features/metrics/components/EvalPanel.jsx",
+      "line": 380,
+      "qualname": "AnswerQuality"
+    },
+    {
+      "name": "AnswerReviewCard",
+      "kind": "component",
+      "path": "frontend/src/features/chat/components/AnswerReviewCard.jsx",
+      "line": 19,
+      "qualname": "AnswerReviewCard"
+    },
+    {
+      "name": "assistantText",
+      "kind": "symbol",
+      "path": "frontend/src/features/chat/context/ChatContext.reducer.test.js",
+      "line": 60,
+      "qualname": "assistantText"
+    },
+    {
+      "name": "AuditTrailPanel",
+      "kind": "component",
+      "path": "frontend/src/features/files/components/AuditTrailPanel.jsx",
+      "line": 17,
+      "qualname": "AuditTrailPanel"
+    },
+    {
+      "name": "AuthenticatedApplication",
+      "kind": "component",
+      "path": "frontend/src/components/Providers.jsx",
+      "line": 40,
+      "qualname": "AuthenticatedApplication"
+    },
+    {
+      "name": "AuthProvider",
+      "kind": "component",
+      "path": "frontend/src/features/auth/context/AuthContext.jsx",
+      "line": 19,
+      "qualname": "AuthProvider"
+    },
+    {
+      "name": "AUTO_TITLE_USER_MESSAGE_THRESHOLD",
+      "kind": "component",
+      "path": "frontend/src/features/chat/context/chatConstants.js",
+      "line": 8,
+      "qualname": "AUTO_TITLE_USER_MESSAGE_THRESHOLD"
+    },
+    {
+      "name": "Badge",
+      "kind": "component",
+      "path": "frontend/src/components/ui/Badge.jsx",
+      "line": 64,
+      "qualname": "Badge"
+    },
+    {
+      "name": "Boom",
+      "kind": "component",
+      "path": "frontend/src/components/ErrorBoundary.test.jsx",
+      "line": 12,
+      "qualname": "Boom"
+    },
+    {
+      "name": "build",
+      "kind": "symbol",
+      "path": "frontend/src/features/metrics/components/PipelinePanel.test.jsx",
+      "line": 25,
+      "qualname": "build"
+    },
+    {
+      "name": "buildAssistantMetadata",
+      "kind": "symbol",
+      "path": "frontend/src/features/chat/context/chatHelpers.js",
+      "line": 38,
+      "qualname": "buildAssistantMetadata"
+    },
+    {
+      "name": "buildInitialState",
+      "kind": "symbol",
+      "path": "frontend/src/features/files/hooks/filesReducer.js",
+      "line": 48,
+      "qualname": "buildInitialState"
+    },
+    {
+      "name": "buildQuery",
+      "kind": "symbol",
+      "path": "frontend/src/features/metrics/services/metricsService.js",
+      "line": 9,
+      "qualname": "buildQuery"
+    },
+    {
+      "name": "Button",
+      "kind": "component",
+      "path": "frontend/src/components/ui/Button.jsx",
+      "line": 48,
+      "qualname": "Button"
+    },
+    {
+      "name": "Callout",
+      "kind": "component",
+      "path": "frontend/src/features/metrics/components/EvalPanel.jsx",
+      "line": 549,
+      "qualname": "Callout"
+    },
+    {
+      "name": "Card",
+      "kind": "component",
+      "path": "frontend/src/components/ui/Card.jsx",
+      "line": 56,
+      "qualname": "Card"
+    },
+    {
+      "name": "CardHeader",
+      "kind": "component",
+      "path": "frontend/src/components/ui/Card.jsx",
+      "line": 99,
+      "qualname": "CardHeader"
+    },
+    {
+      "name": "CardSection",
+      "kind": "component",
+      "path": "frontend/src/components/ui/Card.jsx",
+      "line": 86,
+      "qualname": "CardSection"
+    },
+    {
+      "name": "CATEGORY_CONFIG",
+      "kind": "component",
+      "path": "frontend/src/features/memory/components/memoryConfig.js",
+      "line": 5,
+      "qualname": "CATEGORY_CONFIG"
+    },
+    {
+      "name": "CATEGORY_OPTIONS",
+      "kind": "component",
+      "path": "frontend/src/features/memory/components/memoryConfig.js",
+      "line": 12,
+      "qualname": "CATEGORY_OPTIONS"
+    },
+    {
+      "name": "CategoryBadge",
+      "kind": "component",
+      "path": "frontend/src/features/memory/components/CategoryBadge.jsx",
+      "line": 7,
+      "qualname": "CategoryBadge"
+    },
+    {
+      "name": "CB_STATE",
+      "kind": "component",
+      "path": "frontend/src/features/health/components/healthConfig.js",
+      "line": 12,
+      "qualname": "CB_STATE"
+    },
+    {
+      "name": "CHAT_MODE_STORAGE_KEY",
+      "kind": "component",
+      "path": "frontend/src/features/chat/context/chatConstants.js",
+      "line": 4,
+      "qualname": "CHAT_MODE_STORAGE_KEY"
+    },
+    {
+      "name": "ChatInput",
+      "kind": "component",
+      "path": "frontend/src/features/chat/components/ChatInput.jsx",
+      "line": 21,
+      "qualname": "ChatInput"
+    },
+    {
+      "name": "ChatItem",
+      "kind": "component",
+      "path": "frontend/src/features/chat/components/ChatSidebar.jsx",
+      "line": 116,
+      "qualname": "ChatItem"
+    },
+    {
+      "name": "ChatPage",
+      "kind": "component",
+      "path": "frontend/app/(workspace)/chat/[chatId]/page.jsx",
+      "line": 6,
+      "qualname": "ChatPage"
+    },
+    {
+      "name": "ChatProvider",
+      "kind": "component",
+      "path": "frontend/src/features/chat/context/ChatContext.jsx",
+      "line": 48,
+      "qualname": "ChatProvider"
+    },
+    {
+      "name": "chatRuntimeReducer",
+      "kind": "symbol",
+      "path": "frontend/src/features/chat/context/chatReducers.js",
+      "line": 4,
+      "qualname": "chatRuntimeReducer"
+    },
+    {
+      "name": "ChatSidebar",
+      "kind": "component",
+      "path": "frontend/src/features/chat/components/ChatSidebar.jsx",
+      "line": 10,
+      "qualname": "ChatSidebar"
+    },
+    {
+      "name": "ChatTab",
+      "kind": "component",
+      "path": "frontend/src/features/chat/components/ChatTab.jsx",
+      "line": 17,
+      "qualname": "ChatTab"
+    },
+    {
+      "name": "ChatWelcome",
+      "kind": "component",
+      "path": "frontend/src/features/chat/components/MessageList.jsx",
+      "line": 53,
+      "qualname": "ChatWelcome"
+    },
+    {
+      "name": "CircuitBreakerPanel",
+      "kind": "component",
+      "path": "frontend/src/features/health/components/CircuitBreakerPanel.jsx",
+      "line": 10,
+      "qualname": "CircuitBreakerPanel"
+    },
+    {
+      "name": "CITATION_DENOMINATOR_NOTE",
+      "kind": "component",
+      "path": "frontend/src/features/metrics/components/metricsConfig.js",
+      "line": 246,
+      "qualname": "CITATION_DENOMINATOR_NOTE"
+    },
+    {
+      "name": "clearBrowserState",
+      "kind": "symbol",
+      "path": "frontend/src/features/auth/context/AuthContext.jsx",
+      "line": 9,
+      "qualname": "clearBrowserState"
+    },
+    {
+      "name": "CloseButton",
+      "kind": "component",
+      "path": "frontend/src/components/ui/Modal.jsx",
+      "line": 44,
+      "qualname": "CloseButton"
+    },
+    {
+      "name": "cn",
+      "kind": "symbol",
+      "path": "frontend/src/lib/utils.js",
+      "line": 5,
+      "qualname": "cn"
+    },
+    {
+      "name": "CodeBlock",
+      "kind": "component",
+      "path": "frontend/src/components/ui/DataDisplay.jsx",
+      "line": 79,
+      "qualname": "CodeBlock"
+    },
+    {
+      "name": "computeEffectiveStatus",
+      "kind": "symbol",
+      "path": "frontend/src/utils/common.js",
+      "line": 216,
+      "qualname": "computeEffectiveStatus"
+    },
+    {
+      "name": "CONFIDENCE_LABELS",
+      "kind": "component",
+      "path": "frontend/src/features/metrics/components/metricsConfig.js",
+      "line": 170,
+      "qualname": "CONFIDENCE_LABELS"
+    },
+    {
+      "name": "config",
+      "kind": "symbol",
+      "path": "frontend/src/lib/config.js",
+      "line": 1,
+      "qualname": "config"
+    },
+    {
+      "name": "CONFIG_DIFF_NOTE",
+      "kind": "component",
+      "path": "frontend/src/features/metrics/components/metricsConfig.js",
+      "line": 350,
+      "qualname": "CONFIG_DIFF_NOTE"
+    },
+    {
+      "name": "CONFIG_SNAPSHOT_LABELS",
+      "kind": "component",
+      "path": "frontend/src/features/metrics/components/metricsConfig.js",
+      "line": 302,
+      "qualname": "CONFIG_SNAPSHOT_LABELS"
+    },
+    {
+      "name": "ConfigDiff",
+      "kind": "component",
+      "path": "frontend/src/features/metrics/components/EvalPanel.jsx",
+      "line": 347,
+      "qualname": "ConfigDiff"
+    },
+    {
+      "name": "ConfigTab",
+      "kind": "component",
+      "path": "frontend/src/features/config/components/ConfigTab.jsx",
+      "line": 15,
+      "qualname": "ConfigTab"
+    },
+    {
+      "name": "ConfirmModal",
+      "kind": "component",
+      "path": "frontend/src/components/ui/Modal.jsx",
+      "line": 119,
+      "qualname": "ConfirmModal"
+    },
+    {
+      "name": "containsHebrew",
+      "kind": "symbol",
+      "path": "frontend/src/utils/textUtils.js",
+      "line": 8,
+      "qualname": "containsHebrew"
+    },
+    {
+      "name": "conversationReducer",
+      "kind": "symbol",
+      "path": "frontend/src/features/chat/context/chatReducers.js",
+      "line": 36,
+      "qualname": "conversationReducer"
+    },
+    {
+      "name": "COST_ESTIMATE_NOTE",
+      "kind": "component",
+      "path": "frontend/src/features/metrics/components/metricsConfig.js",
+      "line": 256,
+      "qualname": "COST_ESTIMATE_NOTE"
+    },
+    {
+      "name": "createAppError",
+      "kind": "symbol",
+      "path": "frontend/src/lib/http/errors.js",
+      "line": 3,
+      "qualname": "createAppError"
+    },
+    {
+      "name": "createEmitter",
+      "kind": "symbol",
+      "path": "frontend/src/features/websocket/services/socketService.test.js",
+      "line": 5,
+      "qualname": "createEmitter"
+    },
+    {
+      "name": "createEnvelope",
+      "kind": "symbol",
+      "path": "frontend/src/features/chat/components/ChatTab.test.jsx",
+      "line": 63,
+      "qualname": "createEnvelope"
+    },
+    {
+      "name": "createEnvelope",
+      "kind": "symbol",
+      "path": "frontend/src/features/websocket/services/socketService.test.js",
+      "line": 85,
+      "qualname": "createEnvelope"
+    },
+    {
+      "name": "createFakeSocket",
+      "kind": "symbol",
+      "path": "frontend/src/features/websocket/services/socketService.test.js",
+      "line": 43,
+      "qualname": "createFakeSocket"
+    },
+    {
+      "name": "createFile",
+      "kind": "symbol",
+      "path": "frontend/src/features/files/components/FilesTab.test.jsx",
+      "line": 11,
+      "qualname": "createFile"
+    },
+    {
+      "name": "createHttpError",
+      "kind": "symbol",
+      "path": "frontend/src/lib/http/errors.js",
+      "line": 88,
+      "qualname": "createHttpError"
+    },
+    {
+      "name": "createId",
+      "kind": "symbol",
+      "path": "frontend/src/features/chat/context/chatHelpers.js",
+      "line": 5,
+      "qualname": "createId"
+    },
+    {
+      "name": "createRuntimeError",
+      "kind": "symbol",
+      "path": "frontend/src/features/websocket/services/socketService.js",
+      "line": 15,
+      "qualname": "createRuntimeError"
+    },
+    {
+      "name": "createTestStore",
+      "kind": "symbol",
+      "path": "frontend/src/test/render.jsx",
+      "line": 7,
+      "qualname": "createTestStore"
+    },
+    {
+      "name": "Dashboard",
+      "kind": "component",
+      "path": "frontend/app/(routes)/dashboard/page.jsx",
+      "line": 1,
+      "qualname": "Dashboard"
+    },
+    {
+      "name": "DataCell",
+      "kind": "component",
+      "path": "frontend/src/components/ui/DataDisplay.jsx",
+      "line": 33,
+      "qualname": "DataCell"
+    },
+    {
+      "name": "DataRow",
+      "kind": "component",
+      "path": "frontend/src/components/ui/DataDisplay.jsx",
+      "line": 17,
+      "qualname": "DataRow"
+    },
+    {
+      "name": "DATASET_DRIFT_NOTE",
+      "kind": "component",
+      "path": "frontend/src/features/metrics/components/metricsConfig.js",
+      "line": 393,
+      "qualname": "DATASET_DRIFT_NOTE"
+    },
+    {
+      "name": "DatasetProvenance",
+      "kind": "component",
+      "path": "frontend/src/features/metrics/components/EvalPanel.jsx",
+      "line": 335,
+      "qualname": "DatasetProvenance"
+    },
+    {
+      "name": "DatasetUploadForm",
+      "kind": "component",
+      "path": "frontend/src/features/training/components/TrainingTab.jsx",
+      "line": 39,
+      "qualname": "DatasetUploadForm"
+    },
+    {
+      "name": "DEFAULT_WINDOW",
+      "kind": "component",
+      "path": "frontend/src/features/metrics/components/metricsConfig.js",
+      "line": 32,
+      "qualname": "DEFAULT_WINDOW"
+    },
+    {
+      "name": "del",
+      "kind": "symbol",
+      "path": "frontend/src/lib/http/client.js",
+      "line": 101,
+      "qualname": "del"
+    },
+    {
+      "name": "deriveReviewState",
+      "kind": "symbol",
+      "path": "frontend/src/features/files/hooks/filesReducer.js",
+      "line": 18,
+      "qualname": "deriveReviewState"
+    },
+    {
+      "name": "detectLogSeverity",
+      "kind": "symbol",
+      "path": "frontend/src/utils/common.js",
+      "line": 98,
+      "qualname": "detectLogSeverity"
+    },
+    {
+      "name": "diffSnapshots",
+      "kind": "symbol",
+      "path": "frontend/src/features/metrics/components/EvalPanel.jsx",
+      "line": 68,
+      "qualname": "diffSnapshots"
+    },
+    {
+      "name": "disconnect",
+      "kind": "symbol",
+      "path": "frontend/src/features/websocket/services/socketService.test.js",
+      "line": 58,
+      "qualname": "disconnect"
+    },
+    {
+      "name": "emit",
+      "kind": "symbol",
+      "path": "frontend/src/features/websocket/services/socketService.test.js",
+      "line": 44,
+      "qualname": "emit"
+    },
+    {
+      "name": "emit",
+      "kind": "symbol",
+      "path": "frontend/src/lib/logger.js",
+      "line": 20,
+      "qualname": "emit"
+    },
+    {
+      "name": "Empty",
+      "kind": "component",
+      "path": "frontend/src/features/chat/components/trace/shared.jsx",
+      "line": 51,
+      "qualname": "Empty"
+    },
+    {
+      "name": "EMPTY",
+      "kind": "component",
+      "path": "frontend/src/features/metrics/components/metricsConfig.js",
+      "line": 6,
+      "qualname": "EMPTY"
+    },
+    {
+      "name": "EmptyState",
+      "kind": "component",
+      "path": "frontend/src/components/ui/EmptyState.jsx",
+      "line": 8,
+      "qualname": "EmptyState"
+    },
+    {
+      "name": "envelope",
+      "kind": "symbol",
+      "path": "frontend/src/features/metrics/services/metricsService.test.js",
+      "line": 9,
+      "qualname": "envelope"
+    },
+    {
+      "name": "Error",
+      "kind": "component",
+      "path": "frontend/app/error.jsx",
+      "line": 1,
+      "qualname": "Error"
+    },
+    {
+      "name": "ErrorBoundary",
+      "kind": "component",
+      "path": "frontend/src/components/ErrorBoundary.jsx",
+      "line": 8,
+      "qualname": "ErrorBoundary"
+    },
+    {
+      "name": "estimateDescription",
+      "kind": "symbol",
+      "path": "frontend/src/features/metrics/components/EvalPanel.jsx",
+      "line": 163,
+      "qualname": "estimateDescription"
+    },
+    {
+      "name": "EVAL_ANSWER_METRIC_LABELS",
+      "kind": "component",
+      "path": "frontend/src/features/metrics/components/metricsConfig.js",
+      "line": 333,
+      "qualname": "EVAL_ANSWER_METRIC_LABELS"
+    },
+    {
+      "name": "EVAL_HISTORY_K",
+      "kind": "component",
+      "path": "frontend/src/features/metrics/components/metricsConfig.js",
+      "line": 275,
+      "qualname": "EVAL_HISTORY_K"
+    },
+    {
+      "name": "EVAL_K_VALUES",
+      "kind": "component",
+      "path": "frontend/src/features/metrics/components/metricsConfig.js",
+      "line": 271,
+      "qualname": "EVAL_K_VALUES"
+    },
+    {
+      "name": "EVAL_METRIC_LABELS",
+      "kind": "component",
+      "path": "frontend/src/features/metrics/components/metricsConfig.js",
+      "line": 289,
+      "qualname": "EVAL_METRIC_LABELS"
+    },
+    {
+      "name": "EVAL_MODE_HELP",
+      "kind": "component",
+      "path": "frontend/src/features/metrics/components/metricsConfig.js",
+      "line": 321,
+      "qualname": "EVAL_MODE_HELP"
+    },
+    {
+      "name": "EVAL_MODE_LABELS",
+      "kind": "component",
+      "path": "frontend/src/features/metrics/components/metricsConfig.js",
+      "line": 315,
+      "qualname": "EVAL_MODE_LABELS"
+    },
+    {
+      "name": "EvalPanel",
+      "kind": "component",
+      "path": "frontend/src/features/metrics/components/EvalPanel.jsx",
+      "line": 116,
+      "qualname": "EvalPanel"
+    },
+    {
+      "name": "ExtendedProgressIndicator",
+      "kind": "component",
+      "path": "frontend/src/features/chat/components/MessageList.jsx",
+      "line": 72,
+      "qualname": "ExtendedProgressIndicator"
+    },
+    {
+      "name": "extractAnswer",
+      "kind": "symbol",
+      "path": "frontend/src/features/chat/components/MessageList.jsx",
+      "line": 16,
+      "qualname": "extractAnswer"
+    },
+    {
+      "name": "extractErrorMessage",
+      "kind": "symbol",
+      "path": "frontend/src/lib/http/errors.js",
+      "line": 83,
+      "qualname": "extractErrorMessage"
+    },
+    {
+      "name": "extractErrorPayload",
+      "kind": "symbol",
+      "path": "frontend/src/lib/http/errors.js",
+      "line": 75,
+      "qualname": "extractErrorPayload"
+    },
+    {
+      "name": "FeedbackControls",
+      "kind": "component",
+      "path": "frontend/src/features/chat/components/FeedbackControls.jsx",
+      "line": 14,
+      "qualname": "FeedbackControls"
+    },
+    {
+      "name": "FILE_MATCH_NOTE",
+      "kind": "component",
+      "path": "frontend/src/features/metrics/components/metricsConfig.js",
+      "line": 360,
+      "qualname": "FILE_MATCH_NOTE"
+    },
+    {
+      "name": "FileCard",
+      "kind": "component",
+      "path": "frontend/src/features/files/components/FileCard.jsx",
+      "line": 43,
+      "qualname": "FileCard"
+    },
+    {
+      "name": "FilePrefetcher",
+      "kind": "component",
+      "path": "frontend/src/components/Providers.jsx",
+      "line": 24,
+      "qualname": "FilePrefetcher"
+    },
+    {
+      "name": "FileReviewDrawer",
+      "kind": "component",
+      "path": "frontend/src/features/files/components/FileReviewDrawer.jsx",
+      "line": 28,
+      "qualname": "FileReviewDrawer"
+    },
+    {
+      "name": "filesReducer",
+      "kind": "symbol",
+      "path": "frontend/src/features/files/hooks/filesReducer.js",
+      "line": 66,
+      "qualname": "filesReducer"
+    },
+    {
+      "name": "FilesTab",
+      "kind": "component",
+      "path": "frontend/src/features/files/components/FilesTab.jsx",
+      "line": 35,
+      "qualname": "FilesTab"
+    },
+    {
+      "name": "FILTER_REASON_LABELS",
+      "kind": "component",
+      "path": "frontend/src/features/metrics/components/metricsConfig.js",
+      "line": 165,
+      "qualname": "FILTER_REASON_LABELS"
+    },
+    {
+      "name": "FINGERPRINT_PREFIX",
+      "kind": "component",
+      "path": "frontend/src/features/metrics/components/metricsConfig.js",
+      "line": 373,
+      "qualname": "FINGERPRINT_PREFIX"
+    },
+    {
+      "name": "finish",
+      "kind": "symbol",
+      "path": "tests/smoke_chat.js",
+      "line": 12,
+      "qualname": "finish"
+    },
+    {
+      "name": "finitePoints",
+      "kind": "symbol",
+      "path": "frontend/src/features/metrics/components/charts/TimeSeries.jsx",
+      "line": 10,
+      "qualname": "finitePoints"
+    },
+    {
+      "name": "formatChatDate",
+      "kind": "symbol",
+      "path": "frontend/src/utils/common.js",
+      "line": 77,
+      "qualname": "formatChatDate"
+    },
+    {
+      "name": "formatCost",
+      "kind": "symbol",
+      "path": "frontend/src/features/metrics/components/metricsConfig.js",
+      "line": 84,
+      "qualname": "formatCost"
+    },
+    {
+      "name": "formatCount",
+      "kind": "symbol",
+      "path": "frontend/src/features/metrics/components/metricsConfig.js",
+      "line": 79,
+      "qualname": "formatCount"
+    },
+    {
+      "name": "formatDate",
+      "kind": "symbol",
+      "path": "frontend/src/features/files/components/AuditTrailPanel.jsx",
+      "line": 8,
+      "qualname": "formatDate"
+    },
+    {
+      "name": "formatDecimal",
+      "kind": "symbol",
+      "path": "frontend/src/features/metrics/components/metricsConfig.js",
+      "line": 74,
+      "qualname": "formatDecimal"
+    },
+    {
+      "name": "formatFileSize",
+      "kind": "symbol",
+      "path": "frontend/src/utils/common.js",
+      "line": 8,
+      "qualname": "formatFileSize"
+    },
+    {
+      "name": "formatFingerprint",
+      "kind": "symbol",
+      "path": "frontend/src/features/metrics/components/metricsConfig.js",
+      "line": 382,
+      "qualname": "formatFingerprint"
+    },
+    {
+      "name": "formatHistoryForPrompt",
+      "kind": "symbol",
+      "path": "frontend/src/features/chat/context/chatHelpers.js",
+      "line": 12,
+      "qualname": "formatHistoryForPrompt"
+    },
+    {
+      "name": "formatLogLine",
+      "kind": "symbol",
+      "path": "frontend/src/utils/common.js",
+      "line": 21,
+      "qualname": "formatLogLine"
+    },
+    {
+      "name": "formatMessageTime",
+      "kind": "symbol",
+      "path": "frontend/src/utils/common.js",
+      "line": 54,
+      "qualname": "formatMessageTime"
+    },
+    {
+      "name": "formatMs",
+      "kind": "symbol",
+      "path": "frontend/src/features/metrics/components/metricsConfig.js",
+      "line": 50,
+      "qualname": "formatMs"
+    },
+    {
+      "name": "formatPercent",
+      "kind": "symbol",
+      "path": "frontend/src/features/metrics/components/metricsConfig.js",
+      "line": 62,
+      "qualname": "formatPercent"
+    },
+    {
+      "name": "formatRate",
+      "kind": "symbol",
+      "path": "frontend/src/features/metrics/components/metricsConfig.js",
+      "line": 56,
+      "qualname": "formatRate"
+    },
+    {
+      "name": "formatScore",
+      "kind": "symbol",
+      "path": "frontend/src/features/metrics/components/metricsConfig.js",
+      "line": 68,
+      "qualname": "formatScore"
+    },
+    {
+      "name": "formatSeconds",
+      "kind": "symbol",
+      "path": "frontend/src/features/metrics/components/metricsConfig.js",
+      "line": 43,
+      "qualname": "formatSeconds"
+    },
+    {
+      "name": "formatSetting",
+      "kind": "symbol",
+      "path": "frontend/src/features/metrics/components/metricsConfig.js",
+      "line": 444,
+      "qualname": "formatSetting"
+    },
+    {
+      "name": "formatTime",
+      "kind": "symbol",
+      "path": "frontend/src/utils/common.js",
+      "line": 38,
+      "qualname": "formatTime"
+    },
+    {
+      "name": "formatTimestamp",
+      "kind": "symbol",
+      "path": "frontend/src/features/metrics/components/metricsConfig.js",
+      "line": 89,
+      "qualname": "formatTimestamp"
+    },
+    {
+      "name": "FUNNEL_STEP_LABELS",
+      "kind": "component",
+      "path": "frontend/src/features/metrics/components/metricsConfig.js",
+      "line": 157,
+      "qualname": "FUNNEL_STEP_LABELS"
+    },
+    {
+      "name": "GET",
+      "kind": "component",
+      "path": "frontend/app/api/health/route.js",
+      "line": 2,
+      "qualname": "GET"
+    },
+    {
+      "name": "get",
+      "kind": "symbol",
+      "path": "frontend/src/lib/http/client.js",
+      "line": 152,
+      "qualname": "get"
+    },
+    {
+      "name": "getEffectiveStatusBadgeVariant",
+      "kind": "symbol",
+      "path": "frontend/src/utils/common.js",
+      "line": 262,
+      "qualname": "getEffectiveStatusBadgeVariant"
+    },
+    {
+      "name": "getEffectiveStatusLabel",
+      "kind": "symbol",
+      "path": "frontend/src/utils/common.js",
+      "line": 249,
+      "qualname": "getEffectiveStatusLabel"
+    },
+    {
+      "name": "getFileStatusBadgeVariant",
+      "kind": "symbol",
+      "path": "frontend/src/utils/common.js",
+      "line": 254,
+      "qualname": "getFileStatusBadgeVariant"
+    },
+    {
+      "name": "getFileStatusLabel",
+      "kind": "symbol",
+      "path": "frontend/src/utils/common.js",
+      "line": 244,
+      "qualname": "getFileStatusLabel"
+    },
+    {
+      "name": "getFileTypeIcon",
+      "kind": "symbol",
+      "path": "frontend/src/features/files/components/FileCard.jsx",
+      "line": 26,
+      "qualname": "getFileTypeIcon"
+    },
+    {
+      "name": "getSizeClass",
+      "kind": "symbol",
+      "path": "frontend/src/components/ui/Modal.jsx",
+      "line": 10,
+      "qualname": "getSizeClass"
+    },
+    {
+      "name": "getStatusColor",
+      "kind": "symbol",
+      "path": "frontend/src/utils/common.js",
+      "line": 186,
+      "qualname": "getStatusColor"
+    },
+    {
+      "name": "getStatusIconProps",
+      "kind": "symbol",
+      "path": "frontend/src/utils/common.js",
+      "line": 151,
+      "qualname": "getStatusIconProps"
+    },
+    {
+      "name": "getTextDirection",
+      "kind": "symbol",
+      "path": "frontend/src/utils/textUtils.js",
+      "line": 33,
+      "qualname": "getTextDirection"
+    },
+    {
+      "name": "GOLDEN_SET_HELP",
+      "kind": "component",
+      "path": "frontend/src/features/metrics/components/metricsConfig.js",
+      "line": 366,
+      "qualname": "GOLDEN_SET_HELP"
+    },
+    {
+      "name": "GoldenSetImporter",
+      "kind": "component",
+      "path": "frontend/src/features/metrics/components/benchmark/GoldenSetImporter.jsx",
+      "line": 25,
+      "qualname": "GoldenSetImporter"
+    },
+    {
+      "name": "GoldenSetValidationResult",
+      "kind": "component",
+      "path": "frontend/src/features/metrics/components/benchmark/GoldenSetValidationResult.jsx",
+      "line": 3,
+      "qualname": "GoldenSetValidationResult"
+    },
+    {
+      "name": "HALLUCINATION_VERDICT_LABELS",
+      "kind": "component",
+      "path": "frontend/src/features/metrics/components/metricsConfig.js",
+      "line": 177,
+      "qualname": "HALLUCINATION_VERDICT_LABELS"
+    },
+    {
+      "name": "HALLUCINATION_VERDICT_VARIANTS",
+      "kind": "component",
+      "path": "frontend/src/features/metrics/components/metricsConfig.js",
+      "line": 183,
+      "qualname": "HALLUCINATION_VERDICT_VARIANTS"
+    },
+    {
+      "name": "hasReviewPending",
+      "kind": "symbol",
+      "path": "frontend/src/utils/common.js",
+      "line": 267,
+      "qualname": "hasReviewPending"
+    },
+    {
+      "name": "Header",
+      "kind": "component",
+      "path": "frontend/src/components/layout/Header.jsx",
+      "line": 56,
+      "qualname": "Header"
+    },
+    {
+      "name": "HealthDashboard",
+      "kind": "component",
+      "path": "frontend/src/features/health/components/HealthDashboard.jsx",
+      "line": 21,
+      "qualname": "HealthDashboard"
+    },
+    {
+      "name": "Histogram",
+      "kind": "component",
+      "path": "frontend/src/features/metrics/components/charts/Histogram.jsx",
+      "line": 14,
+      "qualname": "Histogram"
+    },
+    {
+      "name": "HISTORY_MESSAGE_LIMIT",
+      "kind": "component",
+      "path": "frontend/src/features/chat/context/chatConstants.js",
+      "line": 3,
+      "qualname": "HISTORY_MESSAGE_LIMIT"
+    },
+    {
+      "name": "historySeries",
+      "kind": "symbol",
+      "path": "frontend/src/features/metrics/components/EvalPanel.jsx",
+      "line": 104,
+      "qualname": "historySeries"
+    },
+    {
+      "name": "Home",
+      "kind": "component",
+      "path": "frontend/app/(workspace)/page.jsx",
+      "line": 2,
+      "qualname": "Home"
+    },
+    {
+      "name": "httpClient",
+      "kind": "symbol",
+      "path": "frontend/src/lib/http/client.js",
+      "line": 56,
+      "qualname": "httpClient"
+    },
+    {
+      "name": "IdList",
+      "kind": "component",
+      "path": "frontend/src/features/metrics/components/EvalPanel.jsx",
+      "line": 592,
+      "qualname": "IdList"
+    },
+    {
+      "name": "init",
+      "kind": "symbol",
+      "path": "frontend/src/features/chat/hooks/useChatInit.js",
+      "line": 2,
+      "qualname": "init"
+    },
+    {
+      "name": "initialConversationState",
+      "kind": "symbol",
+      "path": "frontend/src/features/chat/context/chatConstants.js",
+      "line": 13,
+      "qualname": "initialConversationState"
+    },
+    {
+      "name": "initialRuntimeState",
+      "kind": "symbol",
+      "path": "frontend/src/features/chat/context/chatConstants.js",
+      "line": 23,
+      "qualname": "initialRuntimeState"
+    },
+    {
+      "name": "Input",
+      "kind": "component",
+      "path": "frontend/src/components/ui/Input.jsx",
+      "line": 6,
+      "qualname": "Input"
+    },
+    {
+      "name": "isBlank",
+      "kind": "symbol",
+      "path": "frontend/src/features/metrics/components/metricsConfig.js",
+      "line": 38,
+      "qualname": "isBlank"
+    },
+    {
+      "name": "isExtendedMode",
+      "kind": "symbol",
+      "path": "frontend/src/features/chat/utils/chatMode.js",
+      "line": 8,
+      "qualname": "isExtendedMode"
+    },
+    {
+      "name": "isPrimarilyHebrew",
+      "kind": "symbol",
+      "path": "frontend/src/utils/textUtils.js",
+      "line": 20,
+      "qualname": "isPrimarilyHebrew"
+    },
+    {
+      "name": "isRetryable",
+      "kind": "symbol",
+      "path": "frontend/src/lib/http/client.js",
+      "line": 11,
+      "qualname": "isRetryable"
+    },
+    {
+      "name": "isRunning",
+      "kind": "symbol",
+      "path": "frontend/src/features/metrics/hooks/useEvalRuns.js",
+      "line": 14,
+      "qualname": "isRunning"
+    },
+    {
+      "name": "isSummaryReady",
+      "kind": "symbol",
+      "path": "frontend/src/utils/common.js",
+      "line": 276,
+      "qualname": "isSummaryReady"
+    },
+    {
+      "name": "ItemTable",
+      "kind": "component",
+      "path": "frontend/src/features/metrics/components/EvalPanel.jsx",
+      "line": 453,
+      "qualname": "ItemTable"
+    },
+    {
+      "name": "JobProgressBar",
+      "kind": "component",
+      "path": "frontend/src/features/training/components/TrainingTab.jsx",
+      "line": 197,
+      "qualname": "JobProgressBar"
+    },
+    {
+      "name": "KpiHeader",
+      "kind": "component",
+      "path": "frontend/src/features/metrics/components/KpiHeader.jsx",
+      "line": 54,
+      "qualname": "KpiHeader"
+    },
+    {
+      "name": "LABEL_CHECK_REASONS",
+      "kind": "component",
+      "path": "frontend/src/features/metrics/components/metricsConfig.js",
+      "line": 426,
+      "qualname": "LABEL_CHECK_REASONS"
+    },
+    {
+      "name": "labelFor",
+      "kind": "symbol",
+      "path": "frontend/src/features/metrics/components/metricsConfig.js",
+      "line": 190,
+      "qualname": "labelFor"
+    },
+    {
+      "name": "LABELS_VERIFIED_NOTE",
+      "kind": "component",
+      "path": "frontend/src/features/metrics/components/metricsConfig.js",
+      "line": 436,
+      "qualname": "LABELS_VERIFIED_NOTE"
+    },
+    {
+      "name": "LabelValidation",
+      "kind": "component",
+      "path": "frontend/src/features/metrics/components/EvalPanel.jsx",
+      "line": 344,
+      "qualname": "LabelValidation"
+    },
+    {
+      "name": "LatencyPanel",
+      "kind": "component",
+      "path": "frontend/src/features/metrics/components/LatencyPanel.jsx",
+      "line": 92,
+      "qualname": "LatencyPanel"
+    },
+    {
+      "name": "Loading",
+      "kind": "component",
+      "path": "frontend/app/(routes)/dashboard/loading.jsx",
+      "line": 2,
+      "qualname": "Loading"
+    },
+    {
+      "name": "Loading",
+      "kind": "component",
+      "path": "frontend/app/loading.jsx",
+      "line": 2,
+      "qualname": "Loading"
+    },
+    {
+      "name": "loadSocketService",
+      "kind": "symbol",
+      "path": "frontend/src/features/websocket/services/socketService.test.js",
+      "line": 80,
+      "qualname": "loadSocketService"
+    },
+    {
+      "name": "logger",
+      "kind": "symbol",
+      "path": "frontend/src/lib/logger.js",
+      "line": 1,
+      "qualname": "logger"
+    },
+    {
+      "name": "LoginForm",
+      "kind": "component",
+      "path": "frontend/src/features/auth/components/LoginForm.jsx",
+      "line": 13,
+      "qualname": "LoginForm"
+    },
+    {
+      "name": "LongTermMemoryTab",
+      "kind": "component",
+      "path": "frontend/src/features/memory/components/LongTermMemoryTab.jsx",
+      "line": 20,
+      "qualname": "LongTermMemoryTab"
+    },
+    {
+      "name": "makeTurn",
+      "kind": "symbol",
+      "path": "frontend/src/features/chat/context/ChatContext.reducer.test.js",
+      "line": 9,
+      "qualname": "makeTurn"
+    },
+    {
+      "name": "mapGatewayMessage",
+      "kind": "symbol",
+      "path": "frontend/src/features/chat/context/chatHelpers.js",
+      "line": 26,
+      "qualname": "mapGatewayMessage"
+    },
+    {
+      "name": "MarkdownContent",
+      "kind": "component",
+      "path": "frontend/src/features/chat/components/MessageList.jsx",
+      "line": 167,
+      "qualname": "MarkdownContent"
+    },
+    {
+      "name": "MATCH_MODE_LABELS",
+      "kind": "component",
+      "path": "frontend/src/features/metrics/components/metricsConfig.js",
+      "line": 343,
+      "qualname": "MATCH_MODE_LABELS"
+    },
+    {
+      "name": "MAX_CHARS",
+      "kind": "component",
+      "path": "frontend/src/features/memory/components/memoryConfig.js",
+      "line": 3,
+      "qualname": "MAX_CHARS"
+    },
+    {
+      "name": "MAX_GOLDEN_SET_BYTES",
+      "kind": "component",
+      "path": "frontend/src/features/metrics/components/benchmark/GoldenSetImporter.jsx",
+      "line": 10,
+      "qualname": "MAX_GOLDEN_SET_BYTES"
+    },
+    {
+      "name": "MAX_STALE_IDS_SHOWN",
+      "kind": "component",
+      "path": "frontend/src/features/metrics/components/metricsConfig.js",
+      "line": 441,
+      "qualname": "MAX_STALE_IDS_SHOWN"
+    },
+    {
+      "name": "MemoryCard",
+      "kind": "component",
+      "path": "frontend/src/features/memory/components/MemoryCard.jsx",
+      "line": 11,
+      "qualname": "MemoryCard"
+    },
+    {
+      "name": "MessageBubble",
+      "kind": "component",
+      "path": "frontend/src/features/chat/components/MessageList.jsx",
+      "line": 57,
+      "qualname": "MessageBubble"
+    },
+    {
+      "name": "MessageList",
+      "kind": "component",
+      "path": "frontend/src/features/chat/components/MessageList.jsx",
+      "line": 22,
+      "qualname": "MessageList"
+    },
+    {
+      "name": "MessageMetricsModal",
+      "kind": "component",
+      "path": "frontend/src/features/chat/components/MessageMetricsModal.jsx",
+      "line": 27,
+      "qualname": "MessageMetricsModal"
+    },
+    {
+      "name": "metadata",
+      "kind": "symbol",
+      "path": "frontend/app/layout.jsx",
+      "line": 8,
+      "qualname": "metadata"
+    },
+    {
+      "name": "Metric",
+      "kind": "component",
+      "path": "frontend/src/features/chat/components/AnswerReviewCard.jsx",
+      "line": 47,
+      "qualname": "Metric"
+    },
+    {
+      "name": "METRIC_LABELS",
+      "kind": "component",
+      "path": "frontend/src/features/metrics/components/metricsConfig.js",
+      "line": 195,
+      "qualname": "METRIC_LABELS"
+    },
+    {
+      "name": "METRICS_SECTIONS",
+      "kind": "component",
+      "path": "frontend/src/features/metrics/components/metricsConfig.js",
+      "line": 16,
+      "qualname": "METRICS_SECTIONS"
+    },
+    {
+      "name": "MetricsTab",
+      "kind": "component",
+      "path": "frontend/src/features/metrics/components/MetricsTab.jsx",
+      "line": 28,
+      "qualname": "MetricsTab"
+    },
+    {
+      "name": "MetricTile",
+      "kind": "component",
+      "path": "frontend/src/features/models/components/ModelManagementTab.jsx",
+      "line": 34,
+      "qualname": "MetricTile"
+    },
+    {
+      "name": "MiniSparkline",
+      "kind": "component",
+      "path": "frontend/src/features/health/components/MiniSparkline.jsx",
+      "line": 3,
+      "qualname": "MiniSparkline"
+    },
+    {
+      "name": "MIXED_HALLUCINATION_NOTE",
+      "kind": "component",
+      "path": "frontend/src/features/metrics/components/metricsConfig.js",
+      "line": 240,
+      "qualname": "MIXED_HALLUCINATION_NOTE"
+    },
+    {
+      "name": "mockSections",
+      "kind": "symbol",
+      "path": "frontend/src/features/metrics/components/MetricsTab.test.jsx",
+      "line": 61,
+      "qualname": "mockSections"
+    },
+    {
+      "name": "Modal",
+      "kind": "component",
+      "path": "frontend/src/components/ui/Modal.jsx",
+      "line": 22,
+      "qualname": "Modal"
+    },
+    {
+      "name": "ModelManagementTab",
+      "kind": "component",
+      "path": "frontend/src/features/models/components/ModelManagementTab.jsx",
+      "line": 56,
+      "qualname": "ModelManagementTab"
+    },
+    {
+      "name": "ModelSelector",
+      "kind": "component",
+      "path": "frontend/src/features/chat/components/ModelSelector.jsx",
+      "line": 2,
+      "qualname": "ModelSelector"
+    },
+    {
+      "name": "modeSubLabel",
+      "kind": "symbol",
+      "path": "frontend/src/features/metrics/components/KpiHeader.jsx",
+      "line": 40,
+      "qualname": "modeSubLabel"
+    },
+    {
+      "name": "nodeStyle",
+      "kind": "symbol",
+      "path": "frontend/src/features/chat/components/trace/shared.jsx",
+      "line": 25,
+      "qualname": "nodeStyle"
+    },
+    {
+      "name": "normalizeChatMode",
+      "kind": "symbol",
+      "path": "frontend/src/features/chat/utils/chatMode.js",
+      "line": 1,
+      "qualname": "normalizeChatMode"
+    },
+    {
+      "name": "normalizeError",
+      "kind": "symbol",
+      "path": "frontend/src/lib/http/errors.js",
+      "line": 22,
+      "qualname": "normalizeError"
+    },
+    {
+      "name": "normalizeFileRecord",
+      "kind": "symbol",
+      "path": "frontend/src/features/files/hooks/filesReducer.js",
+      "line": 10,
+      "qualname": "normalizeFileRecord"
+    },
+    {
+      "name": "normalizeFileStatus",
+      "kind": "symbol",
+      "path": "frontend/src/utils/common.js",
+      "line": 152,
+      "qualname": "normalizeFileStatus"
+    },
+    {
+      "name": "normalizePayload",
+      "kind": "symbol",
+      "path": "frontend/src/lib/logger.js",
+      "line": 5,
+      "qualname": "normalizePayload"
+    },
+    {
+      "name": "normalizeStageValue",
+      "kind": "symbol",
+      "path": "frontend/src/features/files/components/PipelineBar.jsx",
+      "line": 17,
+      "qualname": "normalizeStageValue"
+    },
+    {
+      "name": "NotFound",
+      "kind": "component",
+      "path": "frontend/app/not-found.jsx",
+      "line": 6,
+      "qualname": "NotFound"
+    },
+    {
+      "name": "OverviewSection",
+      "kind": "component",
+      "path": "frontend/src/features/metrics/components/MetricsTab.jsx",
+      "line": 139,
+      "qualname": "OverviewSection"
+    },
+    {
+      "name": "PageHeader",
+      "kind": "component",
+      "path": "frontend/src/components/ui/PageHeader.jsx",
+      "line": 8,
+      "qualname": "PageHeader"
+    },
+    {
+      "name": "parseBoolean",
+      "kind": "symbol",
+      "path": "frontend/src/lib/config.js",
+      "line": 2,
+      "qualname": "parseBoolean"
+    },
+    {
+      "name": "parseJsonResponse",
+      "kind": "symbol",
+      "path": "frontend/src/lib/http/client.js",
+      "line": 41,
+      "qualname": "parseJsonResponse"
+    },
+    {
+      "name": "patch",
+      "kind": "symbol",
+      "path": "frontend/src/lib/http/client.js",
+      "line": 192,
+      "qualname": "patch"
+    },
+    {
+      "name": "PercentileTable",
+      "kind": "component",
+      "path": "frontend/src/features/metrics/components/LatencyPanel.jsx",
+      "line": 58,
+      "qualname": "PercentileTable"
+    },
+    {
+      "name": "PipelineBar",
+      "kind": "component",
+      "path": "frontend/src/features/files/components/PipelineBar.jsx",
+      "line": 40,
+      "qualname": "PipelineBar"
+    },
+    {
+      "name": "PipelinePanel",
+      "kind": "component",
+      "path": "frontend/src/features/metrics/components/PipelinePanel.jsx",
+      "line": 89,
+      "qualname": "PipelinePanel"
+    },
+    {
+      "name": "PipelineTab",
+      "kind": "component",
+      "path": "frontend/src/features/chat/components/trace/PipelineTab.jsx",
+      "line": 7,
+      "qualname": "PipelineTab"
+    },
+    {
+      "name": "PLATFORM_SCOPE_NOTE",
+      "kind": "component",
+      "path": "frontend/src/features/metrics/components/metricsConfig.js",
+      "line": 252,
+      "qualname": "PLATFORM_SCOPE_NOTE"
+    },
+    {
+      "name": "post",
+      "kind": "symbol",
+      "path": "frontend/src/lib/http/client.js",
+      "line": 167,
+      "qualname": "post"
+    },
+    {
+      "name": "ProgressBar",
+      "kind": "component",
+      "path": "frontend/src/components/ui/ProgressBar.jsx",
+      "line": 18,
+      "qualname": "ProgressBar"
+    },
+    {
+      "name": "PROM_UNAVAILABLE",
+      "kind": "component",
+      "path": "frontend/src/features/metrics/components/metricsConfig.js",
+      "line": 260,
+      "qualname": "PROM_UNAVAILABLE"
+    },
+    {
+      "name": "PromptTab",
+      "kind": "component",
+      "path": "frontend/src/features/chat/components/trace/PromptTab.jsx",
+      "line": 8,
+      "qualname": "PromptTab"
+    },
+    {
+      "name": "PromptViewer",
+      "kind": "component",
+      "path": "frontend/src/features/chat/components/MessageList.jsx",
+      "line": 197,
+      "qualname": "PromptViewer"
+    },
+    {
+      "name": "PromWidget",
+      "kind": "component",
+      "path": "frontend/src/features/metrics/components/LatencyPanel.jsx",
+      "line": 46,
+      "qualname": "PromWidget"
+    },
+    {
+      "name": "PromWidget",
+      "kind": "component",
+      "path": "frontend/src/features/metrics/components/PipelinePanel.jsx",
+      "line": 47,
+      "qualname": "PromWidget"
+    },
+    {
+      "name": "PromWidget",
+      "kind": "component",
+      "path": "frontend/src/features/metrics/components/RetrievalPanel.jsx",
+      "line": 53,
+      "qualname": "PromWidget"
+    },
+    {
+      "name": "Providers",
+      "kind": "component",
+      "path": "frontend/src/components/Providers.jsx",
+      "line": 54,
+      "qualname": "Providers"
+    },
+    {
+      "name": "put",
+      "kind": "symbol",
+      "path": "frontend/src/lib/http/client.js",
+      "line": 183,
+      "qualname": "put"
+    },
+    {
+      "name": "QualityPanel",
+      "kind": "component",
+      "path": "frontend/src/features/metrics/components/QualityPanel.jsx",
+      "line": 75,
+      "qualname": "QualityPanel"
+    },
+    {
+      "name": "QualityTab",
+      "kind": "component",
+      "path": "frontend/src/features/chat/components/trace/QualityTab.jsx",
+      "line": 5,
+      "qualname": "QualityTab"
+    },
+    {
+      "name": "Rate",
+      "kind": "component",
+      "path": "frontend/src/features/metrics/components/QualityPanel.jsx",
+      "line": 39,
+      "qualname": "Rate"
+    },
+    {
+      "name": "RateLimiterPanel",
+      "kind": "component",
+      "path": "frontend/src/features/health/components/RateLimiterPanel.jsx",
+      "line": 7,
+      "qualname": "RateLimiterPanel"
+    },
+    {
+      "name": "readCookie",
+      "kind": "symbol",
+      "path": "frontend/src/lib/http/client.js",
+      "line": 23,
+      "qualname": "readCookie"
+    },
+    {
+      "name": "readFile",
+      "kind": "symbol",
+      "path": "frontend/src/features/metrics/components/benchmark/GoldenSetImporter.jsx",
+      "line": 16,
+      "qualname": "readFile"
+    },
+    {
+      "name": "readReplyField",
+      "kind": "symbol",
+      "path": "frontend/src/features/chat/context/chatHelpers.js",
+      "line": 22,
+      "qualname": "readReplyField"
+    },
+    {
+      "name": "renderAnswer",
+      "kind": "symbol",
+      "path": "frontend/src/features/chat/components/MessageList.citations.test.jsx",
+      "line": 14,
+      "qualname": "renderAnswer"
+    },
+    {
+      "name": "renderChatTab",
+      "kind": "symbol",
+      "path": "frontend/src/features/chat/components/ChatTab.test.jsx",
+      "line": 75,
+      "qualname": "renderChatTab"
+    },
+    {
+      "name": "renderWithProviders",
+      "kind": "symbol",
+      "path": "frontend/src/test/render.jsx",
+      "line": 17,
+      "qualname": "renderWithProviders"
+    },
+    {
+      "name": "RetrievalPanel",
+      "kind": "component",
+      "path": "frontend/src/features/metrics/components/RetrievalPanel.jsx",
+      "line": 95,
+      "qualname": "RetrievalPanel"
+    },
+    {
+      "name": "RootLayout",
+      "kind": "component",
+      "path": "frontend/app/layout.jsx",
+      "line": 13,
+      "qualname": "RootLayout"
+    },
+    {
+      "name": "RUN_STATUS_LABELS",
+      "kind": "component",
+      "path": "frontend/src/features/metrics/components/metricsConfig.js",
+      "line": 277,
+      "qualname": "RUN_STATUS_LABELS"
+    },
+    {
+      "name": "RUN_STATUS_VARIANTS",
+      "kind": "component",
+      "path": "frontend/src/features/metrics/components/metricsConfig.js",
+      "line": 283,
+      "qualname": "RUN_STATUS_VARIANTS"
+    },
+    {
+      "name": "ScoreBar",
+      "kind": "component",
+      "path": "frontend/src/features/chat/components/trace/shared.jsx",
+      "line": 29,
+      "qualname": "ScoreBar"
+    },
+    {
+      "name": "scoreColor",
+      "kind": "symbol",
+      "path": "frontend/src/features/chat/components/trace/shared.jsx",
+      "line": 44,
+      "qualname": "scoreColor"
+    },
+    {
+      "name": "scoreTone",
+      "kind": "symbol",
+      "path": "frontend/src/features/chat/components/AnswerReviewCard.jsx",
+      "line": 6,
+      "qualname": "scoreTone"
+    },
+    {
+      "name": "scoreVariant",
+      "kind": "symbol",
+      "path": "frontend/src/features/metrics/components/metricsConfig.js",
+      "line": 125,
+      "qualname": "scoreVariant"
+    },
+    {
+      "name": "Section",
+      "kind": "component",
+      "path": "frontend/src/features/chat/components/MessageMetricsModal.jsx",
+      "line": 9,
+      "qualname": "Section"
+    },
+    {
+      "name": "securityHeaders",
+      "kind": "symbol",
+      "path": "frontend/src/lib/http/client.js",
+      "line": 30,
+      "qualname": "securityHeaders"
+    },
+    {
+      "name": "Select",
+      "kind": "component",
+      "path": "frontend/src/components/ui/Select.jsx",
+      "line": 3,
+      "qualname": "Select"
+    },
+    {
+      "name": "selectCachedFiles",
+      "kind": "symbol",
+      "path": "frontend/src/store/slices/filesSlice.js",
+      "line": 33,
+      "qualname": "selectCachedFiles"
+    },
+    {
+      "name": "selectEndToEnd",
+      "kind": "symbol",
+      "path": "frontend/src/features/metrics/components/EvalPanel.test.jsx",
+      "line": 323,
+      "qualname": "selectEndToEnd"
+    },
+    {
+      "name": "selectFilesLastFetched",
+      "kind": "symbol",
+      "path": "frontend/src/store/slices/filesSlice.js",
+      "line": 34,
+      "qualname": "selectFilesLastFetched"
+    },
+    {
+      "name": "SelectGroup",
+      "kind": "component",
+      "path": "frontend/src/components/ui/Select.jsx",
+      "line": 85,
+      "qualname": "SelectGroup"
+    },
+    {
+      "name": "SelectItem",
+      "kind": "component",
+      "path": "frontend/src/components/ui/Select.jsx",
+      "line": 64,
+      "qualname": "SelectItem"
+    },
+    {
+      "name": "Separator",
+      "kind": "component",
+      "path": "frontend/src/components/ui/Separator.jsx",
+      "line": 5,
+      "qualname": "Separator"
+    },
+    {
+      "name": "server",
+      "kind": "symbol",
+      "path": "frontend/src/test/server.js",
+      "line": 3,
+      "qualname": "server"
+    },
+    {
+      "name": "SERVICE_LABELS",
+      "kind": "component",
+      "path": "frontend/src/features/health/components/healthConfig.js",
+      "line": 18,
+      "qualname": "SERVICE_LABELS"
+    },
+    {
+      "name": "SERVICE_LABELS",
+      "kind": "component",
+      "path": "frontend/src/features/metrics/components/metricsConfig.js",
+      "line": 147,
+      "qualname": "SERVICE_LABELS"
+    },
+    {
+      "name": "ServiceCard",
+      "kind": "component",
+      "path": "frontend/src/features/health/components/ServiceCard.jsx",
+      "line": 9,
+      "qualname": "ServiceCard"
+    },
+    {
+      "name": "Settings",
+      "kind": "component",
+      "path": "frontend/app/(routes)/settings/page.jsx",
+      "line": 1,
+      "qualname": "Settings"
+    },
+    {
+      "name": "setup",
+      "kind": "symbol",
+      "path": "frontend/src/features/metrics/components/EvalPanel.test.jsx",
+      "line": 92,
+      "qualname": "setup"
+    },
+    {
+      "name": "setup",
+      "kind": "symbol",
+      "path": "frontend/src/features/metrics/components/benchmark/GoldenSetImporter.test.jsx",
+      "line": 21,
+      "qualname": "setup"
+    },
+    {
+      "name": "SkeletonLine",
+      "kind": "component",
+      "path": "frontend/src/components/ui/TabSkeleton.jsx",
+      "line": 3,
+      "qualname": "SkeletonLine"
+    },
+    {
+      "name": "sleep",
+      "kind": "symbol",
+      "path": "frontend/src/lib/http/client.js",
+      "line": 19,
+      "qualname": "sleep"
+    },
+    {
+      "name": "SourcesTab",
+      "kind": "component",
+      "path": "frontend/src/features/chat/components/trace/SourcesTab.jsx",
+      "line": 10,
+      "qualname": "SourcesTab"
+    },
+    {
+      "name": "STAGE_LABELS",
+      "kind": "component",
+      "path": "frontend/src/features/metrics/components/metricsConfig.js",
+      "line": 137,
+      "qualname": "STAGE_LABELS"
+    },
+    {
+      "name": "StageBreakdown",
+      "kind": "component",
+      "path": "frontend/src/features/metrics/components/charts/StageBreakdown.jsx",
+      "line": 20,
+      "qualname": "StageBreakdown"
+    },
+    {
+      "name": "STALE_LABEL_NOTE",
+      "kind": "component",
+      "path": "frontend/src/features/metrics/components/metricsConfig.js",
+      "line": 409,
+      "qualname": "STALE_LABEL_NOTE"
+    },
+    {
+      "name": "startTurn",
+      "kind": "symbol",
+      "path": "frontend/src/features/chat/context/ChatContext.reducer.test.js",
+      "line": 36,
+      "qualname": "startTurn"
+    },
+    {
+      "name": "Stat",
+      "kind": "component",
+      "path": "frontend/src/features/metrics/components/PipelinePanel.jsx",
+      "line": 6,
+      "qualname": "Stat"
+    },
+    {
+      "name": "Stat",
+      "kind": "component",
+      "path": "frontend/src/features/metrics/components/RetrievalPanel.jsx",
+      "line": 6,
+      "qualname": "Stat"
+    },
+    {
+      "name": "StatCard",
+      "kind": "component",
+      "path": "frontend/src/components/ui/StatCard.jsx",
+      "line": 9,
+      "qualname": "StatCard"
+    },
+    {
+      "name": "STATUS_CONFIG",
+      "kind": "component",
+      "path": "frontend/src/features/health/components/healthConfig.js",
+      "line": 5,
+      "qualname": "STATUS_CONFIG"
+    },
+    {
+      "name": "statusText",
+      "kind": "symbol",
+      "path": "frontend/src/features/chat/components/FeedbackControls.jsx",
+      "line": 7,
+      "qualname": "statusText"
+    },
+    {
+      "name": "store",
+      "kind": "symbol",
+      "path": "frontend/src/store/index.js",
+      "line": 17,
+      "qualname": "store"
+    },
+    {
+      "name": "SummaryModal",
+      "kind": "component",
+      "path": "frontend/src/features/files/components/SummaryModal.jsx",
+      "line": 5,
+      "qualname": "SummaryModal"
+    },
+    {
+      "name": "Switch",
+      "kind": "component",
+      "path": "frontend/src/components/ui/Switch.jsx",
+      "line": 5,
+      "qualname": "Switch"
+    },
+    {
+      "name": "TabbedPageLayout",
+      "kind": "component",
+      "path": "frontend/src/components/layout/TabbedPageLayout.jsx",
+      "line": 68,
+      "qualname": "TabbedPageLayout"
+    },
+    {
+      "name": "TabSkeleton",
+      "kind": "component",
+      "path": "frontend/src/components/ui/TabSkeleton.jsx",
+      "line": 12,
+      "qualname": "TabSkeleton"
+    },
+    {
+      "name": "Textarea",
+      "kind": "component",
+      "path": "frontend/src/components/ui/Input.jsx",
+      "line": 92,
+      "qualname": "Textarea"
+    },
+    {
+      "name": "THRESHOLDS",
+      "kind": "component",
+      "path": "frontend/src/features/metrics/components/metricsConfig.js",
+      "line": 100,
+      "qualname": "THRESHOLDS"
+    },
+    {
+      "name": "thresholdVariant",
+      "kind": "symbol",
+      "path": "frontend/src/features/metrics/components/metricsConfig.js",
+      "line": 115,
+      "qualname": "thresholdVariant"
+    },
+    {
+      "name": "TimeSeries",
+      "kind": "component",
+      "path": "frontend/src/features/metrics/components/charts/TimeSeries.jsx",
+      "line": 21,
+      "qualname": "TimeSeries"
+    },
+    {
+      "name": "toBuckets",
+      "kind": "symbol",
+      "path": "frontend/src/features/metrics/components/QualityPanel.jsx",
+      "line": 35,
+      "qualname": "toBuckets"
+    },
+    {
+      "name": "toBuckets",
+      "kind": "symbol",
+      "path": "frontend/src/features/metrics/components/RetrievalPanel.jsx",
+      "line": 32,
+      "qualname": "toBuckets"
+    },
+    {
+      "name": "toPoints",
+      "kind": "symbol",
+      "path": "frontend/src/features/metrics/components/LatencyPanel.jsx",
+      "line": 26,
+      "qualname": "toPoints"
+    },
+    {
+      "name": "toRows",
+      "kind": "symbol",
+      "path": "frontend/src/features/metrics/components/LatencyPanel.jsx",
+      "line": 33,
+      "qualname": "toRows"
+    },
+    {
+      "name": "toRows",
+      "kind": "symbol",
+      "path": "frontend/src/features/metrics/components/PipelinePanel.jsx",
+      "line": 34,
+      "qualname": "toRows"
+    },
+    {
+      "name": "toRows",
+      "kind": "symbol",
+      "path": "frontend/src/features/metrics/components/RetrievalPanel.jsx",
+      "line": 40,
+      "qualname": "toRows"
+    },
+    {
+      "name": "TraceDebugPanel",
+      "kind": "component",
+      "path": "frontend/src/features/chat/components/TraceDebugPanel.jsx",
+      "line": 23,
+      "qualname": "TraceDebugPanel"
+    },
+    {
+      "name": "TrainingConfigForm",
+      "kind": "component",
+      "path": "frontend/src/features/training/components/TrainingTab.jsx",
+      "line": 126,
+      "qualname": "TrainingConfigForm"
+    },
+    {
+      "name": "TrainingTab",
+      "kind": "component",
+      "path": "frontend/src/features/training/components/TrainingTab.jsx",
+      "line": 238,
+      "qualname": "TrainingTab"
+    },
+    {
+      "name": "TypingDots",
+      "kind": "component",
+      "path": "frontend/src/features/chat/components/MessageList.jsx",
+      "line": 163,
+      "qualname": "TypingDots"
+    },
+    {
+      "name": "UNCHECKED_LABELS_NOTE",
+      "kind": "component",
+      "path": "frontend/src/features/metrics/components/metricsConfig.js",
+      "line": 421,
+      "qualname": "UNCHECKED_LABELS_NOTE"
+    },
+    {
+      "name": "UNOBSERVED_NOTE",
+      "kind": "component",
+      "path": "frontend/src/features/metrics/components/metricsConfig.js",
+      "line": 355,
+      "qualname": "UNOBSERVED_NOTE"
+    },
+    {
+      "name": "UNPRICED_MODEL_NOTE",
+      "kind": "component",
+      "path": "frontend/src/features/metrics/components/metricsConfig.js",
+      "line": 329,
+      "qualname": "UNPRICED_MODEL_NOTE"
+    },
+    {
+      "name": "UNRETRIEVABLE_LABEL_NOTE",
+      "kind": "component",
+      "path": "frontend/src/features/metrics/components/metricsConfig.js",
+      "line": 415,
+      "qualname": "UNRETRIEVABLE_LABEL_NOTE"
+    },
+    {
+      "name": "UNSCORABLE_ITEM_NOTE",
+      "kind": "component",
+      "path": "frontend/src/features/metrics/components/metricsConfig.js",
+      "line": 433,
+      "qualname": "UNSCORABLE_ITEM_NOTE"
+    },
+    {
+      "name": "UNVERSIONED_RUN_NOTE",
+      "kind": "component",
+      "path": "frontend/src/features/metrics/components/metricsConfig.js",
+      "line": 388,
+      "qualname": "UNVERSIONED_RUN_NOTE"
+    },
+    {
+      "name": "updateMessage",
+      "kind": "symbol",
+      "path": "frontend/src/features/chat/context/chatReducers.js",
+      "line": 11,
+      "qualname": "updateMessage"
+    },
+    {
+      "name": "updateTurn",
+      "kind": "symbol",
+      "path": "frontend/src/features/chat/context/chatReducers.js",
+      "line": 19,
+      "qualname": "updateTurn"
+    },
+    {
+      "name": "upload",
+      "kind": "symbol",
+      "path": "frontend/src/lib/http/client.js",
+      "line": 7,
+      "qualname": "upload"
+    },
+    {
+      "name": "uploaderStatusLabel",
+      "kind": "symbol",
+      "path": "frontend/src/features/files/components/UploadTab.jsx",
+      "line": 23,
+      "qualname": "uploaderStatusLabel"
+    },
+    {
+      "name": "UploadTab",
+      "kind": "component",
+      "path": "frontend/src/features/files/components/UploadTab.jsx",
+      "line": 28,
+      "qualname": "UploadTab"
+    },
+    {
+      "name": "upsertFile",
+      "kind": "symbol",
+      "path": "frontend/src/features/files/hooks/filesReducer.js",
+      "line": 36,
+      "qualname": "upsertFile"
+    },
+    {
+      "name": "useAuth",
+      "kind": "hook",
+      "path": "frontend/src/components/Providers.jsx",
+      "line": 9,
+      "qualname": "useAuth"
+    },
+    {
+      "name": "useAuth",
+      "kind": "hook",
+      "path": "frontend/src/components/layout/Header.jsx",
+      "line": 31,
+      "qualname": "useAuth"
+    },
+    {
+      "name": "useAuth",
+      "kind": "hook",
+      "path": "frontend/src/components/layout/TabbedPageLayout.jsx",
+      "line": 14,
+      "qualname": "useAuth"
+    },
+    {
+      "name": "useAuth",
+      "kind": "hook",
+      "path": "frontend/src/features/auth/components/LoginForm.jsx",
+      "line": 6,
+      "qualname": "useAuth"
+    },
+    {
+      "name": "useAuth",
+      "kind": "hook",
+      "path": "frontend/src/features/auth/context/AuthContext.jsx",
+      "line": 101,
+      "qualname": "useAuth"
+    },
+    {
+      "name": "useAuth",
+      "kind": "hook",
+      "path": "frontend/src/features/auth/hooks/useAuth.js",
+      "line": 4,
+      "qualname": "useAuth"
+    },
+    {
+      "name": "useAuth",
+      "kind": "hook",
+      "path": "frontend/src/features/auth/index.js",
+      "line": 1,
+      "qualname": "useAuth"
+    },
+    {
+      "name": "useAuth",
+      "kind": "hook",
+      "path": "frontend/src/features/chat/components/ChatTab.jsx",
+      "line": 7,
+      "qualname": "useAuth"
+    },
+    {
+      "name": "useAuth",
+      "kind": "hook",
+      "path": "frontend/src/features/chat/components/ChatTab.test.jsx",
+      "line": 38,
+      "qualname": "useAuth"
+    },
+    {
+      "name": "useAuthContext",
+      "kind": "hook",
+      "path": "frontend/src/features/auth/context/AuthContext.jsx",
+      "line": 101,
+      "qualname": "useAuthContext"
+    },
+    {
+      "name": "useAuthContext",
+      "kind": "hook",
+      "path": "frontend/src/features/auth/hooks/useAuth.js",
+      "line": 4,
+      "qualname": "useAuthContext"
+    },
+    {
+      "name": "useCallback",
+      "kind": "hook",
+      "path": "frontend/src/features/admin/components/AdminUsersTab.jsx",
+      "line": 3,
+      "qualname": "useCallback"
+    },
+    {
+      "name": "useCallback",
+      "kind": "hook",
+      "path": "frontend/src/features/auth/context/AuthContext.jsx",
+      "line": 3,
+      "qualname": "useCallback"
+    },
+    {
+      "name": "useCallback",
+      "kind": "hook",
+      "path": "frontend/src/features/chat/components/MessageList.jsx",
+      "line": 3,
+      "qualname": "useCallback"
+    },
+    {
+      "name": "useCallback",
+      "kind": "hook",
+      "path": "frontend/src/features/chat/context/ChatContext.jsx",
+      "line": 12,
+      "qualname": "useCallback"
+    },
+    {
+      "name": "useCallback",
+      "kind": "hook",
+      "path": "frontend/src/features/chat/hooks/useLlmReadiness.js",
+      "line": 2,
+      "qualname": "useCallback"
+    },
+    {
+      "name": "useCallback",
+      "kind": "hook",
+      "path": "frontend/src/features/files/components/FilesTab.jsx",
+      "line": 3,
+      "qualname": "useCallback"
+    },
+    {
+      "name": "useCallback",
+      "kind": "hook",
+      "path": "frontend/src/features/files/components/UploadTab.jsx",
+      "line": 3,
+      "qualname": "useCallback"
+    },
+    {
+      "name": "useCallback",
+      "kind": "hook",
+      "path": "frontend/src/features/files/hooks/useFiles.js",
+      "line": 11,
+      "qualname": "useCallback"
+    },
+    {
+      "name": "useCallback",
+      "kind": "hook",
+      "path": "frontend/src/features/health/hooks/useHealth.js",
+      "line": 2,
+      "qualname": "useCallback"
+    },
+    {
+      "name": "useCallback",
+      "kind": "hook",
+      "path": "frontend/src/features/metrics/hooks/useEvalRuns.js",
+      "line": 2,
+      "qualname": "useCallback"
+    },
+    {
+      "name": "useCallback",
+      "kind": "hook",
+      "path": "frontend/src/features/metrics/hooks/useMetrics.js",
+      "line": 2,
+      "qualname": "useCallback"
+    },
+    {
+      "name": "useCallback",
+      "kind": "hook",
+      "path": "frontend/src/features/training/components/TrainingTab.jsx",
+      "line": 3,
+      "qualname": "useCallback"
+    },
+    {
+      "name": "useCallback",
+      "kind": "hook",
+      "path": "frontend/src/features/training/hooks/useTraining.js",
+      "line": 2,
+      "qualname": "useCallback"
+    },
+    {
+      "name": "useChat",
+      "kind": "hook",
+      "path": "frontend/src/features/chat/components/ChatTab.jsx",
+      "line": 6,
+      "qualname": "useChat"
+    },
+    {
+      "name": "useChat",
+      "kind": "hook",
+      "path": "frontend/src/features/chat/context/ChatContext.jsx",
+      "line": 628,
+      "qualname": "useChat"
+    },
+    {
+      "name": "useChat",
+      "kind": "hook",
+      "path": "frontend/src/features/chat/index.js",
+      "line": 1,
+      "qualname": "useChat"
+    },
+    {
+      "name": "useChatInit",
+      "kind": "hook",
+      "path": "frontend/src/features/chat/components/ChatTab.jsx",
+      "line": 8,
+      "qualname": "useChatInit"
+    },
+    {
+      "name": "useChatInit",
+      "kind": "hook",
+      "path": "frontend/src/features/chat/components/ChatTab.test.jsx",
+      "line": 21,
+      "qualname": "useChatInit"
+    },
+    {
+      "name": "useChatInit",
+      "kind": "hook",
+      "path": "frontend/src/features/chat/hooks/useChatInit.js",
+      "line": 2,
+      "qualname": "useChatInit"
+    },
+    {
+      "name": "useChatInit",
+      "kind": "hook",
+      "path": "frontend/src/features/chat/index.js",
+      "line": 4,
+      "qualname": "useChatInit"
+    },
+    {
+      "name": "useContext",
+      "kind": "hook",
+      "path": "frontend/src/features/auth/context/AuthContext.jsx",
+      "line": 3,
+      "qualname": "useContext"
+    },
+    {
+      "name": "useContext",
+      "kind": "hook",
+      "path": "frontend/src/features/chat/context/ChatContext.jsx",
+      "line": 13,
+      "qualname": "useContext"
+    },
+    {
+      "name": "useDispatch",
+      "kind": "hook",
+      "path": "frontend/src/components/Providers.jsx",
+      "line": 6,
+      "qualname": "useDispatch"
+    },
+    {
+      "name": "useDispatch",
+      "kind": "hook",
+      "path": "frontend/src/features/chat/context/ChatContext.jsx",
+      "line": 21,
+      "qualname": "useDispatch"
+    },
+    {
+      "name": "useDispatch",
+      "kind": "hook",
+      "path": "frontend/src/features/files/hooks/useFiles.js",
+      "line": 12,
+      "qualname": "useDispatch"
+    },
+    {
+      "name": "useEffect",
+      "kind": "hook",
+      "path": "frontend/src/components/Providers.jsx",
+      "line": 4,
+      "qualname": "useEffect"
+    },
+    {
+      "name": "useEffect",
+      "kind": "hook",
+      "path": "frontend/src/components/layout/Header.jsx",
+      "line": 4,
+      "qualname": "useEffect"
+    },
+    {
+      "name": "useEffect",
+      "kind": "hook",
+      "path": "frontend/src/components/layout/TabbedPageLayout.jsx",
+      "line": 8,
+      "qualname": "useEffect"
+    },
+    {
+      "name": "useEffect",
+      "kind": "hook",
+      "path": "frontend/src/components/ui/Modal.jsx",
+      "line": 3,
+      "qualname": "useEffect"
+    },
+    {
+      "name": "useEffect",
+      "kind": "hook",
+      "path": "frontend/src/features/admin/components/AdminUsersTab.jsx",
+      "line": 3,
+      "qualname": "useEffect"
+    },
+    {
+      "name": "useEffect",
+      "kind": "hook",
+      "path": "frontend/src/features/auth/components/LoginForm.jsx",
+      "line": 4,
+      "qualname": "useEffect"
+    },
+    {
+      "name": "useEffect",
+      "kind": "hook",
+      "path": "frontend/src/features/auth/context/AuthContext.jsx",
+      "line": 3,
+      "qualname": "useEffect"
+    },
+    {
+      "name": "useEffect",
+      "kind": "hook",
+      "path": "frontend/src/features/chat/components/ChatInput.jsx",
+      "line": 3,
+      "qualname": "useEffect"
+    },
+    {
+      "name": "useEffect",
+      "kind": "hook",
+      "path": "frontend/src/features/chat/components/MessageList.jsx",
+      "line": 3,
+      "qualname": "useEffect"
+    },
+    {
+      "name": "useEffect",
+      "kind": "hook",
+      "path": "frontend/src/features/chat/context/ChatContext.jsx",
+      "line": 14,
+      "qualname": "useEffect"
+    },
+    {
+      "name": "useEffect",
+      "kind": "hook",
+      "path": "frontend/src/features/chat/hooks/useChatInit.js",
+      "line": 5,
+      "qualname": "useEffect"
+    },
+    {
+      "name": "useEffect",
+      "kind": "hook",
+      "path": "frontend/src/features/chat/hooks/useLlmReadiness.js",
+      "line": 2,
+      "qualname": "useEffect"
+    },
+    {
+      "name": "useEffect",
+      "kind": "hook",
+      "path": "frontend/src/features/config/components/ConfigTab.jsx",
+      "line": 3,
+      "qualname": "useEffect"
+    },
+    {
+      "name": "useEffect",
+      "kind": "hook",
+      "path": "frontend/src/features/files/components/FileReviewDrawer.jsx",
+      "line": 3,
+      "qualname": "useEffect"
+    },
+    {
+      "name": "useEffect",
+      "kind": "hook",
+      "path": "frontend/src/features/files/components/UploadTab.jsx",
+      "line": 3,
+      "qualname": "useEffect"
+    },
+    {
+      "name": "useEffect",
+      "kind": "hook",
+      "path": "frontend/src/features/files/hooks/useFiles.js",
+      "line": 11,
+      "qualname": "useEffect"
+    },
+    {
+      "name": "useEffect",
+      "kind": "hook",
+      "path": "frontend/src/features/health/hooks/useHealth.js",
+      "line": 2,
+      "qualname": "useEffect"
+    },
+    {
+      "name": "useEffect",
+      "kind": "hook",
+      "path": "frontend/src/features/memory/components/LongTermMemoryTab.jsx",
+      "line": 4,
+      "qualname": "useEffect"
+    },
+    {
+      "name": "useEffect",
+      "kind": "hook",
+      "path": "frontend/src/features/metrics/hooks/useEvalRuns.js",
+      "line": 2,
+      "qualname": "useEffect"
+    },
+    {
+      "name": "useEffect",
+      "kind": "hook",
+      "path": "frontend/src/features/metrics/hooks/useMetrics.js",
+      "line": 2,
+      "qualname": "useEffect"
+    },
+    {
+      "name": "useEffect",
+      "kind": "hook",
+      "path": "frontend/src/features/models/components/ModelManagementTab.jsx",
+      "line": 3,
+      "qualname": "useEffect"
+    },
+    {
+      "name": "useEffect",
+      "kind": "hook",
+      "path": "frontend/src/features/training/hooks/useTraining.js",
+      "line": 2,
+      "qualname": "useEffect"
+    },
+    {
+      "name": "useEvalRuns",
+      "kind": "hook",
+      "path": "frontend/src/features/metrics/components/EvalPanel.jsx",
+      "line": 13,
+      "qualname": "useEvalRuns"
+    },
+    {
+      "name": "useEvalRuns",
+      "kind": "hook",
+      "path": "frontend/src/features/metrics/components/EvalPanel.test.jsx",
+      "line": 4,
+      "qualname": "useEvalRuns"
+    },
+    {
+      "name": "useEvalRuns",
+      "kind": "hook",
+      "path": "frontend/src/features/metrics/hooks/useEvalRuns.js",
+      "line": 23,
+      "qualname": "useEvalRuns"
+    },
+    {
+      "name": "useFiles",
+      "kind": "hook",
+      "path": "frontend/src/features/files/components/FilesTab.jsx",
+      "line": 7,
+      "qualname": "useFiles"
+    },
+    {
+      "name": "useFiles",
+      "kind": "hook",
+      "path": "frontend/src/features/files/hooks/useFiles.js",
+      "line": 19,
+      "qualname": "useFiles"
+    },
+    {
+      "name": "useFiles",
+      "kind": "hook",
+      "path": "frontend/src/features/files/index.js",
+      "line": 1,
+      "qualname": "useFiles"
+    },
+    {
+      "name": "useHealth",
+      "kind": "hook",
+      "path": "frontend/src/features/health/components/HealthDashboard.jsx",
+      "line": 13,
+      "qualname": "useHealth"
+    },
+    {
+      "name": "useHealth",
+      "kind": "hook",
+      "path": "frontend/src/features/health/hooks/useHealth.js",
+      "line": 7,
+      "qualname": "useHealth"
+    },
+    {
+      "name": "useHealth",
+      "kind": "hook",
+      "path": "frontend/src/features/health/index.js",
+      "line": 2,
+      "qualname": "useHealth"
+    },
+    {
+      "name": "useHealth",
+      "kind": "hook",
+      "path": "frontend/src/features/metrics/hooks/useMetrics.js",
+      "line": 5,
+      "qualname": "useHealth"
+    },
+    {
+      "name": "useLlmReadiness",
+      "kind": "hook",
+      "path": "frontend/src/features/chat/components/ChatTab.jsx",
+      "line": 9,
+      "qualname": "useLlmReadiness"
+    },
+    {
+      "name": "useLlmReadiness",
+      "kind": "hook",
+      "path": "frontend/src/features/chat/components/ChatTab.test.jsx",
+      "line": 33,
+      "qualname": "useLlmReadiness"
+    },
+    {
+      "name": "useLlmReadiness",
+      "kind": "hook",
+      "path": "frontend/src/features/chat/hooks/useLlmReadiness.js",
+      "line": 16,
+      "qualname": "useLlmReadiness"
+    },
+    {
+      "name": "useMemo",
+      "kind": "hook",
+      "path": "frontend/src/features/auth/context/AuthContext.jsx",
+      "line": 3,
+      "qualname": "useMemo"
+    },
+    {
+      "name": "useMemo",
+      "kind": "hook",
+      "path": "frontend/src/features/chat/components/ChatSidebar.jsx",
+      "line": 4,
+      "qualname": "useMemo"
+    },
+    {
+      "name": "useMemo",
+      "kind": "hook",
+      "path": "frontend/src/features/chat/components/ChatTab.jsx",
+      "line": 3,
+      "qualname": "useMemo"
+    },
+    {
+      "name": "useMemo",
+      "kind": "hook",
+      "path": "frontend/src/features/chat/components/ModelSelector.jsx",
+      "line": 6,
+      "qualname": "useMemo"
+    },
+    {
+      "name": "useMemo",
+      "kind": "hook",
+      "path": "frontend/src/features/chat/components/TraceDebugPanel.jsx",
+      "line": 3,
+      "qualname": "useMemo"
+    },
+    {
+      "name": "useMemo",
+      "kind": "hook",
+      "path": "frontend/src/features/chat/context/ChatContext.jsx",
+      "line": 15,
+      "qualname": "useMemo"
+    },
+    {
+      "name": "useMemo",
+      "kind": "hook",
+      "path": "frontend/src/features/files/components/FileReviewDrawer.jsx",
+      "line": 3,
+      "qualname": "useMemo"
+    },
+    {
+      "name": "useMemo",
+      "kind": "hook",
+      "path": "frontend/src/features/files/components/FilesTab.jsx",
+      "line": 3,
+      "qualname": "useMemo"
+    },
+    {
+      "name": "useMemo",
+      "kind": "hook",
+      "path": "frontend/src/features/health/components/HealthDashboard.jsx",
+      "line": 3,
+      "qualname": "useMemo"
+    },
+    {
+      "name": "useMemo",
+      "kind": "hook",
+      "path": "frontend/src/features/metrics/components/EvalPanel.jsx",
+      "line": 3,
+      "qualname": "useMemo"
+    },
+    {
+      "name": "useMemo",
+      "kind": "hook",
+      "path": "frontend/src/features/metrics/components/charts/Histogram.jsx",
+      "line": 3,
+      "qualname": "useMemo"
+    },
+    {
+      "name": "useMemo",
+      "kind": "hook",
+      "path": "frontend/src/features/metrics/components/charts/StageBreakdown.jsx",
+      "line": 3,
+      "qualname": "useMemo"
+    },
+    {
+      "name": "useMemo",
+      "kind": "hook",
+      "path": "frontend/src/features/metrics/components/charts/TimeSeries.jsx",
+      "line": 3,
+      "qualname": "useMemo"
+    },
+    {
+      "name": "useMemo",
+      "kind": "hook",
+      "path": "frontend/src/features/models/components/ModelManagementTab.jsx",
+      "line": 3,
+      "qualname": "useMemo"
+    },
+    {
+      "name": "useMetrics",
+      "kind": "hook",
+      "path": "frontend/src/features/metrics/components/MetricsTab.jsx",
+      "line": 11,
+      "qualname": "useMetrics"
+    },
+    {
+      "name": "useMetrics",
+      "kind": "hook",
+      "path": "frontend/src/features/metrics/components/MetricsTab.test.jsx",
+      "line": 4,
+      "qualname": "useMetrics"
+    },
+    {
+      "name": "useMetrics",
+      "kind": "hook",
+      "path": "frontend/src/features/metrics/components/metricsConfig.js",
+      "line": 12,
+      "qualname": "useMetrics"
+    },
+    {
+      "name": "useMetrics",
+      "kind": "hook",
+      "path": "frontend/src/features/metrics/hooks/useEvalRuns.js",
+      "line": 5,
+      "qualname": "useMetrics"
+    },
+    {
+      "name": "useMetrics",
+      "kind": "hook",
+      "path": "frontend/src/features/metrics/hooks/useMetrics.js",
+      "line": 36,
+      "qualname": "useMetrics"
+    },
+    {
+      "name": "useMetrics",
+      "kind": "hook",
+      "path": "frontend/src/features/metrics/index.js",
+      "line": 2,
+      "qualname": "useMetrics"
+    },
+    {
+      "name": "useNextTheme",
+      "kind": "hook",
+      "path": "frontend/src/context/ThemeContext.jsx",
+      "line": 8,
+      "qualname": "useNextTheme"
+    },
+    {
+      "name": "usePathname",
+      "kind": "hook",
+      "path": "frontend/app/(workspace)/layout.jsx",
+      "line": 12,
+      "qualname": "usePathname"
+    },
+    {
+      "name": "usePathname",
+      "kind": "hook",
+      "path": "frontend/src/features/chat/components/ChatTab.test.jsx",
+      "line": 17,
+      "qualname": "usePathname"
+    },
+    {
+      "name": "usePathname",
+      "kind": "hook",
+      "path": "frontend/src/features/chat/context/ChatContext.jsx",
+      "line": 20,
+      "qualname": "usePathname"
+    },
+    {
+      "name": "useRag",
+      "kind": "hook",
+      "path": "frontend/src/features/chat/services/chatService.js",
+      "line": 8,
+      "qualname": "useRag"
+    },
+    {
+      "name": "useReducer",
+      "kind": "hook",
+      "path": "frontend/src/features/chat/context/ChatContext.jsx",
+      "line": 16,
+      "qualname": "useReducer"
+    },
+    {
+      "name": "useReducer",
+      "kind": "hook",
+      "path": "frontend/src/features/files/hooks/useFiles.js",
+      "line": 11,
+      "qualname": "useReducer"
+    },
+    {
+      "name": "useRef",
+      "kind": "hook",
+      "path": "frontend/src/components/layout/Header.jsx",
+      "line": 4,
+      "qualname": "useRef"
+    },
+    {
+      "name": "useRef",
+      "kind": "hook",
+      "path": "frontend/src/features/chat/components/ChatInput.jsx",
+      "line": 3,
+      "qualname": "useRef"
+    },
+    {
+      "name": "useRef",
+      "kind": "hook",
+      "path": "frontend/src/features/chat/components/MessageList.jsx",
+      "line": 3,
+      "qualname": "useRef"
+    },
+    {
+      "name": "useRef",
+      "kind": "hook",
+      "path": "frontend/src/features/chat/context/ChatContext.jsx",
+      "line": 17,
+      "qualname": "useRef"
+    },
+    {
+      "name": "useRef",
+      "kind": "hook",
+      "path": "frontend/src/features/chat/hooks/useLlmReadiness.js",
+      "line": 2,
+      "qualname": "useRef"
+    },
+    {
+      "name": "useRef",
+      "kind": "hook",
+      "path": "frontend/src/features/files/hooks/useFiles.js",
+      "line": 11,
+      "qualname": "useRef"
+    },
+    {
+      "name": "useRef",
+      "kind": "hook",
+      "path": "frontend/src/features/health/hooks/useHealth.js",
+      "line": 2,
+      "qualname": "useRef"
+    },
+    {
+      "name": "useRef",
+      "kind": "hook",
+      "path": "frontend/src/features/metrics/components/benchmark/GoldenSetImporter.jsx",
+      "line": 3,
+      "qualname": "useRef"
+    },
+    {
+      "name": "useRef",
+      "kind": "hook",
+      "path": "frontend/src/features/metrics/hooks/useMetrics.js",
+      "line": 2,
+      "qualname": "useRef"
+    },
+    {
+      "name": "useRef",
+      "kind": "hook",
+      "path": "frontend/src/features/models/components/ModelManagementTab.jsx",
+      "line": 3,
+      "qualname": "useRef"
+    },
+    {
+      "name": "useRef",
+      "kind": "hook",
+      "path": "frontend/src/features/training/components/TrainingTab.jsx",
+      "line": 3,
+      "qualname": "useRef"
+    },
+    {
+      "name": "useRef",
+      "kind": "hook",
+      "path": "frontend/src/features/training/hooks/useTraining.js",
+      "line": 2,
+      "qualname": "useRef"
+    },
+    {
+      "name": "useRouter",
+      "kind": "hook",
+      "path": "frontend/src/features/chat/components/ChatTab.test.jsx",
+      "line": 18,
+      "qualname": "useRouter"
+    },
+    {
+      "name": "useRouter",
+      "kind": "hook",
+      "path": "frontend/src/features/chat/context/ChatContext.jsx",
+      "line": 20,
+      "qualname": "useRouter"
+    },
+    {
+      "name": "useSelector",
+      "kind": "hook",
+      "path": "frontend/src/features/chat/hooks/useChatInit.js",
+      "line": 11,
+      "qualname": "useSelector"
+    },
+    {
+      "name": "useSelector",
+      "kind": "hook",
+      "path": "frontend/src/features/files/hooks/useFiles.js",
+      "line": 12,
+      "qualname": "useSelector"
+    },
+    {
+      "name": "useSelector",
+      "kind": "hook",
+      "path": "frontend/src/features/memory/components/LongTermMemoryTab.jsx",
+      "line": 5,
+      "qualname": "useSelector"
+    },
+    {
+      "name": "useSelector",
+      "kind": "hook",
+      "path": "frontend/src/store/slices/eventsSlice.js",
+      "line": 5,
+      "qualname": "useSelector"
+    },
+    {
+      "name": "useState",
+      "kind": "hook",
+      "path": "frontend/src/components/layout/Header.jsx",
+      "line": 4,
+      "qualname": "useState"
+    },
+    {
+      "name": "useState",
+      "kind": "hook",
+      "path": "frontend/src/components/layout/TabbedPageLayout.jsx",
+      "line": 8,
+      "qualname": "useState"
+    },
+    {
+      "name": "useState",
+      "kind": "hook",
+      "path": "frontend/src/components/ui/Modal.jsx",
+      "line": 3,
+      "qualname": "useState"
+    },
+    {
+      "name": "useState",
+      "kind": "hook",
+      "path": "frontend/src/features/admin/components/AdminUsersTab.jsx",
+      "line": 3,
+      "qualname": "useState"
+    },
+    {
+      "name": "useState",
+      "kind": "hook",
+      "path": "frontend/src/features/auth/components/LoginForm.jsx",
+      "line": 4,
+      "qualname": "useState"
+    },
+    {
+      "name": "useState",
+      "kind": "hook",
+      "path": "frontend/src/features/auth/context/AuthContext.jsx",
+      "line": 3,
+      "qualname": "useState"
+    },
+    {
+      "name": "useState",
+      "kind": "hook",
+      "path": "frontend/src/features/chat/components/ChatSidebar.jsx",
+      "line": 4,
+      "qualname": "useState"
+    },
+    {
+      "name": "useState",
+      "kind": "hook",
+      "path": "frontend/src/features/chat/components/ChatTab.jsx",
+      "line": 3,
+      "qualname": "useState"
+    },
+    {
+      "name": "useState",
+      "kind": "hook",
+      "path": "frontend/src/features/chat/components/FeedbackControls.jsx",
+      "line": 3,
+      "qualname": "useState"
+    },
+    {
+      "name": "useState",
+      "kind": "hook",
+      "path": "frontend/src/features/chat/components/MessageList.jsx",
+      "line": 3,
+      "qualname": "useState"
+    },
+    {
+      "name": "useState",
+      "kind": "hook",
+      "path": "frontend/src/features/chat/components/MessageMetricsModal.jsx",
+      "line": 3,
+      "qualname": "useState"
+    },
+    {
+      "name": "useState",
+      "kind": "hook",
+      "path": "frontend/src/features/chat/components/TraceDebugPanel.jsx",
+      "line": 3,
+      "qualname": "useState"
+    },
+    {
+      "name": "useState",
+      "kind": "hook",
+      "path": "frontend/src/features/chat/components/trace/PromptTab.jsx",
+      "line": 3,
+      "qualname": "useState"
+    },
+    {
+      "name": "useState",
+      "kind": "hook",
+      "path": "frontend/src/features/chat/components/trace/SourcesTab.jsx",
+      "line": 3,
+      "qualname": "useState"
+    },
+    {
+      "name": "useState",
+      "kind": "hook",
+      "path": "frontend/src/features/chat/context/ChatContext.jsx",
+      "line": 18,
+      "qualname": "useState"
+    },
+    {
+      "name": "useState",
+      "kind": "hook",
+      "path": "frontend/src/features/chat/hooks/useChatInit.js",
+      "line": 10,
+      "qualname": "useState"
+    },
+    {
+      "name": "useState",
+      "kind": "hook",
+      "path": "frontend/src/features/chat/hooks/useLlmReadiness.js",
+      "line": 2,
+      "qualname": "useState"
+    },
+    {
+      "name": "useState",
+      "kind": "hook",
+      "path": "frontend/src/features/config/components/ConfigTab.jsx",
+      "line": 3,
+      "qualname": "useState"
+    },
+    {
+      "name": "useState",
+      "kind": "hook",
+      "path": "frontend/src/features/files/components/FileCard.jsx",
+      "line": 3,
+      "qualname": "useState"
+    },
+    {
+      "name": "useState",
+      "kind": "hook",
+      "path": "frontend/src/features/files/components/FileReviewDrawer.jsx",
+      "line": 3,
+      "qualname": "useState"
+    },
+    {
+      "name": "useState",
+      "kind": "hook",
+      "path": "frontend/src/features/files/components/FilesTab.jsx",
+      "line": 3,
+      "qualname": "useState"
+    },
+    {
+      "name": "useState",
+      "kind": "hook",
+      "path": "frontend/src/features/files/components/UploadTab.jsx",
+      "line": 3,
+      "qualname": "useState"
+    },
+    {
+      "name": "useState",
+      "kind": "hook",
+      "path": "frontend/src/features/health/hooks/useHealth.js",
+      "line": 2,
+      "qualname": "useState"
+    },
+    {
+      "name": "useState",
+      "kind": "hook",
+      "path": "frontend/src/features/memory/components/AddMemoryForm.jsx",
+      "line": 3,
+      "qualname": "useState"
+    },
+    {
+      "name": "useState",
+      "kind": "hook",
+      "path": "frontend/src/features/memory/components/LongTermMemoryTab.jsx",
+      "line": 4,
+      "qualname": "useState"
+    },
+    {
+      "name": "useState",
+      "kind": "hook",
+      "path": "frontend/src/features/memory/components/MemoryCard.jsx",
+      "line": 3,
+      "qualname": "useState"
+    },
+    {
+      "name": "useState",
+      "kind": "hook",
+      "path": "frontend/src/features/metrics/components/EvalPanel.jsx",
+      "line": 3,
+      "qualname": "useState"
+    },
+    {
+      "name": "useState",
+      "kind": "hook",
+      "path": "frontend/src/features/metrics/components/MetricsTab.jsx",
+      "line": 3,
+      "qualname": "useState"
+    },
+    {
+      "name": "useState",
+      "kind": "hook",
+      "path": "frontend/src/features/metrics/components/benchmark/GoldenSetImporter.jsx",
+      "line": 3,
+      "qualname": "useState"
+    },
+    {
+      "name": "useState",
+      "kind": "hook",
+      "path": "frontend/src/features/metrics/components/charts/TimeSeries.jsx",
+      "line": 3,
+      "qualname": "useState"
+    },
+    {
+      "name": "useState",
+      "kind": "hook",
+      "path": "frontend/src/features/metrics/hooks/useEvalRuns.js",
+      "line": 2,
+      "qualname": "useState"
+    },
+    {
+      "name": "useState",
+      "kind": "hook",
+      "path": "frontend/src/features/metrics/hooks/useMetrics.js",
+      "line": 2,
+      "qualname": "useState"
+    },
+    {
+      "name": "useState",
+      "kind": "hook",
+      "path": "frontend/src/features/models/components/ModelManagementTab.jsx",
+      "line": 3,
+      "qualname": "useState"
+    },
+    {
+      "name": "useState",
+      "kind": "hook",
+      "path": "frontend/src/features/training/components/TrainingTab.jsx",
+      "line": 3,
+      "qualname": "useState"
+    },
+    {
+      "name": "useState",
+      "kind": "hook",
+      "path": "frontend/src/features/training/hooks/useTraining.js",
+      "line": 2,
+      "qualname": "useState"
+    },
+    {
+      "name": "useTheme",
+      "kind": "hook",
+      "path": "frontend/src/components/layout/Header.jsx",
+      "line": 28,
+      "qualname": "useTheme"
+    },
+    {
+      "name": "useTheme",
+      "kind": "hook",
+      "path": "frontend/src/context/ThemeContext.jsx",
+      "line": 8,
+      "qualname": "useTheme"
+    },
+    {
+      "name": "useTraining",
+      "kind": "hook",
+      "path": "frontend/src/features/tab-render.test.jsx",
+      "line": 11,
+      "qualname": "useTraining"
+    },
+    {
+      "name": "useTraining",
+      "kind": "hook",
+      "path": "frontend/src/features/training/components/TrainingTab.jsx",
+      "line": 27,
+      "qualname": "useTraining"
+    },
+    {
+      "name": "useTraining",
+      "kind": "hook",
+      "path": "frontend/src/features/training/hooks/useTraining.js",
+      "line": 5,
+      "qualname": "useTraining"
+    },
+    {
+      "name": "useTraining",
+      "kind": "hook",
+      "path": "frontend/src/features/training/index.js",
+      "line": 2,
+      "qualname": "useTraining"
+    },
+    {
+      "name": "utf8Size",
+      "kind": "symbol",
+      "path": "frontend/src/features/metrics/components/benchmark/GoldenSetImporter.jsx",
+      "line": 12,
+      "qualname": "utf8Size"
+    },
+    {
+      "name": "validate",
+      "kind": "symbol",
+      "path": "frontend/src/features/metrics/components/benchmark/GoldenSetImporter.test.jsx",
+      "line": 5,
+      "qualname": "validate"
+    },
+    {
+      "name": "verdictVariant",
+      "kind": "symbol",
+      "path": "frontend/src/features/chat/components/AnswerReviewCard.jsx",
+      "line": 12,
+      "qualname": "verdictVariant"
+    },
+    {
+      "name": "WINDOW_OPTIONS",
+      "kind": "component",
+      "path": "frontend/src/features/metrics/components/metricsConfig.js",
+      "line": 25,
+      "qualname": "WINDOW_OPTIONS"
+    },
+    {
+      "name": "WorkspaceLayout",
+      "kind": "component",
+      "path": "frontend/app/(workspace)/layout.jsx",
+      "line": 19,
+      "qualname": "WorkspaceLayout"
+    },
+    {
+      "name": "worstByMode",
+      "kind": "symbol",
+      "path": "frontend/src/features/metrics/components/KpiHeader.jsx",
+      "line": 33,
+      "qualname": "worstByMode"
+    },
+    {
+      "name": "worstFirst",
+      "kind": "symbol",
+      "path": "frontend/src/features/metrics/components/EvalPanel.jsx",
+      "line": 88,
+      "qualname": "worstFirst"
+    },
+    {
+      "name": "Wrapper",
+      "kind": "component",
+      "path": "frontend/src/test/render.jsx",
+      "line": 20,
+      "qualname": "Wrapper"
+    }
+  ]
+}

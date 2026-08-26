@@ -1,0 +1,228 @@
+{
+  "schema_version": 1,
+  "capabilities": [
+    {
+      "id": "CAP-001",
+      "name": "Regular RAG conversation pipeline",
+      "status": "implemented",
+      "owner": "rag",
+      "canonical_paths": [
+        "backend/rag/app/services/conversation_graph.py"
+      ],
+      "search_terms": [
+        "regular mode",
+        "retrieve_chunks_once",
+        "generate_answer"
+      ],
+      "notes": "Verify current graph before extending."
+    },
+    {
+      "id": "CAP-002",
+      "name": "Extended RAG pipeline",
+      "status": "implemented",
+      "owner": "rag",
+      "canonical_paths": [
+        "backend/rag/app/services/conversation_graph.py"
+      ],
+      "search_terms": [
+        "extended mode",
+        "rewrite_or_decompose_query",
+        "retrieve_pass_one",
+        "retrieve_pass_two_if_needed"
+      ],
+      "notes": "Do not create a second orchestration path."
+    },
+    {
+      "id": "CAP-003",
+      "name": "Golden-set retrieval evaluation",
+      "status": "implemented",
+      "owner": "rag",
+      "canonical_paths": [
+        "backend/rag/app/services/eval_runner.py",
+        "backend/rag/app/services/eval_store.py",
+        "backend/rag/app/services/retrieval_metrics.py"
+      ],
+      "search_terms": [
+        "Recall@",
+        "MRR",
+        "nDCG",
+        "EvalRunner"
+      ],
+      "notes": "Benchmark work extends this."
+    },
+    {
+      "id": "CAP-004",
+      "name": "RAG execution tracing",
+      "status": "implemented",
+      "owner": "rag",
+      "canonical_paths": [
+        "backend/rag/app/services/conversation_tracing.py",
+        "backend/rag/app/services/conversation_graph.py"
+      ],
+      "search_terms": [
+        "trace_events",
+        "_wrap_node",
+        "ConversationTracer"
+      ],
+      "notes": "Diagnostic tracing extends this."
+    },
+    {
+      "id": "CAP-005",
+      "name": "Turn metrics facts",
+      "status": "implemented",
+      "owner": "rag",
+      "canonical_paths": [
+        "backend/rag/app/services/metrics_facts.py",
+        "backend/rag/app/services/metrics_query.py"
+      ],
+      "search_terms": [
+        "stage_ms",
+        "ttft",
+        "groundedness",
+        "citation"
+      ],
+      "notes": "Use for tenant-scoped turn quality/latency facts."
+    },
+    {
+      "id": "CAP-006",
+      "name": "Admin metrics aggregation",
+      "status": "implemented",
+      "owner": "gateway",
+      "canonical_paths": [
+        "backend/gateway/app/services/metrics_service.py",
+        "frontend/src/features/metrics"
+      ],
+      "search_terms": [
+        "overview",
+        "latency",
+        "retrieval",
+        "quality",
+        "pipeline"
+      ],
+      "notes": "Check current scope semantics before adding metrics."
+    },
+    {
+      "id": "CAP-007",
+      "name": "Citation evaluation",
+      "status": "implemented",
+      "owner": "rag/llm_agent",
+      "canonical_paths": [
+        "backend/rag/app/services/citation_metrics.py",
+        "backend/llm_agent/app/llm/prompts"
+      ],
+      "search_terms": [
+        "citation_precision",
+        "citation_recall",
+        "supporting_passage_ids"
+      ],
+      "notes": "Read current schema before extending."
+    },
+    {
+      "id": "CAP-008",
+      "name": "Memory tool-calling agent",
+      "status": "implemented",
+      "owner": "memory",
+      "canonical_paths": [
+        "backend/memory/app/agent/memory_agent.py"
+      ],
+      "search_terms": [
+        "create_agent",
+        "list_memories",
+        "add_memory",
+        "update_memory",
+        "delete_memory",
+        "done"
+      ],
+      "notes": "Harden existing agent rather than create duplicate."
+    },
+    {
+      "id": "CAP-009",
+      "name": "File ingestion workflow",
+      "status": "implemented",
+      "owner": "files",
+      "canonical_paths": [
+        "backend/files/app/services/file_ingestion_graph.py",
+        "backend/files/app/services/file_service.py"
+      ],
+      "search_terms": [
+        "ingestion",
+        "review",
+        "chunking",
+        "embedding",
+        "vector"
+      ],
+      "notes": "File lifecycle truth belongs in Files."
+    },
+    {
+      "id": "CAP-010",
+      "name": "Qdrant vector search/storage",
+      "status": "implemented",
+      "owner": "vector_db",
+      "canonical_paths": [
+        "backend/vector_db/app/db/implementations/qdrant.py",
+        "backend/vector_db/app/services/vector_service.py"
+      ],
+      "search_terms": [
+        "search",
+        "upsert",
+        "delete",
+        "collection"
+      ],
+      "notes": "Preserve tenant/review filters."
+    },
+    {
+      "id": "CAP-011",
+      "name": "Centralized frontend HTTP client",
+      "status": "implemented",
+      "owner": "frontend",
+      "canonical_paths": [
+        "frontend/src/lib/http/client.js"
+      ],
+      "search_terms": [
+        "httpClient",
+        "get",
+        "post",
+        "patch",
+        "del",
+        "upload",
+        "AbortController"
+      ],
+      "notes": "Reuse before raw fetch."
+    },
+    {
+      "id": "CAP-012",
+      "name": "Files frontend state hook",
+      "status": "implemented",
+      "owner": "frontend",
+      "canonical_paths": [
+        "frontend/src/features/files/hooks/useFiles.js",
+        "frontend/src/features/files/services/fileService.js"
+      ],
+      "search_terms": [
+        "useFiles",
+        "loadFiles",
+        "uploadFiles",
+        "deleteFile",
+        "rerunIngestion"
+      ],
+      "notes": "Avoid second file-state/polling implementation."
+    },
+    {
+      "id": "CAP-013",
+      "name": "Eval candidate depth separate from production K",
+      "status": "implemented",
+      "owner": "rag",
+      "canonical_paths": [
+        "backend/rag/app/services/eval_runner.py",
+        "backend/rag/app/services/conversation_backend_client.py",
+        "backend/rag/app/core/config.py"
+      ],
+      "search_terms": [
+        "eval_candidate_k",
+        "candidate_depth",
+        "top_k"
+      ],
+      "notes": "Known merged in audited main snapshot; verify current source."
+    }
+  ]
+}

@@ -1,0 +1,93 @@
+{
+  "schema_version": 1,
+  "items": [
+    {
+      "id": "DEBT-001",
+      "status": "open",
+      "severity": "medium",
+      "area": "embedding",
+      "title": "Legacy/duplicate embedding runtime paths",
+      "impact": "Multiple handlers/consumers obscure the canonical implementation.",
+      "evidence": [
+        "backend/embedding/app/handlers.py",
+        "backend/embedding/app/services/embedding_handler.py",
+        "backend/embedding/app/services/embedding_job_service.py"
+      ],
+      "suggested_task": "EMBED-01",
+      "blocked_by": []
+    },
+    {
+      "id": "DEBT-002",
+      "status": "open",
+      "severity": "medium",
+      "area": "shared",
+      "title": "Duplicated service infrastructure wrappers",
+      "impact": "CORS/logging/errors/messaging/envelope implementations can drift.",
+      "evidence": [
+        "backend/shared",
+        "backend/memory/app/utils/common.py",
+        "backend/vector_db/app/utils/common.py"
+      ],
+      "suggested_task": "SHARED-01",
+      "blocked_by": []
+    },
+    {
+      "id": "DEBT-003",
+      "status": "open",
+      "severity": "medium",
+      "area": "fastapi/runtime",
+      "title": "Module-global runtime dependencies in some services",
+      "impact": "Harder lifecycle ownership/testing and circular dependency workarounds.",
+      "evidence": [
+        "backend/gateway/app/main.py",
+        "backend/gateway/app/core/deps.py",
+        "backend/rag/app/main.py"
+      ],
+      "suggested_task": "APP-01",
+      "blocked_by": []
+    },
+    {
+      "id": "DEBT-004",
+      "status": "open",
+      "severity": "high",
+      "area": "rag/persistence",
+      "title": "Synchronous Mongo operations on async RAG paths and checkpoint growth",
+      "impact": "Potential event-loop blocking and storage/write amplification.",
+      "evidence": [
+        "backend/rag/app/services/conversation_persistence.py",
+        "backend/rag/app/services/metrics_facts.py"
+      ],
+      "suggested_task": "PERF-01",
+      "blocked_by": [
+        "benchmark baseline recommended"
+      ]
+    },
+    {
+      "id": "DEBT-005",
+      "status": "open",
+      "severity": "medium",
+      "area": "frontend/chat",
+      "title": "High-frequency token stream updates large React state/context",
+      "impact": "Unnecessary renders/allocations during streaming answers.",
+      "evidence": [
+        "frontend/src/features/chat"
+      ],
+      "suggested_task": "FRONT-01",
+      "blocked_by": []
+    },
+    {
+      "id": "DEBT-006",
+      "status": "open",
+      "severity": "medium",
+      "area": "docker",
+      "title": "Container/runtime dependency and privilege cleanup",
+      "impact": "Larger images and avoidable attack surface.",
+      "evidence": [
+        "backend",
+        "frontend/Dockerfile"
+      ],
+      "suggested_task": "DOCKER-01",
+      "blocked_by": []
+    }
+  ]
+}
