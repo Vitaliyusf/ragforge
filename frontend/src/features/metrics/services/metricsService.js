@@ -1,5 +1,5 @@
 /** Admin metrics service — one method per /v1/metrics route. */
-import { del, get, patch, post } from '@/lib/http/client'
+import { del, get, httpClient, patch, post } from '@/lib/http/client'
 
 /**
  * Build the shared query string. `tenant_id` is omitted when empty so the
@@ -99,6 +99,35 @@ class MetricsService {
 
   async getEvalRun(runId) {
     return await get(`/v1/metrics/eval/runs/${encodeURIComponent(runId)}`)
+  }
+
+  async startBenchmarkRun(datasetId, phases, { signal } = {}) {
+    return await post('/v1/metrics/eval/benchmarks', {
+      dataset_id: datasetId,
+      ...(phases?.length ? { phases } : {}),
+    }, { signal })
+  }
+
+  async listBenchmarkRuns({ datasetId, limit, signal } = {}) {
+    const params = new URLSearchParams()
+    if (datasetId) params.set('dataset_id', datasetId)
+    if (limit) params.set('limit', String(limit))
+    const query = params.toString()
+    return await get(`/v1/metrics/eval/benchmarks${query ? `?${query}` : ''}`, { signal })
+  }
+
+  async getBenchmarkRun(benchmarkId, { signal } = {}) {
+    return await get(`/v1/metrics/eval/benchmarks/${encodeURIComponent(benchmarkId)}`, { signal })
+  }
+
+  async downloadBenchmark(benchmarkId, { signal } = {}) {
+    const response = await httpClient(
+      `/v1/metrics/eval/benchmarks/${encodeURIComponent(benchmarkId)}/export`,
+      { signal, retries: 0 }
+    )
+    const disposition = response.headers.get('content-disposition') || ''
+    const filename = /filename="?([^";]+)"?/i.exec(disposition)?.[1] || 'benchmark-export.zip'
+    return { blob: await response.blob(), filename }
   }
 }
 
