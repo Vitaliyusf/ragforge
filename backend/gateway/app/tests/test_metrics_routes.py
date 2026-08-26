@@ -16,6 +16,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.core.auth import get_current_user
+from app.core.constants import MetricsWindow
 from app.core.deps import get_metrics_service
 from app.rest.v1 import metrics as metrics_routes
 from app.services.metrics_service import MetricsService
@@ -206,7 +207,7 @@ def test_operational_promql_excludes_eval_traffic():
         "llm_p95",
         "llm_token_rate",
     ):
-        assert 'traffic_class="live"' in promql.render(name, "1h")
+        assert 'traffic_class="live"' in promql.render(name, MetricsWindow.HOUR)
 
 
 def test_tenant_id_is_echoed_from_the_downstream_service():
