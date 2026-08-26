@@ -6,7 +6,7 @@ import pytest
 from shared import metrics as metrics_module
 from shared import circuit_breaker as circuit_breaker_module
 from shared.circuit_breaker import CircuitBreaker, CircuitBreakerOpen, CircuitState
-from shared.metrics import METRICS
+from shared.metrics import LLM_OUTPUT_TOKEN_BUCKETS, METRICS
 from shared.rate_limiter import RateLimiter
 
 
@@ -27,6 +27,17 @@ def counter_value(metric: Any, **labels: str) -> float:
 
 def _failing_call() -> None:
     raise RuntimeError("downstream is down")
+
+
+def test_llm_output_token_histogram_has_bounded_labels_and_documented_buckets() -> None:
+    assert tuple(METRICS.llm_output_tokens._labelnames) == (
+        "service",
+        "request_type",
+        "traffic_class",
+    )
+    assert tuple(METRICS.llm_output_tokens._upper_bounds[:-1]) == tuple(
+        float(bucket) for bucket in LLM_OUTPUT_TOKEN_BUCKETS
+    )
 
 
 def test_circuit_breaker_transition_sets_the_state_gauge() -> None:

@@ -24,6 +24,25 @@ logger = logging.getLogger("metrics")
 TRAFFIC_CLASS_LIVE = "live"
 TRAFFIC_CLASS_EVAL = "eval"
 
+# Typed LLM calls currently use a 512-token default. The denser low-end
+# buckets distinguish compact guardrail/rewrite/evaluation responses, while
+# 768/1024 preserve useful overflow evidence if a bounded request is allowed
+# above that default. +Inf remains available through the Prometheus client.
+LLM_OUTPUT_TOKEN_BUCKETS = (
+    8,
+    16,
+    32,
+    64,
+    96,
+    128,
+    192,
+    256,
+    384,
+    512,
+    768,
+    1024,
+)
+
 
 def traffic_class() -> str:
     """Return the bounded traffic class for the current trusted execution."""
@@ -258,6 +277,13 @@ class ServiceMetrics:
             "LLM tokens by direction",
             ["service", "model", "request_type", "direction", "traffic_class"],
             # direction is bounded to input | output | total
+        )
+
+        self.llm_output_tokens = Histogram(
+            "ragapp_llm_output_tokens",
+            "Output-token count per completed LLM request with reported usage",
+            ["service", "request_type", "traffic_class"],
+            buckets=LLM_OUTPUT_TOKEN_BUCKETS,
         )
 
         self.llm_errors_total = Counter(
