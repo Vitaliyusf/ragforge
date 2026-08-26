@@ -58,7 +58,17 @@ from __future__ import annotations
 import asyncio
 import time
 from dataclasses import dataclass, field
-from typing import Any, Dict, FrozenSet, List, Optional, Set, Tuple
+from typing import (
+    Any,
+    Awaitable,
+    Callable,
+    Dict,
+    FrozenSet,
+    List,
+    Optional,
+    Set,
+    Tuple,
+)
 
 from app.core.config import RAGConfig
 from app.services import retrieval_metrics
@@ -862,6 +872,9 @@ class EvalRunner:
         match_mode: str,
         mode: str = MODE_RETRIEVAL,
         pipeline_mode: Optional[str] = None,
+        on_item_completed: Optional[
+            Callable[[Dict[str, Any]], Awaitable[None]]
+        ] = None,
     ) -> Dict[str, Any]:
         """Score every item, then close the run.
 
@@ -913,6 +926,7 @@ class EvalRunner:
                             mode,
                             unscorable=str(item.get("item_id") or "") in report.unscorable,
                             pipeline_mode=pipeline_mode,
+                            on_item_completed=on_item_completed,
                         )
                         for item in items
                     )
@@ -1013,6 +1027,9 @@ class EvalRunner:
         *,
         unscorable: bool = False,
         pipeline_mode: Optional[str] = None,
+        on_item_completed: Optional[
+            Callable[[Dict[str, Any]], Awaitable[None]]
+        ] = None,
     ) -> Dict[str, Any]:
         """Retrieve for one item, score it, and persist the row.
 
@@ -1058,7 +1075,7 @@ class EvalRunner:
         }
         if unscorable:
             row["failure_attribution"] = classify_item(row)
-            self.store.append_item_result(run_id, tenant_id, row)
+            await self._persist_item_result(run_id, tenant_id, row, on_item_completed)
             return row
 
         trace = RetrievalTrace.from_config(self.config)
@@ -1113,7 +1130,7 @@ class EvalRunner:
             row["latency_ms"] = (time.monotonic() - started) * 1000
             row["retrieval_trace"] = trace.to_payload()
             row["failure_attribution"] = classify_item(row)
-            self.store.append_item_result(run_id, tenant_id, row)
+            await self._persist_item_result(run_id, tenant_id, row, on_item_completed)
             return row
 
         row["latency_ms"] = (time.monotonic() - started) * 1000
@@ -1121,7 +1138,7 @@ class EvalRunner:
         row["retrieved_ids"] = ids[:MAX_ROW_IDS]
         if row["outcome"] == "guardrail_blocked":
             row["failure_attribution"] = classify_item(row)
-            self.store.append_item_result(run_id, tenant_id, row)
+            await self._persist_item_result(run_id, tenant_id, row, on_item_completed)
             return row
         if relevant:
             deduped = retrieval_metrics.dedupe(ids)
@@ -1138,8 +1155,20 @@ class EvalRunner:
         # drill-down renders, and a category derived twice from two different
         # inputs is a category that can disagree with itself.
         row["failure_attribution"] = classify_item(row)
-        self.store.append_item_result(run_id, tenant_id, row)
+        await self._persist_item_result(run_id, tenant_id, row, on_item_completed)
         return row
+
+    async def _persist_item_result(
+        self,
+        run_id: str,
+        tenant_id: str,
+        row: Dict[str, Any],
+        on_item_completed: Optional[Callable[[Dict[str, Any]], Awaitable[None]]],
+    ) -> None:
+        """Write a terminal row, then notify its owning orchestration once."""
+        self.store.append_item_result(run_id, tenant_id, row)
+        if on_item_completed is not None:
+            await on_item_completed(row)
 
     async def _run_graph_item(
         self,
@@ -1213,7 +1242,12 @@ class PreparedRun:
         """The opened run's id."""
         return str(self.run.get("run_id") or "")
 
-    async def execute(self) -> Dict[str, Any]:
+    async def execute(
+        self,
+        on_item_completed: Optional[
+            Callable[[Dict[str, Any]], Awaitable[None]]
+        ] = None,
+    ) -> Dict[str, Any]:
         """Execute the run to completion and return how it closed."""
         return await self.runner.execute_run(
             self.run_id,
@@ -1222,6 +1256,7 @@ class PreparedRun:
             self.match_mode,
             self.mode,
             self.pipeline_mode,
+            on_item_completed,
         )
 
 

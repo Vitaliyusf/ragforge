@@ -1262,7 +1262,26 @@ def _normalize_benchmark(document: Dict[str, Any]) -> Dict[str, Any]:
     the ones that benchmark actually ran under, and a confident wrong
     manifest is worse than a blank one a UI can label "not recorded".
     """
-    return {"manifest": None, "operational_metrics": None, **document}
+    progress = document.get("progress") or {}
+    normalized_progress = {
+        "current_phase": None,
+        "items_total": 0,
+        "items_completed": 0,
+        "items_in_flight": 0,
+        "items_succeeded": 0,
+        "items_guardrail_blocked": 0,
+        "items_failed": 0,
+        "items_timed_out": 0,
+        "phase_started_at": None,
+        "last_progress_at": None,
+        **progress,
+    }
+    return {
+        "manifest": None,
+        "operational_metrics": None,
+        **document,
+        "progress": normalized_progress,
+    }
 
 
 def _serialize(document: Dict[str, Any]) -> Dict[str, Any]:

@@ -322,6 +322,48 @@ def test_a_benchmark_returns_immediately_in_queued_state():
         asyncio.run(_go())
 
 
+def test_running_phase_persists_truthful_item_progress_without_poll_writes():
+    blocker = asyncio.Event()
+    store, orchestrator, _, dataset_id = build(backend=FakeBackend(block=blocker))
+
+    async def _go():
+        benchmark = await orchestrator.start_benchmark(dataset_id, [PHASE_RETRIEVAL_BASE])
+        for _ in range(20):
+            await asyncio.sleep(0)
+            progress = fetch(store, benchmark["benchmark_id"])["progress"]
+            if progress["current_phase"] == PHASE_RETRIEVAL_BASE:
+                break
+        else:
+            raise AssertionError("benchmark did not enter its retrieval phase")
+
+        before = fetch(store, benchmark["benchmark_id"])["progress"]
+        again = fetch(store, benchmark["benchmark_id"])["progress"]
+        assert before == again  # reads never manufacture progress
+        assert before["items_completed"] == 0
+        assert before["items_in_flight"] == len(ITEMS)
+        assert before["phase_started_at"]
+        assert before["last_progress_at"]
+
+        blocker.set()
+        await asyncio.gather(*list(orchestrator._tasks))
+        return fetch(store, benchmark["benchmark_id"])
+
+    with bound_context(**ADMIN.to_dict()):
+        completed = asyncio.run(_go())
+
+    progress = completed["progress"]
+    assert progress["items_completed"] == len(ITEMS)
+    assert progress["items_in_flight"] == 0
+    assert progress["items_succeeded"] == len(ITEMS)
+    assert (
+        progress["items_succeeded"]
+        + progress["items_guardrail_blocked"]
+        + progress["items_failed"]
+        + progress["items_timed_out"]
+        == progress["items_completed"]
+    )
+
+
 def test_progress_counts_every_phase_and_only_the_reachable_items():
     store, orchestrator, _, dataset_id = build(graph=FakeGraphRunner())
 
