@@ -125,9 +125,16 @@ def test_a_finished_phase_reports_the_runner_s_own_metrics():
         "evaluated": 1,
         "skipped": 1,
         "unscorable": 0,
+        "guardrail_blocked": 0,
         "failed": 0,
         "reached": 2,
     }
+
+
+def test_historical_results_without_guardrail_counter_remain_readable():
+    summary = summarize_phase(phase(results={"items_evaluated": 1, "items_failed": 0}))
+
+    assert summary["items"]["guardrail_blocked"] == 0
 
 
 def test_every_k_is_present_even_when_the_stored_results_lack_it():
@@ -335,6 +342,7 @@ def test_totals_sum_the_denominators_and_pool_the_samples():
         "evaluated": 3,
         "skipped": 1,
         "unscorable": 0,
+        "guardrail_blocked": 0,
         "failed": 0,
         "reached": 4,
     }

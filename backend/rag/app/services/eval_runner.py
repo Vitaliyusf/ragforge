@@ -1053,6 +1053,8 @@ class EvalRunner:
             # the live index no longer offers.
             "unscorable": unscorable,
             "error": None,
+            "outcome": "success",
+            "guardrail_stage": None,
         }
         if unscorable:
             row["failure_attribution"] = classify_item(row)
@@ -1107,6 +1109,7 @@ class EvalRunner:
                     ids = retrieved_ids(eligible, item_mode)
         except Exception as exc:  # noqa: BLE001 - one item, not the run
             row["error"] = str(exc)
+            row["outcome"] = "failed"
             row["latency_ms"] = (time.monotonic() - started) * 1000
             row["retrieval_trace"] = trace.to_payload()
             row["failure_attribution"] = classify_item(row)
@@ -1116,6 +1119,10 @@ class EvalRunner:
         row["latency_ms"] = (time.monotonic() - started) * 1000
         row["retrieval_trace"] = trace.to_payload()
         row["retrieved_ids"] = ids[:MAX_ROW_IDS]
+        if row["outcome"] == "guardrail_blocked":
+            row["failure_attribution"] = classify_item(row)
+            self.store.append_item_result(run_id, tenant_id, row)
+            return row
         if relevant:
             deduped = retrieval_metrics.dedupe(ids)
             row["first_hit_rank"] = next(
@@ -1169,6 +1176,8 @@ class EvalRunner:
         row["citation_precision"] = citations.get("citation_precision")
         row["citation_recall"] = citations.get("citation_recall")
         row["citation_count"] = citations.get("citation_count")
+        row["outcome"] = result.get("outcome", "success")
+        row["guardrail_stage"] = result.get("guardrail_stage")
         return retrieved_ids(eligible_chunks({"chunks": result.get("sources") or []}), item_mode)
 
     def _log(self, event: str, message: str, data: Dict[str, Any]) -> None:
@@ -1270,7 +1279,11 @@ def aggregate(rows: List[Dict[str, Any]], mode: str = MODE_RETRIEVAL) -> Dict[st
     scored = [row for row in rows if row.get("scores")]
     skipped = sum(1 for row in rows if row.get("skipped"))
     unscorable = sum(1 for row in rows if row.get("unscorable"))
-    failed = sum(1 for row in rows if row.get("error"))
+    blocked = sum(1 for row in rows if row.get("outcome") == "guardrail_blocked")
+    failed = sum(
+        1 for row in rows
+        if row.get("outcome", "failed" if row.get("error") else "success") == "failed"
+    )
     latencies = [
         row["latency_ms"] for row in rows if isinstance(row.get("latency_ms"), (int, float))
     ]
@@ -1290,6 +1303,7 @@ def aggregate(rows: List[Dict[str, Any]], mode: str = MODE_RETRIEVAL) -> Dict[st
         "items_evaluated": len(scored),
         "items_skipped": skipped,
         "items_unscorable": unscorable,
+        "items_guardrail_blocked": blocked,
         "items_failed": failed,
         "mean_latency_ms": _mean(latencies),
         # Where the failures were, not just how many. Reported for every run
@@ -1308,6 +1322,7 @@ def _answer_quality(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
     counting it as "not hallucinating" would flatter every run in which the
     judge was flaky.
     """
+    rows = [row for row in rows if row.get("outcome") != "guardrail_blocked"]
     verdicts = [row.get("hallucination_verdict") for row in rows]
     judged = [verdict for verdict in verdicts if verdict is not None]
     hallucinating = sum(1 for verdict in judged if verdict != "none")

@@ -348,7 +348,7 @@ def _count(phases: List[Dict[str, Any]], status: str) -> int:
 def _phase_item_count(phase: Dict[str, Any]) -> int:
     """How many items one finished phase actually got through.
 
-    Every row an eval run writes lands in exactly one of the four counters,
+    Every row an eval run writes lands in exactly one of the outcome counters,
     so their sum is the number of items the phase reached — zero for a phase
     refused before scoring, which is what a stale-label failure looks like.
     """
@@ -359,6 +359,7 @@ def _phase_item_count(phase: Dict[str, Any]) -> int:
             "items_evaluated",
             "items_skipped",
             "items_unscorable",
+            "items_guardrail_blocked",
             "items_failed",
         )
     )

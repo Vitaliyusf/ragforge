@@ -24,7 +24,7 @@ export function useBenchmarkRuns(datasetId) {
 
   useEffect(() => {
     if (!isBenchmarkRunning(benchmark) || document.visibilityState === 'hidden') return undefined
-    const controller = new AbortController()
+    let controller = new AbortController()
     controllerRef.current?.abort()
     controllerRef.current = controller
     const poll = async () => {
@@ -33,8 +33,16 @@ export function useBenchmarkRuns(datasetId) {
     }
     const timer = setInterval(poll, BENCHMARK_POLL_INTERVAL)
     const onVisibility = () => {
-      if (document.visibilityState === 'hidden') controller.abort()
-      else poll()
+      if (document.visibilityState === 'hidden') {
+        controller.abort()
+      } else {
+        // A fresh controller: reusing the one aborted above would leave
+        // every poll after a hide/show cycle hitting fetch with an
+        // already-aborted signal, silently short-circuiting forever.
+        controller = new AbortController()
+        controllerRef.current = controller
+        poll()
+      }
     }
     document.addEventListener('visibilitychange', onVisibility)
     return () => { clearInterval(timer); controller.abort(); document.removeEventListener('visibilitychange', onVisibility) }

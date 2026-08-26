@@ -1019,6 +1019,25 @@ def test_end_to_end_run_reports_answer_quality_and_retrieval():
     assert quality["items_judged"] == 2
 
 
+def test_guardrail_blocked_items_are_separate_from_failures_and_answer_denominators():
+    store, runner, _, dataset_id = build()
+    runner.graph_runner = FakeGraphRunner({
+        "first": {"outcome": "guardrail_blocked", "guardrail_stage": "input", "sources": []},
+        **GRAPH_RESULTS,
+    })
+
+    run = run_end_to_end(runner, dataset_id)
+    stored = fetch(store, run["run_id"])
+    blocked = next(row for row in stored["per_item"] if row["query"] == "first")
+
+    assert blocked["outcome"] == "guardrail_blocked"
+    assert blocked["guardrail_stage"] == "input"
+    assert blocked["error"] is None
+    assert stored["results"]["items_guardrail_blocked"] == 1
+    assert stored["results"]["items_failed"] == 0
+    assert stored["results"]["answer_quality"]["items_unjudged"] == 0
+
+
 def test_end_to_end_turns_are_kept_out_of_the_live_turn_facts():
     """Synthetic turns must not move the averages the run is measuring."""
     store, runner, _, dataset_id = build()
