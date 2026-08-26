@@ -1,16 +1,23 @@
-# RAGForge Frontend Instructions
+# Frontend Instructions
 
 Applies to `frontend/**`.
 
-- The current `package.json` versions are authoritative until an explicit upgrade task.
-- Avoid making large Chat/Eval/Files containers larger when cohesive extraction is possible.
-- Keep server state, local UI state and high-frequency streaming buffers distinct.
-- Avoid React state/context updates per token; batch high-frequency updates.
-- Polling should be visibility-aware, stop on terminal states and propagate a real AbortSignal to `fetch`.
-- Reuse `src/lib/http` instead of duplicating HTTP/retry/error logic.
-- Preserve accessibility and stable domain IDs as React keys.
-- Do not add dependencies for behavior existing primitives/CSS can provide.
-- Run focused Vitest; production-impacting frontend changes also run `npm run build`.
+Follow root `AGENTS.md`.
 
 ## Validation
-Follow root progressive validation. Prefer `python scripts/ai/check.py fast ...` while iterating and `python scripts/ai/check.py service ...` once near task completion. Avoid repeated isolated `uv` environments.
+During implementation:
+- run only the relevant Vitest file(s).
+
+Do not run the entire frontend suite locally by default.
+GitHub CI owns the full frontend suite.
+
+Run `npm run build` only when the task changes:
+- production-impacting API integration;
+- routing/navigation;
+- shared application shell/state;
+- build configuration;
+- a cross-cutting component contract.
+
+Small local rendering/component changes normally require only focused component tests.
+
+Do not rerun already passing frontend checks after backend-only or memory-only edits.

@@ -78,6 +78,24 @@ RUN_RUNNING = "running"
 RUN_COMPLETED = "completed"
 RUN_FAILED = "failed"
 
+# Benchmark orchestration states. Defined here beside the run states for the
+# same reason those are: they are persisted values, and the module that
+# writes them owns their spelling.
+#
+# `partial` and `interrupted` exist because a multi-phase benchmark has two
+# failure shapes an eval run does not. `partial` means some of it is real
+# evidence and some is not — reporting that as `completed` would put an
+# unmeasured phase on a chart, and reporting it as `failed` would throw away
+# the phases that did run. `interrupted` means the orchestration was
+# cancelled, typically by a service shutdown: the phases already closed are
+# still valid, and the ones never reached were never attempted.
+BENCHMARK_QUEUED = "queued"
+BENCHMARK_RUNNING = "running"
+BENCHMARK_COMPLETED = "completed"
+BENCHMARK_PARTIAL = "partial"
+BENCHMARK_FAILED = "failed"
+BENCHMARK_INTERRUPTED = "interrupted"
+
 # Settings rag cannot observe from its own process. Read from the environment
 # where it happens to expose them; named in `unobserved` when it does not.
 _ENV_SNAPSHOT_FIELDS = {
@@ -125,6 +143,7 @@ def build_config_snapshot(
     *,
     mode: str = "retrieval",
     candidate_k: Optional[int] = None,
+    pipeline_mode: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Capture the configuration a run is about to execute under.
 
@@ -144,6 +163,14 @@ def build_config_snapshot(
             ``top_k_documents``: two runs scored over different candidate
             depths are not comparable at the wider k values, and a snapshot
             showing only the production depth would hide that.
+        pipeline_mode: Which conversation pipeline the run drove —
+            ``regular``, ``extended``, or ``None`` when the run never went
+            through one. It is a different axis from ``mode``: ``mode`` says
+            how much of the stack was measured, ``pipeline_mode`` says which
+            variant of the stack it was. Recorded as ``None`` rather than
+            defaulted to ``regular`` for a retrieval-only run, because that
+            run issues one pipeline-independent search and claiming a
+            pipeline for it would invent a comparison axis it never varied.
 
     Returns:
         The observed settings, plus ``unobserved``: the names of the fields
@@ -152,6 +179,7 @@ def build_config_snapshot(
     """
     snapshot: Dict[str, Any] = {
         "mode": mode,
+        "pipeline_mode": pipeline_mode,
         "top_k_documents": config.top_k_documents,
         "candidate_k": candidate_k,
         "reranker_enabled": config.reranker_enabled,
@@ -553,6 +581,8 @@ class EvalStore:
         mode: str = "retrieval",
         dataset_version: Optional[int] = None,
         dataset_sha256: Optional[str] = None,
+        pipeline_mode: Optional[str] = None,
+        benchmark_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Open a run document in ``running`` state and return it.
 
@@ -572,6 +602,16 @@ class EvalStore:
             dataset_sha256: The dataset's fingerprint at run start, snapshot
                 for the same reason. ``dataset_id`` alone cannot prove two
                 runs used the same labels; with these two it can.
+            pipeline_mode: ``regular``, ``extended``, or ``None`` when the
+                run drove no conversation pipeline. Stored beside ``mode``
+                rather than folded into it: a run list has to be able to say
+                "end-to-end, extended" without two enumerations meaning the
+                same thing.
+            benchmark_id: The benchmark orchestration this run is one phase
+                of, or ``None`` for a run started on its own. A phase run is
+                an ordinary eval run in every other respect — it is listed,
+                fetched and scored identically — so the link is a field
+                rather than a separate collection.
         """
         identity = _require_admin()
         document = {
@@ -585,6 +625,8 @@ class EvalStore:
             "status": RUN_RUNNING,
             "match_mode": match_mode,
             "mode": mode,
+            "pipeline_mode": pipeline_mode,
+            "benchmark_id": benchmark_id,
             "config_snapshot": config_snapshot,
             # Filled in by `record_label_validation` before any item is
             # scored. It lives beside `results` rather than inside it so a
@@ -697,6 +739,159 @@ class EvalStore:
             raise EvalNotFound(f"No eval run {run_id!r}")
         return _serialize(_normalize_run(document))
 
+    # ------------------------------------------------------------------
+    # Benchmark orchestrations
+    # ------------------------------------------------------------------
+
+    def create_benchmark_run(
+        self,
+        dataset_id: str,
+        phases: List[Dict[str, Any]],
+        progress: Dict[str, Any],
+        *,
+        dataset_version: Optional[int] = None,
+        dataset_sha256: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Open a benchmark document in ``queued`` state and return it.
+
+        A benchmark is one ordered sequence of eval runs over a single
+        dataset. It owns no scores of its own: each phase records the
+        ``run_id`` of the ordinary eval run that produced them, so a phase
+        result and a hand-started run are the same object read two ways.
+
+        ``queued`` rather than ``running``: the document is written before
+        the background task is scheduled, and a document that claimed to be
+        running before anything was would be lying for as long as the event
+        loop took to get to it.
+
+        Args:
+            dataset_id: The dataset every phase executes.
+            phases: The phase plan from the orchestrator, already carrying
+                each phase's support verdict.
+            progress: The initial progress counters.
+            dataset_version: The dataset's version at plan time.
+            dataset_sha256: The dataset's fingerprint at plan time. Copied
+                for the same reason a run copies it — the dataset may be
+                edited before the last phase finishes, and a benchmark whose
+                phases described different label sets would be uncomparable
+                against itself.
+        """
+        identity = _require_admin()
+        document = {
+            "benchmark_id": str(uuid4()),
+            "dataset_id": dataset_id,
+            "dataset_version": dataset_version,
+            "dataset_sha256": dataset_sha256,
+            "tenant_id": identity.tenant_id,
+            "created_at": _now(),
+            "started_at": None,
+            "finished_at": None,
+            "status": BENCHMARK_QUEUED,
+            "phases": phases,
+            "progress": progress,
+            "error": None,
+        }
+        self._insert(self.config.eval_benchmark_runs_collection, document)
+        return _serialize(document)
+
+    def record_benchmark_progress(
+        self,
+        benchmark_id: str,
+        tenant_id: str,
+        *,
+        status: str,
+        phases: List[Dict[str, Any]],
+        progress: Dict[str, Any],
+        started: bool = False,
+    ) -> None:
+        """Persist the phase table and counters as the benchmark advances.
+
+        The whole ``phases`` array is written rather than one positional
+        field: a single sequential orchestrator owns the document, so there
+        is nothing to interleave with, and a whole-array write behaves
+        identically on Mongo and on the in-memory store instead of relying
+        on dotted-path semantics only one of them has.
+
+        Takes ``tenant_id`` explicitly for the reason
+        :meth:`append_item_result` does — the caller is a background task
+        with no request context left to read an identity from.
+        """
+        changes: Dict[str, Any] = {
+            "status": status,
+            "phases": phases,
+            "progress": progress,
+        }
+        if started:
+            changes["started_at"] = _now()
+        self._update_one(
+            self.config.eval_benchmark_runs_collection,
+            {"tenant_id": tenant_id, "benchmark_id": benchmark_id},
+            changes,
+        )
+
+    def finish_benchmark_run(
+        self,
+        benchmark_id: str,
+        tenant_id: str,
+        *,
+        status: str,
+        phases: List[Dict[str, Any]],
+        progress: Dict[str, Any],
+        error: Optional[str] = None,
+    ) -> None:
+        """Close a benchmark in a terminal state.
+
+        Never leaves it in ``running`` — including when the orchestrating
+        task is cancelled, which closes it as ``interrupted``. A benchmark
+        stuck in ``running`` is indistinguishable from one still working,
+        which is exactly the state that makes a progress view useless.
+        """
+        self._update_one(
+            self.config.eval_benchmark_runs_collection,
+            {"tenant_id": tenant_id, "benchmark_id": benchmark_id},
+            {
+                "status": status,
+                "phases": phases,
+                "progress": progress,
+                "error": error,
+                "finished_at": _now(),
+            },
+        )
+
+    def list_benchmark_runs(
+        self,
+        dataset_id: Optional[str] = None,
+        limit: int = DEFAULT_RUN_LIMIT,
+    ) -> List[Dict[str, Any]]:
+        """List benchmarks newest first, scoped to the caller's tenant."""
+        identity = _require_admin()
+        capped = max(1, min(int(limit or DEFAULT_RUN_LIMIT), MAX_RUN_LIMIT))
+        filters: Dict[str, Any] = {"tenant_id": identity.tenant_id}
+        if dataset_id:
+            filters["dataset_id"] = dataset_id
+        rows = self._query(
+            self.config.eval_benchmark_runs_collection,
+            filters,
+            sort=("created_at", -1),
+            limit=capped,
+        )
+        return [_serialize(row) for row in rows]
+
+    def get_benchmark_run(self, benchmark_id: str) -> Dict[str, Any]:
+        """Return one benchmark with its full phase table.
+
+        Raises:
+            EvalNotFound: If no such benchmark exists in the caller's tenant.
+        """
+        identity = _require_admin()
+        document = self._find_one(
+            self.config.eval_benchmark_runs_collection,
+            {"tenant_id": identity.tenant_id, "benchmark_id": benchmark_id},
+        )
+        if document is None:
+            raise EvalNotFound(f"No benchmark run {benchmark_id!r}")
+        return _serialize(document)
+
     def _last_run_times(self, identity: AuthIdentity) -> Dict[str, Optional[str]]:
         """Map dataset_id to the ISO time of its most recent run.
 
@@ -719,7 +914,7 @@ class EvalStore:
     # ------------------------------------------------------------------
 
     def ensure_indexes(self) -> None:
-        """Create the tenant/time indexes on both collections."""
+        """Create the tenant/time indexes on every eval collection."""
         if self._in_memory:
             return
         self._collection(self.config.eval_datasets_collection).create_index(
@@ -733,6 +928,14 @@ class EvalStore:
         self._collection(self.config.eval_runs_collection).create_index(
             [("dataset_id", 1), ("started_at", -1)],
             name="idx_eval_runs_dataset_started",
+        )
+        self._collection(self.config.eval_benchmark_runs_collection).create_index(
+            [("tenant_id", 1), ("created_at", -1)],
+            name="idx_eval_benchmarks_tenant_created",
+        )
+        self._collection(self.config.eval_benchmark_runs_collection).create_index(
+            [("dataset_id", 1), ("created_at", -1)],
+            name="idx_eval_benchmarks_dataset_created",
         )
 
     def backfill_dataset_fingerprints(self) -> int:
@@ -943,6 +1146,11 @@ def _normalize_run(document: Dict[str, Any]) -> Dict[str, Any]:
     return {
         "dataset_version": None,
         "dataset_sha256": None,
+        # A run recorded before pipeline mode was separated from evaluation
+        # mode drove whatever the graph defaulted to. None says "not
+        # recorded"; "regular" would be a guess dressed as provenance.
+        "pipeline_mode": None,
+        "benchmark_id": None,
         # None, not an empty result: a run recorded before stale-label
         # detection existed was never checked, and saying "no stale labels"
         # on its behalf would be a claim nobody made.

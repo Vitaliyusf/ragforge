@@ -22,7 +22,12 @@ from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field, model_validator
 
 from app.core.auth import require_admin
-from app.core.constants import EvalRunMode, MetricsWindow
+from app.core.constants import (
+    BenchmarkPhase,
+    EvalPipelineMode,
+    EvalRunMode,
+    MetricsWindow,
+)
 from app.core.deps import get_metrics_service
 from app.core.errors import handle_exception
 from app.services.metrics_service import MetricsService
@@ -108,6 +113,25 @@ class EvalRunCreate(BaseModel):
 
     dataset_id: str = Field(min_length=1)
     mode: EvalRunMode = EvalRunMode.RETRIEVAL
+    # Unset by default, and unset is what a retrieval run must send: rag
+    # refuses a pipeline mode on a run whose single search no pipeline routes,
+    # rather than recording a pipeline the run never drove.
+    pipeline_mode: Optional[EvalPipelineMode] = None
+
+
+class BenchmarkRunCreate(BaseModel):
+    """Start a full diagnostic benchmark over one dataset.
+
+    ``phases`` unset means the whole catalogue. Naming phases here does not
+    promise they run — rag records the ones this build cannot execute
+    truthfully as ``unsupported``, with the reason, instead of producing
+    numbers under a label they do not belong to.
+    """
+
+    dataset_id: str = Field(min_length=1)
+    phases: Optional[List[BenchmarkPhase]] = Field(
+        default=None, min_length=1, max_length=len(BenchmarkPhase)
+    )
 
 
 class EvalCostEstimate(BaseModel):
@@ -286,7 +310,56 @@ async def start_eval_run(
     ``GET /eval/runs/{run_id}`` until the status is terminal.
     """
     try:
-        return await service.start_eval_run(body.dataset_id, body.mode.value)
+        return await service.start_eval_run(
+            body.dataset_id,
+            body.mode.value,
+            body.pipeline_mode.value if body.pipeline_mode else None,
+        )
+    except Exception as exc:
+        raise handle_exception(exc)
+
+
+@router.post("/eval/benchmarks", dependencies=[Depends(require_admin)])
+async def start_benchmark_run(
+    body: BenchmarkRunCreate,
+    service: MetricsService = Depends(get_metrics_service),
+) -> Dict[str, Any]:
+    """Start a full diagnostic benchmark, returning its ``benchmark_id``.
+
+    The phases run sequentially on the rag service, cheapest first, each as an
+    ordinary eval run; the client polls ``GET /eval/benchmarks/{id}`` for
+    phase-level progress and terminal status.
+    """
+    try:
+        return await service.start_benchmark_run(
+            body.dataset_id,
+            [phase.value for phase in body.phases] if body.phases else None,
+        )
+    except Exception as exc:
+        raise handle_exception(exc)
+
+
+@router.get("/eval/benchmarks", dependencies=[Depends(require_admin)])
+async def list_benchmark_runs(
+    dataset_id: Optional[str] = Query(None, description="Filter to one dataset"),
+    limit: Optional[int] = Query(None, ge=1, le=100, description="How many benchmarks"),
+    service: MetricsService = Depends(get_metrics_service),
+) -> Dict[str, Any]:
+    """Benchmark history, newest first."""
+    try:
+        return await service.list_benchmark_runs(dataset_id, limit)
+    except Exception as exc:
+        raise handle_exception(exc)
+
+
+@router.get("/eval/benchmarks/{benchmark_id}", dependencies=[Depends(require_admin)])
+async def get_benchmark_run(
+    benchmark_id: str,
+    service: MetricsService = Depends(get_metrics_service),
+) -> Dict[str, Any]:
+    """One benchmark with its phase table and progress counters."""
+    try:
+        return await service.get_benchmark_run(benchmark_id)
     except Exception as exc:
         raise handle_exception(exc)
 
