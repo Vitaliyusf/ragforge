@@ -7,6 +7,7 @@ import Button from '@/components/ui/Button'
 import Card, { CardHeader } from '@/components/ui/Card'
 import { ConfirmModal } from '@/components/ui/Modal'
 import { useBenchmarkRuns } from '../../hooks/useBenchmarkRuns'
+import BenchmarkComparison from './BenchmarkComparison'
 
 const PHASE_LABELS = {
   retrieval_base: 'Retrieval baseline', retrieval_extended: 'Extended retrieval',
@@ -55,6 +56,7 @@ export default function BenchmarkCenter({ datasetId, datasetName, ready }) {
           <p className="font-medium" style={{ color: 'var(--fg)' }}>Summary</p>
           {measured.map((phase) => <p key={phase.name}>{PHASE_LABELS[phase.name] || phase.name}: MRR {formatMetric(phase.results?.mrr)}, mean latency {formatMetric(phase.results?.mean_latency_ms, ' ms')}</p>)}
         </div>}
+        <BenchmarkComparison candidate={benchmark} history={history} />
         {benchmark.error && <p className="mt-3 text-[13px]" style={{ color: 'var(--danger)' }}>{benchmark.error}</p>}
       </>}
       <BenchmarkHistory history={history} selectedId={benchmark?.benchmark_id} busy={busy} onSelect={select} onDownload={download} />
