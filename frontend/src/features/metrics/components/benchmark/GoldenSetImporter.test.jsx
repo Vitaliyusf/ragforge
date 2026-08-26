@@ -119,6 +119,40 @@ describe('GoldenSetImporter', () => {
     expect(await screen.findByText('Validation service unavailable')).toBeInTheDocument()
   })
 
+  it('shows chunk readiness and non-blocking file fallback warnings', async () => {
+    validateGoldenSet.mockResolvedValue({
+      validation: {
+        ...VALIDATION,
+        warnings: [
+          {
+            item_index: 0,
+            code: 'UNRESOLVED_FACT',
+            message: 'Item 0: expected fact was not found; file-level evaluation remains available',
+          },
+        ],
+      },
+      preparation: {
+        ...PREPARATION,
+        chunk_ready: 0,
+        file_fallback: 1,
+        resolved_facts: 0,
+        unresolved_facts: 1,
+        unready_files: 0,
+      },
+    })
+    const user = userEvent.setup()
+    setup()
+
+    const textarea = screen.getByRole('textbox', { name: 'Golden Set content' })
+    textarea.focus()
+    await user.paste('{}')
+    await validate(user)
+
+    expect(await screen.findByText(/0 chunk-ready \/ 1 file fallback/)).toBeInTheDocument()
+    expect(screen.getByText(/file-level evaluation remains available/i)).toBeInTheDocument()
+    expect(screen.getByText('Golden Set is valid')).toBeInTheDocument()
+  })
+
   it('renders valid and invalid totals for a valid result', async () => {
     const user = userEvent.setup()
     setup()

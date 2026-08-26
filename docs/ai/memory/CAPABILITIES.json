@@ -40,15 +40,19 @@
       "canonical_paths": [
         "backend/rag/app/services/eval_runner.py",
         "backend/rag/app/services/eval_store.py",
-        "backend/rag/app/services/retrieval_metrics.py"
+        "backend/rag/app/services/retrieval_metrics.py",
+        "backend/rag/app/services/golden_set_parser.py",
+        "backend/files/app/services/_file_query.py"
       ],
       "search_terms": [
         "Recall@",
         "MRR",
         "nDCG",
-        "EvalRunner"
+        "EvalRunner",
+        "resolve_chunk_labels",
+        "UNRESOLVED_FACT"
       ],
-      "notes": "Benchmark work extends this."
+      "notes": "Benchmark work extends this; deterministic fact-to-chunk preparation is Files-owned and tenant-scoped."
     },
     {
       "id": "CAP-004",

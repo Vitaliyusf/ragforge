@@ -5,7 +5,7 @@ Assumes ``BaseRepository`` is earlier in the MRO.
 """
 from __future__ import annotations
 
-from typing import Any, Dict, Iterable
+from typing import Any, Dict, Iterable, List
 
 from pymongo import ASCENDING, DESCENDING
 
@@ -52,6 +52,32 @@ class ChunksRepositoryMixin:
         except Exception as exc:
             raise DatabaseException(f"Failed to get next chunk version: {exc}") from exc
         return 1 if latest is None else int(latest.get("chunk_version", 0)) + 1
+
+    def get_eval_chunk_records(self, file_ids: List[str]) -> List[Dict[str, Any]]:
+        """Return matchable chunk fields for tenant-wide golden-set preparation."""
+        if not file_ids:
+            return []
+        col = self._require_collection(self.file_chunks_collection, "file_chunks")
+        try:
+            return list(
+                col.find(
+                    self._scope_filter(
+                        {"file_id": {"$in": list(dict.fromkeys(file_ids))}},
+                        owner_scope=False,
+                    ),
+                    {
+                        "_id": 0,
+                        "chunk_id": 1,
+                        "file_id": 1,
+                        "chunk_version": 1,
+                        "text": 1,
+                        "retrieval_allowed": 1,
+                        "review_status": 1,
+                    },
+                )
+            )
+        except Exception as exc:
+            raise DatabaseException(f"Failed to get eval chunks: {exc}") from exc
 
     # ------------------------------------------------------------------
     # Index bootstrap

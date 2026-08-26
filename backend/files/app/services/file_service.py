@@ -124,6 +124,8 @@ class FileService:
                     return self.handlers.handle_list_own(correlation_id, request)
                 elif action == FileAction.RESOLVE_FILE_LABELS:
                     return self.handlers.handle_resolve_file_labels(correlation_id, request)
+                elif action == FileAction.RESOLVE_CHUNK_LABELS:
+                    return self.handlers.handle_resolve_chunk_labels(correlation_id, request)
                 elif action == FileAction.GET_SUGGESTED_QUESTIONS:
                     return self.handlers.handle_get_suggested_questions(correlation_id, request)
                 elif action == FileAction.GET:
@@ -164,6 +166,7 @@ class FileService:
         admin_actions = {
             FileAction.LIST,
             FileAction.RESOLVE_FILE_LABELS,
+            FileAction.RESOLVE_CHUNK_LABELS,
             FileAction.GET,
             FileAction.GET_REVIEW_CASE,
             FileAction.SUBMIT_REVIEW_DECISION,

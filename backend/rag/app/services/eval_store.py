@@ -191,9 +191,9 @@ def normalize_items(
         Normalized items, each with an ``item_id``, ``query``,
         ``relevant_chunk_ids``, ``relevant_file_ids``, unresolved
         ``expected_file_names``, the optional ``expected_answer`` /
-        ``expected_claims`` an ``end_to_end`` run reads, authoring metadata,
-        and ``notes``. List fields are always lists and absent optional scalar
-        fields are always ``None``.
+        ``expected_claims`` an ``end_to_end`` run reads, explicit unresolved
+        expected facts, authoring metadata, and ``notes``. List fields are
+        always lists and absent optional scalar fields are always ``None``.
 
     Raises:
         EvalValidationError: On any violation, naming the offending index.

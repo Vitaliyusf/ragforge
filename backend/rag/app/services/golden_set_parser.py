@@ -28,6 +28,7 @@ class CanonicalGoldenSetItem(TypedDict):
     expected_file_names: List[str]
     expected_answer: Optional[str]
     expected_claims: List[str]
+    unresolved_expected_facts: List[str]
     difficulty: Optional[str]
     answerable: Optional[bool]
     tags: List[str]
@@ -41,6 +42,9 @@ AMBIGUOUS_FILE_MATCH = "AMBIGUOUS_FILE_MATCH"
 RESOLVED_FILE = "RESOLVED"
 READY = "READY"
 UNANSWERABLE = "UNANSWERABLE"
+READY_FILE = "READY"
+RESOLVED_FACT = "RESOLVED"
+UNRESOLVED_FACT = "UNRESOLVED_FACT"
 
 
 def parse_golden_set(
@@ -133,6 +137,119 @@ def prepare_file_labels(
         "counts": counts,
         "errors": errors,
         "blocking": bool(counts["unresolved"] or counts["ambiguous"]),
+    }
+
+
+def prepare_chunk_labels(
+    items: Sequence[Mapping[str, Any]],
+    resolutions: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    """Apply deterministic chunk resolutions and classify corpus readiness.
+
+    Automatically resolved chunk IDs are used only when every expected fact
+    for an item matched. A partial match falls back to the already-resolved
+    file labels so it cannot masquerade as complete chunk-level ground truth.
+    """
+    by_item = {
+        str(entry.get("item_id")): entry
+        for entry in resolutions
+        if isinstance(entry, dict) and entry.get("item_id")
+    }
+    counts = {
+        "chunk_ready": 0,
+        "file_fallback": 0,
+        "resolved_facts": 0,
+        "unresolved_facts": 0,
+        "unready_files": 0,
+        "unready_items": 0,
+    }
+    errors: List[Dict[str, Any]] = []
+    warnings: List[Dict[str, Any]] = []
+    prepared: List[Dict[str, Any]] = []
+
+    for index, source in enumerate(items):
+        item: Dict[str, Any] = dict(source)
+        item["unresolved_expected_facts"] = []
+        if item.get("answerable") is False:
+            prepared.append(item)
+            continue
+
+        facts = list(item.get("expected_claims") or [])
+        file_ids = list(item.get("relevant_file_ids") or [])
+        resolution = by_item.get(str(item.get("item_id") or ""), {})
+        file_states = {
+            str(entry.get("file_id")): str(entry.get("status") or "FILE_MISSING")
+            for entry in resolution.get("files") or []
+            if isinstance(entry, dict) and entry.get("file_id")
+        }
+        unready = [file_id for file_id in file_ids if file_states.get(file_id) != READY_FILE]
+        if unready:
+            counts["unready_files"] += len(unready)
+            counts["unready_items"] += 1
+            for file_id in unready:
+                code = file_states.get(file_id, "FILE_MISSING")
+                errors.append(
+                    {
+                        "item_index": index,
+                        "code": code,
+                        "message": f"Item {index}: file {file_id} is not ready ({code})",
+                    }
+                )
+
+        fact_entries = {
+            str(entry.get("fact")): entry
+            for entry in resolution.get("facts") or []
+            if isinstance(entry, dict) and entry.get("fact")
+        }
+        unresolved = [
+            fact
+            for fact in facts
+            if fact_entries.get(fact, {}).get("status") != RESOLVED_FACT
+            or not fact_entries.get(fact, {}).get("chunk_ids")
+        ]
+        counts["resolved_facts"] += len(facts) - len(unresolved)
+        counts["unresolved_facts"] += len(unresolved)
+        item["unresolved_expected_facts"] = unresolved
+
+        if facts and not unresolved and not unready:
+            resolved_ids = list(resolution.get("chunk_ids") or [])
+            item["relevant_chunk_ids"] = list(
+                dict.fromkeys([*(item.get("relevant_chunk_ids") or []), *resolved_ids])
+            )
+            counts["chunk_ready"] += 1
+        elif facts and file_ids and not unready:
+            counts["file_fallback"] += 1
+            for fact in unresolved:
+                warnings.append(
+                    {
+                        "item_index": index,
+                        "code": UNRESOLVED_FACT,
+                        "message": (
+                            f"Item {index}: expected fact was not found in a searchable chunk; "
+                            "file-level evaluation remains available"
+                        ),
+                        "fact": fact,
+                    }
+                )
+        elif facts and not file_ids:
+            counts["file_fallback"] += 1
+            for fact in unresolved:
+                warnings.append(
+                    {
+                        "item_index": index,
+                        "code": UNRESOLVED_FACT,
+                        "message": f"Item {index}: expected fact has no resolved file scope",
+                        "fact": fact,
+                    }
+                )
+        prepared.append(item)
+
+    return {
+        "items": prepared,
+        "counts": counts,
+        "errors": errors,
+        "warnings": warnings,
+        "blocking": bool(errors),
     }
 
 
@@ -296,6 +413,9 @@ def normalize_golden_set_items(
         file_ids = _string_list(raw.get("relevant_file_ids"), index, "relevant_file_ids")
         file_names = _string_list(raw.get("expected_file_names"), index, "expected_file_names")
         claims = _expected_claims(raw, index)
+        unresolved_facts = _string_list(
+            raw.get("unresolved_expected_facts"), index, "unresolved_expected_facts"
+        )
         tags = _string_list(raw.get("tags"), index, "tags")
         expected_answer = _optional_string(raw.get("expected_answer"), index, "expected_answer")
         difficulty = _optional_string(raw.get("difficulty"), index, "difficulty")
@@ -320,6 +440,7 @@ def normalize_golden_set_items(
                 "expected_file_names": file_names,
                 "expected_answer": expected_answer,
                 "expected_claims": claims,
+                "unresolved_expected_facts": unresolved_facts,
                 "difficulty": difficulty,
                 "answerable": answerable,
                 "tags": tags,

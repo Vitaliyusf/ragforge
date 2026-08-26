@@ -210,6 +210,22 @@ class ConversationBackendClient:
             timeout=self.config.internal_request_timeout,
         )
 
+    async def resolve_chunk_labels(
+        self,
+        request: ConversationRequest,
+        items: list[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        """Resolve exact expected facts through tenant-scoped Files storage."""
+        return await self._send_request(
+            routing_key=self.config.files_routing_key,
+            target_service="files",
+            action="resolve_chunk_labels",
+            payload={"items": items},
+            request=request,
+            message_type="query",
+            timeout=self.config.internal_request_timeout,
+        )
+
     async def get_relevant_memories(
         self,
         request: ConversationRequest,

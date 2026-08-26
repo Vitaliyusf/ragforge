@@ -42,10 +42,30 @@ export default function GoldenSetValidationResult({ result, error }) {
           {preparation.ambiguous || 0} ambiguous · {preparation.unanswerable || 0} unanswerable
         </p>
       )}
+      {preparation &&
+        (preparation.chunk_ready ||
+          preparation.file_fallback ||
+          preparation.resolved_facts ||
+          preparation.unresolved_facts ||
+          preparation.unready_files) > 0 && (
+          <p className="mt-1 tabular-nums">
+            {preparation.chunk_ready || 0} chunk-ready / {preparation.file_fallback || 0} file
+            fallback / {preparation.resolved_facts || 0} facts resolved /{' '}
+            {preparation.unresolved_facts || 0} facts unresolved /{' '}
+            {preparation.unready_files || 0} files unready
+          </p>
+        )}
       {result.errors?.length > 0 && (
         <ul className="mt-2 list-disc space-y-1 pl-5">
           {result.errors.map((entry, index) => (
             <li key={`${entry.item_index ?? 'document'}-${index}`}>{entry.message}</li>
+          ))}
+        </ul>
+      )}
+      {result.warnings?.length > 0 && (
+        <ul className="mt-2 list-disc space-y-1 pl-5" style={{ color: 'var(--warning)' }}>
+          {result.warnings.map((entry, index) => (
+            <li key={`warning-${entry.item_index ?? 'document'}-${index}`}>{entry.message}</li>
           ))}
         </ul>
       )}

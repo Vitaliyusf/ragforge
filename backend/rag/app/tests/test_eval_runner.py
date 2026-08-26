@@ -93,6 +93,7 @@ class FakeBackend:
         barred: Optional[set] = None,
         verify_error: Optional[str] = None,
         resolutions: Optional[List[Dict[str, Any]]] = None,
+        chunk_resolutions: Optional[List[Dict[str, Any]]] = None,
     ) -> None:
         self.responses = responses if responses is not None else RESPONSES
         self.fail_queries = fail_queries or set()
@@ -106,9 +107,28 @@ class FakeBackend:
         self.verify_error = verify_error
         self.verify_calls: List[Dict[str, Any]] = []
         self.resolutions = resolutions or []
+        self.chunk_resolutions = chunk_resolutions
 
     async def resolve_file_labels(self, request, labels):
         return {"resolutions": self.resolutions}
+
+    async def resolve_chunk_labels(self, request, items):
+        if self.chunk_resolutions is not None:
+            return {"resolutions": self.chunk_resolutions}
+        return {
+            "resolutions": [
+                {
+                    "item_id": item["item_id"],
+                    "files": [
+                        {"file_id": file_id, "status": "READY", "searchable": True}
+                        for file_id in item["file_ids"]
+                    ],
+                    "facts": [],
+                    "chunk_ids": [],
+                }
+                for item in items
+            ]
+        }
 
     async def verify_label_ids(self, request, chunk_ids=None, file_ids=None):
         self.verify_calls.append(
@@ -444,7 +464,14 @@ def test_import_preparation_resolves_filenames_before_storage():
         "unresolved": 0,
         "ambiguous": 0,
         "unanswerable": 0,
+        "chunk_ready": 0,
+        "file_fallback": 0,
+        "resolved_facts": 0,
+        "unresolved_facts": 0,
+        "unready_files": 0,
+        "unready_items": 0,
         "blocking": False,
+        "warnings": [],
     }
     assert dataset["items"][0]["relevant_file_ids"] == ["file-1"]
 
@@ -481,6 +508,141 @@ def test_import_preparation_blocks_missing_and_ambiguous_filenames_with_codes():
         "UNRESOLVED_FILE",
         "AMBIGUOUS_FILE_MATCH",
     ]
+
+
+def test_import_preparation_resolves_exact_facts_to_all_matching_chunks():
+    config = build_config()
+    store = EvalStore(config)  # type: ignore[arg-type]
+    backend = FakeBackend(
+        resolutions=[{"label": "Guide.pdf", "status": "RESOLVED", "file_id": "file-1"}],
+        chunk_resolutions=[
+            {
+                "item_id": "q1",
+                "files": [{"file_id": "file-1", "status": "READY", "searchable": True}],
+                "facts": [
+                    {
+                        "fact": "Refunds are available for 30 days.",
+                        "status": "RESOLVED",
+                        "chunk_ids": ["c1", "c2"],
+                    }
+                ],
+                "chunk_ids": ["c1", "c2"],
+            }
+        ],
+    )
+    runner = EvalRunner(config, store, backend)  # type: ignore[arg-type]
+    content = json.dumps(
+        [
+            {
+                "item_id": "q1",
+                "query": "Refund window?",
+                "expected_file_names": ["Guide.pdf"],
+                "expected_facts": ["Refunds are available for 30 days."],
+            }
+        ]
+    )
+
+    async def _go():
+        return await runner.handle(
+            "create_eval_dataset",
+            {"name": "Prepared", "content": content, "format": "json"},
+        )
+
+    with bound_context(**ADMIN.to_dict()):
+        imported = asyncio.run(_go())
+        dataset = store.get_dataset(imported["dataset"]["dataset_id"])
+
+    item = dataset["items"][0]
+    assert item["relevant_file_ids"] == ["file-1"]
+    assert item["relevant_chunk_ids"] == ["c1", "c2"]
+    assert item["unresolved_expected_facts"] == []
+    assert imported["preparation"]["chunk_ready"] == 1
+    assert imported["preparation"]["resolved_facts"] == 1
+
+
+def test_unresolved_fact_is_explicit_and_keeps_file_level_eval_usable():
+    config = build_config()
+    store = EvalStore(config)  # type: ignore[arg-type]
+    fact = "Refunds are available for 30 days."
+    backend = FakeBackend(
+        resolutions=[{"label": "Guide.pdf", "status": "RESOLVED", "file_id": "file-1"}],
+        chunk_resolutions=[
+            {
+                "item_id": "q1",
+                "files": [{"file_id": "file-1", "status": "READY", "searchable": True}],
+                "facts": [{"fact": fact, "status": "UNRESOLVED_FACT", "chunk_ids": []}],
+                "chunk_ids": [],
+            }
+        ],
+    )
+    runner = EvalRunner(config, store, backend)  # type: ignore[arg-type]
+    content = json.dumps(
+        [
+            {
+                "item_id": "q1",
+                "query": "Refund window?",
+                "expected_file_names": ["Guide.pdf"],
+                "expected_facts": [fact],
+            }
+        ]
+    )
+
+    async def _go():
+        return await runner.handle(
+            "create_eval_dataset",
+            {"name": "Fallback", "content": content, "format": "json"},
+        )
+
+    with bound_context(**ADMIN.to_dict()):
+        imported = asyncio.run(_go())
+        dataset = store.get_dataset(imported["dataset"]["dataset_id"])
+
+    item = dataset["items"][0]
+    assert item["relevant_chunk_ids"] == []
+    assert item["relevant_file_ids"] == ["file-1"]
+    assert item["unresolved_expected_facts"] == [fact]
+    assert imported["preparation"]["blocking"] is False
+    assert imported["preparation"]["file_fallback"] == 1
+    assert imported["preparation"]["warnings"][0]["code"] == "UNRESOLVED_FACT"
+
+
+def test_unsearchable_file_blocks_import_readiness():
+    config = build_config()
+    store = EvalStore(config)  # type: ignore[arg-type]
+    backend = FakeBackend(
+        resolutions=[{"label": "Guide.pdf", "status": "RESOLVED", "file_id": "file-1"}],
+        chunk_resolutions=[
+            {
+                "item_id": "q1",
+                "files": [
+                    {
+                        "file_id": "file-1",
+                        "status": "FILE_NOT_SEARCHABLE",
+                        "searchable": False,
+                    }
+                ],
+                "facts": [],
+                "chunk_ids": [],
+            }
+        ],
+    )
+    runner = EvalRunner(config, store, backend)  # type: ignore[arg-type]
+    content = json.dumps(
+        [{"item_id": "q1", "query": "Where?", "expected_file_names": ["Guide.pdf"]}]
+    )
+
+    async def _go():
+        return await runner.handle(
+            "validate_eval_dataset", {"content": content, "format": "json"}
+        )
+
+    with bound_context(**ADMIN.to_dict()):
+        result = asyncio.run(_go())
+
+    assert result["validation"]["valid"] is False
+    assert result["preparation"]["blocking"] is True
+    assert result["preparation"]["unready_files"] == 1
+    assert result["validation"]["errors"][0]["code"] == "FILE_NOT_SEARCHABLE"
 
 
 # ── Concurrency ───────────────────────────────────────────────────────────
