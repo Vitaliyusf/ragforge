@@ -123,6 +123,7 @@ MAX_ROW_IDS = max(K_VALUES)
 # and the two must stay in step — the same arrangement as METRICS_ACTION.
 LIST_EVAL_DATASETS = "list_eval_datasets"
 CREATE_EVAL_DATASET = "create_eval_dataset"
+VALIDATE_EVAL_DATASET = "validate_eval_dataset"
 UPDATE_EVAL_DATASET = "update_eval_dataset"
 DELETE_EVAL_DATASET = "delete_eval_dataset"
 START_EVAL_RUN = "start_eval_run"
@@ -133,6 +134,7 @@ EVAL_ACTIONS = frozenset(
     {
         LIST_EVAL_DATASETS,
         CREATE_EVAL_DATASET,
+        VALIDATE_EVAL_DATASET,
         UPDATE_EVAL_DATASET,
         DELETE_EVAL_DATASET,
         START_EVAL_RUN,
@@ -514,6 +516,13 @@ class EvalRunner:
                         payload.get("name") or "",
                         payload.get("description"),
                         payload.get("items"),
+                    )
+                }
+            if action == VALIDATE_EVAL_DATASET:
+                return {
+                    "validation": self.store.validate_import(
+                        payload.get("content"),
+                        str(payload.get("format") or ""),
                     )
                 }
             if action == UPDATE_EVAL_DATASET:

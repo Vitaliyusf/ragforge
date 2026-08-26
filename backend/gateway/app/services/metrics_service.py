@@ -285,6 +285,31 @@ class MetricsService(BaseRPCService):
             {"name": name, "description": description, "items": items},
         )
 
+    async def validate_eval_dataset(self, content: str, source_format: str) -> Dict[str, Any]:
+        """Validate raw JSON/JSONL without creating a dataset."""
+        return await self._eval(
+            RagAction.VALIDATE_EVAL_DATASET,
+            {"content": content, "format": source_format},
+        )
+
+    async def import_eval_dataset(
+        self,
+        name: str,
+        description: Optional[str],
+        content: str,
+        source_format: str,
+    ) -> Dict[str, Any]:
+        """Parse and store a raw JSON/JSONL Golden Set."""
+        return await self._eval(
+            RagAction.CREATE_EVAL_DATASET,
+            {
+                "name": name,
+                "description": description,
+                "content": content,
+                "format": source_format,
+            },
+        )
+
     async def update_eval_dataset(
         self,
         dataset_id: str,

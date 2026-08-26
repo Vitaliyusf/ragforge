@@ -6,12 +6,12 @@ import Badge from '@/components/ui/Badge'
 import Button from '@/components/ui/Button'
 import Card, { CardHeader } from '@/components/ui/Card'
 import EmptyState from '@/components/ui/EmptyState'
-import Input, { Textarea } from '@/components/ui/Input'
-import Modal, { ConfirmModal } from '@/components/ui/Modal'
+import { ConfirmModal } from '@/components/ui/Modal'
 import Select, { SelectItem } from '@/components/ui/Select'
 import StatCard from '@/components/ui/StatCard'
 import TabSkeleton from '@/components/ui/TabSkeleton'
 import { useEvalRuns } from '../hooks/useEvalRuns'
+import GoldenSetImporter from './benchmark/GoldenSetImporter'
 import TimeSeries from './charts/TimeSeries'
 import {
   CONFIG_DIFF_NOTE,
@@ -126,7 +126,7 @@ export default function EvalPanel() {
     busy,
     startRun,
     estimateRunCost,
-    createDataset,
+    importDataset,
     deleteDataset,
     refresh,
   } = useEvalRuns()
@@ -199,10 +199,10 @@ export default function EvalPanel() {
             </div>
           }
         />
-        <ImportModal
+        <GoldenSetImporter
           open={importOpen}
           onOpenChange={setImportOpen}
-          onSubmit={createDataset}
+          onSubmit={importDataset}
           busy={busy}
           error={error}
         />
@@ -463,10 +463,10 @@ export default function EvalPanel() {
         onConfirm={confirmRun}
       />
 
-      <ImportModal
+      <GoldenSetImporter
         open={importOpen}
         onOpenChange={setImportOpen}
-        onSubmit={createDataset}
+        onSubmit={importDataset}
         busy={busy}
         error={error}
       />
@@ -797,78 +797,5 @@ function ItemTable({ rows }) {
         </p>
       )}
     </Card>
-  )
-}
-
-/**
- * JSON import.
- *
- * Deliberately minimal — a full labelling interface is out of scope. Parse
- * errors are reported here; everything else is the server's judgment, shown
- * verbatim because its message names the offending item.
- */
-function ImportModal({ open, onOpenChange, onSubmit, busy, error }) {
-  const [name, setName] = useState('')
-  const [description, setDescription] = useState('')
-  const [json, setJson] = useState('')
-  const [parseError, setParseError] = useState(null)
-
-  const handleSubmit = async () => {
-    let items
-    try {
-      items = JSON.parse(json)
-    } catch (err) {
-      setParseError(`That is not valid JSON: ${err.message}`)
-      return
-    }
-    if (!Array.isArray(items)) {
-      setParseError('Expected a JSON array of items.')
-      return
-    }
-    setParseError(null)
-    const created = await onSubmit({ name, description: description || null, items })
-    if (created) {
-      setName('')
-      setDescription('')
-      setJson('')
-      onOpenChange(false)
-    }
-  }
-
-  return (
-    <Modal open={open} onOpenChange={onOpenChange} title="Import a golden set" size="lg">
-      <div className="flex flex-col gap-3">
-        <Input label="Name" value={name} onChange={(event) => setName(event.target.value)} />
-        <Input
-          label="Description"
-          value={description}
-          onChange={(event) => setDescription(event.target.value)}
-        />
-        <Textarea
-          label="Items (JSON)"
-          rows={10}
-          value={json}
-          onChange={(event) => setJson(event.target.value)}
-          placeholder='[{"query": "What is the refund window?", "relevant_chunk_ids": ["chunk-1"]}]'
-        />
-        <p className="text-[12px]" style={{ color: 'var(--fg-soft)' }}>
-          Every item needs a query and at least one relevant chunk or file id. Items without
-          ground truth are rejected rather than imported and skipped.
-        </p>
-        {(parseError || error) && (
-          <p className="text-[13px]" style={{ color: 'var(--danger)' }}>
-            {parseError || error}
-          </p>
-        )}
-        <div className="flex justify-end gap-2">
-          <Button variant="secondary" onClick={() => onOpenChange(false)} disabled={busy}>
-            Cancel
-          </Button>
-          <Button onClick={handleSubmit} disabled={busy || !name.trim() || !json.trim()}>
-            Import
-          </Button>
-        </div>
-      </div>
-    </Modal>
   )
 }
