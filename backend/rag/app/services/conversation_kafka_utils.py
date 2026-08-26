@@ -25,6 +25,7 @@ def build_message_envelope(
     correlation_id: Optional[str] = None,
     reply_to: Optional[str] = None,
     stream_to: Optional[str] = None,
+    traffic_class: str = "live",
 ) -> Dict[str, Any]:
     """Build the shared cross-service message envelope."""
     envelope: Dict[str, Any] = {
@@ -37,6 +38,7 @@ def build_message_envelope(
         "trace_id": trace_id,
         "correlation_id": correlation_id or str(uuid4()),
         "timestamp": int(time.time() * 1000),
+        "traffic_class": "eval" if traffic_class == "eval" else "live",
         "payload": make_json_safe(payload),
     }
     if reply_to:

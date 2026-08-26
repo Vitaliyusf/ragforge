@@ -31,6 +31,8 @@ _FIELDS: Dict[str, ContextVar[Optional[str]]] = {
     "admin_id": ContextVar("admin_id", default=None),
     "session_id": ContextVar("session_id", default=None),
     "connection_id": ContextVar("connection_id", default=None),
+    # Synthetic evaluation traffic is set only by the server-side eval runner.
+    "traffic_class": ContextVar("traffic_class", default=None),
 }
 
 

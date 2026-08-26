@@ -886,7 +886,9 @@ class EvalRunner:
         # concurrency, and it shares the live LLM the application is serving.
         semaphore = asyncio.Semaphore(max(1, self.config.eval_run_concurrency))
         try:
-            with bound_context(**identity.to_dict()):
+            # This is a server-controlled classification. It is deliberately
+            # absent from the public eval request contract.
+            with bound_context(**identity.to_dict(), traffic_class="eval"):
                 # Before anything is retrieved: a run that scores against
                 # labels the index cannot return is not measuring retrieval.
                 report = await self._validate_labels(identity, items, match_mode)

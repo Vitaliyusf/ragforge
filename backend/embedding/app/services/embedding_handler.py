@@ -14,7 +14,7 @@ from app.messaging.interfaces import IProducer
 from app.services.base import BaseKafkaHandlerService
 from app.utils.chunking import TextChunker
 from shared.auth import attach_internal_auth_context
-from shared.metrics import METRICS
+from shared.metrics import METRICS, traffic_class
 
 
 class EmbeddingHandler(BaseKafkaHandlerService):
@@ -137,10 +137,11 @@ class EmbeddingHandler(BaseKafkaHandlerService):
             METRICS.embedding_requests_total.labels(
                 service="embedding",
                 model=self.config.model_name,
+                traffic_class=traffic_class(),
             ).inc()
             encode_started = time.monotonic()
             embeddings = self.embedding_model.encode_batch(chunks_to_encode, batch_size=self.batch_size)
-            METRICS.embedding_duration.labels(service="embedding").observe(
+            METRICS.embedding_duration.labels(service="embedding", traffic_class=traffic_class()).observe(
                 time.monotonic() - encode_started
             )
             first_embedding = embeddings[0] if embeddings else []

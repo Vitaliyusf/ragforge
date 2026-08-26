@@ -17,7 +17,17 @@ Usage:
 import logging
 from typing import Any, Optional
 
+from .context import get_context
+
 logger = logging.getLogger("metrics")
+
+TRAFFIC_CLASS_LIVE = "live"
+TRAFFIC_CLASS_EVAL = "eval"
+
+
+def traffic_class() -> str:
+    """Return the bounded traffic class for the current trusted execution."""
+    return TRAFFIC_CLASS_EVAL if get_context().get("traffic_class") == TRAFFIC_CLASS_EVAL else TRAFFIC_CLASS_LIVE
 
 try:
     from prometheus_client import Counter, Histogram, Gauge, Info
@@ -54,7 +64,7 @@ class ServiceMetrics:
         self.rpc_roundtrip_seconds = Histogram(
             "ragapp_rpc_roundtrip_seconds",
             "RabbitMQ RPC round-trip latency by downstream service",
-            ["service", "downstream"],
+            ["service", "downstream", "traffic_class"],
             buckets=[0.01, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0, 60.0],
         )
 
@@ -226,39 +236,39 @@ class ServiceMetrics:
         self.llm_requests_total = Counter(
             "ragapp_llm_requests_total",
             "Total LLM generation requests",
-            ["service", "model", "action"],
+            ["service", "model", "action", "traffic_class"],
         )
 
         self.llm_request_duration = Histogram(
             "ragapp_llm_request_duration_seconds",
             "LLM generation latency",
-            ["service", "model"],
+            ["service", "model", "traffic_class"],
             buckets=[0.5, 1.0, 2.0, 5.0, 10.0, 20.0, 30.0, 60.0, 120.0],
         )
 
         self.llm_tokens_total = Counter(
             "ragapp_llm_tokens_total",
             "LLM tokens by direction",
-            ["service", "model", "direction"],  # input | output
+            ["service", "model", "direction", "traffic_class"],  # input | output
         )
 
         self.llm_errors_total = Counter(
             "ragapp_llm_errors_total",
             "LLM generation errors",
-            ["service", "model", "error_type"],
+            ["service", "model", "error_type", "traffic_class"],
         )
 
         # ── Embedding metrics ────────────────────────────────────────
         self.embedding_requests_total = Counter(
             "ragapp_embedding_requests_total",
             "Total embedding requests",
-            ["service", "model"],
+            ["service", "model", "traffic_class"],
         )
 
         self.embedding_duration = Histogram(
             "ragapp_embedding_duration_seconds",
             "Embedding generation latency",
-            ["service"],
+            ["service", "traffic_class"],
             buckets=[0.01, 0.05, 0.1, 0.25, 0.5, 1.0, 2.0, 5.0],
         )
 
@@ -322,13 +332,13 @@ class ServiceMetrics:
         self.vector_search_total = Counter(
             "ragapp_vector_searches_total",
             "Total vector search operations",
-            ["service", "collection"],
+            ["service", "collection", "traffic_class"],
         )
 
         self.vector_search_duration = Histogram(
             "ragapp_vector_search_duration_seconds",
             "Vector search latency",
-            ["service", "collection"],
+            ["service", "collection", "traffic_class"],
             buckets=[0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0],
         )
 

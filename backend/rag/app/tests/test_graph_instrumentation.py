@@ -180,12 +180,12 @@ def test_reranker_top1_change_is_recorded_in_the_extended_flow():
 def test_rpc_roundtrips_are_not_recorded_by_the_faked_backend_client():
     # The fake backend client replaces _send_request wholesale, so this test only
     # documents that the graph itself records no RPC latency of its own.
-    before = histogram_count(METRICS.rpc_roundtrip_seconds, service="rag", downstream="vector_db")
+    before = histogram_count(METRICS.rpc_roundtrip_seconds, service="rag", downstream="vector_db", traffic_class="live")
 
     run_turn("What is RAG?", "regular")
 
     assert (
-        histogram_count(METRICS.rpc_roundtrip_seconds, service="rag", downstream="vector_db")
+        histogram_count(METRICS.rpc_roundtrip_seconds, service="rag", downstream="vector_db", traffic_class="live")
         == before
     )
 

@@ -103,6 +103,7 @@ class BaseRabbitMQConsumer:
                     ctx["request_id"] = body["request_id"]
                 if body.get("trace_id"):
                     ctx["trace_id"] = body["trace_id"]
+                ctx["traffic_class"] = "eval" if body.get("traffic_class") == "eval" else "live"
             if correlation_id:
                 ctx["correlation_id"] = correlation_id
 

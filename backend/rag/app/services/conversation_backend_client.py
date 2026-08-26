@@ -16,7 +16,7 @@ from app.services.conversation_messages import (
     extract_stream_event,
 )
 from app.services.conversation_types import ConversationRequest
-from shared.metrics import METRICS
+from shared.metrics import METRICS, traffic_class
 
 
 class ConversationBackendClient:
@@ -173,6 +173,7 @@ class ConversationBackendClient:
             trace_id=request.trace_id,
             correlation_id=request.correlation_id,
             payload=payload,
+            traffic_class=traffic_class(),
         )
         started = time.monotonic()
         try:
@@ -187,6 +188,7 @@ class ConversationBackendClient:
             METRICS.rpc_roundtrip_seconds.labels(
                 service="rag",
                 downstream=target_service,
+                traffic_class=traffic_class(),
             ).observe(time.monotonic() - started)
         return extract_reply_payload(reply)
 
@@ -418,6 +420,7 @@ class ConversationBackendClient:
             trace_id=request.trace_id,
             correlation_id=request.correlation_id,
             payload=payload,
+            traffic_class=traffic_class(),
         )
         chunks: list[str] = []
         token_index = 0

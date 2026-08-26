@@ -19,6 +19,7 @@ from app.core.auth import get_current_user
 from app.core.deps import get_metrics_service
 from app.rest.v1 import metrics as metrics_routes
 from app.services.metrics_service import MetricsService
+from app.services import promql
 from app.services.prometheus_client import PrometheusUnavailable
 from shared.auth import AuthIdentity
 
@@ -193,6 +194,19 @@ def test_prometheus_data_is_labelled_platform_wide():
         body = client.get("/v1/metrics/overview").json()
 
     assert body["prometheus_scope"] == "all_tenants"
+
+
+def test_operational_promql_excludes_eval_traffic():
+    """The admin dashboard must show live operational load by default."""
+    for name in (
+        "rpc_roundtrip_p95",
+        "vector_search_p95",
+        "vector_search_rate",
+        "embedding_p95",
+        "llm_p95",
+        "llm_token_rate",
+    ):
+        assert 'traffic_class="live"' in promql.render(name, "1h")
 
 
 def test_tenant_id_is_echoed_from_the_downstream_service():
