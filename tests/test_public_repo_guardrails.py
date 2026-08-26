@@ -153,16 +153,32 @@ SECRET_PATTERNS = [
 ]
 
 
+def _tracked_files() -> list[Path]:
+    """Every path git actually tracks — the set a public clone would receive.
+
+    NUL separators (-z) keep paths with spaces or non-ASCII names intact.
+    """
+    result = subprocess.run(
+        ["git", "ls-files", "-z"],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        check=True,
+    )
+    return [
+        REPO_ROOT / name
+        for name in result.stdout.decode("utf-8").split("\0")
+        if name
+    ]
+
+
 def test_no_secrets_in_tracked_files():
     """Scan all non-binary tracked files for real secret patterns."""
     text_extensions = {
         ".py", ".js", ".jsx", ".ts", ".tsx", ".json", ".yml", ".yaml",
         ".md", ".txt", ".sh", ".env", ".cfg", ".ini", ".toml",
     }
-    for path in REPO_ROOT.rglob("*"):
+    for path in _tracked_files():
         if not path.is_file():
-            continue
-        if ".git" in path.parts:
             continue
         if path.suffix not in text_extensions:
             continue
