@@ -57,6 +57,7 @@ from __future__ import annotations
 
 import asyncio
 import time
+from uuid import uuid4
 from dataclasses import dataclass, field
 from typing import (
     Any,
@@ -533,6 +534,7 @@ class EvalRunner:
         # reason rather than silently downgraded to a retrieval run whose
         # answer-quality columns would all be blank.
         self.graph_runner = graph_runner
+        self.owner_id = f"eval-{uuid4()}"
         # Strong references to in-flight runs. asyncio only holds a weak
         # reference to a task, so without this set a run can be garbage
         # collected mid-execution and silently never finish.
@@ -757,6 +759,17 @@ class EvalRunner:
         task.add_done_callback(self._tasks.discard)
         return prepared.run
 
+    def recover_stale_runs(self) -> List[Dict[str, Any]]:
+        """Close expired work at startup; partial eval scoring is not replayable."""
+        recovered = self.store.recover_stale_runs(self.owner_id)
+        for run in recovered:
+            self._log(
+                "eval_runner:recovery",
+                "Stale lease claimed; eval run interrupted",
+                {"run_id": run.get("run_id"), "benchmark_id": run.get("benchmark_id")},
+            )
+        return recovered
+
     async def open_run(
         self,
         dataset_id: str,
@@ -856,6 +869,7 @@ class EvalRunner:
             mode=mode,
             pipeline_mode=pipeline_mode,
             benchmark_id=benchmark_id,
+            owner_id=self.owner_id,
             # Snapshot, not a reference: the dataset can be edited between
             # this run and the next time anybody reads it, and a run that
             # re-reported its dataset's *current* labels would quietly
@@ -904,6 +918,7 @@ class EvalRunner:
             read back the document it just caused to be written.
         """
         tenant_id = identity.tenant_id
+        self.store.heartbeat_run(run_id, tenant_id, self.owner_id)
         # The same bound as retrieval mode, deliberately not raised for
         # end_to_end: that mode is heavier per item, not more entitled to
         # concurrency, and it shares the live LLM the application is serving.
@@ -1177,6 +1192,7 @@ class EvalRunner:
     ) -> None:
         """Write a terminal row, then notify its owning orchestration once."""
         self.store.append_item_result(run_id, tenant_id, row)
+        self.store.heartbeat_run(run_id, tenant_id, self.owner_id)
         if on_item_completed is not None:
             await on_item_completed(row)
 

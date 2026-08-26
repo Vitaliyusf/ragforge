@@ -43,6 +43,7 @@ import asyncio
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Set, Tuple
+from uuid import uuid4
 
 from app.core.config import RAGConfig
 from app.services.benchmark_manifest import build_benchmark_manifest
@@ -67,6 +68,7 @@ from app.services.eval_store import (
     BENCHMARK_FAILED,
     BENCHMARK_INTERRUPTED,
     BENCHMARK_PARTIAL,
+    BENCHMARK_QUEUED,
     BENCHMARK_RUNNING,
     RUN_FAILED,
     EvalAccessDenied,
@@ -444,10 +446,76 @@ class BenchmarkRunner:
         self.eval_runner = eval_runner
         self.logger = logger
         self.snapshotter = snapshotter or NullBenchmarkPrometheusSnapshotter()
+        self.owner_id = f"benchmark-{uuid4()}"
         # Strong references to in-flight orchestrations, for the reason
         # `EvalRunner` keeps them: asyncio holds only a weak reference to a
         # task, and a collected orchestration would stop mid-phase.
         self._tasks: Set[asyncio.Task] = set()
+
+    async def reconcile_startup(self) -> None:
+        """Make persisted in-process work truthful after a process restart.
+
+        The current runner has no durable per-item checkpoint from which it
+        can safely replay a phase.  We therefore preserve terminal phase
+        evidence and explicitly interrupt every unresolved phase, never
+        creating another eval run for a stored ``run_id``.
+        """
+        recovered = self.eval_runner.recover_stale_runs()
+        recovered_ids = {str(run.get("run_id")) for run in recovered}
+        stale_benchmarks = {
+            str(benchmark["benchmark_id"]): benchmark
+            for benchmark in self.store.stale_benchmarks()
+        }
+        for benchmark in self.store.active_benchmarks():
+            if str(benchmark["benchmark_id"]) not in stale_benchmarks:
+                self._log(
+                    "benchmark_runner:recovery",
+                    "Fresh lease kept",
+                    {"benchmark_id": benchmark.get("benchmark_id")},
+                )
+        for benchmark in stale_benchmarks.values():
+            phases = [dict(phase) for phase in benchmark.get("phases") or []]
+            changed = False
+            for phase in phases:
+                if phase.get("status") in (PHASE_COMPLETED, PHASE_PARTIAL, PHASE_FAILED,
+                                           PHASE_SKIPPED, PHASE_UNSUPPORTED, PHASE_INTERRUPTED):
+                    self._log(
+                        "benchmark_runner:recovery",
+                        "Completed phase preserved",
+                        {"benchmark_id": benchmark.get("benchmark_id"), "phase": phase.get("name")},
+                    )
+                    continue
+                # A nonterminal phase is never replayed on startup.  Its
+                # existing run_id is durable duplicate-prevention evidence;
+                # no run_id means the former worker did not reach a safe
+                # ownership boundary either.
+                phase["status"] = PHASE_INTERRUPTED
+                phase["finished_at"] = phase.get("finished_at") or _now_iso()
+                phase["reason"] = (
+                    "Recovery could not prove a safe idempotent resume boundary"
+                )
+                changed = True
+            if not changed and str(benchmark.get("status")) != BENCHMARK_QUEUED:
+                self._log(
+                    "benchmark_runner:recovery",
+                    "Duplicate recovery skipped",
+                    {"benchmark_id": benchmark.get("benchmark_id")},
+                )
+                continue
+            tenant_id = str(benchmark["tenant_id"])
+            item_count = int((benchmark.get("progress") or {}).get("items_total") or 0)
+            self.store.finish_benchmark_run(
+                str(benchmark["benchmark_id"]), tenant_id,
+                status=BENCHMARK_INTERRUPTED, phases=phases,
+                progress=build_progress(phases, item_count),
+                error="Benchmark interrupted during process restart; safe resume was not proven",
+            )
+            self._log(
+                "benchmark_runner:recovery",
+                "Benchmark interrupted after reconciliation",
+                {"benchmark_id": benchmark.get("benchmark_id"),
+                 "recovered_eval_runs": sum(1 for phase in phases if str(phase.get("run_id")) in recovered_ids)},
+            )
 
     @property
     def graph_available(self) -> bool:
@@ -560,6 +628,7 @@ class BenchmarkRunner:
                 phases=[str(phase["name"]) for phase in plan],
             ),
             operational_metrics={"before": None, "after": None},
+            owner_id=self.owner_id,
         )
 
         task = asyncio.create_task(
@@ -598,6 +667,7 @@ class BenchmarkRunner:
         real and the ones never reached were never attempted.
         """
         tenant_id = identity.tenant_id
+        self.store.heartbeat_benchmark(benchmark_id, tenant_id, self.owner_id)
         operational_metrics = {"before": await self._capture_snapshot(), "after": None}
         self.store.record_benchmark_operational_metrics(
             benchmark_id, tenant_id, operational_metrics
@@ -613,6 +683,7 @@ class BenchmarkRunner:
                     progress=build_progress(phases, item_count),
                     started=True,
                 )
+                self.store.heartbeat_benchmark(benchmark_id, tenant_id, self.owner_id)
                 for phase in phases:
                     if phase["status"] == PHASE_UNSUPPORTED:
                         continue
@@ -741,6 +812,7 @@ class BenchmarkRunner:
                     phases=phases,
                     progress=build_progress(phases, item_count),
                 )
+                self.store.heartbeat_benchmark(benchmark_id, tenant_id, self.owner_id)
 
         summary = await prepared.execute(on_item_completed=record_item)
         phase["finished_at"] = _now_iso()
