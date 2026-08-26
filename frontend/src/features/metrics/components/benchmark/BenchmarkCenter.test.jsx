@@ -81,4 +81,29 @@ describe('BenchmarkCenter', () => {
     setup()
     expect(screen.getByText(/No benchmark runs yet/)).toBeInTheDocument()
   })
+
+  it('compares a candidate with the newest compatible baseline', () => {
+    const provenance = {
+      dataset: { phases: ['retrieval_base'] },
+      chunking: { size: 500 }, vector_store: { type: 'qdrant' },
+      embedding: { model: 'embed-v1' }, llm: { chat_model: 'model-v1' },
+      retrieval: { top_k_documents: 10 },
+    }
+    const candidate = { benchmark_id: 'candidate', status: 'completed', created_at: '2026-08-26T12:00:00Z', dataset_id: 'dataset-1', dataset_version: 1, dataset_sha256: 'abc', manifest: provenance, phases: [{ name: 'retrieval_base', status: 'completed', results: { mrr: 0.75, mean_latency_ms: 12 } }] }
+    const baseline = { ...candidate, benchmark_id: 'baseline', created_at: '2026-08-25T12:00:00Z', phases: [{ name: 'retrieval_base', status: 'completed', results: { mrr: 0.5, mean_latency_ms: 10 } }] }
+
+    setup(candidate, { history: [candidate, baseline] })
+
+    expect(screen.getByLabelText('Benchmark comparison')).toHaveTextContent('Baseline baseline → Candidate candidate')
+    expect(screen.getByText('+50.00%')).toBeInTheDocument()
+  })
+
+  it('warns instead of comparing incompatible model provenance', () => {
+    const candidate = { benchmark_id: 'candidate', status: 'completed', created_at: '2026-08-26T12:00:00Z', dataset_id: 'dataset-1', dataset_version: 1, dataset_sha256: 'abc', manifest: { dataset: { phases: [] }, chunking: {}, vector_store: {}, embedding: { model: 'v2' }, llm: {}, retrieval: {} }, phases: [] }
+    const baseline = { ...candidate, benchmark_id: 'baseline', created_at: '2026-08-25T12:00:00Z', manifest: { ...candidate.manifest, embedding: { model: 'v1' } } }
+
+    setup(candidate, { history: [candidate, baseline] })
+
+    expect(screen.getByLabelText('Benchmark comparison')).toHaveTextContent(/No compatible baseline.*model compatibility/i)
+  })
 })

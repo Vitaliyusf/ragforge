@@ -34,6 +34,7 @@ def test_export_has_the_evidence_layout_and_strict_json():
     with _archive(store, benchmark["benchmark_id"]) as archive:
         names = set(archive.namelist())
         assert {"README.md", "manifest.json", "dataset.json", "validation.json",
+                "comparison.json",
                 "summary.json", "metrics.json", "runtime.json", "errors.json",
                 "benchmark.json"} <= names
         assert any(name.endswith("/per-item.json") for name in names)

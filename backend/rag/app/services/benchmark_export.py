@@ -14,6 +14,7 @@ import re
 import zipfile
 from typing import Any, Dict, Iterable, Mapping
 
+from app.services.benchmark_comparison import comparison_for_candidate
 from app.services.benchmark_summary import summarize_benchmark
 from app.services.eval_store import EvalNotFound, EvalStore, EvalValidationError
 
@@ -40,6 +41,7 @@ def build_benchmark_export(store: EvalStore, benchmark_id: str) -> Dict[str, str
         "dataset.json": _dataset_evidence(store, benchmark),
         "validation.json": {run["run_id"]: run.get("label_validation") for run in runs},
         "summary.json": summary,
+        "comparison.json": comparison_for_candidate(store, benchmark),
         "metrics.json": benchmark.get("operational_metrics"),
         "runtime.json": _runtime_evidence(benchmark.get("manifest")),
         "errors.json": _errors(benchmark, runs),
@@ -235,4 +237,9 @@ state explicitly when their dataset evidence depends on today's Golden Set or
 when that Golden Set has been deleted. `null` means unmeasured or unavailable,
 never zero. Per-item files contain bounded scoring and retrieval lineage only;
 raw document/context text and answer text are excluded.
+
+`comparison.json` compares this candidate with its newest compatible earlier
+baseline. It remains present with explicit warnings and no metrics when no
+compatible baseline exists. Percentage deltas are null when their baseline is
+zero or either value was unmeasured.
 """
