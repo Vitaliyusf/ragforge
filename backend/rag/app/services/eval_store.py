@@ -26,6 +26,14 @@ would make two runs on *different* embedding models compare as identical, and
 a config diff that reports "no change" wrongly is worse than one that says
 "not captured".
 
+**Why a dataset carries a version and a fingerprint.** A golden set whose
+items can be replaced under a stable ``dataset_id`` makes two runs *look*
+comparable when they scored different labels. Every dataset therefore also
+carries ``dataset_version`` (starting at 1) and ``dataset_sha256``, a
+deterministic hash of its canonical scoring content, and every run snapshots
+both. See :func:`dataset_fingerprint` for exactly what the hash covers and
+:meth:`EvalStore.update_dataset` for when the version moves.
+
 The in-memory backend is a real implementation here, not the stub
 ``MetricsFactStore.aggregate`` uses. The eval harness has to be usable — and
 testable — without a Mongo container, and every query this module issues is a
@@ -34,6 +42,8 @@ to answer twice without writing a miniature MongoDB.
 """
 from __future__ import annotations
 
+import hashlib
+import json
 import os
 import time
 from datetime import datetime, timezone
@@ -248,6 +258,76 @@ def _string_list(value: Any, index: int, field: str) -> List[str]:
     return [str(item) for item in value if str(item).strip()]
 
 
+# The first version every dataset carries, and the version assumed for a
+# dataset written before versioning existed. See `_normalize_dataset`.
+INITIAL_DATASET_VERSION = 1
+
+# Fields of a normalized item that decide what a run scores. `item_id` and
+# `notes` are deliberately absent — see `dataset_fingerprint`.
+_SCORING_FIELDS = (
+    "query",
+    "relevant_chunk_ids",
+    "relevant_file_ids",
+    "expected_answer",
+    "expected_claims",
+)
+
+
+def canonical_items(items: Any) -> List[Dict[str, Any]]:
+    """Reduce dataset items to the content a run's scores depend on.
+
+    Two datasets whose canonical form is equal will score identically, and
+    that is the only property the fingerprint claims. Concretely:
+
+    - Only :data:`_SCORING_FIELDS` survive. ``item_id`` is excluded because
+      it is a uuid minted at upload when the file did not supply one: keeping
+      it would give two uploads of the *same* labels two different hashes,
+      which is precisely the false alarm the fingerprint exists to avoid.
+      ``notes`` is excluded because it is human annotation no scorer reads.
+    - Id and claim lists are de-duplicated and sorted: they are matched as
+      sets, so their order never reaches a score.
+    - Items themselves are sorted by their canonical form, because the run
+      scores every item independently and their order does not either.
+    - Storage artefacts — Mongo ``_id``, timestamps, the dataset's name —
+      never enter, so a hash is stable across a re-import or a rename.
+    """
+    canonical: List[Dict[str, Any]] = []
+    for item in items or []:
+        if not isinstance(item, dict):
+            continue
+        entry: Dict[str, Any] = {}
+        for field in _SCORING_FIELDS:
+            value = item.get(field)
+            if isinstance(value, list):
+                entry[field] = sorted({str(element) for element in value})
+            elif value is None or value == "":
+                entry[field] = None
+            else:
+                entry[field] = str(value)
+        canonical.append(entry)
+    canonical.sort(key=_canonical_json)
+    return canonical
+
+
+def _canonical_json(value: Any) -> str:
+    """Serialize to the one JSON form the hash is taken over."""
+    return json.dumps(value, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+
+
+def dataset_fingerprint(items: Any) -> str:
+    """Hash the canonical scoring content of a dataset's items.
+
+    Deterministic across processes and machines: the digest is taken over
+    UTF-8 canonical JSON with sorted keys, so it depends on nothing but the
+    values :func:`canonical_items` kept.
+
+    Returns:
+        A 64-character lowercase SHA-256 hex digest.
+    """
+    payload = _canonical_json(canonical_items(items)).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
+
+
 class EvalStore:
     """Tenant-scoped persistence for eval datasets and runs."""
 
@@ -292,6 +372,8 @@ class EvalStore:
             "description": str(description).strip() if description else None,
             "created_at": timestamp,
             "updated_at": timestamp,
+            "dataset_version": INITIAL_DATASET_VERSION,
+            "dataset_sha256": dataset_fingerprint(normalized),
             "items": normalized,
         }
         self._insert(self.config.eval_datasets_collection, document)
@@ -317,11 +399,13 @@ class EvalStore:
                 "name": row.get("name"),
                 "description": row.get("description"),
                 "item_count": len(row.get("items") or []),
+                "dataset_version": row.get("dataset_version"),
+                "dataset_sha256": row.get("dataset_sha256"),
                 "created_at": _iso(row.get("created_at")),
                 "updated_at": _iso(row.get("updated_at")),
                 "last_run_at": last_runs.get(row.get("dataset_id")),
             }
-            for row in datasets
+            for row in (_normalize_dataset(row) for row in datasets)
         ]
 
     def get_dataset(self, dataset_id: str) -> Dict[str, Any]:
@@ -337,7 +421,7 @@ class EvalStore:
         )
         if document is None:
             raise EvalNotFound(f"No eval dataset {dataset_id!r}")
-        return _serialize(document)
+        return _serialize(_normalize_dataset(document))
 
     def update_dataset(
         self,
@@ -346,18 +430,43 @@ class EvalStore:
         description: Optional[str] = None,
         items: Any = None,
     ) -> Dict[str, Any]:
-        """Rename a dataset or replace its items.
+        """Rename a dataset or replace its items, versioning the content.
 
         Items are replaced wholesale rather than merged. A partial merge
         would need per-item identity the upload format does not guarantee,
         and silently keeping stale items is exactly the drift that makes a
         golden set untrustworthy.
 
+        **When the version moves.** ``dataset_version`` increments if and
+        only if ``dataset_sha256`` changes — that is, when the canonical
+        scoring content of the items changes. The rule follows from what the
+        pair is for: a run cites them to prove which labels produced its
+        numbers, so the version must move exactly when a re-run could
+        legitimately score differently.
+
+        That decision means:
+
+        - A **name or description edit does not increment.** It cannot change
+          a single score, and bumping the version for it would make an
+          honest regression look like a label change.
+        - Re-uploading the **same** labels — reordered, re-keyed with fresh
+          ``item_id``s, or with edited ``notes`` — does not increment either,
+          for the same reason: :func:`canonical_items` shows nothing a scorer
+          reads has moved.
+        - Any change to a query, a relevant id, an expected answer or an
+          expected claim increments, in **any** item.
+
         Raises:
             EvalNotFound: If no such dataset exists in the caller's tenant.
             EvalValidationError: If replacement items fail validation.
         """
         identity = _require_admin()
+        scope = {"tenant_id": identity.tenant_id, "dataset_id": dataset_id}
+        current = self._find_one(self.config.eval_datasets_collection, scope)
+        if current is None:
+            raise EvalNotFound(f"No eval dataset {dataset_id!r}")
+        current = _normalize_dataset(current)
+
         changes: Dict[str, Any] = {"updated_at": _now()}
         if name is not None:
             if not str(name).strip():
@@ -366,16 +475,30 @@ class EvalStore:
         if description is not None:
             changes["description"] = str(description).strip() or None
         if items is not None:
-            changes["items"] = normalize_items(
+            normalized = normalize_items(
                 items,
                 max_items=self.config.eval_max_dataset_items,
                 max_query_length=self.config.eval_max_query_length,
             )
+            fingerprint = dataset_fingerprint(normalized)
+            changes["items"] = normalized
+            # Written on every item replacement, version bumped only on a
+            # real content change: a re-upload that normalizes to the same
+            # labels is the same label set, whatever the file looked like.
+            changes["dataset_sha256"] = fingerprint
+            if fingerprint != current.get("dataset_sha256"):
+                changes["dataset_version"] = int(current["dataset_version"]) + 1
+            else:
+                changes["dataset_version"] = int(current["dataset_version"])
+        else:
+            # A metadata-only edit still persists whatever the normalization
+            # inferred for a pre-versioning document, so the next read is not
+            # inferring it again.
+            changes["dataset_version"] = int(current["dataset_version"])
+            changes["dataset_sha256"] = current["dataset_sha256"]
 
         updated = self._update_one(
-            self.config.eval_datasets_collection,
-            {"tenant_id": identity.tenant_id, "dataset_id": dataset_id},
-            changes,
+            self.config.eval_datasets_collection, scope, changes
         )
         if not updated:
             raise EvalNotFound(f"No eval dataset {dataset_id!r}")
@@ -410,6 +533,8 @@ class EvalStore:
         config_snapshot: Dict[str, Any],
         match_mode: str,
         mode: str = "retrieval",
+        dataset_version: Optional[int] = None,
+        dataset_sha256: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Open a run document in ``running`` state and return it.
 
@@ -422,11 +547,20 @@ class EvalStore:
             mode: ``retrieval`` or ``end_to_end``. Stored at the top level as
                 well as inside the snapshot so a run list can label each row
                 without unpacking it.
+            dataset_version: The dataset's version at run start, copied into
+                the run and never revisited. A run reports what it scored,
+                and reading the version back off a live dataset would make
+                every past run re-describe itself after the next edit.
+            dataset_sha256: The dataset's fingerprint at run start, snapshot
+                for the same reason. ``dataset_id`` alone cannot prove two
+                runs used the same labels; with these two it can.
         """
         identity = _require_admin()
         document = {
             "run_id": str(uuid4()),
             "dataset_id": dataset_id,
+            "dataset_version": dataset_version,
+            "dataset_sha256": dataset_sha256,
             "tenant_id": identity.tenant_id,
             "started_at": _now(),
             "finished_at": None,
@@ -500,7 +634,7 @@ class EvalStore:
             sort=("started_at", -1),
             limit=capped,
         )
-        return [_serialize({**row, "per_item": []}) for row in rows]
+        return [_serialize({**_normalize_run(row), "per_item": []}) for row in rows]
 
     def get_run(self, run_id: str) -> Dict[str, Any]:
         """Return one run including its per-item rows.
@@ -515,7 +649,7 @@ class EvalStore:
         )
         if document is None:
             raise EvalNotFound(f"No eval run {run_id!r}")
-        return _serialize(document)
+        return _serialize(_normalize_run(document))
 
     def _last_run_times(self, identity: AuthIdentity) -> Dict[str, Optional[str]]:
         """Map dataset_id to the ISO time of its most recent run.
@@ -554,6 +688,54 @@ class EvalStore:
             [("dataset_id", 1), ("started_at", -1)],
             name="idx_eval_runs_dataset_started",
         )
+
+    def backfill_dataset_fingerprints(self) -> int:
+        """Persist version/fingerprint on datasets written before versioning.
+
+        Startup migration, idempotent and safe to run on every boot: it only
+        touches documents missing one of the two fields, and it writes each
+        document the same values :func:`_normalize_dataset` would have
+        inferred for it on read. Nothing is recomputed for a dataset that
+        already carries them — a stored fingerprint is the historical record,
+        not a cache to be refreshed.
+
+        It runs outside any request, so it takes no identity and asserts no
+        tenant filter: it never returns dataset content, and each document
+        receives only fields derived from its own items.
+
+        Returns:
+            How many datasets were migrated.
+        """
+        name = self.config.eval_datasets_collection
+        scope = {
+            "$or": [
+                {"dataset_sha256": {"$in": [None, ""]}},
+                {"dataset_version": {"$in": [None, 0]}},
+            ]
+        }
+        migrated = 0
+        if self._in_memory:
+            for document in self._docs(name):
+                if document.get("dataset_sha256") and document.get("dataset_version"):
+                    continue
+                document.update(_normalize_dataset(document))
+                migrated += 1
+            return migrated
+
+        collection = self._collection(name)
+        for document in collection.find(scope):
+            normalized = _normalize_dataset(document)
+            collection.update_one(
+                {"_id": document["_id"]},
+                {
+                    "$set": {
+                        "dataset_version": normalized["dataset_version"],
+                        "dataset_sha256": normalized["dataset_sha256"],
+                    }
+                },
+            )
+            migrated += 1
+        return migrated
 
     def _init_db(self) -> None:
         if self._db is not None:
@@ -678,6 +860,45 @@ def _iso(value: Any) -> Optional[str]:
     if isinstance(value, datetime):
         return value.isoformat()
     return str(value) if value else None
+
+
+def _normalize_dataset(document: Dict[str, Any]) -> Dict[str, Any]:
+    """Fill in the version and fingerprint of a pre-versioning dataset.
+
+    Read-side migration, applied to every dataset on its way out of storage,
+    so a dataset written before this feature existed stays readable and
+    still reports a usable pair. It is not a write: a document is only
+    updated in place by :meth:`EvalStore.backfill_dataset_fingerprints` or
+    by the next :meth:`EvalStore.update_dataset`.
+
+    The inferred version is :data:`INITIAL_DATASET_VERSION`, which is honest
+    — the labels were never versioned, so nothing is known to have changed —
+    and the inferred hash is computed from the items actually stored, so it
+    matches what a fresh upload of the same labels would produce.
+    """
+    if document.get("dataset_sha256") and document.get("dataset_version"):
+        return document
+    return {
+        **document,
+        "dataset_version": int(document.get("dataset_version") or INITIAL_DATASET_VERSION),
+        "dataset_sha256": document.get("dataset_sha256")
+        or dataset_fingerprint(document.get("items")),
+    }
+
+
+def _normalize_run(document: Dict[str, Any]) -> Dict[str, Any]:
+    """Make a pre-versioning run readable without inventing its provenance.
+
+    Unlike a dataset, a run's missing fields stay ``None``. The dataset it
+    scored may well have been edited since, so any value computed now would
+    be a guess presented as evidence — and a wrong fingerprint on a historical
+    run is worse than a blank one, which the UI can label "not recorded".
+    """
+    return {
+        "dataset_version": None,
+        "dataset_sha256": None,
+        **document,
+    }
 
 
 def _serialize(document: Dict[str, Any]) -> Dict[str, Any]:

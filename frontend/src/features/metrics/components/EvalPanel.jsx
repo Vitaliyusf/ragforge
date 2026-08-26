@@ -16,6 +16,7 @@ import TimeSeries from './charts/TimeSeries'
 import {
   CONFIG_DIFF_NOTE,
   CONFIG_SNAPSHOT_LABELS,
+  DATASET_DRIFT_NOTE,
   EMPTY,
   EVAL_ANSWER_METRIC_LABELS,
   EVAL_HISTORY_K,
@@ -30,9 +31,11 @@ import {
   RUN_STATUS_VARIANTS,
   UNOBSERVED_NOTE,
   UNPRICED_MODEL_NOTE,
+  UNVERSIONED_RUN_NOTE,
   formatCost,
   formatCount,
   formatDecimal,
+  formatFingerprint,
   formatMs,
   formatPercent,
   formatScore,
@@ -320,6 +323,8 @@ export default function EvalPanel() {
           </p>
         )}
 
+        {run?.run_id && <DatasetProvenance run={run} dataset={dataset} />}
+
         {run?.status === 'failed' && run?.error && (
           <p className="mt-3 text-[13px]" style={{ color: 'var(--danger)' }}>
             Run failed: {run.error}
@@ -472,6 +477,45 @@ export function estimateDescription(estimate) {
     `≈ ${formatCount(tokens)} tokens, an estimated ${formatCost(estimate.estimated_cost_usd)}. ` +
     'This run also takes minutes rather than seconds.'
   return estimate.model_priced ? base : `${base} ${UNPRICED_MODEL_NOTE}`
+}
+
+/**
+ * Which label set the displayed run actually scored.
+ *
+ * A `dataset_id` is not evidence on its own — the items behind it can be
+ * replaced — so the run's own snapshot of the version and fingerprint is
+ * what makes two runs comparable, or provably not. The digest is abbreviated
+ * for reading and kept whole in the title for copying.
+ *
+ * A run written before versioning existed reports neither, and says so
+ * rather than borrowing the dataset's current values: those would describe
+ * labels the run may never have seen.
+ */
+export function DatasetProvenance({ run, dataset }) {
+  const sha = run?.dataset_sha256
+  if (!sha) {
+    return (
+      <p className="mt-3 text-[12px]" style={{ color: 'var(--fg-soft)' }}>
+        {UNVERSIONED_RUN_NOTE}
+      </p>
+    )
+  }
+  const drifted = Boolean(dataset?.dataset_sha256) && dataset.dataset_sha256 !== sha
+  return (
+    <div className="mt-3 text-[12px]" style={{ color: 'var(--fg-soft)' }}>
+      <span>
+        Labels scored: version {run.dataset_version ?? EMPTY}, fingerprint{' '}
+        <code title={sha} className="tabular-nums">
+          {formatFingerprint(sha)}
+        </code>
+      </span>
+      {drifted && (
+        <p className="mt-1" style={{ color: 'var(--warning)' }}>
+          {DATASET_DRIFT_NOTE}
+        </p>
+      )}
+    </div>
+  )
 }
 
 /** Answer-quality results, shown only for an end-to-end run. */
