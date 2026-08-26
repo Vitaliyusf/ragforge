@@ -739,7 +739,10 @@ class LLMServiceTests(unittest.TestCase):
             ["live", "eval"],
         )
         self.assertTrue(
-            all("request_type" in labels for labels in metrics.llm_request_duration.label_calls)
+            all(
+                "request_type" in labels
+                for labels in metrics.llm_request_duration.label_calls
+            )
         )
         self.assertEqual(
             metrics.llm_errors_total.label_calls[0]["traffic_class"], "eval"
@@ -759,7 +762,10 @@ class LLMServiceTests(unittest.TestCase):
             )
         )
         self.assertEqual(
-            [labels["finish_reason"] for labels in metrics.llm_finish_reasons_total.label_calls],
+            [
+                labels["finish_reason"]
+                for labels in metrics.llm_finish_reasons_total.label_calls
+            ],
             ["completed", "error"],
         )
         self.assertEqual(

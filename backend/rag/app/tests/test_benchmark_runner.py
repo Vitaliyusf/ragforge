@@ -16,6 +16,7 @@ from typing import Any, Dict, List, Optional
 
 import pytest
 
+from app.services.benchmark_prometheus import SNAPSHOT_QUERIES
 from app.services.benchmark_runner import (
     BENCHMARK_ACTIONS,
     GET_BENCHMARK_RUN,
@@ -724,6 +725,31 @@ def test_a_benchmark_stores_before_and_after_operational_snapshots():
 
     assert benchmark["operational_metrics"] == {"before": before, "after": after}
     assert snapshotter.calls == 2
+
+
+def test_prometheus_evidence_groups_llm_metrics_by_bounded_dimensions():
+    pipeline = SNAPSHOT_QUERIES["pipeline"]
+
+    for name in (
+        "llm_p95_by_request_type",
+        "llm_provider_p95_by_request_type",
+        "llm_wall_time_rate",
+        "llm_request_rate",
+        "llm_error_rate",
+        "llm_output_token_rate",
+    ):
+        assert "request_type" in pipeline[name]
+        assert "traffic_class" in pipeline[name]
+        assert not any(
+            forbidden in pipeline[name]
+            for forbidden in (
+                "request_id",
+                "trace_id",
+                "conversation_id",
+                "item_id",
+                "prompt",
+            )
+        )
 
 
 def test_a_snapshot_outage_does_not_fail_the_benchmark():

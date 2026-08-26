@@ -44,6 +44,10 @@ def test_export_has_the_evidence_layout_and_strict_json():
                 "summary.json", "metrics.json", "runtime.json", "errors.json",
                 "benchmark.json", "truncation.json"} <= names
         assert any(name.endswith("/per-item.json") for name in names)
+        exported_phase = json.loads(archive.read("benchmark.json"))["phases"][0]
+        assert exported_phase["phase_started_at"]
+        assert exported_phase["phase_finished_at"]
+        assert exported_phase["phase_wall_clock_ms"] >= 0
         for name in names:
             if name.endswith(".json"):
                 json.loads(
