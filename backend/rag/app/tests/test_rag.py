@@ -14,6 +14,7 @@ from app.rest.v1.rag import get_rag_service, require_internal_identity, router a
 from app.services.conversation_events import CollectingConversationEmitter
 from app.services.conversation_backend_client import ConversationBackendClient
 from app.services.conversation_messages import (
+    DownstreamRPCError,
     build_message_envelope,
     extract_reply_payload,
     extract_stream_event,
@@ -994,6 +995,22 @@ def test_extract_reply_payload_supports_shared_and_legacy_shapes():
 
     assert extract_reply_payload(shared)["chunks"][0]["chunk_id"] == "c1"
     assert extract_reply_payload(legacy)["chunks"][0]["chunk_id"] == "legacy"
+
+
+def test_extract_reply_payload_surfaces_internal_auth_error_explicitly():
+    reply = {
+        "message_type": "reply",
+        "success": False,
+        "error": {
+            "code": "internal_auth_expired",
+            "message": "Internal authentication context expired",
+        },
+    }
+
+    with pytest.raises(DownstreamRPCError, match="internal_auth_expired") as exc_info:
+        extract_reply_payload(reply)
+
+    assert exc_info.value.code == "internal_auth_expired"
 
 
 def test_extract_stream_event_supports_shared_stream_envelope():

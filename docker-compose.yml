@@ -238,6 +238,12 @@ services:
     volumes:
       - uploads_data:/app/uploads
       - logs_data:/app/logs
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8002/ready', timeout=4)"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -306,7 +312,7 @@ services:
       rabbitmq:
         condition: service_healthy
       embedding:
-        condition: service_started
+        condition: service_healthy
       vector_db:
         condition: service_started
       llm_agent:
