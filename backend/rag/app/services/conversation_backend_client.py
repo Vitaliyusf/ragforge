@@ -227,7 +227,20 @@ class ConversationBackendClient:
         query: str,
         retrieval_plan: Optional[Dict[str, Any]] = None,
         pass_name: str = "pass_one",
+        *,
+        top_k: Optional[int] = None,
     ) -> Dict[str, Any]:
+        """Embed the query and search the vector store for chunks.
+
+        Args:
+            top_k: How many candidates to ask for. Defaults to
+                ``config.top_k_documents`` — the production answer-context
+                depth every conversation-graph caller wants. It is overridden
+                only by the retrieval eval, which must retrieve at least as
+                many candidates as the largest k it reports, and whose depth
+                is therefore a property of the measurement rather than of the
+                application being measured.
+        """
         embedding_response = await self._send_request(
             routing_key=self.config.embedding_routing_key,
             target_service="embedding",
@@ -243,7 +256,7 @@ class ConversationBackendClient:
 
         payload = {
             "query_vector": query_vector,
-            "top_k": self.config.top_k_documents,
+            "top_k": self.config.top_k_documents if top_k is None else top_k,
             "filters": {},
             "include_payload": True,
             "include_vector": False,

@@ -16,6 +16,7 @@ from typing import Any, Dict, List, Optional
 import pytest
 
 from app.services.eval_runner import (
+    K_VALUES,
     MATCH_CHUNK,
     MATCH_FILE,
     MATCH_MIXED,
@@ -23,6 +24,7 @@ from app.services.eval_runner import (
     MODE_RETRIEVAL,
     EvalRunner,
     aggregate,
+    candidate_depth,
     dataset_match_mode,
     eligible_chunks,
     relevant_ids,
@@ -54,6 +56,7 @@ def build_config(**overrides: Any) -> SimpleNamespace:
         "eval_max_dataset_items": 1000,
         "eval_max_query_length": 2000,
         "eval_run_concurrency": 4,
+        "eval_candidate_k": 20,
         "mongodb_url": "mongodb://localhost:27017/",
         "mongodb_database": "rag",
         "mongodb_max_retries": 1,
@@ -84,10 +87,19 @@ class FakeBackend:
         self.in_flight = 0
         self.max_in_flight = 0
 
-    async def search_chunks(self, request, query, retrieval_plan=None, pass_name="pass_one"):
+    async def search_chunks(
+        self, request, query, retrieval_plan=None, pass_name="pass_one", *, top_k=None
+    ):
         self.in_flight += 1
         self.max_in_flight = max(self.max_in_flight, self.in_flight)
-        self.calls.append({"query": query, "pass_name": pass_name, "tenant": request.tenant_id})
+        self.calls.append(
+            {
+                "query": query,
+                "pass_name": pass_name,
+                "tenant": request.tenant_id,
+                "top_k": top_k,
+            }
+        )
         try:
             # Yield so concurrent items genuinely overlap; without this the
             # coroutine would run to completion before the next one starts
@@ -186,12 +198,53 @@ def test_retrieval_is_tagged_as_an_eval_sweep_and_carries_the_tenant():
     assert {call["tenant"] for call in backend.calls} == {"tenant-a"}
 
 
+# ── Candidate depth ───────────────────────────────────────────────────────
+
+def test_eval_retrieval_asks_for_every_rank_it_reports():
+    """Recall@20 over six candidates would be Recall@6 under another name."""
+    store, runner, backend, dataset_id = build()
+    execute(runner, dataset_id)
+
+    assert 20 in K_VALUES
+    assert {call["top_k"] for call in backend.calls} == {20}
+
+
+def test_candidate_depth_is_floored_at_the_largest_reported_k():
+    """A depth below max(K_VALUES) is a k the run could never observe."""
+    assert candidate_depth(build_config(eval_candidate_k=5)) == max(K_VALUES)
+    assert candidate_depth(build_config(eval_candidate_k=50)) == 50
+
+    store, runner, backend, dataset_id = build(eval_candidate_k=5)
+    execute(runner, dataset_id)
+
+    assert {call["top_k"] for call in backend.calls} == {max(K_VALUES)}
+
+
+def test_recall_at_twenty_can_see_a_hit_below_the_production_top_k():
+    """The bug this guards: a rank-12 hit scored 0.0 at every k above 6."""
+    deep = ["c%d" % index for index in range(1, 21)]
+    backend = FakeBackend({"deep": {"chunks": [{"chunk_id": cid} for cid in deep]}})
+    store, runner, _, dataset_id = build(
+        items=[{"query": "deep", "relevant_chunk_ids": ["c12"]}],
+        backend=backend,
+    )
+    run = execute(runner, dataset_id)
+    results = fetch(store, run["run_id"])["results"]
+
+    assert results["recall_at_k"]["20"] == 1.0
+    assert results["recall_at_k"]["10"] == 0.0
+    assert results["mrr"] == pytest.approx(1 / 12)
+
+
 def test_the_run_captures_a_config_snapshot_naming_what_it_cannot_see():
     store, runner, _, dataset_id = build()
     run = execute(runner, dataset_id)
     snapshot = fetch(store, run["run_id"])["config_snapshot"]
 
     assert snapshot["top_k_documents"] == 6
+    # Recorded separately from the production depth: the run's ranking was
+    # drawn from twenty candidates, not from the six an answer is built from.
+    assert snapshot["candidate_k"] == 20
     assert snapshot["reranker_enabled"] is True
     # Not stored as a silent null: a diff must not read two unknown embedding
     # models as a match.
@@ -519,6 +572,10 @@ def test_end_to_end_mode_is_recorded_in_the_config_snapshot():
 
     assert stored["mode"] == MODE_END_TO_END
     assert stored["config_snapshot"]["mode"] == MODE_END_TO_END
+    # Scored over the graph's own sources, so the depth recorded is the
+    # production one — claiming the eval depth would name a candidate pool
+    # this run never saw.
+    assert stored["config_snapshot"]["candidate_k"] == 6
 
 
 def test_end_to_end_respects_the_phase_five_concurrency_bound():

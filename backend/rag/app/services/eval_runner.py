@@ -26,6 +26,13 @@ it measures the retrieval the application actually performs. Queries are
 tagged ``pass_name="eval"`` so downstream services can tell an eval sweep from
 live traffic in their own logs.
 
+It asks that call for :func:`candidate_depth` candidates rather than the
+production ``top_k_documents``. The two are different quantities: production
+depth sizes an answer's context, eval depth is how far down the ranking the
+measurement can see. They are kept separate so that tuning one never silently
+redefines the other, and the depth a run used is recorded in its
+``config_snapshot``.
+
 Eligibility filtering is replicated here rather than reused from
 ``ConversationGraph._normalize_chunks``. That method increments the live
 ``rag_chunks_considered_total`` and ``rag_chunks_filtered_total`` counters,
@@ -74,10 +81,10 @@ MATCH_CHUNK = "chunk_id"
 MATCH_FILE = "file_id"
 MATCH_MIXED = "mixed"
 
-# How many retrieved ids one per-item row keeps for the drill-down. The full
-# list is bounded by top_k anyway; this is a guard against a future config
-# that raises it, not a meaningful truncation today.
-MAX_ROW_IDS = 20
+# How many retrieved ids one per-item row keeps for the drill-down. Equal to
+# max(K_VALUES) so the row always shows every rank the run scores; it is a
+# display bound, never applied before scoring.
+MAX_ROW_IDS = max(K_VALUES)
 
 # Action strings, mirroring `RagAction` in the gateway's core/constants.py.
 # The rag service cannot import gateway code, so they are defined once here
@@ -207,6 +214,25 @@ def retrieved_ids(chunks: List[Dict[str, Any]], match_mode: str) -> List[str]:
     return ids
 
 
+def candidate_depth(config: Any) -> int:
+    """How many candidates one retrieval eval item must ask for.
+
+    Retrieval eval does **not** use ``top_k_documents``. That setting sizes
+    the context an answer is generated from — six chunks by default — and a
+    run scoring Recall@20 over six candidates reports the Recall@6 number
+    under a wider name. Every k in :data:`K_VALUES` must be observable, so
+    the depth is floored at ``max(K_VALUES)`` even if ``eval_candidate_k`` is
+    configured lower: the alternative is a metric that silently cannot reach
+    its own denominator.
+
+    Nothing here clamps the metrics themselves. If the vector store returns
+    fewer candidates than requested, Recall@20 is still computed against the
+    full ground truth and reads low, which is the honest answer.
+    """
+    configured = getattr(config, "eval_candidate_k", 0) or 0
+    return max(int(configured), max(K_VALUES))
+
+
 class EvalRunner:
     """Run datasets against live retrieval and persist scored results."""
 
@@ -331,7 +357,19 @@ class EvalRunner:
         match_mode = dataset_match_mode(items)
         run = self.store.create_run(
             dataset_id,
-            build_config_snapshot(self.config, mode=mode),
+            build_config_snapshot(
+                self.config,
+                mode=mode,
+                # What this run's ranking was actually drawn from. An
+                # `end_to_end` run is scored over the graph's own sources, so
+                # its depth is the production one — recording the eval depth
+                # there would claim a candidate pool the run never saw.
+                candidate_k=(
+                    self.config.top_k_documents
+                    if mode == MODE_END_TO_END
+                    else candidate_depth(self.config)
+                ),
+            ),
             match_mode,
             mode=mode,
         )
@@ -440,7 +478,11 @@ class EvalRunner:
                     ids = await self._run_graph_item(request, row, item_mode)
                 else:
                     response = await self.backend_client.search_chunks(
-                        request, query, {}, "eval"
+                        request,
+                        query,
+                        {},
+                        "eval",
+                        top_k=candidate_depth(self.config),
                     )
                     ids = retrieved_ids(eligible_chunks(response), item_mode)
         except Exception as exc:  # noqa: BLE001 - one item, not the run
