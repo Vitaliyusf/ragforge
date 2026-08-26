@@ -17,7 +17,12 @@ vi.mock('@/features/metrics/hooks/useEvalRuns', () => ({
   isRunning: (run) => Boolean(run?.run_id) && !['completed', 'failed'].includes(run?.status),
 }))
 
-import EvalPanel, { DatasetProvenance, diffSnapshots, estimateDescription } from './EvalPanel'
+import EvalPanel, {
+  DatasetProvenance,
+  LabelValidation,
+  diffSnapshots,
+  estimateDescription,
+} from './EvalPanel'
 
 const SNAPSHOT = {
   top_k_documents: 6,
@@ -34,6 +39,7 @@ const RESULTS = {
   mrr: 0.75,
   items_evaluated: 20,
   items_skipped: 0,
+  items_unscorable: 0,
   items_failed: 0,
   mean_latency_ms: 120,
 }
@@ -134,7 +140,7 @@ describe('EvalPanel results', () => {
     expect(screen.getByText('nDCG@10')).toBeInTheDocument()
     expect(screen.getByText('0.87')).toBeInTheDocument()
     expect(screen.getByText('Items scored')).toBeInTheDocument()
-    expect(screen.getByText('0 skipped, 0 failed')).toBeInTheDocument()
+    expect(screen.getByText('0 skipped, 0 unscorable, 0 failed')).toBeInTheDocument()
   })
 
   it('renders recall and precision across every k', () => {
@@ -502,5 +508,178 @@ describe('EvalPanel answer quality', () => {
 
     expect(screen.queryByText(/NaN/)).not.toBeInTheDocument()
     expect(screen.getAllByText('—').length).toBeGreaterThan(0)
+  })
+})
+
+
+// ── Stale golden-set labels ───────────────────────────────────────────────
+//
+// The distinction under test throughout: a retrieval miss means the chunk is
+// there and was not ranked; a stale label means the chunk is gone and no
+// retriever could have found it. A recall chart cannot tell them apart, so
+// the panel has to.
+
+const CLEAN_VALIDATION = {
+  checked: true,
+  reason: null,
+  error: null,
+  policy: 'fail',
+  labels_checked: 20,
+  stale_label_count: 0,
+  stale_item_count: 0,
+  stale_ids: [],
+  stale_item_ids: [],
+  unretrievable_label_count: 0,
+  unretrievable_item_count: 0,
+  unretrievable_ids: [],
+  unscorable_item_count: 0,
+  truncated: false,
+}
+
+const STALE_VALIDATION = {
+  ...CLEAN_VALIDATION,
+  stale_label_count: 2,
+  stale_item_count: 2,
+  stale_ids: ['chunk-old-1', 'chunk-old-2'],
+  stale_item_ids: ['i-8', 'i-9'],
+  unscorable_item_count: 2,
+}
+
+describe('EvalPanel stale label reporting', () => {
+  it('says plainly that the affected items are not retrieval misses', () => {
+    setup({ run: { ...COMPLETED_RUN, label_validation: STALE_VALIDATION } })
+
+    expect(screen.getByText('Benchmark labels no longer exist')).toBeInTheDocument()
+    expect(screen.getByText(/not retrieval misses/i)).toBeInTheDocument()
+    expect(screen.getByText(/chunk-old-1, chunk-old-2/)).toBeInTheDocument()
+  })
+
+  it('reports the stale label and item counts', () => {
+    setup({ run: { ...COMPLETED_RUN, label_validation: STALE_VALIDATION } })
+
+    expect(screen.getByText('Stale labels')).toBeInTheDocument()
+    expect(screen.getByText('Items affected')).toBeInTheDocument()
+  })
+
+  it('keeps a suppressed label apart from a deleted one', () => {
+    setup({
+      run: {
+        ...COMPLETED_RUN,
+        label_validation: {
+          ...CLEAN_VALIDATION,
+          unretrievable_label_count: 1,
+          unretrievable_item_count: 1,
+          unretrievable_ids: ['chunk-removed'],
+          unscorable_item_count: 1,
+        },
+      },
+    })
+
+    expect(screen.getByText('Excluded from retrieval')).toBeInTheDocument()
+    expect(screen.getByText(/Unreachable ids: chunk-removed/)).toBeInTheDocument()
+  })
+
+  it('warns when a run scored without its labels being verified', () => {
+    setup({
+      run: {
+        ...COMPLETED_RUN,
+        label_validation: {
+          ...CLEAN_VALIDATION,
+          checked: false,
+          reason: 'unavailable',
+          error: 'vector_db timed out',
+          stale_label_count: null,
+          stale_item_count: null,
+        },
+      },
+    })
+
+    expect(screen.getByText('Labels were not verified')).toBeInTheDocument()
+    expect(screen.getByText(/vector store could not be reached/i)).toBeInTheDocument()
+    expect(screen.getByText('vector_db timed out')).toBeInTheDocument()
+  })
+
+  it('confirms a clean check without shouting about it', () => {
+    setup({ run: { ...COMPLETED_RUN, label_validation: CLEAN_VALIDATION } })
+
+    expect(screen.getByText(/no score below is a missing label in disguise/i)).toBeInTheDocument()
+    expect(screen.queryByText('Benchmark labels no longer exist')).not.toBeInTheDocument()
+  })
+
+  it('claims nothing for a run recorded before the check existed', () => {
+    setup({ run: { ...COMPLETED_RUN, label_validation: null } })
+
+    expect(screen.queryByText('Benchmark labels no longer exist')).not.toBeInTheDocument()
+    expect(screen.queryByText('Labels were not verified')).not.toBeInTheDocument()
+    expect(screen.queryByText(/missing label in disguise/i)).not.toBeInTheDocument()
+  })
+
+  it('surfaces the refusal of a run that was stopped for stale labels', () => {
+    setup({
+      run: {
+        ...COMPLETED_RUN,
+        status: 'failed',
+        error: 'Refused before scoring: 2 item(s) reference golden-set labels the active index cannot return',
+        results: {},
+        per_item: [],
+        label_validation: STALE_VALIDATION,
+      },
+    })
+
+    expect(screen.getByText(/Refused before scoring/)).toBeInTheDocument()
+    expect(screen.getByText('Benchmark labels no longer exist')).toBeInTheDocument()
+  })
+})
+
+describe('EvalPanel per-item stale rows', () => {
+  it('labels an unscorable row as a missing benchmark label, not a miss', () => {
+    setup({
+      run: {
+        ...COMPLETED_RUN,
+        label_validation: STALE_VALIDATION,
+        per_item: [
+          { item_id: 'i-4', query: 'label deleted', unscorable: true, expected_ids: ['c-old'] },
+        ],
+      },
+    })
+
+    expect(screen.getByText(/benchmark label no longer exists/i)).toBeInTheDocument()
+  })
+
+  it('sinks unscorable rows below the real retrieval failures', () => {
+    setup({
+      run: {
+        ...COMPLETED_RUN,
+        label_validation: STALE_VALIDATION,
+        per_item: [
+          { item_id: 'i-4', query: 'label deleted', unscorable: true },
+          ...COMPLETED_RUN.per_item,
+        ],
+      },
+    })
+
+    const table = screen.getByRole('table', { name: /per-item retrieval results/i })
+    const rows = within(table).getAllByRole('row').slice(1)
+    expect(within(rows[0]).getByText('never found')).toBeInTheDocument()
+    expect(within(rows[2]).getByText('label deleted')).toBeInTheDocument()
+  })
+
+  it('counts unscorable items in the denominator line', () => {
+    setup({
+      run: {
+        ...COMPLETED_RUN,
+        label_validation: STALE_VALIDATION,
+        results: { ...RESULTS, items_evaluated: 18, items_unscorable: 2 },
+      },
+    })
+
+    expect(screen.getByText(/2 unscorable/)).toBeInTheDocument()
+  })
+})
+
+describe('LabelValidation', () => {
+  it('renders nothing at all without a validation record', () => {
+    const { container } = render(<LabelValidation validation={null} />)
+    expect(container).toBeEmptyDOMElement()
   })
 })

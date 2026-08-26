@@ -25,6 +25,7 @@ from app.schemas.vector import (
     UpsertChunksRequest,
     UpsertCompletedEvent,
     UpsertCompletedPayload,
+    VerifyChunkIdsRequest,
 )
 from app.services.base import BaseVectorService
 from shared.auth import AuthError, ROLE_SERVICE, identity_from_context
@@ -36,6 +37,7 @@ KafkaRequest = Union[
     UpsertChunksRequest,
     DeleteChunksRequest,
     InitializeCollectionRequest,
+    VerifyChunkIdsRequest,
 ]
 
 
@@ -232,6 +234,89 @@ class VectorService(BaseVectorService):
         )
         return deleted_count
 
+    def verify_chunk_ids(
+        self,
+        chunk_ids: Optional[List[str]] = None,
+        file_ids: Optional[List[str]] = None,
+    ) -> Dict[str, Any]:
+        """Report which caller-supplied ids still exist in the active collection.
+
+        Read-only, and deliberately **not** a query: the caller names every
+        id it asks about, and the only scope applied is the one derived from
+        its own trusted identity by :meth:`_scoped_filters`. No caller filter
+        is accepted, so there is no way to widen the lookup — an id belonging
+        to another tenant is reported missing, exactly as a deleted id is,
+        and the reply can never name an id the caller did not send.
+
+        Its purpose is the eval harness: a golden set labelled against an
+        older index can reference chunks that reindexing or a chunking change
+        has since removed, and scoring those as retrieval misses reports a
+        recall regression that never happened.
+
+        Args:
+            chunk_ids: Chunk ids to check. May be empty if ``file_ids`` is not.
+            file_ids: File ids to check.
+
+        Returns:
+            Per field, the ``present``, ``retrievable`` and ``missing``
+            subsets of what was asked. ``present`` minus ``retrievable`` is
+            the third state that matters: a label whose chunk still exists
+            but is barred from retrieval — neither a deleted label nor a
+            reachable one.
+
+        Raises:
+            InvalidVectorError: If neither list carries an id, or a list
+                exceeds the per-field cap.
+            VectorStoreError: If the store could not be read.
+        """
+        requested = {
+            "chunk_id": [str(value) for value in (chunk_ids or []) if str(value).strip()],
+            "file_id": [str(value) for value in (file_ids or []) if str(value).strip()],
+        }
+        if not any(requested.values()):
+            raise InvalidVectorError("chunk_ids, file_ids, or both are required")
+
+        # Empty caller filters: every condition below comes from the bound
+        # identity. Passing anything from the payload here would reopen the
+        # cross-tenant lookup this action exists to make impossible.
+        scope = self._scoped_filters(None)
+        verified: Dict[str, Any] = {}
+        for field, values in requested.items():
+            if not values:
+                verified[field] = {"present": [], "retrievable": [], "missing": []}
+                continue
+            try:
+                found = self.vector_store.lookup_ids(field, values, scope)
+            except AuthError:
+                raise
+            except ValueError as exc:
+                raise InvalidVectorError(str(exc)) from exc
+            except Exception as exc:
+                raise VectorStoreError(f"Failed to verify {field} values: {exc}") from exc
+            present = set(found.get("present") or [])
+            verified[field] = {
+                "present": sorted(present),
+                "retrievable": sorted(set(found.get("retrievable") or [])),
+                "missing": sorted(set(values) - present),
+            }
+
+        result = {
+            "collection_name": self.vector_store.collection_name,
+            "chunk_ids": verified["chunk_id"],
+            "file_ids": verified["file_id"],
+        }
+        self.logger.log(
+            "vector_service:verify_chunk_ids",
+            "Label ids verified",
+            {
+                "requested_chunk_ids": len(requested["chunk_id"]),
+                "requested_file_ids": len(requested["file_id"]),
+                "missing_chunk_ids": len(result["chunk_ids"]["missing"]),
+                "missing_file_ids": len(result["file_ids"]["missing"]),
+            },
+        )
+        return result
+
     def collection_metrics(self) -> Dict[str, Any]:
         """Return the point count for the active collection.
 
@@ -336,6 +421,17 @@ class VectorService(BaseVectorService):
                 collection_name = self.initialize_collection()
                 return self._build_rpc_success(
                     normalized_request, action, {"collection_name": collection_name}
+                )
+
+            if action == VectorAction.VERIFY_CHUNK_IDS:
+                req = VerifyChunkIdsRequest.model_validate(normalized_request)
+                return self._build_rpc_success(
+                    normalized_request,
+                    action,
+                    self.verify_chunk_ids(
+                        chunk_ids=req.payload.chunk_ids,
+                        file_ids=req.payload.file_ids,
+                    ),
                 )
 
             if action == VectorAction.GET_METRICS:
@@ -459,6 +555,10 @@ class VectorService(BaseVectorService):
                 self._handle_initialize_request(
                     InitializeCollectionRequest.model_validate(normalized_request)
                 )
+            elif action == VectorAction.VERIFY_CHUNK_IDS:
+                self._handle_verify_request(
+                    VerifyChunkIdsRequest.model_validate(normalized_request)
+                )
             else:
                 raise InvalidVectorError(f"Unsupported action: {action}")
 
@@ -549,6 +649,16 @@ class VectorService(BaseVectorService):
                 "filters": request.payload.filters.model_dump(exclude_none=True),
                 "review_outcome": request.payload.review_outcome,
             },
+        )
+
+    def _handle_verify_request(self, request: VerifyChunkIdsRequest) -> None:
+        self._send_success_reply(
+            request=request,
+            action=VectorAction.VERIFY_CHUNK_IDS,
+            payload=self.verify_chunk_ids(
+                chunk_ids=request.payload.chunk_ids,
+                file_ids=request.payload.file_ids,
+            ),
         )
 
     def _handle_initialize_request(self, request: InitializeCollectionRequest) -> None:

@@ -20,7 +20,7 @@ from app.core.constants import (
     PAYLOAD_FIELDS,
     SAFE_REVIEW_STATUSES,
 )
-from app.db.interfaces import IVectorStore
+from app.db.interfaces import IVectorStore, verify_targets
 
 
 class QdrantVectorStore(IVectorStore):
@@ -134,6 +134,59 @@ class QdrantVectorStore(IVectorStore):
             return 0
         self.client.delete(collection_name=self._collection_name, points_selector=ids)
         return len(ids)
+
+    def lookup_ids(
+        self,
+        field: str,
+        values: List[str],
+        filters: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, List[str]]:
+        """Report which of ``values`` exist in the caller's scope.
+
+        The scroll filter is built from the scope conditions **and** a
+        ``match: any`` over the supplied ids, so Qdrant never returns a point
+        the caller did not name. Only the matched field and the two safety
+        flags are read back — no chunk text, no ownership, nothing the caller
+        could not already see through search.
+        """
+        wanted = verify_targets(field, values)
+        if not wanted:
+            return {"present": [], "retrievable": []}
+
+        must: List[FieldCondition] = [
+            FieldCondition(key=field, match={"any": sorted(wanted)}),
+        ]
+        for key, value in (filters or {}).items():
+            if key in ALLOWED_CALLER_FILTERS and value is not None:
+                must.append(FieldCondition(key=key, match={"value": value}))
+
+        present: set = set()
+        retrievable: set = set()
+        offset = None
+        while True:
+            records, next_offset = self.client.scroll(
+                collection_name=self._collection_name,
+                scroll_filter=Filter(must=must),
+                offset=offset,
+                limit=256,
+                with_payload=[field, "retrieval_allowed", "review_status"],
+                with_vectors=False,
+            )
+            for record in records:
+                payload = record.payload or {}
+                value = payload.get(field)
+                if value is None or str(value) not in wanted:
+                    continue
+                present.add(str(value))
+                if payload.get("retrieval_allowed") and payload.get(
+                    "review_status"
+                ) != "removed":
+                    retrievable.add(str(value))
+            if next_offset is None:
+                break
+            offset = next_offset
+
+        return {"present": sorted(present), "retrievable": sorted(retrievable)}
 
     def count(self) -> int:
         """Return the number of points in the active collection."""
@@ -306,3 +359,4 @@ class QdrantVectorStore(IVectorStore):
             offset = next_offset
 
         return ids
+

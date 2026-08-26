@@ -104,6 +104,28 @@ class RAGConfig(BaseSettings):
     eval_max_dataset_items: int = 1000
     eval_max_query_length: int = 2000
 
+    # Stale-label detection.
+    #
+    # A golden set labelled against an older index can name chunks or files
+    # that reindexing or a chunking change has since removed. Retrieval
+    # cannot return an id that no longer exists, so scoring those labels as
+    # misses reports a recall regression that never happened. Before a run
+    # scores anything, `eval_runner` asks vector_db which of the labelled ids
+    # still exist in the caller's own tenant.
+    eval_validate_labels: bool = True
+    # What a run does when it finds stale labels. `fail` is the default
+    # because a golden set whose ground truth has rotted is not measuring
+    # retrieval any more, and a number nobody can trust is worse than no
+    # number. `mark_unscorable` is for teams who would rather keep the
+    # remaining items: affected items are excluded from every mean and
+    # reported separately, never counted as misses.
+    eval_stale_label_policy: str = "fail"
+    # How many affected ids a run stores for the drill-down. The counts are
+    # always exact; the id lists are a sample, because a dataset that went
+    # wholly stale would otherwise write its entire label set into the run
+    # document.
+    eval_max_reported_stale_ids: int = 50
+
     # A turn whose groundedness falls below this counts toward the proxy
     # hallucination rate. It is a threshold over one judge score, not a
     # claim-level measurement — phase 6 replaces it with the real thing.

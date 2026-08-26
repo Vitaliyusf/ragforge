@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Optional
 import numpy as np
 
 from app.core.constants import DEFAULT_COLLECTION_NAME
-from app.db.interfaces import IVectorStore
+from app.db.interfaces import IVectorStore, verify_targets
 
 logger = logging.getLogger(__name__)
 
@@ -152,6 +152,42 @@ class ChromaDBVectorStore(IVectorStore):
         if ids:
             self._collection.delete(ids=ids)
         return len(ids)
+
+    def lookup_ids(
+        self,
+        field: str,
+        values: List[str],
+        filters: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, List[str]]:
+        """Report which of ``values`` exist under ``filters``.
+
+        Metadata here is stringified on write, so ``retrieval_allowed`` comes
+        back as ``"True"``/``"False"`` and is compared as text rather than
+        coerced with ``bool()`` — ``bool("False")`` is ``True``, which would
+        report a barred chunk as retrievable.
+        """
+        wanted = verify_targets(field, values)
+        if not wanted:
+            return {"present": [], "retrievable": []}
+
+        scope = {key: value for key, value in (filters or {}).items() if value is not None}
+        where = self._build_where_clause({**scope, field: sorted(wanted)})
+        found = self._collection.get(where=where or None, include=["metadatas"])
+
+        present: set = set()
+        retrievable: set = set()
+        for metadata in found.get("metadatas") or []:
+            value = (metadata or {}).get(field)
+            if value is None or str(value) not in wanted:
+                continue
+            present.add(str(value))
+            if (
+                str(metadata.get("retrieval_allowed")) == "True"
+                and metadata.get("review_status") != "removed"
+            ):
+                retrievable.add(str(value))
+
+        return {"present": sorted(present), "retrievable": sorted(retrievable)}
 
     def count(self) -> int:
         """Return the total number of stored chunks."""

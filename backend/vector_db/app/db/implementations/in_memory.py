@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Optional
 import numpy as np
 
 from app.core.constants import DEFAULT_COLLECTION_NAME
-from app.db.interfaces import IVectorStore
+from app.db.interfaces import IVectorStore, verify_targets
 
 
 class InMemoryVectorStore(IVectorStore):
@@ -118,6 +118,43 @@ class InMemoryVectorStore(IVectorStore):
         for cid in to_delete:
             del self._store[cid]
         return len(to_delete)
+
+    def lookup_ids(
+        self,
+        field: str,
+        values: List[str],
+        filters: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, List[str]]:
+        """Report which of ``values`` exist under ``filters``.
+
+        Mirrors the Qdrant implementation, including its safety split: the
+        scope filters are applied before an id is reported present, so an id
+        belonging to another tenant reads exactly like an id that was
+        deleted — which is the point.
+        """
+        wanted = verify_targets(field, values)
+        if not wanted:
+            return {"present": [], "retrievable": []}
+
+        scope = {
+            key: value
+            for key, value in (filters or {}).items()
+            if value is not None
+        }
+        present: set = set()
+        retrievable: set = set()
+        for entry in self._store.values():
+            payload = entry["payload"]
+            value = payload.get(field)
+            if value is None or str(value) not in wanted:
+                continue
+            if scope and not self._matches_filters(payload, scope):
+                continue
+            present.add(str(value))
+            if payload.get("retrieval_allowed") and payload.get("review_status") != "removed":
+                retrievable.add(str(value))
+
+        return {"present": sorted(present), "retrievable": sorted(retrievable)}
 
     def count(self) -> int:
         return len(self._store)
