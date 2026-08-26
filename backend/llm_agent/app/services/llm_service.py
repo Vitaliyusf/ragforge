@@ -390,6 +390,12 @@ class LLMService(BaseService):
                     direction=direction,
                     traffic_class=traffic_class(),
                 ).inc(token_count)
+        if usage.output_tokens is not None:
+            METRICS.llm_output_tokens.labels(
+                service=self.config.service_name,
+                request_type=request.request_type,
+                traffic_class=traffic_class(),
+            ).observe(usage.output_tokens)
         METRICS.llm_finish_reasons_total.labels(
             service=self.config.service_name,
             model=metric_model,

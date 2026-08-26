@@ -22,6 +22,17 @@ MAX_EXPORT_BYTES = 8 * 1024 * 1024
 MAX_TEXT_BYTES = 16 * 1024
 MAX_TRUNCATION_EXAMPLES = 100
 _SECRET_KEY = re.compile(r"(?:secret|password|api[_-]?key|token|authorization)", re.I)
+_SAFE_TOKEN_METRIC_KEYS = frozenset(
+    {
+        "llm_input_token_rate",
+        "llm_output_token_rate",
+        "llm_total_token_rate",
+        "llm_finish_reason_rate",
+        "llm_output_tokens_p50_by_request_type",
+        "llm_output_tokens_p95_by_request_type",
+        "llm_output_tokens_p99_by_request_type",
+    }
+)
 _NON_FINITE_STRINGS = {
     "nan",
     "+nan",
@@ -256,7 +267,10 @@ def _sanitize(
     path: str = "",
     truncation: Dict[str, Any],
 ) -> Any:
-    if _SECRET_KEY.search(key):
+    safe_metric_value = key in _SAFE_TOKEN_METRIC_KEYS and isinstance(
+        value, (int, float, list)
+    )
+    if _SECRET_KEY.search(key) and not safe_metric_value:
         return "[redacted]"
     if isinstance(value, Mapping):
         return {
@@ -272,7 +286,7 @@ def _sanitize(
         return [
             _sanitize(
                 item,
-                key,
+                "" if safe_metric_value else key,
                 path=f"{path}[{index}]",
                 truncation=truncation,
             )

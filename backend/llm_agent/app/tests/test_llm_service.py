@@ -35,9 +35,15 @@ class FakeLogger:
 class FakeLLMClient(ILLMClient):
     """Configurable fake client for reply and streaming tests."""
 
-    def __init__(self, responses=None, exception=None):
+    def __init__(self, responses=None, exception=None, usage=None):
         self.responses = responses or {}
         self.exception = exception
+        self.usage = usage or LLMUsage(
+            provider="fake",
+            input_tokens=5,
+            output_tokens=3,
+            total_tokens=8,
+        )
 
     def generate(self, invocation: LLMInvocation) -> LLMGenerationResult:
         if self.exception is not None:
@@ -54,12 +60,7 @@ class FakeLLMClient(ILLMClient):
 
         return LLMGenerationResult(
             raw_output=raw_output,
-            usage=LLMUsage(
-                provider="fake",
-                input_tokens=5,
-                output_tokens=3,
-                total_tokens=8,
-            ),
+            usage=self.usage,
             finish_reason="completed",
         )
 
@@ -147,6 +148,7 @@ class RecordingMetrics:
         self.llm_provider_duration = RecordingMetric()
         self.llm_errors_total = RecordingMetric()
         self.llm_tokens_total = RecordingMetric()
+        self.llm_output_tokens = RecordingMetric()
         self.llm_finish_reasons_total = RecordingMetric()
 
 
@@ -755,6 +757,11 @@ class LLMServiceTests(unittest.TestCase):
             ["input", "output", "total"],
         )
         self.assertEqual(metrics.llm_tokens_total.increments, [5, 3, 8])
+        self.assertEqual(metrics.llm_output_tokens.observations, [3])
+        self.assertEqual(
+            set(metrics.llm_output_tokens.label_calls[0]),
+            {"service", "request_type", "traffic_class"},
+        )
         self.assertTrue(
             all(
                 labels["request_type"] == "answer_generation"
@@ -771,3 +778,34 @@ class LLMServiceTests(unittest.TestCase):
         self.assertEqual(
             _metric_finish_reason("request-specific-value", errored=False), "other"
         )
+
+    def test_output_token_histogram_observes_reported_usage_and_skips_missing_usage(self):
+        metrics = RecordingMetrics()
+        reported = LLMService(
+            FakeLLMClient(
+                usage=LLMUsage(
+                    provider="fake",
+                    input_tokens=50,
+                    output_tokens=42,
+                    total_tokens=92,
+                )
+            ),
+            FakeLogger(),
+            _settings(),
+        )
+        missing = LLMService(
+            FakeLLMClient(usage=LLMUsage(provider="fake")),
+            FakeLogger(),
+            _settings(),
+        )
+
+        with patch("app.services.llm_service.METRICS", metrics):
+            reported.execute(
+                _request_message(
+                    "answer_generation",
+                    {"question": "Q?", "retrieved_context": "Context"},
+                )
+            )
+            missing.execute(_request_message("query_rewrite", {"query": "rewrite me"}))
+
+        self.assertEqual(metrics.llm_output_tokens.observations, [42])

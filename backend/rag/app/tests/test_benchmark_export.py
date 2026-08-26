@@ -210,6 +210,65 @@ def test_non_finite_numeric_and_string_evidence_becomes_null(value):
     assert json.loads(_json_bytes(sanitized)) == {"sample": [None]}
 
 
+def test_token_metric_allowlist_preserves_prometheus_results_and_redacts_credentials():
+    truncation = {"text_fields_truncated": 0, "examples": []}
+    prometheus_result = [
+        {
+            "metric": {"request_type": "answer_generation", "traffic_class": "eval"},
+            "value": [1730000000, "42.5"],
+        }
+    ]
+    document = {
+        "access_token": "access-secret",
+        "refresh_token": "refresh-secret",
+        "authorization": "Bearer secret",
+        "api_key": "api-secret",
+        "session_token": "session-secret",
+        "private_token": "private-secret",
+        "llm_input_token_rate": prometheus_result,
+        "llm_output_token_rate": prometheus_result,
+        "llm_total_token_rate": prometheus_result,
+        "llm_finish_reason_rate": prometheus_result,
+        "llm_output_tokens_p50_by_request_type": prometheus_result,
+        "llm_output_tokens_p95_by_request_type": prometheus_result,
+        "llm_output_tokens_p99_by_request_type": prometheus_result,
+    }
+
+    sanitized = _sanitize(document, path="metrics.json", truncation=truncation)
+
+    for key in (
+        "access_token",
+        "refresh_token",
+        "authorization",
+        "api_key",
+        "session_token",
+        "private_token",
+    ):
+        assert sanitized[key] == "[redacted]"
+    for key in document.keys() - {
+        "access_token",
+        "refresh_token",
+        "authorization",
+        "api_key",
+        "session_token",
+        "private_token",
+    }:
+        assert sanitized[key] == prometheus_result
+    json.loads(_json_bytes(sanitized))
+
+
+def test_token_metric_allowlist_does_not_allow_arbitrary_string_values():
+    truncation = {"text_fields_truncated": 0, "examples": []}
+
+    sanitized = _sanitize(
+        {"llm_output_token_rate": "not-prometheus-evidence"},
+        path="metrics.json",
+        truncation=truncation,
+    )
+
+    assert sanitized["llm_output_token_rate"] == "[redacted]"
+
+
 def test_export_reports_text_truncation_explicitly():
     store, orchestrator, _, dataset_id = build()
     benchmark = run_benchmark(orchestrator, dataset_id, [PHASE_RETRIEVAL_BASE])

@@ -41,7 +41,13 @@ SNAPSHOT_QUERIES: Dict[str, Dict[str, str]] = {
         "llm_wall_time_rate": "sum by (request_type, traffic_class) (rate(ragapp_llm_request_duration_seconds_sum[5m]))",
         "llm_request_rate": "sum by (request_type, traffic_class) (rate(ragapp_llm_requests_total[5m]))",
         "llm_error_rate": "sum by (request_type, traffic_class) (rate(ragapp_llm_errors_total[5m]))",
+        "llm_input_token_rate": 'sum by (request_type, traffic_class) (rate(ragapp_llm_tokens_total{direction="input"}[5m]))',
         "llm_output_token_rate": 'sum by (request_type, traffic_class) (rate(ragapp_llm_tokens_total{direction="output"}[5m]))',
+        "llm_total_token_rate": 'sum by (request_type, traffic_class) (rate(ragapp_llm_tokens_total{direction="total"}[5m]))',
+        "llm_finish_reason_rate": "sum by (request_type, traffic_class, finish_reason) (rate(ragapp_llm_finish_reasons_total[5m]))",
+        "llm_output_tokens_p50_by_request_type": "histogram_quantile(0.50, sum by (request_type, traffic_class, le) (rate(ragapp_llm_output_tokens_bucket[5m])))",
+        "llm_output_tokens_p95_by_request_type": "histogram_quantile(0.95, sum by (request_type, traffic_class, le) (rate(ragapp_llm_output_tokens_bucket[5m])))",
+        "llm_output_tokens_p99_by_request_type": "histogram_quantile(0.99, sum by (request_type, traffic_class, le) (rate(ragapp_llm_output_tokens_bucket[5m])))",
         "ingestion_stage_rate": "sum by (stage, outcome) (rate(ragapp_ingestion_stage_total[5m]))",
     },
 }
