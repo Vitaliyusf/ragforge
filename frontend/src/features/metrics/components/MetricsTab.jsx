@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { AlertTriangle, BarChart3, RefreshCw } from 'lucide-react'
 import Badge from '@/components/ui/Badge'
 import Button from '@/components/ui/Button'
@@ -10,7 +10,6 @@ import TabSkeleton from '@/components/ui/TabSkeleton'
 import { cn } from '@/lib/utils'
 import { useMetrics } from '../hooks/useMetrics'
 import KpiHeader from './KpiHeader'
-import EvalPanel from './EvalPanel'
 import LatencyPanel from './LatencyPanel'
 import PipelinePanel from './PipelinePanel'
 import QualityPanel from './QualityPanel'
@@ -25,27 +24,33 @@ import {
 /** Sentinel for "whichever tenant the caller belongs to". */
 const OWN_TENANT = '__own__'
 
-export default function MetricsTab() {
-  const [section, setSection] = useState(METRICS_SECTIONS[0].id)
+/**
+ * Sections this tab used to own.
+ *
+ * Eval is a top-level workspace now. Arriving here asking for it is not an
+ * error and must not render an empty tab: the request is handed to the
+ * shell, which switches to the Eval destination, and Metrics falls back to
+ * its own first section in the meantime.
+ */
+const RELOCATED_SECTIONS = { eval: 'eval' }
+
+export default function MetricsTab({ section: requestedSection, onNavigate }) {
+  const relocatedTo = RELOCATED_SECTIONS[requestedSection]
+  const known = METRICS_SECTIONS.some((entry) => entry.id === requestedSection)
+  const [section, setSection] = useState(known ? requestedSection : METRICS_SECTIONS[0].id)
   const [windowRange, setWindowRange] = useState(DEFAULT_WINDOW)
   const [tenant, setTenant] = useState(OWN_TENANT)
 
-  // A standalone section loads its own data and has no window or tenant
-  // dimension, so the shared hook is told to idle rather than fetching an
-  // endpoint that does not exist.
-  const standalone = Boolean(
-    METRICS_SECTIONS.find((entry) => entry.id === section)?.standalone
-  )
+  useEffect(() => {
+    if (relocatedTo) onNavigate?.(relocatedTo)
+  }, [relocatedTo, onNavigate])
 
   // One section, one request. Changing the sub-nav swaps the endpoint rather
   // than loading all five.
-  const { data, loading, error, promAvailable, lastUpdated, refresh } = useMetrics(
-    standalone ? null : section,
-    {
-      window: windowRange,
-      tenantId: tenant === OWN_TENANT ? '' : tenant,
-    }
-  )
+  const { data, loading, error, promAvailable, lastUpdated, refresh } = useMetrics(section, {
+    window: windowRange,
+    tenantId: tenant === OWN_TENANT ? '' : tenant,
+  })
 
   const panelProps = { data, loading, error, promAvailable, onRetry: refresh }
 
@@ -73,7 +78,6 @@ export default function MetricsTab() {
               onValueChange={setWindowRange}
               className="w-[168px]"
               aria-label="Time window"
-              disabled={standalone}
             >
               {WINDOW_OPTIONS.map((option) => (
                 <SelectItem key={option.value} value={option.value}>
@@ -97,7 +101,7 @@ export default function MetricsTab() {
               variant="secondary"
               size="sm"
               onClick={refresh}
-              disabled={loading || standalone}
+              disabled={loading}
               leftIcon={<RefreshCw size={13} className={loading ? 'animate-spin' : ''} />}
             >
               Refresh
@@ -141,7 +145,6 @@ export default function MetricsTab() {
       {section === 'retrieval' && <RetrievalPanel {...panelProps} />}
       {section === 'quality' && <QualityPanel {...panelProps} />}
       {section === 'pipeline' && <PipelinePanel {...panelProps} />}
-      {section === 'eval' && <EvalPanel />}
     </div>
   )
 }

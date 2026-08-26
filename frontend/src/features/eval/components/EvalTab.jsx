@@ -1,0 +1,195 @@
+'use client'
+
+import { useState } from 'react'
+import { AlertTriangle, FlaskConical, RefreshCw, Upload } from 'lucide-react'
+import Button from '@/components/ui/Button'
+import EmptyState from '@/components/ui/EmptyState'
+import PageHeader from '@/components/ui/PageHeader'
+import TabSkeleton from '@/components/ui/TabSkeleton'
+import GoldenSetImporter from '@/features/metrics/components/benchmark/GoldenSetImporter'
+import { GOLDEN_SET_HELP } from '@/features/metrics/components/metricsConfig'
+import { useBenchmarkRuns } from '@/features/metrics/hooks/useBenchmarkRuns'
+import { useEvalRuns } from '@/features/metrics/hooks/useEvalRuns'
+import { isBenchmarkActive } from '../evalProfiles'
+import ActiveRunPanel from './ActiveRunPanel'
+import BenchmarkHistoryTable from './BenchmarkHistoryTable'
+import EvalResults from './EvalResults'
+import EvalSetupCard from './EvalSetupCard'
+import RunBenchmarkCard from './RunBenchmarkCard'
+import SingleEvaluation from './SingleEvaluation'
+
+/**
+ * The Eval workspace.
+ *
+ * A top-level destination rather than a Metrics sub-tab, because it is not
+ * an aggregation over a time window: it is an operational workflow with its
+ * own lifecycle. The page reads top to bottom as that workflow — which
+ * dataset, which profile, what is running, what happened, what happened
+ * before — with one primary action on it.
+ */
+export default function EvalTab() {
+  const {
+    datasets,
+    datasetId,
+    selectDataset,
+    runs,
+    run,
+    running,
+    loading,
+    error,
+    busy,
+    startRun,
+    estimateRunCost,
+    importDataset,
+    deleteDataset,
+    refresh,
+  } = useEvalRuns()
+
+  const {
+    benchmark,
+    history,
+    error: benchmarkError,
+    busy: benchmarkBusy,
+    start,
+    select,
+    download,
+  } = useBenchmarkRuns(datasetId)
+
+  const [importOpen, setImportOpen] = useState(false)
+  const dataset = datasets.find((entry) => entry.dataset_id === datasetId)
+  const benchmarkRunning = isBenchmarkActive(benchmark)
+
+  const importer = (
+    <GoldenSetImporter
+      open={importOpen}
+      onOpenChange={setImportOpen}
+      onSubmit={importDataset}
+      busy={busy}
+      error={error}
+    />
+  )
+
+  if (loading && !datasets.length) return <TabSkeleton />
+
+  return (
+    <div className="mx-auto flex h-full w-full max-w-7xl flex-col gap-4 overflow-y-auto px-3 py-4 md:px-6 md:py-5">
+      <PageHeader
+        className="mb-2"
+        title="Eval"
+        description="Golden sets, benchmark profiles and quality diagnostics"
+        icon={FlaskConical}
+        actions={
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={refresh}
+            disabled={loading}
+            leftIcon={<RefreshCw size={13} className={loading ? 'animate-spin' : ''} />}
+          >
+            Refresh
+          </Button>
+        }
+      />
+
+      {!datasets.length ? (
+        <>
+          <EmptyState
+            icon={FlaskConical}
+            title="No golden set yet"
+            description={
+              'Live traffic can only show proxy quality. Recall and nDCG need ' +
+              'ground truth, which is a set of queries somebody labelled by hand.'
+            }
+            action={
+              <div className="flex flex-col items-center gap-4">
+                <ol
+                  className="max-w-md list-decimal space-y-1 pl-5 text-left text-[13px]"
+                  style={{ color: 'var(--fg-muted)' }}
+                >
+                  {GOLDEN_SET_HELP.map((step) => (
+                    <li key={step}>{step}</li>
+                  ))}
+                </ol>
+                <Button onClick={() => setImportOpen(true)} leftIcon={<Upload size={14} />}>
+                  Import a dataset
+                </Button>
+              </div>
+            }
+          />
+          {importer}
+        </>
+      ) : (
+        <>
+          {(error || benchmarkError) && (
+            <div
+              className="flex items-center justify-between gap-3 rounded-xl px-4 py-3 text-[15px]"
+              style={{
+                background: 'var(--danger-soft)',
+                border: '1px solid rgba(239,68,68,0.25)',
+                color: 'var(--danger)',
+              }}
+              role="alert"
+            >
+              <span className="flex items-center gap-2.5">
+                <AlertTriangle size={15} aria-hidden="true" />
+                {error || benchmarkError}
+              </span>
+              <Button variant="secondary" size="sm" onClick={refresh}>
+                Retry
+              </Button>
+            </div>
+          )}
+
+          <EvalSetupCard
+            datasets={datasets}
+            datasetId={datasetId}
+            dataset={dataset}
+            busy={busy}
+            running={running || benchmarkRunning}
+            onSelect={selectDataset}
+            onImport={() => setImportOpen(true)}
+            onDelete={deleteDataset}
+          />
+
+          <RunBenchmarkCard
+            itemCount={dataset?.item_count}
+            ready={Boolean(datasetId)}
+            busy={benchmarkBusy}
+            benchmark={benchmark}
+            running={benchmarkRunning}
+            onStart={start}
+          >
+            <SingleEvaluation
+              dataset={dataset}
+              datasetId={datasetId}
+              run={run}
+              busy={busy}
+              running={running}
+              onStart={startRun}
+              onEstimate={estimateRunCost}
+            />
+          </RunBenchmarkCard>
+
+          <ActiveRunPanel
+            benchmark={benchmark}
+            history={history}
+            busy={benchmarkBusy}
+            onDownload={download}
+          />
+
+          <EvalResults run={run} runs={runs} dataset={dataset} />
+
+          <BenchmarkHistoryTable
+            history={history}
+            selectedId={benchmark?.benchmark_id}
+            busy={benchmarkBusy}
+            onSelect={select}
+            onDownload={download}
+          />
+
+          {importer}
+        </>
+      )}
+    </div>
+  )
+}
