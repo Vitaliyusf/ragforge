@@ -125,6 +125,12 @@ PHASE_RETRIEVAL_EXTENDED = "retrieval_extended"
 PHASE_END_TO_END_REGULAR = "end_to_end_regular"
 PHASE_END_TO_END_EXTENDED = "end_to_end_extended"
 
+PROFILE_QUICK_RETRIEVAL = "quick_retrieval"
+PROFILE_SMOKE_QUALITY = "smoke_quality"
+PROFILE_FULL_QUALITY = "full_quality"
+PROFILE_EXTENDED_COMPARISON = "extended_comparison"
+PROFILE_FULL_DIAGNOSTIC = "full_diagnostic"
+
 _RETRIEVAL_IS_PIPELINE_INDEPENDENT = (
     "Retrieval-mode evaluation issues a single search that the conversation "
     "pipeline does not influence, so this phase would report the base "
@@ -187,6 +193,32 @@ PHASE_SPECS: Tuple[PhaseSpec, ...] = (
 
 PHASE_NAMES: Tuple[str, ...] = tuple(spec.name for spec in PHASE_SPECS)
 _SPECS_BY_NAME: Dict[str, PhaseSpec] = {spec.name: spec for spec in PHASE_SPECS}
+BENCHMARK_PROFILES: Dict[str, Tuple[str, ...]] = {
+    PROFILE_QUICK_RETRIEVAL: (PHASE_RETRIEVAL_BASE,),
+    PROFILE_SMOKE_QUALITY: (PHASE_END_TO_END_REGULAR,),
+    PROFILE_FULL_QUALITY: (PHASE_RETRIEVAL_BASE, PHASE_END_TO_END_REGULAR),
+    PROFILE_EXTENDED_COMPARISON: (
+        PHASE_END_TO_END_REGULAR,
+        PHASE_END_TO_END_EXTENDED,
+    ),
+    PROFILE_FULL_DIAGNOSTIC: (
+        PHASE_RETRIEVAL_BASE,
+        PHASE_RETRIEVAL_EXTENDED,
+        PHASE_END_TO_END_REGULAR,
+        PHASE_END_TO_END_EXTENDED,
+    ),
+}
+
+
+def phases_for_profile(profile: str) -> List[str]:
+    """Return the stable phase selection for one explicit run profile."""
+    phases = BENCHMARK_PROFILES.get(profile)
+    if phases is None:
+        raise EvalValidationError(
+            f"Unknown benchmark profile: {profile!r}. Known profiles: "
+            + ", ".join(BENCHMARK_PROFILES)
+        )
+    return list(phases)
 
 
 def _now_iso() -> str:
@@ -563,6 +595,11 @@ class BenchmarkRunner:
                     "benchmark": await self.start_benchmark(
                         str(payload.get("dataset_id") or ""),
                         [str(name) for name in phases] if phases is not None else None,
+                        (
+                            str(payload["profile"])
+                            if payload.get("profile") is not None
+                            else None
+                        ),
                     )
                 }
             if action == LIST_BENCHMARK_RUNS:
@@ -601,6 +638,7 @@ class BenchmarkRunner:
         self,
         dataset_id: str,
         phases: Optional[List[str]] = None,
+        profile: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Plan a benchmark and execute it in the background.
 
@@ -627,7 +665,24 @@ class BenchmarkRunner:
         if not items:
             raise EvalValidationError("Dataset has no items to evaluate")
 
-        plan = plan_phases(phases, graph_available=self.graph_available)
+        if phases is not None and profile is not None:
+            raise EvalValidationError("Specify a benchmark profile or phases, not both")
+        requested_profile = profile
+        requested_phases = phases
+        if phases is None:
+            requested_profile = profile or PROFILE_FULL_QUALITY
+            requested_phases = phases_for_profile(requested_profile)
+        plan = plan_phases(requested_phases, graph_available=self.graph_available)
+        executable_phases = [
+            str(phase["name"]) for phase in plan if phase["status"] == PHASE_QUEUED
+        ]
+        unsupported_phases = [
+            str(phase["name"])
+            for phase in plan
+            if phase["status"] == PHASE_UNSUPPORTED
+        ]
+        selected_names = {str(phase["name"]) for phase in plan}
+        skipped_phases = [name for name in PHASE_NAMES if name not in selected_names]
         dataset_snapshot = benchmark_dataset_snapshot(dataset)
         benchmark = self.store.create_benchmark_run(
             dataset_id,
@@ -649,7 +704,12 @@ class BenchmarkRunner:
                 dataset=dataset,
                 item_count=len(items),
                 phases=[str(phase["name"]) for phase in plan],
+                requested_profile=requested_profile,
+                executable_phases=executable_phases,
+                unsupported_phases=unsupported_phases,
+                skipped_phases=skipped_phases,
             ),
+            profile=requested_profile,
             operational_metrics={"before": None, "after": None},
             owner_id=self.owner_id,
         )

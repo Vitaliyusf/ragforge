@@ -131,6 +131,7 @@ def _benchmark_evidence(benchmark: Mapping[str, Any]) -> Dict[str, Any]:
             "started_at",
             "finished_at",
             "status",
+            "profile",
             "progress",
             "phases",
         )

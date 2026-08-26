@@ -26,6 +26,7 @@ from pydantic import BaseModel, Field, model_validator
 from app.core.auth import require_admin
 from app.core.constants import (
     BenchmarkPhase,
+    BenchmarkProfile,
     EvalPipelineMode,
     EvalRunMode,
     MetricsWindow,
@@ -131,9 +132,16 @@ class BenchmarkRunCreate(BaseModel):
     """
 
     dataset_id: str = Field(min_length=1)
+    profile: Optional[BenchmarkProfile] = None
     phases: Optional[List[BenchmarkPhase]] = Field(
         default=None, min_length=1, max_length=len(BenchmarkPhase)
     )
+
+    @model_validator(mode="after")
+    def profile_or_phases(self) -> "BenchmarkRunCreate":
+        if self.phases is not None and self.profile is not None:
+            raise ValueError("Specify a benchmark profile or phases, not both")
+        return self
 
 
 class EvalCostEstimate(BaseModel):
@@ -336,6 +344,7 @@ async def start_benchmark_run(
         return await service.start_benchmark_run(
             body.dataset_id,
             [phase.value for phase in body.phases] if body.phases else None,
+            body.profile.value if body.profile else None,
         )
     except Exception as exc:
         raise handle_exception(exc)

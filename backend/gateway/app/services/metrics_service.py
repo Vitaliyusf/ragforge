@@ -372,6 +372,7 @@ class MetricsService(BaseRPCService):
         self,
         dataset_id: str,
         phases: Optional[List[str]] = None,
+        profile: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Start a full diagnostic benchmark and return it immediately.
 
@@ -387,7 +388,7 @@ class MetricsService(BaseRPCService):
         """
         return await self._eval(
             RagAction.START_BENCHMARK_RUN,
-            {"dataset_id": dataset_id, "phases": phases},
+            {"dataset_id": dataset_id, "phases": phases, "profile": profile},
         )
 
     async def list_benchmark_runs(

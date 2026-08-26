@@ -101,10 +101,10 @@ class MetricsService {
     return await get(`/v1/metrics/eval/runs/${encodeURIComponent(runId)}`)
   }
 
-  async startBenchmarkRun(datasetId, phases, { signal } = {}) {
+  async startBenchmarkRun(datasetId, profile, { signal } = {}) {
     return await post('/v1/metrics/eval/benchmarks', {
       dataset_id: datasetId,
-      ...(phases?.length ? { phases } : {}),
+      ...(profile ? { profile } : {}),
     }, { signal })
   }
 

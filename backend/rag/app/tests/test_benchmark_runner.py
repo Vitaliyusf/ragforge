@@ -19,6 +19,7 @@ import pytest
 from app.services.benchmark_prometheus import SNAPSHOT_QUERIES
 from app.services.benchmark_runner import (
     BENCHMARK_ACTIONS,
+    BENCHMARK_PROFILES,
     GET_BENCHMARK_RUN,
     PHASE_COMPLETED,
     PHASE_END_TO_END_EXTENDED,
@@ -32,10 +33,16 @@ from app.services.benchmark_runner import (
     PHASE_RETRIEVAL_EXTENDED,
     PHASE_SKIPPED,
     PHASE_UNSUPPORTED,
+    PROFILE_EXTENDED_COMPARISON,
+    PROFILE_FULL_DIAGNOSTIC,
+    PROFILE_FULL_QUALITY,
+    PROFILE_QUICK_RETRIEVAL,
+    PROFILE_SMOKE_QUALITY,
     START_BENCHMARK_RUN,
     BenchmarkRunner,
     _phase_item_count,
     benchmark_status,
+    phases_for_profile,
     plan_phases,
 )
 from app.services.eval_runner import (
@@ -199,7 +206,8 @@ def run_benchmark(
     """Start a benchmark and wait for its background task to finish."""
 
     async def _go():
-        benchmark = await orchestrator.start_benchmark(dataset_id, phases)
+        requested = list(PHASE_NAMES) if phases is None else phases
+        benchmark = await orchestrator.start_benchmark(dataset_id, requested)
         await asyncio.gather(*list(orchestrator._tasks))
         return benchmark
 
@@ -225,6 +233,36 @@ def test_phases_run_cheapest_first():
     assert [phase["name"] for phase in plan] == list(PHASE_NAMES)
     assert plan[0]["name"] == PHASE_RETRIEVAL_BASE
     assert plan[0]["evaluation_mode"] == MODE_RETRIEVAL
+
+
+def test_each_profile_maps_to_its_explicit_phase_selection():
+    assert BENCHMARK_PROFILES == {
+        PROFILE_QUICK_RETRIEVAL: (PHASE_RETRIEVAL_BASE,),
+        PROFILE_SMOKE_QUALITY: (PHASE_END_TO_END_REGULAR,),
+        PROFILE_FULL_QUALITY: (PHASE_RETRIEVAL_BASE, PHASE_END_TO_END_REGULAR),
+        PROFILE_EXTENDED_COMPARISON: (
+            PHASE_END_TO_END_REGULAR,
+            PHASE_END_TO_END_EXTENDED,
+        ),
+        PROFILE_FULL_DIAGNOSTIC: (
+            PHASE_RETRIEVAL_BASE,
+            PHASE_RETRIEVAL_EXTENDED,
+            PHASE_END_TO_END_REGULAR,
+            PHASE_END_TO_END_EXTENDED,
+        ),
+    }
+    assert PHASE_END_TO_END_EXTENDED not in phases_for_profile(PROFILE_FULL_QUALITY)
+    diagnostic = plan_phases(
+        phases_for_profile(PROFILE_FULL_DIAGNOSTIC), graph_available=True
+    )
+    assert phases_by_name({"phases": diagnostic})[PHASE_RETRIEVAL_EXTENDED][
+        "status"
+    ] == PHASE_UNSUPPORTED
+
+
+def test_unknown_profile_is_refused():
+    with pytest.raises(EvalValidationError, match="Unknown benchmark profile"):
+        phases_for_profile("quality_plus_magic")
 
 
 def test_the_requested_order_does_not_override_the_cost_order():
@@ -674,6 +712,56 @@ def test_a_benchmark_records_the_manifest_it_ran_under(monkeypatch):
     assert manifest["dataset"]["item_count"] == len(ITEMS)
     assert manifest["dataset"]["phases"] == [PHASE_RETRIEVAL_BASE]
     assert manifest["retrieval"]["top_k_documents"] == 6
+
+
+def test_profile_persists_and_manifest_records_the_execution_plan():
+    store, orchestrator, _, dataset_id = build(graph=FakeGraphRunner())
+
+    async def _go():
+        benchmark = await orchestrator.start_benchmark(
+            dataset_id, profile=PROFILE_FULL_QUALITY
+        )
+        await asyncio.gather(*list(orchestrator._tasks))
+        return benchmark
+
+    with bound_context(**ADMIN.to_dict()):
+        benchmark = asyncio.run(_go())
+    stored = fetch(store, benchmark["benchmark_id"])
+
+    assert stored["profile"] == PROFILE_FULL_QUALITY
+    assert stored["manifest"]["execution"] == {
+        "requested_profile": PROFILE_FULL_QUALITY,
+        "executable_phases": [PHASE_RETRIEVAL_BASE, PHASE_END_TO_END_REGULAR],
+        "unsupported_phases": [],
+        "skipped_phases": [PHASE_RETRIEVAL_EXTENDED, PHASE_END_TO_END_EXTENDED],
+    }
+
+
+def test_omitted_profile_defaults_to_full_quality():
+    store, orchestrator, _, dataset_id = build(graph=FakeGraphRunner())
+
+    async def _go():
+        benchmark = await orchestrator.start_benchmark(dataset_id)
+        await asyncio.gather(*list(orchestrator._tasks))
+        return benchmark
+
+    with bound_context(**ADMIN.to_dict()):
+        benchmark = asyncio.run(_go())
+
+    assert benchmark["profile"] == PROFILE_FULL_QUALITY
+    assert [phase["name"] for phase in benchmark["phases"]] == [
+        PHASE_RETRIEVAL_BASE,
+        PHASE_END_TO_END_REGULAR,
+    ]
+
+
+def test_a_legacy_benchmark_without_profile_remains_readable():
+    store, orchestrator, _, dataset_id = build()
+    benchmark = run_benchmark(orchestrator, dataset_id, [PHASE_RETRIEVAL_BASE])
+    for document in store._memory[store.config.eval_benchmark_runs_collection]:
+        document.pop("profile", None)
+
+    assert fetch(store, benchmark["benchmark_id"])["profile"] is None
 
 
 def test_the_manifest_is_written_once_at_plan_time():

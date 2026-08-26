@@ -10,24 +10,38 @@ import BenchmarkCenter from './BenchmarkCenter'
 function setup(benchmark = null, overrides = {}) {
   const state = { benchmark, history: [], error: null, busy: false, start: vi.fn(), select: vi.fn(), download: vi.fn(), ...overrides }
   mockUseBenchmarkRuns.mockReturnValue(state)
-  render(<BenchmarkCenter datasetId="dataset-1" datasetName="Support" ready />)
+  render(<BenchmarkCenter datasetId="dataset-1" datasetName="Support" itemCount={240} ready />)
   return state
 }
 
 describe('BenchmarkCenter', () => {
-  it('confirms before starting the full benchmark', async () => {
+  it('defaults to Full Quality and sends the selected profile', async () => {
     const user = userEvent.setup()
     const state = setup()
-    await user.click(screen.getByRole('button', { name: /run full benchmark/i }))
-    expect(screen.getByText(/end-to-end phases may call/i)).toBeInTheDocument()
+    expect(screen.getByRole('combobox', { name: 'Profile' })).toHaveValue('full_quality')
+    expect(screen.getByText('Retrieval baseline + End-to-end')).toBeInTheDocument()
+    expect(screen.queryByText(/Extended end-to-end/)).not.toBeInTheDocument()
+    expect(screen.getByText('240 items')).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: /start benchmark/i }))
-    expect(state.start).toHaveBeenCalledOnce()
+    await user.click(screen.getByRole('button', { name: /start benchmark/i }))
+    expect(state.start).toHaveBeenCalledWith('full_quality')
+  })
+
+  it('shows the expensive warning and starts Full Diagnostic explicitly', async () => {
+    const user = userEvent.setup()
+    const state = setup()
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Profile' }), 'full_diagnostic')
+    expect(screen.getByText(/Expensive: runs Regular and Extended E2E/)).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /start benchmark/i }))
+    expect(screen.getByText(/This is an expensive profile/)).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /start benchmark/i }))
+    expect(state.start).toHaveBeenCalledWith('full_diagnostic')
   })
 
   it('keeps the action blocked until a golden set is ready', () => {
     mockUseBenchmarkRuns.mockReturnValue({ benchmark: null, history: [], error: null, busy: false, start: vi.fn(), select: vi.fn(), download: vi.fn() })
     render(<BenchmarkCenter datasetId="" ready={false} />)
-    expect(screen.getByRole('button', { name: /run full benchmark/i })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /start benchmark/i })).toBeDisabled()
     expect(screen.getByText(/import and validate/i)).toBeInTheDocument()
   })
 
@@ -64,12 +78,13 @@ describe('BenchmarkCenter', () => {
   it('renders newest-first history, selects terminal runs, and downloads by id', async () => {
     const user = userEvent.setup()
     const state = setup({ benchmark_id: 'active', status: 'running', progress: {}, phases: [] }, { history: [
-      { benchmark_id: 'newest', dataset_name: 'A very long golden set name that must truncate safely', dataset_version: 3, status: 'completed', created_at: '2026-08-26T20:14:00Z', phases: [] },
+      { benchmark_id: 'newest', dataset_name: 'A very long golden set name that must truncate safely', dataset_version: 3, profile: 'full_quality', status: 'completed', created_at: '2026-08-26T20:14:00Z', phases: [] },
       { benchmark_id: 'active', dataset_name: 'Smoke30', status: 'running', phases: [{ name: 'retrieval_base', status: 'running' }] },
       { benchmark_id: 'failed-run', dataset_name: 'Smoke30', status: 'failed', phases: [] },
     ] })
     expect(screen.getByText('Benchmark history')).toBeInTheDocument()
     expect(screen.getAllByRole('listitem')[0]).toHaveTextContent('newest')
+    expect(screen.getAllByRole('listitem')[0]).toHaveTextContent('Full Quality')
     expect(screen.getByText(/Current phase: Retrieval baseline/)).toBeInTheDocument()
     await user.click(screen.getAllByRole('button', { name: 'View' })[0])
     expect(state.select).toHaveBeenCalledWith('newest')
