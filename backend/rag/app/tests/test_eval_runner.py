@@ -41,6 +41,7 @@ from app.services.eval_runner import (
 from app.services.eval_store import EvalStore, EvalValidationError
 from shared.auth import AuthIdentity
 from shared.context import bound_context
+from shared.metrics import traffic_class
 
 ADMIN = AuthIdentity(tenant_id="tenant-a", user_id="admin-a", role="admin", admin_id="admin-a")
 
@@ -162,6 +163,7 @@ class FakeBackend:
                 "pass_name": pass_name,
                 "tenant": request.tenant_id,
                 "top_k": top_k,
+                "traffic_class": traffic_class(),
             }
         )
         try:
@@ -234,6 +236,13 @@ def test_aggregate_scores_match_the_known_orderings():
     assert results["recall_at_k"]["3"] == pytest.approx(1.0)
     assert results["hit_rate_at_k"]["1"] == pytest.approx(0.5)
     assert results["hit_rate_at_k"]["3"] == pytest.approx(1.0)
+
+
+def test_eval_searches_run_in_the_eval_traffic_class():
+    _, runner, backend, dataset_id = build()
+    execute(runner, dataset_id)
+
+    assert [call["traffic_class"] for call in backend.calls] == ["eval", "eval"]
 
 
 def test_the_run_records_where_the_first_hit_landed_per_item():

@@ -29,7 +29,7 @@ from app.schemas.vector import (
 )
 from app.services.base import BaseVectorService
 from shared.auth import AuthError, ROLE_SERVICE, identity_from_context
-from shared.metrics import METRICS
+from shared.metrics import METRICS, traffic_class
 
 
 KafkaRequest = Union[
@@ -204,10 +204,12 @@ class VectorService(BaseVectorService):
             METRICS.vector_search_duration.labels(
                 service="vector_db",
                 collection=collection,
+                traffic_class=traffic_class(),
             ).observe(time.monotonic() - started)
             METRICS.vector_search_total.labels(
                 service="vector_db",
                 collection=collection,
+                traffic_class=traffic_class(),
             ).inc()
 
         self.logger.log(

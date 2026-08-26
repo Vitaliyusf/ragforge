@@ -56,7 +56,7 @@ INSTANT_QUERIES: dict[str, str] = {
     "http_request_rate": 'sum by (service) (rate(http_requests_total{job="ragapp"}[${window}]))',
 
     # ── RPC ───────────────────────────────────────────────────────────
-    "rpc_roundtrip_p95": "histogram_quantile(0.95, sum by (downstream, le) (rate(ragapp_rpc_roundtrip_seconds_bucket[${window}])))",
+    "rpc_roundtrip_p95": 'histogram_quantile(0.95, sum by (downstream, le) (rate(ragapp_rpc_roundtrip_seconds_bucket{traffic_class="live"}[${window}])))',
 
     # ── Throughput and errors ─────────────────────────────────────────
     "qps": "sum(rate(ragapp_rag_queries_total[${window}]))",
@@ -68,8 +68,8 @@ INSTANT_QUERIES: dict[str, str] = {
     "dlq_rate": "sum by (service, error_type) (rate(ragapp_dlq_messages_total[${window}]))",
 
     # ── Retrieval ─────────────────────────────────────────────────────
-    "vector_search_p95": "histogram_quantile(0.95, sum by (collection, le) (rate(ragapp_vector_search_duration_seconds_bucket[${window}])))",
-    "vector_search_rate": "sum by (collection) (rate(ragapp_vector_searches_total[${window}]))",
+    "vector_search_p95": 'histogram_quantile(0.95, sum by (collection, le) (rate(ragapp_vector_search_duration_seconds_bucket{traffic_class="live"}[${window}])))',
+    "vector_search_rate": 'sum by (collection) (rate(ragapp_vector_searches_total{traffic_class="live"}[${window}]))',
     "retrieval_score_p50": "histogram_quantile(0.50, sum by (le) (rate(ragapp_rag_retrieval_score_bucket[${window}])))",
     "sources_per_query_p95": "histogram_quantile(0.95, sum by (le) (rate(ragapp_rag_sources_per_query_bucket[${window}])))",
     # Numerator and denominator are the pair recorded at the policy gate in
@@ -89,10 +89,10 @@ INSTANT_QUERIES: dict[str, str] = {
     "reranker_top_score_buckets": "sum by (le) (increase(ragapp_reranker_top_score_bucket[${range}]))",
 
     # ── Embedding and generation ──────────────────────────────────────
-    "embedding_p95": "histogram_quantile(0.95, sum by (le) (rate(ragapp_embedding_duration_seconds_bucket[${window}])))",
+    "embedding_p95": 'histogram_quantile(0.95, sum by (le) (rate(ragapp_embedding_duration_seconds_bucket{traffic_class="live"}[${window}])))',
     "embedding_chunk_rate": "sum(rate(ragapp_embedding_chunks_total[${window}]))",
-    "llm_p95": "histogram_quantile(0.95, sum by (model, le) (rate(ragapp_llm_request_duration_seconds_bucket[${window}])))",
-    "llm_token_rate": "sum by (model, direction) (rate(ragapp_llm_tokens_total[${window}]))",
+    "llm_p95": 'histogram_quantile(0.95, sum by (model, le) (rate(ragapp_llm_request_duration_seconds_bucket{traffic_class="live"}[${window}])))',
+    "llm_token_rate": 'sum by (model, direction) (rate(ragapp_llm_tokens_total{traffic_class="live"}[${window}]))',
 
     # ── Ingestion pipeline ────────────────────────────────────────────
     "ingestion_stage_rate": "sum by (stage, outcome) (rate(ragapp_ingestion_stage_total[${window}]))",

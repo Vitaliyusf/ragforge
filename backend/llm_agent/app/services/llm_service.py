@@ -29,7 +29,7 @@ from app.schemas.llm import (
     TraceInfo,
     UsageInfo,
 )
-from shared.metrics import METRICS
+from shared.metrics import METRICS, traffic_class
 
 
 StreamPublisher = Callable[[ModelExecutionStreamPayload], None]
@@ -335,16 +335,19 @@ class LLMService(BaseService):
             service=self.config.service_name,
             model=metric_model,
             action=request.request_type,
+            traffic_class=traffic_class(),
         ).inc()
         METRICS.llm_request_duration.labels(
             service=self.config.service_name,
             model=metric_model,
+            traffic_class=traffic_class(),
         ).observe(latency_ms / 1000)
         if status == "error":
             METRICS.llm_errors_total.labels(
                 service=self.config.service_name,
                 model=metric_model,
                 error_type=errors[0].code if errors else "unknown",
+                traffic_class=traffic_class(),
             ).inc()
         # Skip None rather than coercing to 0, so a provider that reports no
         # usage does not look like zero-cost traffic.
@@ -357,6 +360,7 @@ class LLMService(BaseService):
                     service=self.config.service_name,
                     model=metric_model,
                     direction=direction,
+                    traffic_class=traffic_class(),
                 ).inc(token_count)
 
         response_payload = ModelExecutionResponsePayload(
