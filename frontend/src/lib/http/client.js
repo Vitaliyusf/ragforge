@@ -73,6 +73,10 @@ export async function httpClient(url, options = {}) {
 
   for (let attempt = 0; attempt <= retries; attempt++) {
     const controller = new AbortController()
+    const externalSignal = fetchOptions.signal
+    const abortFromCaller = () => controller.abort(externalSignal?.reason)
+    if (externalSignal?.aborted) abortFromCaller()
+    else externalSignal?.addEventListener('abort', abortFromCaller, { once: true })
     const timeoutId = setTimeout(() => controller.abort(), timeout)
 
     try {
@@ -84,6 +88,7 @@ export async function httpClient(url, options = {}) {
       })
 
       clearTimeout(timeoutId)
+      externalSignal?.removeEventListener('abort', abortFromCaller)
 
       if (!response.ok) {
         const httpError = await createHttpError(response)
@@ -108,8 +113,10 @@ export async function httpClient(url, options = {}) {
       return response
     } catch (error) {
       clearTimeout(timeoutId)
+      externalSignal?.removeEventListener('abort', abortFromCaller)
 
       if (error.name === 'AbortError') {
+        if (externalSignal?.aborted) throw error
         lastError = normalizeError({
           message: `Request timeout after ${timeout}ms`,
           type: 'timeout',

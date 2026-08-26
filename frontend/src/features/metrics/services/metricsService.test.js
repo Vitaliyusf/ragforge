@@ -111,4 +111,22 @@ describe('metricsService', () => {
       },
     ])
   })
+
+  it('starts a benchmark and forwards an AbortSignal while polling it', async () => {
+    const controller = new AbortController()
+    const calls = []
+    server.use(
+      http.post(`${API_BASE_URL}/v1/metrics/eval/benchmarks`, async ({ request }) => {
+        calls.push(await request.json())
+        return HttpResponse.json({ benchmark: { benchmark_id: 'b-1', status: 'queued' } })
+      }),
+      http.get(`${API_BASE_URL}/v1/metrics/eval/benchmarks/b-1`, () =>
+        HttpResponse.json({ benchmark: { benchmark_id: 'b-1', status: 'running' } })
+      )
+    )
+
+    await expect(metricsService.startBenchmarkRun('d-1', undefined, { signal: controller.signal })).resolves.toMatchObject({ benchmark: { benchmark_id: 'b-1' } })
+    await expect(metricsService.getBenchmarkRun('b-1', { signal: controller.signal })).resolves.toMatchObject({ benchmark: { status: 'running' } })
+    expect(calls).toEqual([{ dataset_id: 'd-1' }])
+  })
 })

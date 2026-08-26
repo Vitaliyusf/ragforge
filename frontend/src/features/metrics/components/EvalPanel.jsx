@@ -12,6 +12,7 @@ import StatCard from '@/components/ui/StatCard'
 import TabSkeleton from '@/components/ui/TabSkeleton'
 import { useEvalRuns } from '../hooks/useEvalRuns'
 import GoldenSetImporter from './benchmark/GoldenSetImporter'
+import BenchmarkCenter from './benchmark/BenchmarkCenter'
 import TimeSeries from './charts/TimeSeries'
 import {
   CONFIG_DIFF_NOTE,
@@ -345,6 +346,8 @@ export default function EvalPanel() {
           </p>
         )}
       </Card>
+
+      <BenchmarkCenter datasetId={datasetId} datasetName={dataset?.name} ready={Boolean(datasetId)} />
 
       {run?.run_id && <LabelValidation validation={run.label_validation} />}
 
