@@ -8,7 +8,7 @@ import zipfile
 
 import pytest
 
-from app.services.benchmark_export import build_benchmark_export
+from app.services.benchmark_export import MAX_TEXT_BYTES, build_benchmark_export
 from app.services.benchmark_runner import PHASE_RETRIEVAL_BASE
 from app.services.eval_store import EvalNotFound
 from app.tests.test_benchmark_runner import ADMIN, build, run_benchmark
@@ -36,7 +36,7 @@ def test_export_has_the_evidence_layout_and_strict_json():
         assert {"README.md", "manifest.json", "dataset.json", "validation.json",
                 "comparison.json",
                 "summary.json", "metrics.json", "runtime.json", "errors.json",
-                "benchmark.json"} <= names
+                "benchmark.json", "truncation.json"} <= names
         assert any(name.endswith("/per-item.json") for name in names)
         for name in names:
             if name.endswith(".json"):
@@ -119,6 +119,51 @@ def test_export_excludes_answers_and_redacts_secrets():
     assert "private answer" not in text
     assert "do-not-export" not in text
     assert "[redacted]" in text
+
+
+def test_export_reports_text_truncation_explicitly():
+    store, orchestrator, _, dataset_id = build()
+    benchmark = run_benchmark(orchestrator, dataset_id, [PHASE_RETRIEVAL_BASE])
+    oversized = "x" * (MAX_TEXT_BYTES + 100)
+    with bound_context(**ADMIN.to_dict()):
+        document = store.get_benchmark_run(benchmark["benchmark_id"])
+        run_id = document["phases"][0]["run_id"]
+        for row in store._memory[store.config.eval_runs_collection]:
+            if row["run_id"] == run_id:
+                row["error"] = oversized
+
+    with _archive(store, benchmark["benchmark_id"]) as archive:
+        report = json.loads(archive.read("truncation.json"))
+        summary_name = next(
+            name for name in archive.namelist() if name.endswith("/summary.json")
+        )
+        summary = json.loads(archive.read(summary_name))
+
+    assert report["text_fields_truncated"] >= 1
+    assert any(example["path"].endswith(".error") for example in report["examples"])
+    assert len(summary["error"].encode("utf-8")) == MAX_TEXT_BYTES
+
+
+def test_prepare_run_export_integration_uses_bulk_tenant_scoped_run_loading():
+    """One tenant can prepare labels, finish a benchmark, and export it."""
+    store, orchestrator, _, dataset_id = build()
+    benchmark = run_benchmark(orchestrator, dataset_id, [PHASE_RETRIEVAL_BASE])
+    original_get_run = store.get_run
+
+    def refuse_n_plus_one(_run_id):
+        raise AssertionError("export must bulk-load phase runs")
+
+    store.get_run = refuse_n_plus_one
+    try:
+        with _archive(store, benchmark["benchmark_id"]) as archive:
+            dataset = json.loads(archive.read("dataset.json"))
+            summary = json.loads(archive.read("summary.json"))
+    finally:
+        store.get_run = original_get_run
+
+    assert dataset["dataset_id"] == dataset_id
+    assert dataset["provenance"] == "immutable_benchmark_snapshot"
+    assert summary["benchmark_id"] == benchmark["benchmark_id"]
 
 
 def test_export_refuses_a_benchmark_owned_by_another_tenant():

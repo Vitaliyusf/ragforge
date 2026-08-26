@@ -113,7 +113,13 @@ class RAGConfig(BaseSettings):
     # reason `metrics_query` re-validates its window on arrival.
     eval_max_dataset_items: int = 1000
     eval_max_query_length: int = 2000
+    eval_max_name_length: int = 200
     eval_max_dataset_bytes: int = 5 * 1024 * 1024
+    # Terminal eval/benchmark runs are diagnostic artifacts rather than
+    # permanent business records. MongoDB TTL indexes remove them after this
+    # window; active work has no ``finished_at`` and is therefore never
+    # expired underneath a worker.
+    eval_artifact_retention_days: int = 90
 
     # Stale-label detection.
     #

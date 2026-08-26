@@ -176,6 +176,30 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def _bounded_metadata(value: Any, field: str, max_length: int) -> Optional[str]:
+    """Normalize a dataset metadata field without accepting unbounded text."""
+    normalized = str(value).strip() if value is not None else ""
+    if len(normalized) > max_length:
+        raise EvalValidationError(
+            f"Dataset {field} has {len(normalized)} characters; the limit is {max_length}"
+        )
+    return normalized or None
+
+
+def _require_bounded_items(items: Any, max_bytes: int) -> None:
+    """Apply the import byte limit to direct JSON/RPC item payloads too."""
+    try:
+        encoded = json.dumps(items, ensure_ascii=False, separators=(",", ":")).encode(
+            "utf-8"
+        )
+    except (TypeError, ValueError):
+        return  # The schema-aware normalizer below reports the useful error.
+    if len(encoded) > max_bytes:
+        raise EvalValidationError(
+            f"Dataset items are {len(encoded)} bytes; the limit is {max_bytes}"
+        )
+
+
 def build_config_snapshot(
     config: RAGConfig,
     *,
@@ -434,8 +458,17 @@ class EvalStore:
             EvalValidationError: If the items fail validation.
         """
         identity = _require_admin()
-        if not str(name or "").strip():
+        max_name_length = int(getattr(self.config, "eval_max_name_length", 200))
+        normalized_name = _bounded_metadata(name, "name", max_name_length)
+        normalized_description = _bounded_metadata(
+            description, "description", self.config.eval_max_query_length
+        )
+        if normalized_name is None:
             raise EvalValidationError("A dataset needs a name")
+        _require_bounded_items(
+            items,
+            int(getattr(self.config, "eval_max_dataset_bytes", DEFAULT_MAX_INPUT_BYTES)),
+        )
         normalized = normalize_items(
             items,
             max_items=self.config.eval_max_dataset_items,
@@ -445,8 +478,8 @@ class EvalStore:
         document = {
             "dataset_id": str(uuid4()),
             "tenant_id": identity.tenant_id,
-            "name": str(name).strip(),
-            "description": str(description).strip() if description else None,
+            "name": normalized_name,
+            "description": normalized_description,
             "created_at": timestamp,
             "updated_at": timestamp,
             "dataset_version": INITIAL_DATASET_VERSION,
@@ -600,12 +633,29 @@ class EvalStore:
 
         changes: Dict[str, Any] = {"updated_at": _now()}
         if name is not None:
-            if not str(name).strip():
+            normalized_name = _bounded_metadata(
+                name,
+                "name",
+                int(getattr(self.config, "eval_max_name_length", 200)),
+            )
+            if normalized_name is None:
                 raise EvalValidationError("A dataset needs a name")
-            changes["name"] = str(name).strip()
+            changes["name"] = normalized_name
         if description is not None:
-            changes["description"] = str(description).strip() or None
+            changes["description"] = _bounded_metadata(
+                description, "description", self.config.eval_max_query_length
+            )
         if items is not None:
+            _require_bounded_items(
+                items,
+                int(
+                    getattr(
+                        self.config,
+                        "eval_max_dataset_bytes",
+                        DEFAULT_MAX_INPUT_BYTES,
+                    )
+                ),
+            )
             normalized = normalize_items(
                 items,
                 max_items=self.config.eval_max_dataset_items,
@@ -912,6 +962,40 @@ class EvalStore:
             raise EvalNotFound(f"No eval run {run_id!r}")
         return _serialize(_normalize_run(document))
 
+    def get_runs(self, run_ids: List[str]) -> List[Dict[str, Any]]:
+        """Return several runs in caller order with one tenant-scoped query.
+
+        Benchmark exports use this instead of issuing one lookup per phase.
+        Missing and cross-tenant ids have the same not-found result as
+        :meth:`get_run`, so the bulk path does not weaken the boundary.
+        """
+        identity = _require_admin()
+        ordered_ids = list(dict.fromkeys(str(run_id) for run_id in run_ids if run_id))
+        if not ordered_ids:
+            return []
+        if len(ordered_ids) > MAX_RUN_LIMIT:
+            raise EvalValidationError(
+                f"At most {MAX_RUN_LIMIT} eval runs can be fetched at once"
+            )
+        if self._in_memory:
+            wanted = set(ordered_ids)
+            rows = [
+                row
+                for row in self._docs(self.config.eval_runs_collection)
+                if row.get("tenant_id") == identity.tenant_id
+                and row.get("run_id") in wanted
+            ]
+        else:
+            rows = self._query(
+                self.config.eval_runs_collection,
+                {"tenant_id": identity.tenant_id, "run_id": {"$in": ordered_ids}},
+            )
+        by_id = {str(row.get("run_id")): row for row in rows}
+        missing = [run_id for run_id in ordered_ids if run_id not in by_id]
+        if missing:
+            raise EvalNotFound(f"No eval run {missing[0]!r}")
+        return [_serialize(_normalize_run(by_id[run_id])) for run_id in ordered_ids]
+
     # ------------------------------------------------------------------
     # Benchmark orchestrations
     # ------------------------------------------------------------------
@@ -1162,12 +1246,12 @@ class EvalStore:
             name="idx_eval_datasets_tenant_created",
         )
         self._collection(self.config.eval_runs_collection).create_index(
-            [("tenant_id", 1), ("created_at", -1)],
-            name="idx_eval_runs_tenant_created",
+            [("tenant_id", 1), ("started_at", -1)],
+            name="idx_eval_runs_tenant_started",
         )
         self._collection(self.config.eval_runs_collection).create_index(
-            [("dataset_id", 1), ("started_at", -1)],
-            name="idx_eval_runs_dataset_started",
+            [("tenant_id", 1), ("dataset_id", 1), ("started_at", -1)],
+            name="idx_eval_runs_tenant_dataset_started",
         )
         self._collection(self.config.eval_runs_collection).create_index(
             [("status", 1), ("lease.expires_at", 1)],
@@ -1178,12 +1262,25 @@ class EvalStore:
             name="idx_eval_benchmarks_tenant_created",
         )
         self._collection(self.config.eval_benchmark_runs_collection).create_index(
-            [("dataset_id", 1), ("created_at", -1)],
-            name="idx_eval_benchmarks_dataset_created",
+            [("tenant_id", 1), ("dataset_id", 1), ("created_at", -1)],
+            name="idx_eval_benchmarks_tenant_dataset_created",
         )
         self._collection(self.config.eval_benchmark_runs_collection).create_index(
             [("status", 1), ("lease.expires_at", 1)],
             name="idx_eval_benchmarks_recovery_lease",
+        )
+        retention_seconds = max(
+            1, int(getattr(self.config, "eval_artifact_retention_days", 90))
+        ) * 24 * 60 * 60
+        self._collection(self.config.eval_runs_collection).create_index(
+            [("finished_at", 1)],
+            name="idx_eval_runs_ttl",
+            expireAfterSeconds=retention_seconds,
+        )
+        self._collection(self.config.eval_benchmark_runs_collection).create_index(
+            [("finished_at", 1)],
+            name="idx_eval_benchmarks_ttl",
+            expireAfterSeconds=retention_seconds,
         )
 
     def backfill_dataset_fingerprints(self) -> int:
