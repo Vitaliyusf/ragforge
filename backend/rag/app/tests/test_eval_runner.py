@@ -770,12 +770,15 @@ class FakeGraphRunner:
         self.results = results
         self.calls: List[Dict[str, Any]] = []
 
-    async def run(self, request, emitter, resume=False, record_metrics=True):
+    async def run(
+        self, request, emitter, resume=False, record_metrics=True, retrieval_trace=None
+    ):
         self.calls.append(
             {
                 "query": request.user_message,
                 "record_metrics": record_metrics,
                 "pipeline_mode": request.mode,
+                "traced": retrieval_trace is not None,
             }
         )
         await asyncio.sleep(0)

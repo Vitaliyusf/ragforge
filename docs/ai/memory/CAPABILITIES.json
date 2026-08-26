@@ -223,6 +223,25 @@
         "top_k"
       ],
       "notes": "Known merged in audited main snapshot; verify current source."
+    },
+    {
+      "id": "CAP-014",
+      "name": "Per-item retrieval diagnostics trace",
+      "status": "implemented",
+      "owner": "rag",
+      "canonical_paths": [
+        "backend/rag/app/services/retrieval_trace.py",
+        "backend/rag/app/services/eval_runner.py",
+        "backend/rag/app/services/conversation_graph.py"
+      ],
+      "search_terms": [
+        "retrieval_trace",
+        "RetrievalTrace",
+        "provenance",
+        "candidate lineage",
+        "final_context"
+      ],
+      "notes": "Bounded ids/ranks/scores only, opt-in per eval item; extends the existing retrieval path per DEC-002. Never stores chunk text."
     }
   ]
 }

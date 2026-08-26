@@ -18,12 +18,11 @@ RAGForge uses:
 - Golden-set IR metrics exist.
 - Eval candidate depth is separate from production context K in the last audited main snapshot.
 - Citation/claim evaluation and Metrics UI exist.
-- Diagnostic tracing/failure attribution should extend existing RAG trace/eval infrastructure.
+- Per-item retrieval diagnostics (candidates/ranks/provenance) are attached to eval item rows by `retrieval_trace.py`, collected opt-in so user turns are unaffected.
 
 ## High-value tracked areas
 See task files and registries for exact status:
 - Pass2 global candidate ranking.
-- Retrieval diagnostics/failure attribution.
 - Agent mutation policy/evals.
 - Canonical turn/outbox.
 - Async RAG persistence/checkpoint retention.
