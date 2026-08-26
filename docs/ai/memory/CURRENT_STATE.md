@@ -19,6 +19,7 @@ RAGForge uses:
 - Eval candidate depth is separate from production context K in the last audited main snapshot.
 - Citation/claim evaluation and Metrics UI exist.
 - Per-item retrieval diagnostics (candidates/ranks/provenance) are attached to eval item rows by `retrieval_trace.py`, collected opt-in so user turns are unaffected.
+- Stage failure attribution is deterministic (`failure_attribution.py`): every eval/benchmark item carries one category plus evidence, counted into each run's `results.failure_attribution`; insufficient evidence is `unclassified`, never an LLM guess.
 
 ## High-value tracked areas
 See task files and registries for exact status:

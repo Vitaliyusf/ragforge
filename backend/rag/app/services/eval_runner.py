@@ -74,6 +74,7 @@ from app.services.eval_store import (
     EvalValidationError,
     build_config_snapshot,
 )
+from app.services.failure_attribution import aggregate_attribution, classify_item
 from app.services.golden_set_parser import prepare_chunk_labels, prepare_file_labels
 from app.services.retrieval_trace import (
     DROP_RETRIEVAL_NOT_ALLOWED,
@@ -1049,6 +1050,7 @@ class EvalRunner:
             "error": None,
         }
         if unscorable:
+            row["failure_attribution"] = classify_item(row)
             self.store.append_item_result(run_id, tenant_id, row)
             return row
 
@@ -1102,6 +1104,7 @@ class EvalRunner:
             row["error"] = str(exc)
             row["latency_ms"] = (time.monotonic() - started) * 1000
             row["retrieval_trace"] = trace.to_payload()
+            row["failure_attribution"] = classify_item(row)
             self.store.append_item_result(run_id, tenant_id, row)
             return row
 
@@ -1118,6 +1121,11 @@ class EvalRunner:
             row["recall_at_10"] = retrieval_metrics.recall_at_k(ids, relevant, 10)
             row["scores"] = _item_scores(ids, relevant)
 
+        # Attributed here, from the row and the lineage that produced it,
+        # rather than recomputed at aggregation time: the row is what the
+        # drill-down renders, and a category derived twice from two different
+        # inputs is a category that can disagree with itself.
+        row["failure_attribution"] = classify_item(row)
         self.store.append_item_result(run_id, tenant_id, row)
         return row
 
@@ -1249,6 +1257,10 @@ def aggregate(rows: List[Dict[str, Any]], mode: str = MODE_RETRIEVAL) -> Dict[st
     ``answer_quality``, each with the count of items it was measured over —
     an item whose judge failed, or whose answer cited nothing, contributes
     nothing rather than a zero.
+
+    ``failure_attribution`` counts each item's stage category from
+    :mod:`app.services.failure_attribution`, reusing the verdict already
+    stored on the row so the summary and the drill-down cannot disagree.
     """
     scored = [row for row in rows if row.get("scores")]
     skipped = sum(1 for row in rows if row.get("skipped"))
@@ -1275,6 +1287,10 @@ def aggregate(rows: List[Dict[str, Any]], mode: str = MODE_RETRIEVAL) -> Dict[st
         "items_unscorable": unscorable,
         "items_failed": failed,
         "mean_latency_ms": _mean(latencies),
+        # Where the failures were, not just how many. Reported for every run
+        # and every benchmark phase — a phase stores exactly this dict — so
+        # the stage that lost an item is visible without opening its trace.
+        "failure_attribution": aggregate_attribution(rows),
         **({"answer_quality": _answer_quality(rows)} if mode == MODE_END_TO_END else {}),
     }
 
