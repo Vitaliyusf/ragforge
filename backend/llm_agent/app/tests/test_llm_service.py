@@ -328,6 +328,51 @@ class LLMServiceTests(unittest.TestCase):
         )
         self.assertEqual(reply.parsed_output.answer, "Hello world")
 
+    def test_streaming_answer_generation_records_usage_metrics_once(self):
+        metrics = RecordingMetrics()
+        service = LLMService(
+            FakeLLMClient(
+                usage=LLMUsage(
+                    provider="vllm",
+                    input_tokens=11,
+                    output_tokens=2,
+                    total_tokens=13,
+                )
+            ),
+            FakeLogger(),
+            _settings(),
+        )
+
+        with patch("app.services.llm_service.METRICS", metrics):
+            reply = service.execute(
+                _request_message(
+                    "answer_generation",
+                    {
+                        "question": "What is the answer?",
+                        "retrieved_context": "Trusted source",
+                    },
+                    stream_to="rag.stream",
+                ),
+                lambda _event: None,
+            )
+
+        self.assertEqual(reply.usage.input_tokens, 11)
+        self.assertEqual(reply.usage.output_tokens, 2)
+        self.assertEqual(reply.usage.total_tokens, 13)
+        self.assertEqual(
+            [labels["direction"] for labels in metrics.llm_tokens_total.label_calls],
+            ["input", "output", "total"],
+        )
+        self.assertEqual(metrics.llm_tokens_total.increments, [11, 2, 13])
+        self.assertTrue(
+            all(
+                labels["request_type"] == "answer_generation"
+                for labels in metrics.llm_tokens_total.label_calls
+            )
+        )
+        self.assertEqual(metrics.llm_output_tokens.observations, [2])
+        self.assertEqual(len(metrics.llm_finish_reasons_total.increments), 1)
+
     def test_non_generation_requests_are_reply_only(self):
         service = LLMService(
             FakeLLMClient({'query_rewrite': '{"rewritten_query":"best cpu embeddings","search_intent":"shopping"}'}),
@@ -806,6 +851,13 @@ class LLMServiceTests(unittest.TestCase):
                     {"question": "Q?", "retrieved_context": "Context"},
                 )
             )
-            missing.execute(_request_message("query_rewrite", {"query": "rewrite me"}))
+            missing.execute(
+                _request_message(
+                    "answer_generation",
+                    {"question": "Q?", "retrieved_context": "Context"},
+                    stream_to="rag.stream",
+                ),
+                lambda _event: None,
+            )
 
         self.assertEqual(metrics.llm_output_tokens.observations, [42])
