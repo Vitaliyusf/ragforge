@@ -163,6 +163,10 @@ class VectorService(BaseVectorService):
             service="vector_db",
             collection=result["collection_name"],
         ).inc()
+        METRICS.vector_points_upserted_total.labels(
+            service="vector_db",
+            collection=result["collection_name"],
+        ).inc(upserted_count)
         self.logger.log("vector_service:upsert_chunks", "Chunks upserted", result)
         return result
 
@@ -227,6 +231,15 @@ class VectorService(BaseVectorService):
         except Exception as exc:
             raise VectorStoreError(f"Failed to delete chunks: {exc}") from exc
 
+        collection = self.vector_store.collection_name
+        METRICS.vector_delete_total.labels(
+            service="vector_db",
+            collection=collection,
+        ).inc()
+        METRICS.vector_points_deleted_total.labels(
+            service="vector_db",
+            collection=collection,
+        ).inc(deleted_count)
         self.logger.log(
             "vector_service:delete_chunks",
             "Chunks deleted",

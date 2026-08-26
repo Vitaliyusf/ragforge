@@ -290,9 +290,32 @@ class ServiceMetrics:
         )
 
         # ── Vector DB metrics ────────────────────────────────────────
+        # Operation counts: one increment per upsert_chunks/delete_chunks
+        # call, regardless of how many points that call touched. Use these
+        # to track call volume, not collection growth.
         self.vector_upsert_total = Counter(
             "ragapp_vector_upserts_total",
-            "Total vector upsert operations",
+            "Total vector upsert operations (calls, not points)",
+            ["service", "collection"],
+        )
+
+        self.vector_delete_total = Counter(
+            "ragapp_vector_deletes_total",
+            "Total vector delete operations (calls, not points)",
+            ["service", "collection"],
+        )
+
+        # Point counts: incremented by the actual number of points
+        # upserted/deleted per call, so they reflect real collection growth.
+        self.vector_points_upserted_total = Counter(
+            "ragapp_vector_points_upserted_total",
+            "Total vector points upserted",
+            ["service", "collection"],
+        )
+
+        self.vector_points_deleted_total = Counter(
+            "ragapp_vector_points_deleted_total",
+            "Total vector points deleted",
             ["service", "collection"],
         )
 
