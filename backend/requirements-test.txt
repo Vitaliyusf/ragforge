@@ -1,0 +1,17 @@
+# Canonical Python test toolchain for the whole repository.
+#
+# Every backend test run — each service matrix job, the shared library, and the
+# repo guardrails — installs this file and nothing else for its test runner.
+# Service `requirements.txt` files carry runtime dependencies only, so a service
+# can never downgrade pytest or pytest-asyncio for the rest of the repository.
+#
+# pytest and pytest-asyncio must move together: pytest-asyncio < 0.23 imports
+# `FixtureDef` from `pytest`, which pytest 8 no longer exports, and mixing the
+# two halves is what produced `ImportError: cannot import name 'FixtureDef'`.
+pytest==8.2.2
+pytest-asyncio==0.23.7
+pytest-mock==3.14.0
+
+# Test-only HTTP client: gateway and memory tests build httpx errors/responses
+# directly. Same pin as the services that use httpx at runtime.
+httpx==0.28.1

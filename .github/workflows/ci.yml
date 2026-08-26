@@ -80,21 +80,17 @@ jobs:
         if: matrix.service == 'llm_agent'
         run: pip install torch==2.0.0 --index-url https://download.pytorch.org/whl/cpu
       - name: Install dependencies
-        # Do not merge requirements-dev.txt into this resolution: several
-        # services pin their own (older) pytest, which collides with the dev
-        # pin and makes pip's resolver fail. Install the service's own
-        # requirements, then add a test runner only where the service does not
-        # already provide one, so each service runs on the pytest it pins.
+        # Three deterministic layers: base runtime, service runtime, canonical
+        # test toolchain. No service pins a test runner any more, so the test
+        # layer always wins and every matrix job runs the same pytest.
         run: |
           python -m pip install --upgrade pip
-          # Two separate installs, exactly as each service Dockerfile does it:
-          # the base layer and the service layer resolve independently, so a
-          # service pin that supersedes a base pin never becomes a combined
-          # ResolutionImpossible.
+          # Base and service layers install separately, exactly as each service
+          # Dockerfile does it, so a service pin that supersedes a base pin
+          # never becomes a combined ResolutionImpossible.
           pip install -r docker/requirements-base.txt
           pip install -r backend/${{ matrix.service }}/requirements.txt
-          python -c "import pytest" 2>/dev/null || pip install "pytest==8.2.2"
-          python -c "import pytest_asyncio" 2>/dev/null || pip install "pytest-asyncio==0.23.7"
+          pip install -r backend/requirements-test.txt
       - name: pytest
         working-directory: backend/${{ matrix.service }}
         # Services import their own code as `app.*` and the vendored library as
@@ -115,7 +111,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r docker/requirements-base.txt -r backend/requirements-dev.txt
+          pip install -r docker/requirements-base.txt -r backend/requirements-test.txt
       - name: pytest
         working-directory: backend
         # Run from backend/, never from backend/shared/: that directory holds a
@@ -151,6 +147,6 @@ jobs:
           python-version-file: .python-version
           cache: pip
       - name: Install pytest
-        run: pip install -r backend/requirements-dev.txt
+        run: pip install -r backend/requirements-test.txt
       - name: Scan for secrets, stray caches, and compose drift
         run: pytest tests/test_public_repo_guardrails.py -q
