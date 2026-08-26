@@ -751,6 +751,7 @@ class EvalStore:
         *,
         dataset_version: Optional[int] = None,
         dataset_sha256: Optional[str] = None,
+        manifest: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """Open a benchmark document in ``queued`` state and return it.
 
@@ -775,6 +776,15 @@ class EvalStore:
                 edited before the last phase finishes, and a benchmark whose
                 phases described different label sets would be uncomparable
                 against itself.
+            manifest: From
+                :func:`app.services.benchmark_manifest.build_benchmark_manifest`
+                — the build, dataset, retrieval, model and runtime metadata
+                the benchmark is about to run under. Written once at plan
+                time and never updated: it describes the conditions the
+                phases started under, and rewriting it mid-benchmark would
+                let a config change during a run erase the evidence that the
+                run's own numbers came from the old one. ``None`` for a
+                benchmark opened before manifests existed.
         """
         identity = _require_admin()
         document = {
@@ -789,6 +799,7 @@ class EvalStore:
             "status": BENCHMARK_QUEUED,
             "phases": phases,
             "progress": progress,
+            "manifest": manifest,
             "error": None,
         }
         self._insert(self.config.eval_benchmark_runs_collection, document)
@@ -875,7 +886,7 @@ class EvalStore:
             sort=("created_at", -1),
             limit=capped,
         )
-        return [_serialize(row) for row in rows]
+        return [_serialize(_normalize_benchmark(row)) for row in rows]
 
     def get_benchmark_run(self, benchmark_id: str) -> Dict[str, Any]:
         """Return one benchmark with its full phase table.
@@ -890,7 +901,7 @@ class EvalStore:
         )
         if document is None:
             raise EvalNotFound(f"No benchmark run {benchmark_id!r}")
-        return _serialize(document)
+        return _serialize(_normalize_benchmark(document))
 
     def _last_run_times(self, identity: AuthIdentity) -> Dict[str, Optional[str]]:
         """Map dataset_id to the ISO time of its most recent run.
@@ -1157,6 +1168,17 @@ def _normalize_run(document: Dict[str, Any]) -> Dict[str, Any]:
         "label_validation": None,
         **document,
     }
+
+
+def _normalize_benchmark(document: Dict[str, Any]) -> Dict[str, Any]:
+    """Make a pre-manifest benchmark readable without inventing provenance.
+
+    For the reason :func:`_normalize_run` leaves its gaps at ``None``: a
+    manifest built now would describe today's build and today's config, not
+    the ones that benchmark actually ran under, and a confident wrong
+    manifest is worse than a blank one a UI can label "not recorded".
+    """
+    return {"manifest": None, **document}
 
 
 def _serialize(document: Dict[str, Any]) -> Dict[str, Any]:
