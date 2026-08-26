@@ -14,6 +14,7 @@ def _base_envelope(action, payload):
         "correlation_id": "corr-1",
         "reply_to": "rag.replies",
         "timestamp": 1730000000000,
+        "traffic_class": "eval",
         "payload": payload,
     }
 
@@ -47,6 +48,7 @@ def test_rag_content_risk_scan_envelope_validates_against_typed_schema():
     assert request.payload.request_type == "content_risk_scan"
     assert request.payload.input.content == "What can you help me with?"
     assert request.payload.metadata["graph_run_id"] == "graph-1"
+    assert request.traffic_class == "eval"
 
 
 def test_rag_answer_generation_envelope_validates_against_typed_schema():

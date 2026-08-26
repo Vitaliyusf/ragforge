@@ -181,6 +181,7 @@ class SharedEnvelopeBase(StrictSchema):
     stream_to: Optional[str] = None
     timestamp: int
     auth_context: Optional[str] = None
+    traffic_class: Literal["live", "eval"] = "live"
 
 
 class ModelExecutionRequestMessage(SharedEnvelopeBase):
