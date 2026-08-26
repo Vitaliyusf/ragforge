@@ -58,7 +58,7 @@ import json
 import os
 import time
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Mapping, Optional, Tuple
 from uuid import uuid4
 
 from app.core.config import RAGConfig
@@ -379,10 +379,22 @@ def benchmark_dataset_snapshot(dataset: Mapping[str, Any]) -> Dict[str, Any]:
     """Capture the minimal immutable scoring evidence for one benchmark.
 
     The snapshot deliberately contains canonical items rather than the live
-    Golden Set document: authoring notes, item identifiers, descriptions and
-    timestamps cannot affect a score and do not belong in durable evidence.
+    Golden Set document: authoring notes, descriptions and timestamps cannot
+    affect a score and do not belong in durable evidence.
+
+    ``item_id`` is the one non-scoring field kept, because a benchmark phase
+    executes this snapshot rather than the live dataset. It is the key every
+    per-item row, retrieval trace and unscorable-label decision is recorded
+    under, so dropping it would leave a phase whose rows cannot be told
+    apart or joined back to the golden set. It stays outside the fingerprint
+    regardless: :func:`canonical_items` reads only scoring fields, so
+    ``dataset_fingerprint`` over these items is unchanged by its presence.
     """
-    items = canonical_items(dataset.get("items"))
+    items = [
+        {"item_id": source.get("item_id"), **canonical_items([source])[0]}
+        for source in dataset.get("items") or []
+        if isinstance(source, dict)
+    ]
     return {
         "snapshot_version": 1,
         "dataset_id": dataset.get("dataset_id"),
@@ -1442,12 +1454,28 @@ def _normalize_benchmark(document: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+# Nested blocks whose own values are timestamps. They are stored as datetimes
+# because Mongo has to compare them inside a query filter, and rendered here
+# because the reply they travel in is JSON, which has no datetime. Missing one
+# is not a rendering nuisance: the reply is encoded inside the consumer's
+# try/except, so the encode error is logged and no reply is ever published —
+# the caller then waits out its whole RPC timeout on a handled request.
+_TIMESTAMP_BLOCKS = ("lease", "recovery")
+
+
 def _serialize(document: Dict[str, Any]) -> Dict[str, Any]:
     """Make one stored document JSON-safe for the RPC reply envelope."""
     serialized = {key: value for key, value in document.items() if key != "_id"}
     for field in ("created_at", "updated_at", "started_at", "finished_at"):
         if field in serialized:
             serialized[field] = _iso(serialized[field])
+    for block in _TIMESTAMP_BLOCKS:
+        value = serialized.get(block)
+        if isinstance(value, dict):
+            serialized[block] = {
+                key: _iso(inner) if isinstance(inner, datetime) else inner
+                for key, inner in value.items()
+            }
     return serialized
 
 

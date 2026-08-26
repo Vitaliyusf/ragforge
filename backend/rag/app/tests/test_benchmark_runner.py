@@ -94,6 +94,7 @@ def build_config(**overrides: Any) -> SimpleNamespace:
         "eval_benchmark_runs_collection": "eval_benchmark_runs",
         "eval_max_dataset_items": 1000,
         "eval_max_query_length": 2000,
+        "eval_lease_seconds": 300,
         "eval_run_concurrency": 4,
         "eval_candidate_k": 20,
         "eval_validate_labels": True,
@@ -333,12 +334,39 @@ def test_a_benchmark_captures_only_its_immutable_canonical_scoring_snapshot():
     assert snapshot["dataset_version"] == benchmark["dataset_version"]
     assert snapshot["dataset_sha256"] == benchmark["dataset_sha256"]
     assert dataset_fingerprint(snapshot["items"]) == snapshot["dataset_sha256"]
-    assert snapshot["items"] == canonical_items(
-        [{"query": "first", "relevant_chunk_ids": ["c1"]}]
-    )
-    assert "item_id" not in snapshot["items"][0]
+    # The snapshot is the canonical scoring form of the stored dataset — the
+    # items as they were normalized at import, which is what the run scored.
+    with bound_context(**ADMIN.to_dict()):
+        stored = store.get_dataset(dataset_id)["items"]
+    assert canonical_items(snapshot["items"]) == canonical_items(stored)
+    # The phase executes this snapshot, so item identity has to survive it;
+    # the fingerprint assertion above proves it stays outside the hash.
+    assert snapshot["items"][0]["item_id"] == stored[0]["item_id"]
     assert "notes" not in snapshot["items"][0]
     assert "created_by" not in snapshot["items"][0]
+
+
+def test_benchmark_phase_rows_keep_the_item_identity_they_were_scored_under():
+    """The snapshot a phase executes must not erase per-item identity.
+
+    Rows are the only per-item evidence a drill-down or export has, and an
+    ``item_id`` shared by every row cannot be joined back to a golden set
+    item. The unscorable lookup is keyed by the same field, so one blank id
+    would also let a single stale label mark the whole phase unscorable.
+    """
+    store, orchestrator, _, dataset_id = build()
+
+    benchmark = fetch(
+        store,
+        run_benchmark(orchestrator, dataset_id, [PHASE_RETRIEVAL_BASE])["benchmark_id"],
+    )
+    with bound_context(**ADMIN.to_dict()):
+        dataset_ids = {item["item_id"] for item in store.get_dataset(dataset_id)["items"]}
+        run = store.get_run(str(benchmark["phases"][0]["run_id"]))
+
+    scored_ids = [row.get("item_id") for row in run["per_item"]]
+    assert len(set(scored_ids)) == len(scored_ids)
+    assert set(scored_ids) == dataset_ids
 
 
 def test_a_benchmark_returns_immediately_in_queued_state():

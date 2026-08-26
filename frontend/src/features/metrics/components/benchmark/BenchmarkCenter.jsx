@@ -25,6 +25,9 @@ export default function BenchmarkCenter({ datasetId, datasetName, ready }) {
   const completedPhases = progress.completed_phases ?? 0
   const activePhase = phases.find((phase) => phase.status === 'running')
   const itemProgress = activePhase?.item_progress || {}
+  // The per-phase counters carry outcomes only; every executable phase scores
+  // the whole dataset, so its denominator is the benchmark's items-per-phase.
+  const itemsPerPhase = progress.items_per_phase ?? 0
 
   return (
     <Card>
@@ -33,7 +36,7 @@ export default function BenchmarkCenter({ datasetId, datasetName, ready }) {
           <Button size="sm" onClick={() => setConfirmOpen(true)} disabled={!ready || busy || running} leftIcon={<Play size={13} />}>
             {running ? 'Benchmark running…' : 'Run full benchmark'}
           </Button>
-          <Button variant="secondary" size="sm" onClick={download} disabled={!TERMINAL_EXPORTABLE.has(benchmark?.status) || busy} leftIcon={<Download size={13} />}>
+          <Button variant="secondary" size="sm" onClick={() => download()} disabled={!TERMINAL_EXPORTABLE.has(benchmark?.status) || busy} leftIcon={<Download size={13} />}>
             Download Diagnostic ZIP
           </Button>
         </div>
@@ -47,7 +50,7 @@ export default function BenchmarkCenter({ datasetId, datasetName, ready }) {
         <ul className="mt-3 space-y-1 text-[13px]">
           {phases.map((phase) => <li key={phase.name} className="flex justify-between gap-4"><span>{PHASE_LABELS[phase.name] || phase.name}</span><span style={{ color: 'var(--fg-muted)' }}>{phase.status}{phase.reason || phase.error ? ` — ${phase.reason || phase.error}` : ''}</span></li>)}
         </ul>
-        {activePhase && <PhaseProgress phase={activePhase} progress={itemProgress} />}
+        {activePhase && <PhaseProgress phase={activePhase} progress={itemProgress} total={itemsPerPhase} />}
         {measured.length > 0 && <div className="mt-3 text-[13px]" style={{ color: 'var(--fg-muted)'}}>
           <p className="font-medium" style={{ color: 'var(--fg)' }}>Summary</p>
           {measured.map((phase) => <p key={phase.name}>{PHASE_LABELS[phase.name] || phase.name}: MRR {formatMetric(phase.results?.mrr)}, mean latency {formatMetric(phase.results?.mean_latency_ms, ' ms')}</p>)}
@@ -84,8 +87,8 @@ function BenchmarkHistory({ history = [], selectedId, busy, onSelect, onDownload
   </section>
 }
 
-function PhaseProgress({ phase, progress }) {
-  const total = Number(progress.items_total ?? progress.items_per_phase ?? 0)
+function PhaseProgress({ phase, progress, total: itemsPerPhase }) {
+  const total = Number(itemsPerPhase ?? 0)
   const completed = Number(progress.items_completed ?? 0)
   const percent = total ? Math.round((completed / total) * 100) : null
   const elapsed = formatElapsed(progress.phase_started_at)

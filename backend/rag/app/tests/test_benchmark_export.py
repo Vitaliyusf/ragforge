@@ -60,9 +60,10 @@ def test_new_export_uses_its_snapshot_after_the_live_dataset_changes():
     assert evidence["dataset_version"] == benchmark["dataset_version"]
     assert evidence["dataset_sha256"] == benchmark["dataset_sha256"]
     assert evidence["items"][0]["query"] == "first"
-    assert all(
-        "item_id" not in item and "notes" not in item for item in evidence["items"]
-    )
+    # Item identity is evidence — it is what the per-item files join on.
+    # Authoring annotation is not, and stays out.
+    assert all(item.get("item_id") for item in evidence["items"])
+    assert all("notes" not in item for item in evidence["items"])
 
 
 def test_new_export_survives_live_dataset_deletion():
