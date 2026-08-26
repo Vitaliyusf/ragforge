@@ -81,4 +81,34 @@ describe('metricsService', () => {
       'pipeline',
     ])
   })
+
+  it('posts raw Golden Set content to validation and import endpoints', async () => {
+    const bodies = []
+    server.use(
+      http.post(`${API_BASE_URL}/v1/metrics/eval/datasets/validate`, async ({ request }) => {
+        bodies.push({ path: 'validate', body: await request.json() })
+        return HttpResponse.json({ validation: { valid: true } })
+      }),
+      http.post(`${API_BASE_URL}/v1/metrics/eval/datasets/import`, async ({ request }) => {
+        bodies.push({ path: 'import', body: await request.json() })
+        return HttpResponse.json({ dataset: { dataset_id: 'd-1' } })
+      })
+    )
+
+    await metricsService.validateGoldenSet({ content: '{}', format: 'jsonl' })
+    await metricsService.importGoldenSet({
+      name: 'Support',
+      description: null,
+      content: '{}',
+      format: 'jsonl',
+    })
+
+    expect(bodies).toEqual([
+      { path: 'validate', body: { content: '{}', format: 'jsonl' } },
+      {
+        path: 'import',
+        body: { name: 'Support', description: null, content: '{}', format: 'jsonl' },
+      },
+    ])
+  })
 })

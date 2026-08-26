@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import json
-from typing import Any, List, Optional, TypedDict, Union
+from typing import Any, Dict, List, Optional, TypedDict, Union
 from uuid import uuid4
 
 
@@ -47,20 +47,94 @@ def parse_golden_set(
 ) -> List[CanonicalGoldenSetItem]:
     """Parse JSON or JSONL and return canonical, validated items."""
     text = _bounded_text(content, max_input_bytes)
-    normalized_format = str(source_format or "").strip().lower().lstrip(".")
-    if normalized_format == "json":
-        raw_items = _parse_json(text)
-    elif normalized_format in {"jsonl", "ndjson"}:
-        raw_items = _parse_jsonl(text, max_items=max_items)
-    else:
-        raise GoldenSetValidationError(
-            f"Unsupported Golden Set format {source_format!r}; use 'json' or 'jsonl'"
-        )
+    raw_items = _parse_source(text, source_format, max_items=max_items)
     return normalize_golden_set_items(
         raw_items,
         max_items=max_items,
         max_query_length=max_query_length,
     )
+
+
+def validate_golden_set(
+    content: RawDataset,
+    source_format: str,
+    *,
+    max_input_bytes: int = DEFAULT_MAX_INPUT_BYTES,
+    max_items: int = 1000,
+    max_query_length: int = 2000,
+) -> Dict[str, Any]:
+    """Validate all independently checkable items without storing a dataset.
+
+    Document-level parse failures have no item index. Once the document can
+    be split into items, validation continues after a bad item so an author
+    can fix the whole file in one pass instead of discovering one error per
+    request.
+    """
+    try:
+        text = _bounded_text(content, max_input_bytes)
+        raw_items = _parse_source(text, source_format, max_items=max_items)
+    except GoldenSetValidationError as exc:
+        return _validation_result(0, 0, 0, [{"item_index": None, "message": str(exc)}])
+
+    total = len(raw_items)
+    if not total:
+        return _validation_result(
+            0,
+            0,
+            0,
+            [{"item_index": None, "message": "A dataset must contain at least one item"}],
+        )
+    if total > max_items:
+        return _validation_result(
+            total,
+            0,
+            total,
+            [
+                {
+                    "item_index": None,
+                    "message": f"Dataset has {total} items; the limit is {max_items}",
+                }
+            ],
+        )
+
+    errors: List[Dict[str, Any]] = []
+    valid_count = 0
+    seen_ids: set[str] = set()
+    for index, raw in enumerate(raw_items):
+        try:
+            item = normalize_golden_set_items(
+                [raw],
+                max_items=1,
+                max_query_length=max_query_length,
+            )[0]
+            item_id = item["item_id"]
+            if isinstance(raw, dict) and raw.get("item_id") is not None and item_id in seen_ids:
+                raise GoldenSetValidationError(f"Item {index} repeats item_id {item_id!r}")
+            seen_ids.add(item_id)
+        except GoldenSetValidationError as exc:
+            message = str(exc)
+            if message.startswith("Item 0"):
+                message = f"Item {index}{message[len('Item 0') :]}"
+            errors.append({"item_index": index, "message": message})
+        else:
+            valid_count += 1
+
+    return _validation_result(total, valid_count, total - valid_count, errors)
+
+
+def _validation_result(
+    total_items: int,
+    valid_items: int,
+    invalid_items: int,
+    errors: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    return {
+        "valid": not errors,
+        "total_items": total_items,
+        "valid_items": valid_items,
+        "invalid_items": invalid_items,
+        "errors": errors,
+    }
 
 
 def parse_golden_set_json(
@@ -212,6 +286,17 @@ def _parse_json(text: str) -> List[Any]:
     if isinstance(document, dict):
         return [document]
     raise GoldenSetValidationError("JSON must contain an item, an item array, or an object with 'items'")
+
+
+def _parse_source(text: str, source_format: str, *, max_items: int) -> List[Any]:
+    normalized_format = str(source_format or "").strip().lower().lstrip(".")
+    if normalized_format == "json":
+        return _parse_json(text)
+    if normalized_format in {"jsonl", "ndjson"}:
+        return _parse_jsonl(text, max_items=max_items)
+    raise GoldenSetValidationError(
+        f"Unsupported Golden Set format {source_format!r}; use 'json' or 'jsonl'"
+    )
 
 
 def _parse_jsonl(text: str, *, max_items: int) -> List[Any]:

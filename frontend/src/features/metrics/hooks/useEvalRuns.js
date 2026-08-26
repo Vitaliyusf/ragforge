@@ -161,6 +161,25 @@ export function useEvalRuns() {
     [loadDatasets]
   )
 
+  const importDataset = useCallback(
+    async (body) => {
+      setBusy(true)
+      try {
+        const response = await metricsService.importGoldenSet(body)
+        await loadDatasets()
+        setDatasetId(response?.dataset?.dataset_id || '')
+        setError(null)
+        return true
+      } catch (err) {
+        setError(err?.message || 'Could not import the dataset')
+        return false
+      } finally {
+        setBusy(false)
+      }
+    },
+    [loadDatasets]
+  )
+
   const deleteDataset = useCallback(
     async (id) => {
       setBusy(true)
@@ -195,6 +214,7 @@ export function useEvalRuns() {
     startRun,
     estimateRunCost,
     createDataset,
+    importDataset,
     deleteDataset,
     refresh,
   }

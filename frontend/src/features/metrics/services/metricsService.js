@@ -48,6 +48,19 @@ class MetricsService {
     return await post('/v1/metrics/eval/datasets', { name, description, items })
   }
 
+  async validateGoldenSet({ content, format }) {
+    return await post('/v1/metrics/eval/datasets/validate', { content, format })
+  }
+
+  async importGoldenSet({ name, description, content, format }) {
+    return await post('/v1/metrics/eval/datasets/import', {
+      name,
+      description,
+      content,
+      format,
+    })
+  }
+
   async updateEvalDataset(datasetId, body) {
     return await patch(`/v1/metrics/eval/datasets/${encodeURIComponent(datasetId)}`, body)
   }

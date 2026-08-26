@@ -156,6 +156,7 @@ class RagAction(str, Enum):
     # code — the same arrangement as GET_METRICS and METRICS_ACTION.
     LIST_EVAL_DATASETS = "list_eval_datasets"
     CREATE_EVAL_DATASET = "create_eval_dataset"
+    VALIDATE_EVAL_DATASET = "validate_eval_dataset"
     UPDATE_EVAL_DATASET = "update_eval_dataset"
     DELETE_EVAL_DATASET = "delete_eval_dataset"
     START_EVAL_RUN = "start_eval_run"

@@ -9,6 +9,7 @@ from app.services.golden_set_parser import (
     GoldenSetValidationError,
     parse_golden_set_json,
     parse_golden_set_jsonl,
+    validate_golden_set,
 )
 
 
@@ -150,3 +151,23 @@ def test_json_accepts_a_single_item_or_an_items_envelope():
     assert parse_golden_set_json(json.dumps(item)) == parse_golden_set_json(
         json.dumps({"items": [item]})
     )
+
+
+def test_validation_reports_all_bad_items_and_totals():
+    content = json.dumps(
+        [
+            {"query": "ok", "relevant_file_ids": ["f-1"]},
+            {"query": "", "relevant_file_ids": ["f-2"]},
+            {"query": "bad tags", "tags": "not-a-list"},
+        ]
+    )
+
+    result = validate_golden_set(content, "json")
+
+    assert result["valid"] is False
+    assert result["total_items"] == 3
+    assert result["valid_items"] == 1
+    assert result["invalid_items"] == 2
+    assert [error["item_index"] for error in result["errors"]] == [1, 2]
+    assert "Item 1 has no query" in result["errors"][0]["message"]
+    assert "Item 2: tags must be a list" in result["errors"][1]["message"]

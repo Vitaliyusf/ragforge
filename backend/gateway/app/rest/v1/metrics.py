@@ -16,7 +16,7 @@ a dataset listing or a run document.
 """
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field, model_validator
@@ -39,6 +39,7 @@ _TENANT = Query(None, description="Tenant to report on; defaults to your own")
 EVAL_MAX_ITEMS = 1000
 EVAL_MAX_QUERY_LENGTH = 2000
 EVAL_MAX_NAME_LENGTH = 200
+EVAL_MAX_INPUT_CHARS = 5 * 1024 * 1024
 
 
 class EvalItemIn(BaseModel):
@@ -74,6 +75,20 @@ class EvalDatasetCreate(BaseModel):
     name: str = Field(min_length=1, max_length=EVAL_MAX_NAME_LENGTH)
     description: Optional[str] = Field(default=None, max_length=EVAL_MAX_QUERY_LENGTH)
     items: List[EvalItemIn] = Field(min_length=1, max_length=EVAL_MAX_ITEMS)
+
+
+class GoldenSetValidationIn(BaseModel):
+    """Raw Golden Set text and its explicitly selected source format."""
+
+    content: str = Field(min_length=1, max_length=EVAL_MAX_INPUT_CHARS)
+    format: Literal["json", "jsonl"]
+
+
+class EvalDatasetImport(GoldenSetValidationIn):
+    """A raw Golden Set that should be parsed and stored."""
+
+    name: str = Field(min_length=1, max_length=EVAL_MAX_NAME_LENGTH)
+    description: Optional[str] = Field(default=None, max_length=EVAL_MAX_QUERY_LENGTH)
 
 
 class EvalDatasetUpdate(BaseModel):
@@ -192,6 +207,35 @@ async def create_eval_dataset(
             body.name,
             body.description,
             [item.model_dump() for item in body.items],
+        )
+    except Exception as exc:
+        raise handle_exception(exc)
+
+
+@router.post("/eval/datasets/validate", dependencies=[Depends(require_admin)])
+async def validate_eval_dataset(
+    body: GoldenSetValidationIn,
+    service: MetricsService = Depends(get_metrics_service),
+) -> Dict[str, Any]:
+    """Validate every item that can be checked without storing the upload."""
+    try:
+        return await service.validate_eval_dataset(body.content, body.format)
+    except Exception as exc:
+        raise handle_exception(exc)
+
+
+@router.post("/eval/datasets/import", dependencies=[Depends(require_admin)])
+async def import_eval_dataset(
+    body: EvalDatasetImport,
+    service: MetricsService = Depends(get_metrics_service),
+) -> Dict[str, Any]:
+    """Parse and store one bounded JSON/JSONL Golden Set."""
+    try:
+        return await service.import_eval_dataset(
+            body.name,
+            body.description,
+            body.content,
+            body.format,
         )
     except Exception as exc:
         raise handle_exception(exc)

@@ -8,6 +8,7 @@ than truncated into a dataset that produces confident, wrong recall numbers.
 """
 from __future__ import annotations
 
+import json
 from types import SimpleNamespace
 from typing import Any, Dict, List, Optional, cast
 
@@ -74,6 +75,15 @@ class DummyRPCClient:
                 ]
             },
             "create_eval_dataset": {"dataset": DATASET},
+            "validate_eval_dataset": {
+                "validation": {
+                    "valid": True,
+                    "total_items": 1,
+                    "valid_items": 1,
+                    "invalid_items": 0,
+                    "errors": [],
+                }
+            },
             "update_eval_dataset": {"dataset": {**DATASET, "name": "Renamed"}},
             "delete_eval_dataset": {"dataset_id": "d-1", "deleted": True},
             "start_eval_run": {"run": RUN},
@@ -165,6 +175,39 @@ def test_creating_a_dataset_forwards_normalized_items():
     # never has to guess whether it was omitted or empty.
     assert payload["items"][0]["relevant_file_ids"] == []
     assert payload["items"][0]["item_id"] is None
+
+
+def test_validating_raw_jsonl_does_not_create_a_dataset():
+    service = build_service()
+    body = {"content": json.dumps(VALID_ITEM), "format": "jsonl"}
+    with TestClient(build_app(service)) as client:
+        response = client.post("/v1/metrics/eval/datasets/validate", json=body)
+
+    assert response.status_code == 200
+    assert response.json()["validation"]["valid_items"] == 1
+    payload = last_payload(service)
+    assert payload["action"] == "validate_eval_dataset"
+    assert payload["content"] == body["content"]
+    assert payload["format"] == "jsonl"
+
+
+def test_importing_raw_json_forwards_bounded_content_and_format():
+    service = build_service()
+    body = {
+        "name": "Support",
+        "description": None,
+        "content": json.dumps([VALID_ITEM]),
+        "format": "json",
+    }
+    with TestClient(build_app(service)) as client:
+        response = client.post("/v1/metrics/eval/datasets/import", json=body)
+
+    assert response.status_code == 200
+    assert response.json()["dataset"]["dataset_id"] == "d-1"
+    payload = last_payload(service)
+    assert payload["action"] == "create_eval_dataset"
+    assert payload["content"] == body["content"]
+    assert payload["format"] == "json"
 
 
 def test_updating_a_dataset_forwards_only_what_was_sent():
