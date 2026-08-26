@@ -407,6 +407,12 @@ class MetricsService(BaseRPCService):
             RagAction.GET_BENCHMARK_RUN, {"benchmark_id": benchmark_id}
         )
 
+    async def export_benchmark_run(self, benchmark_id: str) -> Dict[str, Any]:
+        """Build a bounded diagnostic archive for one tenant-scoped benchmark."""
+        return await self._eval(
+            RagAction.EXPORT_BENCHMARK_RUN, {"benchmark_id": benchmark_id}
+        )
+
     @staticmethod
     def estimate_eval_cost(item_count: int, mode: str, model: str) -> Dict[str, Any]:
         """Estimate what one eval run will spend, for the pre-run warning.
