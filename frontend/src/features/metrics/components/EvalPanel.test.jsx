@@ -19,9 +19,11 @@ vi.mock('@/features/metrics/hooks/useEvalRuns', () => ({
 
 import EvalPanel, {
   DatasetProvenance,
+  FailureAttribution,
   LabelValidation,
   diffSnapshots,
   estimateDescription,
+  failureLabel,
 } from './EvalPanel'
 
 const SNAPSHOT = {
@@ -273,7 +275,9 @@ describe('EvalPanel per-item table', () => {
     setup()
 
     const table = screen.getByRole('table', { name: /per-item retrieval results/i })
-    expect(within(table).getByText('—')).toBeInTheDocument()
+    const row = within(table).getByText('never found').closest('tr')
+    // First data cell after the query header: the rank the run never reached.
+    expect(within(row).getAllByRole('cell')[0]).toHaveTextContent('—')
   })
 
   it('marks an unlabelled item as excluded rather than as a failure', () => {
@@ -681,5 +685,113 @@ describe('LabelValidation', () => {
   it('renders nothing at all without a validation record', () => {
     const { container } = render(<LabelValidation validation={null} />)
     expect(container).toBeEmptyDOMElement()
+  })
+})
+
+// ── Failure attribution ───────────────────────────────────────────────────
+
+const ATTRIBUTION = {
+  counts: {
+    index: 0,
+    retrieval: 3,
+    pass_two: 0,
+    ranking: 1,
+    context: 0,
+    completeness: 0,
+    generation: 0,
+    grounding: 0,
+    stale_labels: 0,
+    pipeline_error: 0,
+    unclassified: 2,
+  },
+  rates: {
+    index: 0,
+    retrieval: 0.3,
+    pass_two: 0,
+    ranking: 0.1,
+    context: 0,
+    completeness: 0,
+    generation: 0,
+    grounding: 0,
+    stale_labels: 0,
+    pipeline_error: 0,
+    unclassified: 0.2,
+  },
+  items_attributed: 10,
+  items_without_failure: 4,
+  items_failed_attributed: 4,
+  items_unclassified: 2,
+}
+
+describe('EvalPanel failure attribution', () => {
+  it('lists only the stages that actually lost items', () => {
+    setup({ run: { ...COMPLETED_RUN, results: { ...RESULTS, failure_attribution: ATTRIBUTION } } })
+
+    const table = screen.getByRole('table', { name: /failure counts by pipeline stage/i })
+    expect(within(table).getByText('Never a candidate')).toBeInTheDocument()
+    expect(within(table).getByText('Ranked out of the context')).toBeInTheDocument()
+    expect(within(table).queryByText('Retrieved, then barred')).not.toBeInTheDocument()
+  })
+
+  it('shows each stage share against the attributed denominator', () => {
+    setup({ run: { ...COMPLETED_RUN, results: { ...RESULTS, failure_attribution: ATTRIBUTION } } })
+
+    const table = screen.getByRole('table', { name: /failure counts by pipeline stage/i })
+    const row = within(table).getByText('Never a candidate').closest('tr')
+    expect(within(row).getByText('3')).toBeInTheDocument()
+    expect(within(row).getByText('30%')).toBeInTheDocument()
+    expect(screen.getByText(/without enough evidence to place/)).toBeInTheDocument()
+  })
+
+  it('renders nothing when no item could be attributed', () => {
+    const { container } = render(
+      <FailureAttribution attribution={{ ...ATTRIBUTION, items_attributed: 0 }} />,
+    )
+
+    expect(container).toBeEmptyDOMElement()
+  })
+
+  it('says so rather than showing an empty table when nothing failed', () => {
+    render(
+      <FailureAttribution
+        attribution={{
+          counts: Object.fromEntries(Object.keys(ATTRIBUTION.counts).map((key) => [key, 0])),
+          rates: {},
+          items_attributed: 5,
+          items_without_failure: 5,
+          items_unclassified: 0,
+        }}
+      />,
+    )
+
+    expect(screen.getByText(/nothing to attribute/i)).toBeInTheDocument()
+  })
+
+  it('names the stage on the per-item row it was attributed to', () => {
+    setup({
+      run: {
+        ...COMPLETED_RUN,
+        per_item: [
+          {
+            ...COMPLETED_RUN.per_item[1],
+            failure_attribution: { category: 'ranking', evidence: {} },
+          },
+        ],
+      },
+    })
+
+    const table = screen.getByRole('table', { name: /per-item retrieval results/i })
+    expect(within(table).getByText('Ranked out of the context')).toBeInTheDocument()
+  })
+})
+
+describe('failureLabel', () => {
+  it('leaves a row from before attribution existed blank rather than guessing', () => {
+    expect(failureLabel({ item_id: 'i-1' })).toBe('—')
+  })
+
+  it('leaves an item that did not fail blank', () => {
+    expect(failureLabel({ failure_attribution: { category: 'none' } })).toBe('—')
+    expect(failureLabel({ failure_attribution: { category: 'not_applicable' } })).toBe('—')
   })
 })

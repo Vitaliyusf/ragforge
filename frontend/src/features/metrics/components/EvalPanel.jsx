@@ -24,12 +24,17 @@ import {
   EVAL_METRIC_LABELS,
   EVAL_MODE_HELP,
   EVAL_MODE_LABELS,
+  FAILURE_ATTRIBUTION_NOTE,
+  FAILURE_CATEGORY_HELP,
+  FAILURE_CATEGORY_LABELS,
+  FAILURE_CATEGORY_ORDER,
   FILE_MATCH_NOTE,
   GOLDEN_SET_HELP,
   LABEL_CHECK_REASONS,
   LABELS_VERIFIED_NOTE,
   MATCH_MODE_LABELS,
   MAX_STALE_IDS_SHOWN,
+  NO_FAILURES_NOTE,
   RUN_STATUS_LABELS,
   RUN_STATUS_VARIANTS,
   STALE_LABEL_NOTE,
@@ -429,6 +434,8 @@ export default function EvalPanel() {
               </table>
             </div>
           </Card>
+
+          <FailureAttribution attribution={run.results.failure_attribution} />
         </>
       )}
 
@@ -688,6 +695,69 @@ function AnswerQuality({ quality }) {
   )
 }
 
+/**
+ * Where the run's failures happened, counted by stage.
+ *
+ * Only the categories that actually occurred are listed: eleven rows of
+ * mostly zeroes hides the two that matter. Nothing is rendered at all when
+ * no item could be attributed — a run with no labelled items has not been
+ * shown to be clean, and a table of dashes would imply it had.
+ */
+export function FailureAttribution({ attribution }) {
+  const attributed = attribution?.items_attributed || 0
+  if (!attributed) return null
+  const counts = attribution?.counts || {}
+  const present = FAILURE_CATEGORY_ORDER.filter((category) => counts[category] > 0)
+
+  return (
+    <Card>
+      <CardHeader title="Where the failures were" description={FAILURE_ATTRIBUTION_NOTE} />
+      {present.length === 0 ? (
+        <p className="text-[13px]" style={{ color: 'var(--fg-muted)' }}>
+          {NO_FAILURES_NOTE}
+        </p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-[13px]">
+            <caption className="sr-only">Failure counts by pipeline stage</caption>
+            <thead>
+              <tr style={{ color: 'var(--fg-muted)' }}>
+                <th scope="col" className="py-1.5 pr-3 text-left font-medium">Stage</th>
+                <th scope="col" className="py-1.5 pr-3 text-right font-medium">Items</th>
+                <th scope="col" className="py-1.5 text-right font-medium">Share</th>
+              </tr>
+            </thead>
+            <tbody>
+              {present.map((category) => (
+                <tr key={category} className="border-t align-top" style={{ borderColor: 'var(--border)' }}>
+                  <th scope="row" className="py-1.5 pr-3 text-left font-normal" style={{ color: 'var(--fg)' }}>
+                    {labelFor(FAILURE_CATEGORY_LABELS, category)}
+                    <span className="block text-[12px]" style={{ color: 'var(--fg-soft)' }}>
+                      {FAILURE_CATEGORY_HELP[category]}
+                    </span>
+                  </th>
+                  <td className="py-1.5 pr-3 text-right tabular-nums" style={{ color: 'var(--fg-muted)' }}>
+                    {formatCount(counts[category])}
+                  </td>
+                  <td className="py-1.5 text-right tabular-nums" style={{ color: 'var(--fg-muted)' }}>
+                    {formatPercent(attribution?.rates?.[category])}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <p className="mt-3 text-[12px]" style={{ color: 'var(--fg-soft)' }}>
+        {formatCount(attributed)} items attributed —{' '}
+        {formatCount(attribution?.items_without_failure)} with no failure,{' '}
+        {formatCount(attribution?.items_unclassified)} without enough evidence to place.
+        Unlabelled items are excluded from every share above.
+      </p>
+    </Card>
+  )
+}
+
 /** The settings two consecutive runs disagreed on. */
 function ConfigDiff({ diff, unobserved }) {
   return (
@@ -730,6 +800,20 @@ function ConfigDiff({ diff, unobserved }) {
   )
 }
 
+/**
+ * The stage one item was attributed to, or a dash.
+ *
+ * An item that did not fail and one from a run written before attribution
+ * existed both render as `—`: the column says where a failure happened, and
+ * inventing a stage for an item that has none would be the one thing this
+ * table must not do.
+ */
+export function failureLabel(row) {
+  const category = row?.failure_attribution?.category
+  if (!category || category === 'none' || category === 'not_applicable') return EMPTY
+  return labelFor(FAILURE_CATEGORY_LABELS, category)
+}
+
 /** Per-item drill-down, worst first — the failures are the point. */
 function ItemTable({ rows }) {
   const ordered = useMemo(() => worstFirst(rows), [rows])
@@ -749,6 +833,7 @@ function ItemTable({ rows }) {
               <th scope="col" className="py-1.5 pr-3 text-left font-medium">Query</th>
               <th scope="col" className="py-1.5 pr-3 text-right font-medium">First hit</th>
               <th scope="col" className="py-1.5 pr-3 text-right font-medium">Recall@10</th>
+              <th scope="col" className="py-1.5 pr-3 text-left font-medium">Lost at</th>
               <th scope="col" className="py-1.5 pr-3 text-left font-medium">Expected</th>
               <th scope="col" className="py-1.5 text-left font-medium">Retrieved</th>
             </tr>
@@ -779,6 +864,9 @@ function ItemTable({ rows }) {
                 </td>
                 <td className="py-1.5 pr-3 text-right tabular-nums" style={{ color: 'var(--fg-muted)' }}>
                   {formatPercent(row.recall_at_10)}
+                </td>
+                <td className="py-1.5 pr-3" style={{ color: 'var(--fg-muted)' }}>
+                  {failureLabel(row)}
                 </td>
                 <td className="py-1.5 pr-3 font-mono text-[12px]" style={{ color: 'var(--fg-soft)' }}>
                   {(row.expected_ids || []).join(', ') || EMPTY}

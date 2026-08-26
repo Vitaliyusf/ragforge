@@ -340,6 +340,67 @@ export const EVAL_ANSWER_METRIC_LABELS = {
   items_judged: 'Items judged',
 }
 
+/**
+ * Stage-failure categories, in the order the backend ladder attributes them.
+ *
+ * The order is the pipeline's own, so reading the table top to bottom walks
+ * an item from the index to the answer. The last three are not retrieval
+ * failures and sit at the bottom for that reason: a stale label or a crashed
+ * item above "never a candidate" would read as a retrieval regression.
+ */
+export const FAILURE_CATEGORY_ORDER = [
+  'index',
+  'retrieval',
+  'pass_two',
+  'ranking',
+  'context',
+  'completeness',
+  'generation',
+  'grounding',
+  'stale_labels',
+  'pipeline_error',
+  'unclassified',
+]
+
+export const FAILURE_CATEGORY_LABELS = {
+  index: 'Index returned nothing',
+  retrieval: 'Never a candidate',
+  pass_two: 'Second pass skipped',
+  ranking: 'Ranked out of the context',
+  context: 'Retrieved, then barred',
+  completeness: 'Only partly retrieved',
+  generation: 'No answer generated',
+  grounding: 'Answer not grounded',
+  stale_labels: 'Label no longer in the index',
+  pipeline_error: 'Item errored',
+  unclassified: 'Not enough evidence',
+}
+
+/** What each category means, and therefore which knob it points at. */
+export const FAILURE_CATEGORY_HELP = {
+  index: 'Every retrieval step came back empty — nothing was there to rank.',
+  retrieval: 'Candidates came back, but the labelled chunk was never one of them.',
+  pass_two: 'The second retrieval pass that could have found it was skipped.',
+  ranking: 'It was a candidate and the merge, rerank or depth cap dropped it.',
+  context: 'It was retrieved and then refused — removed in review, or not retrieval-allowed.',
+  completeness: 'Some labelled ids landed and some did not.',
+  generation: 'The context was right and the model produced no answer.',
+  grounding: 'The context was right and the answer was not supported by it.',
+  stale_labels: 'The label names a chunk the index no longer holds. Not a retrieval miss.',
+  pipeline_error: 'The item raised before it finished. Says nothing about retrieval quality.',
+  unclassified: 'No trace, a truncated candidate list, or an answer the judge never scored.',
+}
+
+/** Shown above the attribution table. */
+export const FAILURE_ATTRIBUTION_NOTE =
+  'Each item is attributed to one stage, from its own recorded trace — no ' +
+  'model is asked where a query failed. Items whose evidence does not ' +
+  'support any category are counted as unclassified rather than guessed at.'
+
+/** Shown when a run scored items but attributed none of them to a failure. */
+export const NO_FAILURES_NOTE =
+  'Every scored item retrieved its labelled chunks, so there is nothing to attribute.'
+
 export const MATCH_MODE_LABELS = {
   chunk_id: 'Chunk-level',
   file_id: 'File-level',

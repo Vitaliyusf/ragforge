@@ -242,6 +242,25 @@
         "final_context"
       ],
       "notes": "Bounded ids/ranks/scores only, opt-in per eval item; extends the existing retrieval path per DEC-002. Never stores chunk text."
+    },
+    {
+      "id": "CAP-015",
+      "name": "Deterministic stage failure attribution",
+      "status": "implemented",
+      "owner": "rag",
+      "canonical_paths": [
+        "backend/rag/app/services/failure_attribution.py",
+        "backend/rag/app/services/eval_runner.py",
+        "frontend/src/features/metrics/components/EvalPanel.jsx"
+      ],
+      "search_terms": [
+        "failure_attribution",
+        "classify_item",
+        "aggregate_attribution",
+        "UNCLASSIFIED",
+        "stage failure category"
+      ],
+      "notes": "Classifies each eval/benchmark item from its own retrieval trace into index/retrieval/pass_two/ranking/context/completeness/generation/grounding/stale_labels/pipeline_error, or unclassified when evidence is insufficient. No LLM is used to guess a retrieval-stage failure. Benchmark phases inherit it through the shared eval aggregate."
     }
   ]
 }
