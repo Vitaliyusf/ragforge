@@ -1,44 +1,56 @@
-# Shared Agent Brain / Memory
+# Shared Agent Brain / Memory — Security Model
 
-This directory is the canonical persistent project memory shared by Codex, Claude Code and future chats.
+This directory contains only **public-safe, durable project knowledge** suitable for a public repository.
 
-## Fast routing knowledge
-Read/query these to avoid repository-wide searches:
-- `SERVICES.json` — service ownership and interaction boundaries.
-- `CAPABILITIES.json` — existing features and canonical implementations.
-- `CONTRACTS.json` — cross-service/API/event ownership.
-- `CALL_PATHS.md` — common end-to-end call paths.
-- `SEARCH_HINTS.md` — symptom/request → likely first files.
+## Tracked/public-safe memory
+- `SERVICES.json` — service ownership.
+- `CAPABILITIES.json` — canonical implementations.
+- `CONTRACTS.json` — cross-service contracts.
+- `CALL_PATHS.md` / `SEARCH_HINTS.md` — navigation.
+- `DECISIONS.json` — sanitized durable decisions.
+- `GOTCHAS.md` — sanitized engineering traps.
+- `CURRENT_STATE.md` — sanitized current architecture state.
 
-## Durable engineering memory
-Read only when relevant:
-- `DECISIONS.json` — accepted/rejected architectural decisions and revisit conditions.
-- `FAILED_APPROACHES.json` — approaches not to repeat unless revisit conditions change.
-- `BUGS.json` — known defects/regressions.
-- `TECH_DEBT.json` — intentionally deferred engineering work.
-- `GOTCHAS.md` — short recurring traps.
+Never put secrets, customer data, private prompts/documents, unpublished vulnerability details, private branch names, local absolute paths, or incident details here.
 
-## Cross-session/cross-agent continuity
-- `CURRENT_STATE.md` — compact project state.
-- `HANDOFF.md` — latest handoff; overwritten each meaningful task.
-- `CHANGE_HISTORY.jsonl` — compact append-only task history.
+## Private operational memory
+Operational cross-agent memory lives in:
 
-## Generated source knowledge
-`docs/ai/generated/` is rebuilt from source:
+```text
+.agent-private/
+```
+
+and MUST be gitignored.
+
+It contains:
+- `HANDOFF.md`
+- `CHANGE_HISTORY.jsonl`
+- `BUGS.json`
+- `TECH_DEBT.json`
+- `FAILED_APPROACHES.json`
+
+Create it with:
+
+```bash
+python scripts/ai/init_private_brain.py
+```
+
+The init script refuses to proceed unless `.agent-private/` is ignored by Git.
+
+## Generated indexes
+`docs/ai/generated/*.json` are also local-only and gitignored. They are reproducible navigation indexes, not source files to commit.
+
+Generate:
 
 ```bash
 python scripts/ai/rebuild_repo_brain.py
 ```
 
-Query both persistent and generated knowledge:
+Query public + private + generated knowledge:
 
 ```bash
 python scripts/ai/brain_query.py "pass2 retrieval ranking" --top 20
-python scripts/ai/brain_query.py "file upload review" --top 20
-python scripts/ai/brain_query.py "metrics prometheus pipeline" --top 20
 ```
 
-Generated indexes are navigation aids, not truth. Current source/tests remain authoritative.
-
-## Keep memory small
-Do not store conversations. Record only information another agent/session would materially benefit from knowing.
+## Public repository rule
+If the repository is public, never store unresolved security findings or private operational history in tracked files. For cross-machine/cloud continuity, sync `.agent-private/` through a separate private repository/storage location, not a public branch.

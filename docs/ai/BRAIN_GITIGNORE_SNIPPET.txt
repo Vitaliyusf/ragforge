@@ -1,0 +1,3 @@
+# RAGForge AI brain: local/generated/private state
+/docs/ai/generated/*.json
+/.agent-private/

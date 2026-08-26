@@ -194,6 +194,22 @@ class ConversationBackendClient:
     # Public async API
     # ------------------------------------------------------------------
 
+    async def resolve_file_labels(
+        self,
+        request: ConversationRequest,
+        labels: list[str],
+    ) -> Dict[str, Any]:
+        """Resolve filename labels through Files under the propagated identity."""
+        return await self._send_request(
+            routing_key=self.config.files_routing_key,
+            target_service="files",
+            action="resolve_file_labels",
+            payload={"labels": labels},
+            request=request,
+            message_type="query",
+            timeout=self.config.internal_request_timeout,
+        )
+
     async def get_relevant_memories(
         self,
         request: ConversationRequest,

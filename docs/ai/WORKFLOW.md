@@ -43,8 +43,8 @@ If unrelated and the environment safely supports isolated work, continue without
 ## Cross-agent switching
 Claude and Codex communicate through repository memory, not hidden chat state.
 Before continuing another agent's work:
-- read `docs/ai/memory/HANDOFF.md`;
+- read `.agent-private/HANDOFF.md` if present;
 - inspect `git diff`;
 - read referenced memory IDs;
 - verify current tests/diff before extending work.
-After work, update handoff/history using `MEMORY_PROTOCOL.md`.
+After work, update private handoff/history using `MEMORY_PROTOCOL.md`.

@@ -63,3 +63,6 @@ htmlcov/
 # Claude / agent tooling
 .claude/
 CLAUDE.md
+# AI Brain local/generated/private state
+/docs/ai/generated/*.json
+/.agent-private/

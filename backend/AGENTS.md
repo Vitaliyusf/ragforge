@@ -11,3 +11,6 @@ Applies to `backend/**`.
 - RabbitMQ remains RPC and Kafka durable pipeline/events unless an explicit decision changes this.
 - Do not duplicate envelope/auth/retry/logging infrastructure that belongs in `backend/shared`.
 - Run the touched service test suite; use `docs/ai/TESTING.md`.
+
+## Validation
+Follow root progressive validation. Prefer `python scripts/ai/check.py fast ...` while iterating and `python scripts/ai/check.py service ...` once near task completion. Avoid repeated isolated `uv` environments.

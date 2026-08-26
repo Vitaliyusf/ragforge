@@ -74,6 +74,7 @@ from app.services.eval_store import (
     EvalValidationError,
     build_config_snapshot,
 )
+from app.services.golden_set_parser import prepare_file_labels
 from shared.auth import AuthIdentity, identity_from_context
 from shared.context import bound_context
 
@@ -503,13 +504,23 @@ class EvalRunner:
                 return {"datasets": self.store.list_datasets()}
             if action == CREATE_EVAL_DATASET:
                 if "content" in payload:
+                    prepared = await self._prepare_import(
+                        payload.get("content"),
+                        str(payload.get("format") or ""),
+                    )
+                    if prepared["preparation"]["blocking"]:
+                        first = prepared["validation"]["errors"][0]
+                        code = first.get("code")
+                        raise EvalValidationError(
+                            f"{f'{code}: ' if code else ''}{first.get('message')}"
+                        )
                     return {
-                        "dataset": self.store.import_dataset(
+                        "dataset": self.store.create_dataset(
                             payload.get("name") or "",
                             payload.get("description"),
-                            payload.get("content"),
-                            str(payload.get("format") or ""),
-                        )
+                            prepared["items"],
+                        ),
+                        "preparation": prepared["preparation"],
                     }
                 return {
                     "dataset": self.store.create_dataset(
@@ -519,11 +530,13 @@ class EvalRunner:
                     )
                 }
             if action == VALIDATE_EVAL_DATASET:
+                prepared = await self._prepare_import(
+                    payload.get("content"),
+                    str(payload.get("format") or ""),
+                )
                 return {
-                    "validation": self.store.validate_import(
-                        payload.get("content"),
-                        str(payload.get("format") or ""),
-                    )
+                    "validation": prepared["validation"],
+                    "preparation": prepared["preparation"],
                 }
             if action == UPDATE_EVAL_DATASET:
                 return {
@@ -558,6 +571,60 @@ class EvalRunner:
             return _error_reply(ERROR_NOT_FOUND, str(exc))
         except EvalAccessDenied as exc:
             return _error_reply(ERROR_FORBIDDEN, str(exc))
+
+    async def _prepare_import(self, content: Any, source_format: str) -> Dict[str, Any]:
+        """Parse, resolve tenant-scoped filenames, and report import readiness."""
+        validation = self.store.validate_import(content, source_format)
+        if not validation.get("valid"):
+            return {
+                "items": [],
+                "validation": validation,
+                "preparation": {
+                    "ready": 0,
+                    "unresolved": 0,
+                    "ambiguous": 0,
+                    "unanswerable": 0,
+                    "blocking": True,
+                },
+            }
+
+        items = self.store.parse_import(content, source_format)
+        labels = list(
+            dict.fromkeys(
+                label
+                for item in items
+                if item.get("answerable") is not False
+                for label in item.get("expected_file_names") or []
+            )
+        )
+        resolutions: List[Dict[str, Any]] = []
+        if labels:
+            identity = identity_from_context(required=True)
+            request = ConversationRequest(
+                user_message="",
+                mode="regular",
+                tenant_id=identity.tenant_id,
+                user_id=identity.user_id,
+                role=identity.role,
+                admin_id=identity.admin_id,
+            )
+            reply = await self.backend_client.resolve_file_labels(request, labels)
+            resolutions = reply.get("resolutions") or []
+
+        result = prepare_file_labels(items, resolutions)
+        counts = result["counts"]
+        validation = {
+            **validation,
+            "valid": not result["blocking"],
+            "valid_items": counts["ready"] + counts["unanswerable"],
+            "invalid_items": counts["unresolved"] + counts["ambiguous"],
+            "errors": [*validation.get("errors", []), *result["errors"]],
+        }
+        return {
+            "items": result["items"],
+            "validation": validation,
+            "preparation": {**counts, "blocking": result["blocking"]},
+        }
 
     # ------------------------------------------------------------------
     # Running

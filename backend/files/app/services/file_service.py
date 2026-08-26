@@ -122,6 +122,8 @@ class FileService:
                     return self.handlers.handle_list(correlation_id, request)
                 elif action == FileAction.LIST_OWN:
                     return self.handlers.handle_list_own(correlation_id, request)
+                elif action == FileAction.RESOLVE_FILE_LABELS:
+                    return self.handlers.handle_resolve_file_labels(correlation_id, request)
                 elif action == FileAction.GET_SUGGESTED_QUESTIONS:
                     return self.handlers.handle_get_suggested_questions(correlation_id, request)
                 elif action == FileAction.GET:
@@ -161,6 +163,7 @@ class FileService:
         identity = identity_from_context()
         admin_actions = {
             FileAction.LIST,
+            FileAction.RESOLVE_FILE_LABELS,
             FileAction.GET,
             FileAction.GET_REVIEW_CASE,
             FileAction.SUBMIT_REVIEW_DECISION,

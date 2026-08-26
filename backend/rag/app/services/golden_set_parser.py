@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import json
-from typing import Any, Dict, List, Optional, TypedDict, Union
+from typing import Any, Dict, List, Mapping, Optional, Sequence, TypedDict, Union
 from uuid import uuid4
 
 
@@ -36,6 +36,12 @@ class CanonicalGoldenSetItem(TypedDict):
 
 RawDataset = Union[str, bytes]
 
+UNRESOLVED_FILE = "UNRESOLVED_FILE"
+AMBIGUOUS_FILE_MATCH = "AMBIGUOUS_FILE_MATCH"
+RESOLVED_FILE = "RESOLVED"
+READY = "READY"
+UNANSWERABLE = "UNANSWERABLE"
+
 
 def parse_golden_set(
     content: RawDataset,
@@ -53,6 +59,81 @@ def parse_golden_set(
         max_items=max_items,
         max_query_length=max_query_length,
     )
+
+
+def prepare_file_labels(
+    items: Sequence[Mapping[str, Any]],
+    resolutions: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    """Apply Files-owned resolutions and classify every valid item."""
+    by_label = {
+        str(entry.get("label")): entry
+        for entry in resolutions
+        if isinstance(entry, dict) and entry.get("label")
+    }
+    counts = {"ready": 0, "unresolved": 0, "ambiguous": 0, "unanswerable": 0}
+    errors: List[Dict[str, Any]] = []
+    prepared: List[Dict[str, Any]] = []
+
+    for index, source in enumerate(items):
+        item: Dict[str, Any] = dict(source)
+        if item.get("answerable") is False:
+            state = UNANSWERABLE
+            counts["unanswerable"] += 1
+        else:
+            labels = item.get("expected_file_names") or []
+            matches = [by_label.get(label, {"status": UNRESOLVED_FILE}) for label in labels]
+            ambiguous = [
+                label
+                for label, match in zip(labels, matches)
+                if match.get("status") == AMBIGUOUS_FILE_MATCH
+            ]
+            unresolved = [
+                label
+                for label, match in zip(labels, matches)
+                if match.get("status") not in {RESOLVED_FILE, AMBIGUOUS_FILE_MATCH}
+                or not match.get("file_id")
+            ]
+            if ambiguous:
+                state = AMBIGUOUS_FILE_MATCH
+                counts["ambiguous"] += 1
+                errors.append(
+                    {
+                        "item_index": index,
+                        "code": AMBIGUOUS_FILE_MATCH,
+                        "message": f"Item {index}: ambiguous file match for {', '.join(ambiguous)}",
+                    }
+                )
+            elif unresolved:
+                state = UNRESOLVED_FILE
+                counts["unresolved"] += 1
+                errors.append(
+                    {
+                        "item_index": index,
+                        "code": UNRESOLVED_FILE,
+                        "message": f"Item {index}: unresolved file {', '.join(unresolved)}",
+                    }
+                )
+            else:
+                state = READY
+                counts["ready"] += 1
+                resolved_ids = [
+                    str(match["file_id"])
+                    for match in matches
+                    if match.get("file_id")
+                ]
+                item["relevant_file_ids"] = list(
+                    dict.fromkeys([*(item.get("relevant_file_ids") or []), *resolved_ids])
+                )
+        item["preparation_status"] = state
+        prepared.append(item)
+
+    return {
+        "items": prepared,
+        "counts": counts,
+        "errors": errors,
+        "blocking": bool(counts["unresolved"] or counts["ambiguous"]),
+    }
 
 
 def validate_golden_set(

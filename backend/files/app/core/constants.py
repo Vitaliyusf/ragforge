@@ -14,6 +14,7 @@ class FileAction(str, Enum):
     COMPLETE_EXTRACTION = "complete_extraction"
     LIST = "list"
     LIST_OWN = "list_own"
+    RESOLVE_FILE_LABELS = "resolve_file_labels"
     GET = "get"
     GET_SUGGESTED_QUESTIONS = "get_suggested_questions"
     GET_REVIEW_CASE = "get_review_case"

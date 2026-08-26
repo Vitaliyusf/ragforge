@@ -7,12 +7,28 @@ import pytest
 
 from app.core.errors import DatabaseException
 from app.db._base import BaseRepository
+from app.db._files import FilesRepositoryMixin
 from app.utils.common import validate_managed_file_path
 from shared.context import bound_context
 
 
 class FakeCollection:
     database = SimpleNamespace(client=None)
+
+
+class RecordingCollection(FakeCollection):
+    def __init__(self):
+        self.query = None
+        self.projection = None
+
+    def find(self, query, projection):
+        self.query = query
+        self.projection = projection
+        return []
+
+
+class ScopedFilesRepository(FilesRepositoryMixin, BaseRepository):
+    pass
 
 
 def _repository() -> BaseRepository:
@@ -66,6 +82,22 @@ def test_cross_tenant_document_write_is_rejected() -> None:
     ):
         with pytest.raises(DatabaseException, match="Cross-tenant"):
             _repository()._scope_document({"file_id": "file-a", "tenant_id": "tenant-b"})
+
+
+def test_filename_lookup_is_tenant_scoped_for_an_authorized_admin() -> None:
+    collection = RecordingCollection()
+    repository = ScopedFilesRepository(collection)
+
+    with bound_context(
+        tenant_id="tenant-a",
+        user_id="admin-a",
+        role="admin",
+        admin_id="admin-a",
+    ):
+        assert repository.get_filename_records() == []
+
+    assert collection.query == {"tenant_id": "tenant-a"}
+    assert collection.projection == {"_id": 0, "file_id": 1, "filename": 1}
 
 
 def test_user_cannot_forge_document_owner() -> None:

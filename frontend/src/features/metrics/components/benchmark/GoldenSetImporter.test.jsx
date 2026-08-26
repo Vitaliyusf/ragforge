@@ -18,6 +18,14 @@ const VALIDATION = {
   errors: [],
 }
 
+const PREPARATION = {
+  ready: 1,
+  unresolved: 0,
+  ambiguous: 0,
+  unanswerable: 0,
+  blocking: false,
+}
+
 function setup() {
   return render(
     <GoldenSetImporter
@@ -35,7 +43,7 @@ async function validate(user) {
 describe('GoldenSetImporter', () => {
   beforeEach(() => {
     validateGoldenSet.mockReset()
-    validateGoldenSet.mockResolvedValue({ validation: VALIDATION })
+    validateGoldenSet.mockResolvedValue({ validation: VALIDATION, preparation: PREPARATION })
   })
 
   it('validates pasted JSON', async () => {
@@ -121,6 +129,7 @@ describe('GoldenSetImporter', () => {
     await validate(user)
 
     expect(await screen.findByText('Golden Set is valid')).toBeInTheDocument()
+    expect(screen.getByText('1 ready · 0 unresolved · 0 ambiguous · 0 unanswerable')).toBeInTheDocument()
     expect(screen.getByText('1 valid · 0 invalid · 1 total')).toBeInTheDocument()
   })
 })

@@ -109,6 +109,20 @@ class FilesRepositoryMixin:
         except Exception as exc:
             raise DatabaseException(f"Failed to get files: {exc}") from exc
 
+    def get_filename_records(self) -> List[Dict[str, str]]:
+        """Return only ids and filenames visible in the trusted caller scope."""
+        try:
+            files = self.collection.find(
+                # Golden sets are tenant-wide and admin-only. User-owned file
+                # records must therefore be visible across the tenant, while
+                # the mandatory tenant predicate remains fail-closed.
+                self._scope_filter(owner_scope=False),
+                {"_id": 0, "file_id": 1, "filename": 1},
+            )
+            return [serialize(file_doc) for file_doc in files]
+        except Exception as exc:
+            raise DatabaseException(f"Failed to get file labels: {exc}") from exc
+
     def get_by_id(self, file_id: str) -> Optional[Dict[str, Any]]:
         """Return a serialized file document by ``file_id``."""
         try:

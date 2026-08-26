@@ -81,6 +81,12 @@ class FakeRepository:
     def get_all(self):
         return [deepcopy(item) for item in self.files.values()]
 
+    def get_filename_records(self):
+        return [
+            {"file_id": item["file_id"], "filename": item["filename"]}
+            for item in self.files.values()
+        ]
+
     def get_by_id(self, file_id):
         doc = self.files.get(file_id)
         return deepcopy(doc) if doc else None
@@ -853,3 +859,32 @@ def test_list_own_is_allowed_for_non_admin_roles():
         FileService._authorize_action(FileAction.LIST_OWN)
         with pytest.raises(ValidationException):
             FileService._authorize_action(FileAction.LIST)
+
+
+def test_file_label_resolution_prefers_exact_and_never_selects_ambiguous(config):
+    repo = FakeRepository()
+    repo.files = {
+        "file-1": {"file_id": "file-1", "filename": "Report.pdf"},
+        "file-2": {"file_id": "file-2", "filename": "report.pdf"},
+    }
+    handlers = FileHandlers(DummyProducer(), repo, Mock(), config)
+
+    reply = handlers.handle_resolve_file_labels(
+        "corr-1",
+        make_request(
+            "resolve_file_labels",
+            labels=["Report.pdf", "REPORT.PDF", "missing.pdf"],
+        ),
+    )
+
+    exact, normalized, missing = reply["payload"]["resolutions"]
+    assert exact == {
+        "label": "Report.pdf",
+        "status": "RESOLVED",
+        "file_id": "file-1",
+        "candidate_file_ids": [],
+    }
+    assert normalized["status"] == "AMBIGUOUS_FILE_MATCH"
+    assert normalized["file_id"] is None
+    assert normalized["candidate_file_ids"] == ["file-1", "file-2"]
+    assert missing["status"] == "UNRESOLVED_FILE"

@@ -11,3 +11,6 @@ Applies to `frontend/**`.
 - Preserve accessibility and stable domain IDs as React keys.
 - Do not add dependencies for behavior existing primitives/CSS can provide.
 - Run focused Vitest; production-impacting frontend changes also run `npm run build`.
+
+## Validation
+Follow root progressive validation. Prefer `python scripts/ai/check.py fast ...` while iterating and `python scripts/ai/check.py service ...` once near task completion. Avoid repeated isolated `uv` environments.

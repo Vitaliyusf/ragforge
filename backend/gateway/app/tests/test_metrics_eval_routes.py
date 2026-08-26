@@ -82,7 +82,14 @@ class DummyRPCClient:
                     "valid_items": 1,
                     "invalid_items": 0,
                     "errors": [],
-                }
+                },
+                "preparation": {
+                    "ready": 1,
+                    "unresolved": 0,
+                    "ambiguous": 0,
+                    "unanswerable": 0,
+                    "blocking": False,
+                },
             },
             "update_eval_dataset": {"dataset": {**DATASET, "name": "Renamed"}},
             "delete_eval_dataset": {"dataset_id": "d-1", "deleted": True},
@@ -189,6 +196,7 @@ def test_validating_raw_jsonl_does_not_create_a_dataset():
     assert payload["action"] == "validate_eval_dataset"
     assert payload["content"] == body["content"]
     assert payload["format"] == "jsonl"
+    assert response.json()["preparation"]["ready"] == 1
 
 
 def test_importing_raw_json_forwards_bounded_content_and_format():

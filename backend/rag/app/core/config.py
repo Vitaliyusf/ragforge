@@ -21,6 +21,7 @@ class RAGConfig(BaseSettings):
     llm_agent_routing_key: str = "llm_agent"
     vector_db_routing_key: str = "vector_db"
     embedding_routing_key: str = "embedding"
+    files_routing_key: str = "files"
 
     # Mongo persistence
     conversation_store_type: str = "mongodb"

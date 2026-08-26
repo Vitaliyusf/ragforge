@@ -10,6 +10,7 @@ Async tests are written as sync functions driving ``asyncio.run``, matching
 from __future__ import annotations
 
 import asyncio
+import json
 from types import SimpleNamespace
 from typing import Any, Dict, List, Optional
 
@@ -91,6 +92,7 @@ class FakeBackend:
         index: Optional[set] = None,
         barred: Optional[set] = None,
         verify_error: Optional[str] = None,
+        resolutions: Optional[List[Dict[str, Any]]] = None,
     ) -> None:
         self.responses = responses if responses is not None else RESPONSES
         self.fail_queries = fail_queries or set()
@@ -103,6 +105,10 @@ class FakeBackend:
         self.barred = barred or set()
         self.verify_error = verify_error
         self.verify_calls: List[Dict[str, Any]] = []
+        self.resolutions = resolutions or []
+
+    async def resolve_file_labels(self, request, labels):
+        return {"resolutions": self.resolutions}
 
     async def verify_label_ids(self, request, chunk_ids=None, file_ids=None):
         self.verify_calls.append(
@@ -406,6 +412,75 @@ def test_unresolved_authoring_filenames_are_refused_before_a_run_is_opened():
     with bound_context(**ADMIN.to_dict()):
         asyncio.run(_go())
         assert store.list_runs() == []
+
+
+def test_import_preparation_resolves_filenames_before_storage():
+    config = build_config()
+    store = EvalStore(config)  # type: ignore[arg-type]
+    backend = FakeBackend(
+        resolutions=[
+            {"label": "Guide.pdf", "status": "RESOLVED", "file_id": "file-1"}
+        ]
+    )
+    runner = EvalRunner(config, store, backend)  # type: ignore[arg-type]
+    content = json.dumps([{"query": "Where?", "expected_file_names": ["Guide.pdf"]}])
+
+    async def _go():
+        validation = await runner.handle(
+            "validate_eval_dataset", {"content": content, "format": "json"}
+        )
+        imported = await runner.handle(
+            "create_eval_dataset",
+            {"name": "Prepared", "content": content, "format": "json"},
+        )
+        return validation, imported
+
+    with bound_context(**ADMIN.to_dict()):
+        validation, imported = asyncio.run(_go())
+        dataset = store.get_dataset(imported["dataset"]["dataset_id"])
+
+    assert validation["preparation"] == {
+        "ready": 1,
+        "unresolved": 0,
+        "ambiguous": 0,
+        "unanswerable": 0,
+        "blocking": False,
+    }
+    assert dataset["items"][0]["relevant_file_ids"] == ["file-1"]
+
+
+def test_import_preparation_blocks_missing_and_ambiguous_filenames_with_codes():
+    config = build_config()
+    store = EvalStore(config)  # type: ignore[arg-type]
+    backend = FakeBackend(
+        resolutions=[
+            {"label": "missing.pdf", "status": "UNRESOLVED_FILE", "file_id": None},
+            {"label": "copy.pdf", "status": "AMBIGUOUS_FILE_MATCH", "file_id": None},
+        ]
+    )
+    runner = EvalRunner(config, store, backend)  # type: ignore[arg-type]
+    content = json.dumps(
+        [
+            {"query": "Missing?", "expected_file_names": ["missing.pdf"]},
+            {"query": "Which copy?", "expected_file_names": ["copy.pdf"]},
+        ]
+    )
+
+    async def _go():
+        return await runner.handle(
+            "validate_eval_dataset", {"content": content, "format": "json"}
+        )
+
+    with bound_context(**ADMIN.to_dict()):
+        result = asyncio.run(_go())
+
+    assert result["validation"]["valid"] is False
+    assert result["preparation"]["unresolved"] == 1
+    assert result["preparation"]["ambiguous"] == 1
+    assert [error["code"] for error in result["validation"]["errors"]] == [
+        "UNRESOLVED_FILE",
+        "AMBIGUOUS_FILE_MATCH",
+    ]
 
 
 # ── Concurrency ───────────────────────────────────────────────────────────

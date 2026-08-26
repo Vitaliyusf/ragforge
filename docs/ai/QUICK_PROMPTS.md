@@ -47,7 +47,7 @@ Use the repository brain to locate the existing implementation for: <request>. D
 
 ## Continue from the other agent
 ```text
-Continue from HANDOFF.md. Verify the current diff and referenced memory records before editing.
+Continue from .agent-private/HANDOFF.md. Verify the current diff and referenced memory records before editing.
 ```
 
 ## Record a decision only

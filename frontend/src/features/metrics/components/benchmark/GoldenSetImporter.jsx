@@ -87,7 +87,11 @@ export default function GoldenSetImporter({ open, onOpenChange, onSubmit, busy =
     setLocalError(null)
     try {
       const response = await metricsService.validateGoldenSet({ content, format })
-      setValidation(response?.validation || null)
+      setValidation(
+        response?.validation
+          ? { ...response.validation, preparation: response?.preparation || null }
+          : null
+      )
     } catch (error) {
       setValidation(null)
       setLocalError(error?.message || 'The server could not validate this Golden Set.')

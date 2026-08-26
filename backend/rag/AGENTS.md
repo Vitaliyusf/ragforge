@@ -11,3 +11,6 @@ Applies to `backend/rag/**`.
 - `null` means unmeasured; preserve denominators for rates.
 - Concurrency must be bounded and preserve tenant/trace context.
 - Behavior-neutral graph refactors and retrieval algorithm changes should be separate tasks.
+
+## Validation
+Follow root progressive validation. Prefer `python scripts/ai/check.py fast ...` while iterating and `python scripts/ai/check.py service ...` once near task completion. Avoid repeated isolated `uv` environments.

@@ -1,75 +1,62 @@
-# Shared Memory Update Protocol
+# Shared Memory Update Protocol — Security-Hardened
 
-Use this after every meaningful **write** task.
+## Data classification
+
+### Public-safe tracked memory
+Only sanitized architecture facts, capability locations, contracts and durable decisions that are safe to publish.
+
+### Private operational memory
+Write these only to `.agent-private/`:
+- handoff/history
+- known bugs
+- technical debt
+- failed approaches
+- unreleased incident/root-cause details
+- security findings
+
+## Never persist in either memory
+- passwords, API keys, cookies, session/auth tokens, private keys
+- raw `.env` values
+- raw customer/user documents or prompts
+- personal/customer email addresses unless explicitly required and approved
+- raw production logs containing identifiers/tokens
+- secrets copied from command output
+- absolute local paths containing usernames/home directories
+- raw user text when a neutral technical paraphrase is enough
 
 ## Before work
-1. If continuing prior work, read `HANDOFF.md`.
-2. Search relevant `DECISIONS.json`, `FAILED_APPROACHES.json`, `BUGS.json`, `TECH_DEBT.json`.
-3. Query the brain before creating new functionality.
-4. Refresh generated index if missing/stale.
+1. If continuing prior work, read `.agent-private/HANDOFF.md` if it exists.
+2. Search relevant public decisions/capabilities/contracts.
+3. Search `.agent-private/BUGS.json`, `TECH_DEBT.json`, `FAILED_APPROACHES.json` if present.
+4. Query the brain before creating a new implementation.
+5. Refresh generated indexes if missing/stale.
 
-## After work
+## After meaningful write work
 Always:
 1. Run relevant tests/checks.
 2. `python scripts/ai/rebuild_repo_brain.py`
-3. Replace `HANDOFF.md` with a concise latest handoff.
-4. Append exactly one compact line to `CHANGE_HISTORY.jsonl`.
+3. Update `.agent-private/HANDOFF.md`.
+4. Append one compact line to `.agent-private/CHANGE_HISTORY.jsonl`.
 5. `python scripts/ai/validate_ai_memory.py`
 
 Conditionally:
-- Durable architecture/technology choice → add/update `DECISIONS.json`.
-- Failed/rejected approach worth avoiding → add `FAILED_APPROACHES.json`.
-- Newly discovered unresolved defect → add/update `BUGS.json`.
-- Intentional deferred work → add/update `TECH_DEBT.json`.
-- New/relocated canonical capability → update `CAPABILITIES.json`.
-- Changed service ownership/contract → update `SERVICES.json` / `CONTRACTS.json`.
-- New recurring trap → add one short `GOTCHAS.md` item.
+- public-safe durable architecture decision → `docs/ai/memory/DECISIONS.json`
+- security-sensitive/private decision → private memory, not tracked
+- unresolved bug → `.agent-private/BUGS.json`
+- technical debt → `.agent-private/TECH_DEBT.json`
+- failed/rejected approach → `.agent-private/FAILED_APPROACHES.json`
+- new canonical capability → `CAPABILITIES.json`
+- changed service/contract → `SERVICES.json` / `CONTRACTS.json`
+
+## Security vulnerability rule
+Unfixed vulnerability details are private by default. Do not commit exploit details, vulnerable endpoints, credentials, customer impact, or reproduction payloads to a public repository.
 
 ## Evidence
-Every durable record requires evidence: source path/symbol, test, task, benchmark run, PR/commit once known, or reproducible observation.
-Never state speculation as fact. Use `status: "suspected"` if not verified.
+Every record requires safe evidence: source-relative path/symbol, test name, task ID, sanitized benchmark ID or eventual PR/commit.
 
-## Stable IDs
-- `DEC-###`
-- `FAIL-###`
-- `BUG-###`
-- `DEBT-###`
-- `CAP-###`
-- `CON-###`
+## Handoff
+Do not copy chat transcripts. Use short technical paraphrases. Never include raw secrets/logs.
 
-Never reuse an ID.
-
-## HANDOFF.md
-Overwrite; do not append forever. Keep under ~120 lines.
-Include:
-- task / agent / branch / HEAD / status
-- what changed
-- touched files
-- tests/checks
-- memory IDs added/updated
-- unresolved items
-- exact next recommended step
-- safe for manual commit: yes/no
-
-Do not copy chat text.
-
-## CHANGE_HISTORY.jsonl
-One compact JSON object per meaningful task:
-
-```json
-{"ts":"ISO-8601","agent":"codex|claude|human","task":"RAG-01|null","branch":"...","summary":"...","files":["..."],"tests":["..."],"memory_ids":["BUG-001"],"result":"completed|partial|blocked"}
-```
-
-## Decisions
-An accepted decision remains authoritative until superseded or a listed `revisit_if` condition becomes true. Do not reopen it because another technology is fashionable.
-
-## Failed approaches
-Do not retry an active failed/rejected approach unless:
-- a `revisit_if` condition is now true, or
-- the user explicitly requests reevaluation.
-
-## Technical debt
-Do not silently fix unrelated debt in another task. Record it with impact/evidence/future-task suggestion unless correctness/security requires immediate action.
-
-## Bugs
-Mark `fixed` only when fix + regression test (where practical) + relevant tests exist.
+## Decisions / failed approaches
+Accepted decisions remain authoritative until superseded or a documented revisit condition is met.
+Do not retry a failed approach unless a revisit condition is true or the user explicitly requests reevaluation.

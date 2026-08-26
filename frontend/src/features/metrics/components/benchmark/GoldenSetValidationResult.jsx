@@ -17,6 +17,7 @@ export default function GoldenSetValidationResult({ result, error }) {
 
   const validItems = result.valid_items || 0
   const invalidItems = result.invalid_items || 0
+  const preparation = result.preparation
 
   return (
     <div
@@ -35,6 +36,12 @@ export default function GoldenSetValidationResult({ result, error }) {
       <p className="mt-1 tabular-nums">
         {validItems} valid · {invalidItems} invalid · {result.total_items || 0} total
       </p>
+      {preparation && (
+        <p className="mt-1 tabular-nums">
+          {preparation.ready || 0} ready · {preparation.unresolved || 0} unresolved ·{' '}
+          {preparation.ambiguous || 0} ambiguous · {preparation.unanswerable || 0} unanswerable
+        </p>
+      )}
       {result.errors?.length > 0 && (
         <ul className="mt-2 list-disc space-y-1 pl-5">
           {result.errors.map((entry, index) => (

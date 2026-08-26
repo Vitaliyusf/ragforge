@@ -40,3 +40,7 @@ Implement RAG-01. Follow AGENTS.md/CLAUDE.md. Do not commit.
 4. README/public docs last.
 
 If this documentation drifts from code, the agent must report the drift and follow code unless the task is explicitly a documentation/migration task.
+
+
+## Security note
+Live handoff/history/bugs/debt/failed approaches are local/private under `.agent-private/`; generated index JSON is local-only. Do not commit either to the public repository.

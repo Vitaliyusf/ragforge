@@ -9,6 +9,7 @@ from app.services.golden_set_parser import (
     GoldenSetValidationError,
     parse_golden_set_json,
     parse_golden_set_jsonl,
+    prepare_file_labels,
     validate_golden_set,
 )
 
@@ -171,3 +172,37 @@ def test_validation_reports_all_bad_items_and_totals():
     assert [error["item_index"] for error in result["errors"]] == [1, 2]
     assert "Item 1 has no query" in result["errors"][0]["message"]
     assert "Item 2: tags must be a list" in result["errors"][1]["message"]
+
+
+def test_file_label_preparation_resolves_ids_and_reports_all_states():
+    items = parse_golden_set_json(
+        json.dumps(
+            [
+                {"query": "ready", "expected_file_names": ["Guide.pdf"]},
+                {"query": "missing", "expected_file_names": ["Missing.pdf"]},
+                {"query": "duplicate", "expected_file_names": ["Copy.pdf"]},
+                {"query": "cannot answer", "answerable": False},
+            ]
+        )
+    )
+    result = prepare_file_labels(
+        items,
+        [
+            {"label": "Guide.pdf", "status": "RESOLVED", "file_id": "file-1"},
+            {"label": "Missing.pdf", "status": "UNRESOLVED_FILE", "file_id": None},
+            {"label": "Copy.pdf", "status": "AMBIGUOUS_FILE_MATCH", "file_id": None},
+        ],
+    )
+
+    assert result["counts"] == {
+        "ready": 1,
+        "unresolved": 1,
+        "ambiguous": 1,
+        "unanswerable": 1,
+    }
+    assert result["items"][0]["relevant_file_ids"] == ["file-1"]
+    assert result["items"][2]["relevant_file_ids"] == []
+    assert [error["code"] for error in result["errors"]] == [
+        "UNRESOLVED_FILE",
+        "AMBIGUOUS_FILE_MATCH",
+    ]

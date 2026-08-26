@@ -1,7 +1,20 @@
 """File query request handlers (list, get, summary, questions)."""
 from __future__ import annotations
 
+import unicodedata
 from typing import Any, Dict, Optional
+
+from app.core.errors import ValidationException
+
+
+UNRESOLVED_FILE = "UNRESOLVED_FILE"
+AMBIGUOUS_FILE_MATCH = "AMBIGUOUS_FILE_MATCH"
+RESOLVED_FILE = "RESOLVED"
+
+
+def normalized_file_label(value: str) -> str:
+    """Conservatively normalize a filename without changing its path or punctuation."""
+    return unicodedata.normalize("NFC", value).casefold()
 
 # Fields an uploader is allowed to see about their own file. Everything else
 # (summary, stage, review_status, latest_review_case_id, ownership ids) is
@@ -39,6 +52,63 @@ class FileQueryMixin:
             for file_doc in self.repository.get_all()
         ]
         return self._send_response(correlation_id, {"files": files}, request=request, reply_topic=(request or {}).get("reply_to"))
+
+    def handle_resolve_file_labels(
+        self,
+        correlation_id: str,
+        request: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """Resolve expected filenames inside the repository's tenant scope.
+
+        Exact matches always take precedence over normalized matches. More than
+        one candidate is reported as ambiguous; this method never picks one.
+        """
+        payload = self._payload(request or {})
+        labels = payload.get("labels")
+        if not isinstance(labels, list) or any(
+            not isinstance(label, str) or not label for label in labels
+        ):
+            raise ValidationException("labels must be a list of non-empty strings")
+
+        records = self.repository.get_filename_records()
+        resolutions = []
+        for label in dict.fromkeys(labels):
+            exact = [row for row in records if row.get("filename") == label]
+            candidates = exact or [
+                row
+                for row in records
+                if isinstance(row.get("filename"), str)
+                and normalized_file_label(row["filename"])
+                == normalized_file_label(label)
+            ]
+            file_ids = list(
+                dict.fromkeys(
+                    str(row.get("file_id"))
+                    for row in candidates
+                    if row.get("file_id")
+                )
+            )
+            status = (
+                UNRESOLVED_FILE
+                if not file_ids
+                else RESOLVED_FILE
+                if len(file_ids) == 1
+                else AMBIGUOUS_FILE_MATCH
+            )
+            resolutions.append(
+                {
+                    "label": label,
+                    "status": status,
+                    "file_id": file_ids[0] if status == RESOLVED_FILE else None,
+                    "candidate_file_ids": file_ids if status == AMBIGUOUS_FILE_MATCH else [],
+                }
+            )
+        return self._send_response(
+            correlation_id,
+            {"resolutions": resolutions},
+            request=request,
+            reply_topic=(request or {}).get("reply_to"),
+        )
 
     def handle_get_suggested_questions(self, correlation_id: str, request: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """Return questions from all completed files."""

@@ -378,6 +378,25 @@ class EvalStore:
             max_query_length=self.config.eval_max_query_length,
         )
 
+    def parse_import(self, content: Any, source_format: str) -> List[Dict[str, Any]]:
+        """Parse an import for preparation without storing it."""
+        _require_admin()
+        try:
+            return [
+                dict(item)
+                for item in parse_golden_set(
+                    content,
+                    source_format,
+                    max_input_bytes=int(
+                        getattr(self.config, "eval_max_dataset_bytes", DEFAULT_MAX_INPUT_BYTES)
+                    ),
+                    max_items=self.config.eval_max_dataset_items,
+                    max_query_length=self.config.eval_max_query_length,
+                )
+            ]
+        except GoldenSetValidationError as exc:
+            raise EvalValidationError(str(exc)) from exc
+
     def list_datasets(self) -> List[Dict[str, Any]]:
         """List the tenant's datasets, newest first, without their items.
 
