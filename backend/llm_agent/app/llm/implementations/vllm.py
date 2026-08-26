@@ -52,6 +52,10 @@ class VLLMClient(ILLMClient):
             "top_k": self.default_top_k,
             "stream": invocation.streaming,
         }
+        if invocation.streaming:
+            # vLLM emits authoritative token counts in a final, text-free SSE
+            # event when this OpenAI-compatible stream option is enabled.
+            payload["stream_options"] = {"include_usage": True}
         if invocation.metadata.get("structured_output_hint") == "json_object":
             payload["temperature"] = 0.0
             payload["stop"] = ["```"]
@@ -105,6 +109,7 @@ class VLLMClient(ILLMClient):
     def _stream_generate(self, invocation: LLMInvocation, payload: Dict[str, object]) -> LLMGenerationResult:
         chunks: List[str] = []
         finish_reason = "completed"
+        usage = LLMUsage(provider="vllm")
 
         with httpx.stream(
             "POST",
@@ -123,6 +128,14 @@ class VLLMClient(ILLMClient):
                 if data == "[DONE]":
                     break
                 payload_chunk = json.loads(data)
+                provider_usage = payload_chunk.get("usage")
+                if isinstance(provider_usage, dict):
+                    usage = LLMUsage(
+                        provider="vllm",
+                        input_tokens=provider_usage.get("prompt_tokens"),
+                        output_tokens=provider_usage.get("completion_tokens"),
+                        total_tokens=provider_usage.get("total_tokens"),
+                    )
                 choices = payload_chunk.get("choices") or []
                 if not choices:
                     continue
@@ -137,7 +150,7 @@ class VLLMClient(ILLMClient):
 
         return LLMGenerationResult(
             raw_output="".join(chunks),
-            usage=LLMUsage(provider="vllm"),
+            usage=usage,
             finish_reason=finish_reason,
         )
 
