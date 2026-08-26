@@ -46,6 +46,10 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 
 from app.core.config import RAGConfig
 from app.services.benchmark_manifest import build_benchmark_manifest
+from app.services.benchmark_prometheus import (
+    BenchmarkPrometheusSnapshotter,
+    NullBenchmarkPrometheusSnapshotter,
+)
 from app.services.eval_runner import (
     ERROR_FORBIDDEN,
     ERROR_NOT_FOUND,
@@ -362,6 +366,7 @@ class BenchmarkRunner:
         store: EvalStore,
         eval_runner: EvalRunner,
         logger: Any = None,
+        snapshotter: Optional[Any] = None,
     ) -> None:
         self.config = config
         self.store = store
@@ -370,6 +375,7 @@ class BenchmarkRunner:
         # second set of numbers nobody could reconcile with the first.
         self.eval_runner = eval_runner
         self.logger = logger
+        self.snapshotter = snapshotter or NullBenchmarkPrometheusSnapshotter()
         # Strong references to in-flight orchestrations, for the reason
         # `EvalRunner` keeps them: asyncio holds only a weak reference to a
         # task, and a collected orchestration would stop mid-phase.
@@ -477,6 +483,7 @@ class BenchmarkRunner:
                 item_count=len(items),
                 phases=[str(phase["name"]) for phase in plan],
             ),
+            operational_metrics={"before": None, "after": None},
         )
 
         task = asyncio.create_task(
@@ -513,6 +520,10 @@ class BenchmarkRunner:
         real and the ones never reached were never attempted.
         """
         tenant_id = identity.tenant_id
+        operational_metrics = {"before": await self._capture_snapshot(), "after": None}
+        self.store.record_benchmark_operational_metrics(
+            benchmark_id, tenant_id, operational_metrics
+        )
         aborted: Optional[str] = None
         try:
             with bound_context(**identity.to_dict()):
@@ -536,6 +547,10 @@ class BenchmarkRunner:
                     )
 
             status = benchmark_status(phases)
+            operational_metrics["after"] = await self._capture_snapshot()
+            self.store.record_benchmark_operational_metrics(
+                benchmark_id, tenant_id, operational_metrics
+            )
             self.store.finish_benchmark_run(
                 benchmark_id,
                 tenant_id,
@@ -551,6 +566,10 @@ class BenchmarkRunner:
                     phase["status"] = PHASE_INTERRUPTED
                     phase["finished_at"] = phase["finished_at"] or _now_iso()
                     phase["reason"] = "The benchmark was cancelled before this phase finished"
+            operational_metrics["after"] = await self._capture_snapshot()
+            self.store.record_benchmark_operational_metrics(
+                benchmark_id, tenant_id, operational_metrics
+            )
             self.store.finish_benchmark_run(
                 benchmark_id,
                 tenant_id,
@@ -565,6 +584,10 @@ class BenchmarkRunner:
                 "benchmark_runner:execute",
                 "Benchmark run failed",
                 {"error": str(exc)},
+            )
+            operational_metrics["after"] = await self._capture_snapshot()
+            self.store.record_benchmark_operational_metrics(
+                benchmark_id, tenant_id, operational_metrics
             )
             self.store.finish_benchmark_run(
                 benchmark_id,
@@ -647,6 +670,18 @@ class BenchmarkRunner:
         if self.logger is not None:
             self.logger.log(event, message, data)
 
+    async def _capture_snapshot(self) -> Dict[str, Any]:
+        """Keep an unexpected collector defect from failing the benchmark."""
+        try:
+            return await self.snapshotter.capture()
+        except Exception as exc:  # noqa: BLE001 - monitoring is optional evidence
+            self._log(
+                "benchmark_runner:prometheus_snapshot",
+                "Prometheus snapshot unavailable",
+                {"error": str(exc)},
+            )
+            return await NullBenchmarkPrometheusSnapshotter().capture()
+
 
 def _first_phase_error(phases: List[Dict[str, Any]]) -> Optional[str]:
     """The first failed phase's error, used as the benchmark's message."""
@@ -663,4 +698,10 @@ def create_benchmark_runner(
     logger: Any = None,
 ) -> BenchmarkRunner:
     """Create the benchmark orchestrator over an existing eval runner."""
-    return BenchmarkRunner(config, store, eval_runner, logger)
+    return BenchmarkRunner(
+        config,
+        store,
+        eval_runner,
+        logger,
+        snapshotter=BenchmarkPrometheusSnapshotter(config.prometheus_url),
+    )
