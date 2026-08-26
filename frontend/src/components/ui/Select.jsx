@@ -8,6 +8,11 @@ export default function Select({
   value,
   onValueChange,
   placeholder = 'Select…',
+  // What the closed trigger shows. Left undefined, Radix mirrors the
+  // selected item's own content — which is right for a one-line option and
+  // wrong for a rich one, where the trigger would grow a second line and a
+  // badge. Passing a node here keeps the trigger a single compact row.
+  valueLabel,
   children,
   className = '',
   disabled = false,
@@ -34,7 +39,9 @@ export default function Select({
       >
         <SelectPrimitive.Value placeholder={
           <span style={{ color: 'var(--fg-soft)' }}>{placeholder}</span>
-        } />
+        }>
+          {valueLabel}
+        </SelectPrimitive.Value>
         <SelectPrimitive.Icon>
           <ChevronDown size={14} style={{ color: 'var(--fg-soft)' }} />
         </SelectPrimitive.Icon>
@@ -61,10 +68,15 @@ export default function Select({
   )
 }
 
-export function SelectItem({ value, children, className = '' }) {
+export function SelectItem({ value, children, textValue, className = '' }) {
   return (
     <SelectPrimitive.Item
       value={value}
+      // Radix reads an option's text off its children for type-ahead. A rich
+      // option — a name, a badge and a summary line — has none it can read,
+      // so the plain name is passed explicitly rather than losing keyboard
+      // type-ahead on exactly the options that need it most.
+      textValue={textValue}
       className={cn(
         'relative flex items-center justify-between px-3 py-2 rounded-md text-[15px] font-medium outline-none cursor-pointer select-none',
         'transition-colors duration-100',

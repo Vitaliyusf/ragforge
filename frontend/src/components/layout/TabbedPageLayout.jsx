@@ -41,6 +41,10 @@ const MetricsTab = dynamic(
   () => import('@/features/metrics/components/MetricsTab'),
   { loading: () => <TabSkeleton />, ssr: false }
 )
+const EvalTab = dynamic(
+  () => import('@/features/eval/components/EvalTab'),
+  { loading: () => <TabSkeleton />, ssr: false }
+)
 const TrainingTab = dynamic(() => import('@/features/training/components/TrainingTab'), {
   loading: () => <TabSkeleton />, ssr: false,
 })
@@ -60,22 +64,42 @@ const TAB_COMPONENTS = {
   memory:   LongTermMemoryTab,
   health:   HealthDashboard,
   metrics:  MetricsTab,
+  eval:     EvalTab,
   users:    AdminUsersTab,
   upload:   UploadTab,
   ...(appConfig.enableTrainingTab ? { training: TrainingTab } : {}),
 }
 
+/**
+ * Destinations that used to live inside another tab.
+ *
+ * Eval was a Metrics sub-section before it became a workspace of its own.
+ * Anything still pointing at it by the old name resolves to the new
+ * top-level destination rather than falling through to Chat, which would
+ * look like the feature had been removed.
+ */
+export const LEGACY_TAB_ALIASES = {
+  'metrics/eval': 'eval',
+  'metrics:eval': 'eval',
+  'metrics-eval': 'eval',
+}
+
+export function resolveTab(tab) {
+  return LEGACY_TAB_ALIASES[tab] || tab
+}
+
 export default function TabbedPageLayout({ defaultTab = 'chat' }) {
   const { isAdmin } = useAuth()
-  const [activeTab, setActiveTab] = useState(defaultTab)
+  const [activeTab, setActiveTab] = useState(resolveTab(defaultTab))
   const allowedTabs = isAdmin
-    ? new Set(['chat', 'files', 'logs', 'models', 'config', 'memory', 'health', 'metrics', 'users', ...(appConfig.enableTrainingTab ? ['training'] : [])])
+    ? new Set(['chat', 'files', 'logs', 'models', 'config', 'memory', 'health', 'metrics', 'eval', 'users', ...(appConfig.enableTrainingTab ? ['training'] : [])])
     : new Set(['chat', 'upload', 'memory'])
-  const safeActiveTab = allowedTabs.has(activeTab) ? activeTab : 'chat'
+  const requestedTab = resolveTab(activeTab)
+  const safeActiveTab = allowedTabs.has(requestedTab) ? requestedTab : 'chat'
   const TabComponent = TAB_COMPONENTS[safeActiveTab]
 
   useEffect(() => {
-    if (!allowedTabs.has(activeTab)) setActiveTab('chat')
+    if (!allowedTabs.has(resolveTab(activeTab))) setActiveTab('chat')
   }, [activeTab, isAdmin])
 
   return (
@@ -98,7 +122,7 @@ export default function TabbedPageLayout({ defaultTab = 'chat' }) {
             className="flex min-h-0 flex-1 animate-fade-in flex-col overflow-hidden"
           >
             <ErrorBoundary name={safeActiveTab}>
-              <TabComponent />
+              <TabComponent onNavigate={setActiveTab} />
             </ErrorBoundary>
           </div>
         ) : (

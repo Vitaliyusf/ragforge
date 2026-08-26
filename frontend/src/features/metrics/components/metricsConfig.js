@@ -1,6 +1,6 @@
 /** Section definitions, labels, units, formatters and thresholds. */
 
-import { Activity, FlaskConical, Gauge, Search, ShieldCheck, Workflow } from 'lucide-react'
+import { Activity, Gauge, Search, ShieldCheck, Workflow } from 'lucide-react'
 
 /** Shown wherever the API returned null — "not measured", not "zero". */
 export const EMPTY = '—'
@@ -8,10 +8,10 @@ export const EMPTY = '—'
 /**
  * Sub-nav sections. One entry per panel, in display order.
  *
- * `standalone` marks a section that owns its own data loading instead of
- * going through `useMetrics`. Eval is not a windowed aggregation — a run is
- * a document with its own lifecycle — so the window and tenant selectors do
- * not apply to it.
+ * Every section here is a windowed aggregation over live traffic. Eval is
+ * not — a run is a document with its own lifecycle, and the window and
+ * tenant selectors mean nothing to it — so it is a top-level workspace of
+ * its own rather than a sixth entry in this list.
  */
 export const METRICS_SECTIONS = [
   { id: 'overview', label: 'Overview', icon: Gauge },
@@ -19,7 +19,6 @@ export const METRICS_SECTIONS = [
   { id: 'retrieval', label: 'Retrieval', icon: Search },
   { id: 'quality', label: 'Quality', icon: ShieldCheck },
   { id: 'pipeline', label: 'Pipeline', icon: Workflow },
-  { id: 'eval', label: 'Eval', icon: FlaskConical, standalone: true },
 ]
 
 export const WINDOW_OPTIONS = [
@@ -265,6 +264,10 @@ export const PROM_UNAVAILABLE = {
 
 // ---------------------------------------------------------------------------
 // Eval harness
+//
+// Rendered by the top-level Eval workspace (`src/features/eval`), not by any
+// panel in this tab. The labels live here because the eval run document and
+// the metrics panels share the same formatters and metric vocabulary.
 // ---------------------------------------------------------------------------
 
 /** The k values every run reports. Fixed by the stored `results` shape. */

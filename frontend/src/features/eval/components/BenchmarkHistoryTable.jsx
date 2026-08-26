@@ -1,0 +1,138 @@
+'use client'
+
+import Badge from '@/components/ui/Badge'
+import Button from '@/components/ui/Button'
+import Card, { CardHeader } from '@/components/ui/Card'
+import { cn } from '@/lib/utils'
+import {
+  EMPTY,
+  PROFILES_BY_ID,
+  TERMINAL_STATUSES,
+  formatDuration,
+  formatRunTimestamp,
+  keyResult,
+  statusMeta,
+} from '../evalProfiles'
+
+/** Desktop column track. Below `md` every row collapses to stacked cells. */
+const COLUMNS = 'md:grid-cols-[130px_150px_minmax(0,1fr)_120px_90px_110px_auto]'
+
+const HEADINGS = ['Started', 'Profile', 'Dataset', 'Status', 'Duration', 'Key result', 'Actions']
+
+/**
+ * Every benchmark this dataset has recorded, one row each.
+ *
+ * The benchmark id is not a column: it is thirty characters of noise beside
+ * the six facts that actually distinguish two runs. It stays on the row as
+ * a title, where it can still be read and copied when a support question
+ * needs it.
+ */
+export default function BenchmarkHistoryTable({
+  history = [],
+  selectedId,
+  busy,
+  onSelect,
+  onDownload,
+}) {
+  return (
+    <Card padding="sm">
+      <CardHeader
+        className="mb-3"
+        title="Benchmark history"
+        description="Server-backed. Every run keeps the labels and settings it scored."
+      />
+
+      {history.length === 0 ? (
+        <p className="text-[13px]" style={{ color: 'var(--fg-muted)' }}>
+          No benchmark runs yet. Start a benchmark to build its server-backed history.
+        </p>
+      ) : (
+        <div role="table" aria-label="Benchmark history">
+          <div
+            role="row"
+            className={cn('hidden gap-x-4 border-b px-2 pb-2 md:grid', COLUMNS)}
+            style={{ borderColor: 'var(--border)' }}
+          >
+            {HEADINGS.map((heading) => (
+              <span key={heading} role="columnheader" className="label-xs">
+                {heading}
+              </span>
+            ))}
+          </div>
+
+          {history.map((run) => {
+            const status = statusMeta(run.status)
+            const terminal = TERMINAL_STATUSES.has(run.status)
+            const current = run.benchmark_id === selectedId
+            const started = formatRunTimestamp(run.created_at || run.started_at)
+            const name = run.dataset_name || run.dataset?.name || 'Golden set'
+            // Names the run in a way a person can act on: two "View" buttons
+            // in a list are indistinguishable to anyone not looking at the
+            // row they sit in.
+            const rowName = `${PROFILES_BY_ID[run.profile]?.label || run.profile || 'run'} started ${started}`
+
+            return (
+              <div
+                key={run.benchmark_id}
+                role="row"
+                title={run.benchmark_id}
+                className={cn(
+                  'grid gap-x-4 gap-y-1 rounded-lg border-b px-2 py-2.5 text-[13px] last:border-b-0 md:items-center',
+                  COLUMNS
+                )}
+                style={{
+                  borderColor: 'var(--border)',
+                  background: current ? 'var(--surface-hover)' : 'transparent',
+                }}
+              >
+                <span role="cell" className="tabular-nums" style={{ color: 'var(--fg-muted)' }}>
+                  {started}
+                </span>
+                <span role="cell" className="truncate" style={{ color: 'var(--fg)' }}>
+                  {PROFILES_BY_ID[run.profile]?.label || run.profile || EMPTY}
+                </span>
+                <span role="cell" className="truncate" style={{ color: 'var(--fg-muted)' }}>
+                  {name}
+                  {run.dataset_version ? ` · v${run.dataset_version}` : ''}
+                </span>
+                <span role="cell">
+                  <Badge variant={status.variant} icon={status.icon} spin={status.spin}>
+                    {status.label}
+                  </Badge>
+                </span>
+                <span role="cell" className="tabular-nums" style={{ color: 'var(--fg-muted)' }}>
+                  {formatDuration(run.started_at, run.finished_at)}
+                </span>
+                <span role="cell" className="tabular-nums" style={{ color: 'var(--fg-muted)' }}>
+                  {keyResult(run)}
+                </span>
+                <span role="cell" className="flex flex-wrap gap-1.5 md:justify-end">
+                  <Button
+                    variant={current ? 'secondary' : 'ghost'}
+                    size="xs"
+                    disabled={busy || current}
+                    aria-label={`View ${rowName}`}
+                    onClick={() => onSelect(run.benchmark_id)}
+                  >
+                    View
+                  </Button>
+                  {terminal && (
+                    <Button
+                      variant="ghost"
+                      size="xs"
+                      disabled={busy}
+                      aria-label={`Download ${rowName}`}
+                      onClick={() => onDownload(run.benchmark_id)}
+                    >
+                      Download
+                    </Button>
+                  )}
+                </span>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </Card>
+  )
+}

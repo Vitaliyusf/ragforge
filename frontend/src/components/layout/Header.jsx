@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from 'react'
 import {
   MessageSquare,
   Files,
+  FlaskConical,
   Terminal,
   Cpu,
   Zap,
@@ -33,6 +34,7 @@ import { useAuth } from '@/features/auth'
 const ADMIN_TABS = [
   { id: 'chat', label: 'Chat', icon: MessageSquare },
   { id: 'files', label: 'Files', icon: Files },
+  { id: 'eval', label: 'Eval', icon: FlaskConical },
   { id: 'users', label: 'Users', icon: Users },
   { id: 'models', label: 'Models', icon: Cpu },
   { id: 'logs', label: 'Logs', icon: Terminal },
