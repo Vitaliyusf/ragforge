@@ -513,3 +513,48 @@ def test_a_refused_benchmark_leaves_no_document_behind():
     with bound_context(**ADMIN.to_dict()):
         asyncio.run(_go())
         assert store.list_benchmark_runs() == []
+
+
+# ── Manifest ──────────────────────────────────────────────────────────────
+
+def test_a_benchmark_records_the_manifest_it_ran_under(monkeypatch):
+    """Provenance is captured automatically, not remembered by an operator."""
+    monkeypatch.setenv("RAGFORGE_GIT_SHA", "abc123def456")
+    monkeypatch.setenv("RAGFORGE_GIT_BRANCH", "feat/benchmark-run-manifest")
+    store, orchestrator, _, dataset_id = build()
+
+    benchmark = run_benchmark(orchestrator, dataset_id, [PHASE_RETRIEVAL_BASE])
+    manifest = fetch(store, benchmark["benchmark_id"])["manifest"]
+
+    assert manifest["build"]["git_sha"] == "abc123def456"
+    assert manifest["build"]["git_branch"] == "feat/benchmark-run-manifest"
+    assert manifest["dataset"]["dataset_id"] == dataset_id
+    assert manifest["dataset"]["item_count"] == len(ITEMS)
+    assert manifest["dataset"]["phases"] == [PHASE_RETRIEVAL_BASE]
+    assert manifest["retrieval"]["top_k_documents"] == 6
+
+
+def test_the_manifest_is_written_once_at_plan_time():
+    """Config drifting mid-benchmark must not rewrite what the phases ran on."""
+    store, orchestrator, _, dataset_id = build()
+
+    benchmark = run_benchmark(orchestrator, dataset_id, [PHASE_RETRIEVAL_BASE])
+    captured = benchmark["manifest"]["captured_at"]
+    orchestrator.config.top_k_documents = 99
+
+    stored = fetch(store, benchmark["benchmark_id"])["manifest"]
+    assert stored["captured_at"] == captured
+    assert stored["retrieval"]["top_k_documents"] == 6
+
+
+def test_a_benchmark_recorded_before_manifests_reads_back_as_null():
+    """No manifest is invented for a document that never carried one."""
+    store, orchestrator, _, dataset_id = build()
+
+    benchmark = run_benchmark(orchestrator, dataset_id, [PHASE_RETRIEVAL_BASE])
+    for document in store._memory[store.config.eval_benchmark_runs_collection]:
+        document.pop("manifest", None)
+
+    with bound_context(**ADMIN.to_dict()):
+        assert store.get_benchmark_run(benchmark["benchmark_id"])["manifest"] is None
+        assert store.list_benchmark_runs()[0]["manifest"] is None

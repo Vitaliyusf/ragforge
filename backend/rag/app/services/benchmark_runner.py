@@ -45,6 +45,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from app.core.config import RAGConfig
+from app.services.benchmark_manifest import build_benchmark_manifest
 from app.services.eval_runner import (
     ERROR_FORBIDDEN,
     ERROR_NOT_FOUND,
@@ -466,6 +467,16 @@ class BenchmarkRunner:
             # would be uncomparable against itself.
             dataset_version=dataset.get("dataset_version"),
             dataset_sha256=dataset.get("dataset_sha256"),
+            # Captured here rather than per phase: every phase of one
+            # benchmark runs on the same build against the same corpus, and
+            # a manifest per phase would invite the reader to compare copies
+            # of one fact with each other.
+            manifest=build_benchmark_manifest(
+                self.config,
+                dataset=dataset,
+                item_count=len(items),
+                phases=[str(phase["name"]) for phase in plan],
+            ),
         )
 
         task = asyncio.create_task(
