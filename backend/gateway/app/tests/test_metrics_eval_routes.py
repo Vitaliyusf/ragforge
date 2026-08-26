@@ -96,6 +96,9 @@ class DummyRPCClient:
             "start_eval_run": {"run": RUN},
             "list_eval_runs": {"runs": [{**RUN, "per_item": []}]},
             "get_eval_run": {"run": {**RUN, "per_item": [{"item_id": "i-1"}]}},
+            "export_benchmark_run": {
+                "export": {"filename": "benchmark-d-1.zip", "content_base64": "UEsFBgAAAAAAAAAAAAAAAAAAAAAAAA=="}
+            },
         }.get(action, {})
 
 
@@ -384,6 +387,25 @@ def test_a_run_defaults_to_the_free_retrieval_mode():
         client.post("/v1/metrics/eval/runs", json={"dataset_id": "d-1"})
 
     assert last_payload(service)["mode"] == "retrieval"
+
+
+def test_benchmark_export_is_an_admin_zip_download():
+    service = build_service()
+    with TestClient(build_app(service)) as client:
+        response = client.get("/v1/metrics/eval/benchmarks/b-1/export")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "application/zip"
+    assert "benchmark-d-1.zip" in response.headers["content-disposition"]
+    assert last_payload(service)["action"] == "export_benchmark_run"
+
+
+def test_benchmark_export_rejects_non_admins():
+    service = build_service()
+    with TestClient(build_app(service, role="user")) as client:
+        response = client.get("/v1/metrics/eval/benchmarks/b-1/export")
+
+    assert response.status_code == 403
 
 
 def test_an_end_to_end_run_forwards_its_mode():

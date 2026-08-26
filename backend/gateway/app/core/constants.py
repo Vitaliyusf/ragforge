@@ -194,6 +194,7 @@ class RagAction(str, Enum):
     START_BENCHMARK_RUN = "start_benchmark_run"
     LIST_BENCHMARK_RUNS = "list_benchmark_runs"
     GET_BENCHMARK_RUN = "get_benchmark_run"
+    EXPORT_BENCHMARK_RUN = "export_benchmark_run"
 
 
 class VectorDbAction(str, Enum):

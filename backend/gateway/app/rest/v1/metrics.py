@@ -16,9 +16,11 @@ a dataset listing or a run document.
 """
 from __future__ import annotations
 
+import base64
 from typing import Any, Dict, List, Literal, Optional
 
 from fastapi import APIRouter, Depends, Query
+from fastapi.responses import Response
 from pydantic import BaseModel, Field, model_validator
 
 from app.core.auth import require_admin
@@ -360,6 +362,30 @@ async def get_benchmark_run(
     """One benchmark with its phase table and progress counters."""
     try:
         return await service.get_benchmark_run(benchmark_id)
+    except Exception as exc:
+        raise handle_exception(exc)
+
+
+@router.get(
+    "/eval/benchmarks/{benchmark_id}/export", dependencies=[Depends(require_admin)]
+)
+async def export_benchmark_run(
+    benchmark_id: str,
+    service: MetricsService = Depends(get_metrics_service),
+) -> Response:
+    """Download the benchmark's safe, tenant-scoped diagnostic ZIP."""
+    try:
+        exported = await service.export_benchmark_run(benchmark_id)
+        archive = exported.get("export") or {}
+        content = base64.b64decode(
+            str(archive.get("content_base64") or ""), validate=True
+        )
+        filename = str(archive.get("filename") or "benchmark-export.zip")
+        return Response(
+            content,
+            media_type="application/zip",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
     except Exception as exc:
         raise handle_exception(exc)
 

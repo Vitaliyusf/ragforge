@@ -46,6 +46,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 
 from app.core.config import RAGConfig
 from app.services.benchmark_manifest import build_benchmark_manifest
+from app.services.benchmark_export import build_benchmark_export
 from app.services.benchmark_prometheus import (
     BenchmarkPrometheusSnapshotter,
     NullBenchmarkPrometheusSnapshotter,
@@ -82,9 +83,15 @@ from shared.context import bound_context
 START_BENCHMARK_RUN = "start_benchmark_run"
 LIST_BENCHMARK_RUNS = "list_benchmark_runs"
 GET_BENCHMARK_RUN = "get_benchmark_run"
+EXPORT_BENCHMARK_RUN = "export_benchmark_run"
 
 BENCHMARK_ACTIONS = frozenset(
-    {START_BENCHMARK_RUN, LIST_BENCHMARK_RUNS, GET_BENCHMARK_RUN}
+    {
+        START_BENCHMARK_RUN,
+        LIST_BENCHMARK_RUNS,
+        GET_BENCHMARK_RUN,
+        EXPORT_BENCHMARK_RUN,
+    }
 )
 
 # Per-phase states.
@@ -416,6 +423,12 @@ class BenchmarkRunner:
                 return {
                     "benchmark": self.store.get_benchmark_run(
                         str(payload.get("benchmark_id") or "")
+                    )
+                }
+            if action == EXPORT_BENCHMARK_RUN:
+                return {
+                    "export": build_benchmark_export(
+                        self.store, str(payload.get("benchmark_id") or "")
                     )
                 }
             return error_reply(
