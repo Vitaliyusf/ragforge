@@ -182,6 +182,29 @@ def test_overlong_queries_are_rejected():
             store.create_dataset("A", None, items)
 
 
+def test_direct_item_payloads_share_the_import_byte_limit():
+    store = build_store(eval_max_dataset_bytes=200)
+    items = [
+        {
+            "query": "q",
+            "relevant_chunk_ids": ["c"],
+            "notes": "x" * 300,
+        }
+    ]
+    with bound_context(**ADMIN_A.to_dict()):
+        with pytest.raises(EvalValidationError, match="Dataset items are"):
+            store.create_dataset("A", None, items)
+
+
+def test_dataset_metadata_is_bounded_in_the_store_not_only_the_gateway():
+    store = build_store(eval_max_name_length=5, eval_max_query_length=10)
+    with bound_context(**ADMIN_A.to_dict()):
+        with pytest.raises(EvalValidationError, match="name.*limit is 5"):
+            store.create_dataset("too long", None, ITEMS)
+        with pytest.raises(EvalValidationError, match="description.*limit is 10"):
+            store.create_dataset("A", "x" * 11, ITEMS)
+
+
 def test_repeated_item_ids_are_rejected():
     store = build_store()
     items = [
@@ -646,6 +669,9 @@ class FakeCollection:
     def insert_one(self, document):
         self._database.inserts.append((self._name, document))
 
+    def create_index(self, fields, **options):
+        self._database.indexes.append((self._name, fields, options))
+
 
 class FakeDatabase:
     def __init__(self) -> None:
@@ -653,6 +679,49 @@ class FakeDatabase:
         self.updates: List[Any] = []
         self.deletes: List[Any] = []
         self.inserts: List[Any] = []
+        self.indexes: List[Any] = []
 
     def __getitem__(self, name: str) -> FakeCollection:
         return FakeCollection(self, name)
+
+
+def test_bulk_run_lookup_preserves_order_and_tenant_boundary():
+    store = build_store()
+    store._docs("eval_runs").extend(
+        [
+            {"run_id": "r-2", "tenant_id": "tenant-a", "per_item": []},
+            {"run_id": "r-1", "tenant_id": "tenant-a", "per_item": []},
+            {"run_id": "foreign", "tenant_id": "tenant-b", "per_item": []},
+        ]
+    )
+    with bound_context(**ADMIN_A.to_dict()):
+        rows = store.get_runs(["r-1", "r-2"])
+        with pytest.raises(EvalNotFound):
+            store.get_runs(["foreign"])
+
+    assert [row["run_id"] for row in rows] == ["r-1", "r-2"]
+
+
+def test_eval_indexes_include_tenant_prefixes_and_terminal_artifact_ttl():
+    store = build_store(eval_artifact_retention_days=30)
+    database = FakeDatabase()
+    store._in_memory = False
+    store._db = database
+
+    store.ensure_indexes()
+
+    indexes = {options["name"]: (fields, options) for _, fields, options in database.indexes}
+    assert indexes["idx_eval_runs_tenant_started"][0] == [
+        ("tenant_id", 1),
+        ("started_at", -1),
+    ]
+    assert indexes["idx_eval_runs_tenant_dataset_started"][0][0] == (
+        "tenant_id",
+        1,
+    )
+    assert indexes["idx_eval_benchmarks_tenant_dataset_created"][0][0] == (
+        "tenant_id",
+        1,
+    )
+    assert indexes["idx_eval_runs_ttl"][1]["expireAfterSeconds"] == 30 * 86400
+    assert indexes["idx_eval_benchmarks_ttl"][1]["expireAfterSeconds"] == 30 * 86400

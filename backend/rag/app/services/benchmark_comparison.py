@@ -1,9 +1,12 @@
 """Compatibility-aware comparison of one benchmark against an earlier run."""
 from __future__ import annotations
 
-from typing import Any, Dict, Iterable, Mapping, Optional, Sequence, Tuple
+from typing import TYPE_CHECKING, Any, Dict, Iterable, Mapping, Optional, Sequence, Tuple
 
 from app.services.benchmark_summary import summarize_benchmark
+
+if TYPE_CHECKING:
+    from app.services.eval_store import EvalStore
 
 COMPARISON_VERSION = 1
 TERMINAL_STATUSES = frozenset({"completed", "partial", "failed", "interrupted"})
@@ -180,7 +183,7 @@ def compare_benchmarks(
 
 
 def comparison_for_candidate(
-    store: Any, candidate: Mapping[str, Any]
+    store: "EvalStore", candidate: Mapping[str, Any]
 ) -> Dict[str, Any]:
     """Build an export-ready comparison using only tenant-scoped store methods."""
     history = store.list_benchmark_runs(candidate.get("dataset_id"), limit=100)
@@ -224,10 +227,10 @@ def comparison_for_candidate(
     )
 
 
-def _phase_runs(store: Any, benchmark: Mapping[str, Any]) -> list[Dict[str, Any]]:
-    runs = []
+def _phase_runs(store: "EvalStore", benchmark: Mapping[str, Any]) -> list[Dict[str, Any]]:
+    run_ids = []
     for phase in benchmark.get("phases") or []:
         run_id = phase.get("run_id") if isinstance(phase, Mapping) else None
         if run_id:
-            runs.append(store.get_run(str(run_id)))
-    return runs
+            run_ids.append(str(run_id))
+    return store.get_runs(run_ids)

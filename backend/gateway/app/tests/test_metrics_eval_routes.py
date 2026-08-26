@@ -319,6 +319,10 @@ def test_the_run_carries_the_config_snapshot_for_comparison():
         ("post", "/v1/metrics/eval/runs", {"dataset_id": "d-1"}),
         ("get", "/v1/metrics/eval/runs", None),
         ("get", "/v1/metrics/eval/runs/r-1", None),
+        ("post", "/v1/metrics/eval/benchmarks", {"dataset_id": "d-1"}),
+        ("get", "/v1/metrics/eval/benchmarks", None),
+        ("get", "/v1/metrics/eval/benchmarks/b-1", None),
+        ("get", "/v1/metrics/eval/benchmarks/b-1/export", None),
     ],
 )
 def test_regular_users_are_forbidden_on_every_eval_route(method, path, body):

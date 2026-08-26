@@ -20,6 +20,7 @@ from app.services.eval_store import EvalNotFound, EvalStore, EvalValidationError
 
 MAX_EXPORT_BYTES = 8 * 1024 * 1024
 MAX_TEXT_BYTES = 16 * 1024
+MAX_TRUNCATION_EXAMPLES = 100
 _SECRET_KEY = re.compile(r"(?:secret|password|api[_-]?key|token|authorization)", re.I)
 
 
@@ -30,8 +31,8 @@ class BenchmarkExportTooLarge(EvalValidationError):
 def build_benchmark_export(store: EvalStore, benchmark_id: str) -> Dict[str, str]:
     """Return a base64 ZIP containing one caller-authorised benchmark.
 
-    Store lookups deliberately use their public methods: each method applies
-    the admin and tenant predicates, including for every phase run.
+    Store lookups deliberately use public methods: each applies the admin and
+    tenant predicates. Phase runs are fetched in one bounded bulk query.
     """
     benchmark = store.get_benchmark_run(benchmark_id)
     runs = _phase_runs(store, benchmark.get("phases"))
@@ -60,12 +61,12 @@ def build_benchmark_export(store: EvalStore, benchmark_id: str) -> Dict[str, str
 
 
 def _phase_runs(store: EvalStore, phases: Any) -> list[Dict[str, Any]]:
-    runs = []
+    run_ids = []
     for phase in phases if isinstance(phases, list) else []:
         run_id = phase.get("run_id") if isinstance(phase, Mapping) else None
         if run_id:
-            runs.append(store.get_run(str(run_id)))
-    return runs
+            run_ids.append(str(run_id))
+    return store.get_runs(run_ids)
 
 
 def _dataset_evidence(store: EvalStore, benchmark: Mapping[str, Any]) -> Dict[str, Any]:
@@ -188,11 +189,25 @@ def _errors(benchmark: Mapping[str, Any], runs: Iterable[Mapping[str, Any]]) -> 
 
 
 def _zip(documents: Mapping[str, Any]) -> bytes:
+    truncation: Dict[str, Any] = {
+        "text_fields_truncated": 0,
+        "max_text_bytes": MAX_TEXT_BYTES,
+        "examples": [],
+        "examples_truncated": False,
+    }
+    sanitized = {
+        name: _sanitize(document, path=name, truncation=truncation)
+        for name, document in documents.items()
+    }
+    truncation["examples_truncated"] = (
+        truncation["text_fields_truncated"] > len(truncation["examples"])
+    )
     output = io.BytesIO()
     with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as archive:
         archive.writestr("README.md", _README)
-        for name, document in documents.items():
-            archive.writestr(name, _json_bytes(_sanitize(document)))
+        for name, document in sanitized.items():
+            archive.writestr(name, _json_bytes(document))
+        archive.writestr("truncation.json", _json_bytes(truncation))
     payload = output.getvalue()
     if len(payload) > MAX_EXPORT_BYTES:
         raise BenchmarkExportTooLarge("Benchmark export exceeds the maximum archive size")
@@ -209,17 +224,52 @@ def _json_bytes(value: Any) -> bytes:
     ).encode("utf-8")
 
 
-def _sanitize(value: Any, key: str = "") -> Any:
+def _sanitize(
+    value: Any,
+    key: str = "",
+    *,
+    path: str = "",
+    truncation: Dict[str, Any],
+) -> Any:
     if _SECRET_KEY.search(key):
         return "[redacted]"
     if isinstance(value, Mapping):
-        return {str(name): _sanitize(item, str(name)) for name, item in value.items()}
+        return {
+            str(name): _sanitize(
+                item,
+                str(name),
+                path=f"{path}.{name}" if path else str(name),
+                truncation=truncation,
+            )
+            for name, item in value.items()
+        }
     if isinstance(value, list):
-        return [_sanitize(item, key) for item in value]
+        return [
+            _sanitize(
+                item,
+                key,
+                path=f"{path}[{index}]",
+                truncation=truncation,
+            )
+            for index, item in enumerate(value)
+        ]
     if isinstance(value, float) and not math.isfinite(value):
         return None
     if isinstance(value, str):
-        return value.encode("utf-8")[:MAX_TEXT_BYTES].decode("utf-8", errors="ignore")
+        encoded = value.encode("utf-8")
+        if len(encoded) <= MAX_TEXT_BYTES:
+            return value
+        truncation["text_fields_truncated"] += 1
+        examples = truncation["examples"]
+        if len(examples) < MAX_TRUNCATION_EXAMPLES:
+            examples.append(
+                {
+                    "path": path,
+                    "original_bytes": len(encoded),
+                    "stored_bytes": MAX_TEXT_BYTES,
+                }
+            )
+        return encoded[:MAX_TEXT_BYTES].decode("utf-8", errors="ignore")
     if isinstance(value, (str, int, float, bool)) or value is None:
         return value
     return str(value)
@@ -237,6 +287,10 @@ state explicitly when their dataset evidence depends on today's Golden Set or
 when that Golden Set has been deleted. `null` means unmeasured or unavailable,
 never zero. Per-item files contain bounded scoring and retrieval lineage only;
 raw document/context text and answer text are excluded.
+
+`truncation.json` reports every bounded-text truncation count and up to 100
+field paths, so an archive never silently presents shortened evidence as
+complete.
 
 `comparison.json` compares this candidate with its newest compatible earlier
 baseline. It remains present with explicit warnings and no metrics when no
