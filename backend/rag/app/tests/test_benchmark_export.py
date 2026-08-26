@@ -25,6 +25,11 @@ def _archive(store, benchmark_id):
 def test_export_has_the_evidence_layout_and_strict_json():
     store, orchestrator, _, dataset_id = build()
     benchmark = run_benchmark(orchestrator, dataset_id, [PHASE_RETRIEVAL_BASE])
+    with bound_context(**ADMIN.to_dict()):
+        store.get_benchmark_run(benchmark["benchmark_id"])
+        for row in store._memory[store.config.eval_benchmark_runs_collection]:
+            if row["benchmark_id"] == benchmark["benchmark_id"]:
+                row["operational_metrics"] = {"before": float("nan"), "after": None}
 
     with _archive(store, benchmark["benchmark_id"]) as archive:
         names = set(archive.namelist())
@@ -34,7 +39,66 @@ def test_export_has_the_evidence_layout_and_strict_json():
         assert any(name.endswith("/per-item.json") for name in names)
         for name in names:
             if name.endswith(".json"):
-                json.loads(archive.read(name), parse_constant=lambda value: (_ for _ in ()).throw(ValueError(value)))
+                json.loads(
+                    archive.read(name),
+                    parse_constant=lambda value: (_ for _ in ()).throw(ValueError(value)),
+                )
+
+
+def test_new_export_uses_its_snapshot_after_the_live_dataset_changes():
+    store, orchestrator, _, dataset_id = build()
+    benchmark = run_benchmark(orchestrator, dataset_id, [PHASE_RETRIEVAL_BASE])
+    with bound_context(**ADMIN.to_dict()):
+        store.update_dataset(
+            dataset_id,
+            items=[{"query": "changed", "relevant_chunk_ids": ["different"]}],
+        )
+
+    with _archive(store, benchmark["benchmark_id"]) as archive:
+        evidence = json.loads(archive.read("dataset.json"))
+    assert evidence["provenance"] == "immutable_benchmark_snapshot"
+    assert evidence["dataset_version"] == benchmark["dataset_version"]
+    assert evidence["dataset_sha256"] == benchmark["dataset_sha256"]
+    assert evidence["items"][0]["query"] == "first"
+    assert all(
+        "item_id" not in item and "notes" not in item for item in evidence["items"]
+    )
+
+
+def test_new_export_survives_live_dataset_deletion():
+    store, orchestrator, _, dataset_id = build()
+    benchmark = run_benchmark(orchestrator, dataset_id, [PHASE_RETRIEVAL_BASE])
+    with bound_context(**ADMIN.to_dict()):
+        store.delete_dataset(dataset_id)
+
+    with _archive(store, benchmark["benchmark_id"]) as archive:
+        evidence = json.loads(archive.read("dataset.json"))
+    assert evidence["provenance"] == "immutable_benchmark_snapshot"
+    assert evidence["dataset_id"] == dataset_id
+
+
+def test_legacy_export_marks_current_dataset_dependency_or_missing_dataset():
+    store, orchestrator, _, dataset_id = build()
+    benchmark = run_benchmark(orchestrator, dataset_id, [PHASE_RETRIEVAL_BASE])
+    with bound_context(**ADMIN.to_dict()):
+        for row in store._memory[store.config.eval_benchmark_runs_collection]:
+            if row["benchmark_id"] == benchmark["benchmark_id"]:
+                row.pop("dataset_snapshot")
+        store.update_dataset(
+            dataset_id, items=[{"query": "changed", "relevant_chunk_ids": ["c2"]}]
+        )
+
+    with _archive(store, benchmark["benchmark_id"]) as archive:
+        evidence = json.loads(archive.read("dataset.json"))
+    assert evidence["provenance"] == "legacy_current_dataset_dependent"
+    assert evidence["items"][0]["query"] == "changed"
+
+    with bound_context(**ADMIN.to_dict()):
+        store.delete_dataset(dataset_id)
+    with _archive(store, benchmark["benchmark_id"]) as archive:
+        evidence = json.loads(archive.read("dataset.json"))
+    assert evidence["provenance"] == "legacy_snapshot_missing_dataset_deleted"
+    assert evidence["items"] is None
 
 
 def test_export_excludes_answers_and_redacts_secrets():

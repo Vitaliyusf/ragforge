@@ -52,6 +52,8 @@ from app.services.eval_store import (
     EvalNotFound,
     EvalStore,
     EvalValidationError,
+    canonical_items,
+    dataset_fingerprint,
 )
 from shared.auth import AuthIdentity
 from shared.context import bound_context
@@ -307,6 +309,37 @@ def test_each_phase_run_carries_both_modes_and_its_benchmark():
 
 
 # ── Progress ──────────────────────────────────────────────────────────────
+
+def test_a_benchmark_captures_only_its_immutable_canonical_scoring_snapshot():
+    store, orchestrator, _, dataset_id = build(
+        items=[
+            {
+                "item_id": "authoring-id",
+                "query": "first",
+                "relevant_chunk_ids": ["c1"],
+                "notes": "private annotation",
+                "created_by": "admin-a",
+            }
+        ]
+    )
+
+    benchmark = fetch(
+        store,
+        run_benchmark(orchestrator, dataset_id, [PHASE_RETRIEVAL_BASE])["benchmark_id"],
+    )
+    snapshot = benchmark["dataset_snapshot"]
+
+    assert snapshot["dataset_id"] == dataset_id
+    assert snapshot["dataset_version"] == benchmark["dataset_version"]
+    assert snapshot["dataset_sha256"] == benchmark["dataset_sha256"]
+    assert dataset_fingerprint(snapshot["items"]) == snapshot["dataset_sha256"]
+    assert snapshot["items"] == canonical_items(
+        [{"query": "first", "relevant_chunk_ids": ["c1"]}]
+    )
+    assert "item_id" not in snapshot["items"][0]
+    assert "notes" not in snapshot["items"][0]
+    assert "created_by" not in snapshot["items"][0]
+
 
 def test_a_benchmark_returns_immediately_in_queued_state():
     """A synchronous orchestration would blow the gateway timeout."""

@@ -374,6 +374,24 @@ def dataset_fingerprint(items: Any) -> str:
     return hashlib.sha256(payload).hexdigest()
 
 
+def benchmark_dataset_snapshot(dataset: Mapping[str, Any]) -> Dict[str, Any]:
+    """Capture the minimal immutable scoring evidence for one benchmark.
+
+    The snapshot deliberately contains canonical items rather than the live
+    Golden Set document: authoring notes, item identifiers, descriptions and
+    timestamps cannot affect a score and do not belong in durable evidence.
+    """
+    items = canonical_items(dataset.get("items"))
+    return {
+        "snapshot_version": 1,
+        "dataset_id": dataset.get("dataset_id"),
+        "dataset_name": dataset.get("name"),
+        "dataset_version": dataset.get("dataset_version"),
+        "dataset_sha256": dataset.get("dataset_sha256"),
+        "items": items,
+    }
+
+
 class EvalStore:
     """Tenant-scoped persistence for eval datasets and runs."""
 
@@ -805,6 +823,7 @@ class EvalStore:
         *,
         dataset_version: Optional[int] = None,
         dataset_sha256: Optional[str] = None,
+        dataset_snapshot: Optional[Dict[str, Any]] = None,
         manifest: Optional[Dict[str, Any]] = None,
         operational_metrics: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
@@ -831,6 +850,9 @@ class EvalStore:
                 edited before the last phase finishes, and a benchmark whose
                 phases described different label sets would be uncomparable
                 against itself.
+            dataset_snapshot: Immutable canonical scoring items captured at
+                plan time. ``None`` only for documents created before this
+                evidence was introduced.
             manifest: From
                 :func:`app.services.benchmark_manifest.build_benchmark_manifest`
                 — the build, dataset, retrieval, model and runtime metadata
@@ -850,6 +872,7 @@ class EvalStore:
             "dataset_id": dataset_id,
             "dataset_version": dataset_version,
             "dataset_sha256": dataset_sha256,
+            "dataset_snapshot": dataset_snapshot,
             "tenant_id": identity.tenant_id,
             "created_at": _now(),
             "started_at": None,
@@ -1279,6 +1302,9 @@ def _normalize_benchmark(document: Dict[str, Any]) -> Dict[str, Any]:
     return {
         "manifest": None,
         "operational_metrics": None,
+        # Legacy benchmarks did not retain their scoring labels.  Keep this
+        # absence explicit so exporters never imply immutable provenance.
+        "dataset_snapshot": None,
         **document,
         "progress": normalized_progress,
     }

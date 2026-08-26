@@ -73,6 +73,7 @@ from app.services.eval_store import (
     EvalNotFound,
     EvalStore,
     EvalValidationError,
+    benchmark_dataset_snapshot,
 )
 from shared.auth import AuthIdentity, identity_from_context
 from shared.context import bound_context
@@ -536,6 +537,7 @@ class BenchmarkRunner:
             raise EvalValidationError("Dataset has no items to evaluate")
 
         plan = plan_phases(phases, graph_available=self.graph_available)
+        dataset_snapshot = benchmark_dataset_snapshot(dataset)
         benchmark = self.store.create_benchmark_run(
             dataset_id,
             plan,
@@ -544,8 +546,9 @@ class BenchmarkRunner:
             # the dataset can be edited while later phases are still running,
             # and a benchmark whose phases described different label sets
             # would be uncomparable against itself.
-            dataset_version=dataset.get("dataset_version"),
-            dataset_sha256=dataset.get("dataset_sha256"),
+            dataset_version=dataset_snapshot["dataset_version"],
+            dataset_sha256=dataset_snapshot["dataset_sha256"],
+            dataset_snapshot=dataset_snapshot,
             # Captured here rather than per phase: every phase of one
             # benchmark runs on the same build against the same corpus, and
             # a manifest per phase would invite the reader to compare copies
@@ -566,6 +569,7 @@ class BenchmarkRunner:
                 dataset_id,
                 plan,
                 len(items),
+                dataset_snapshot,
             )
         )
         self._tasks.add(task)
@@ -579,6 +583,7 @@ class BenchmarkRunner:
         dataset_id: str,
         phases: List[Dict[str, Any]],
         item_count: int,
+        dataset_snapshot: Dict[str, Any],
     ) -> Dict[str, Any]:
         """Run each queued phase in order and close the benchmark.
 
@@ -616,7 +621,8 @@ class BenchmarkRunner:
                         phase["reason"] = aborted
                         continue
                     aborted = await self._run_phase(
-                        benchmark_id, tenant_id, dataset_id, phase, phases, item_count
+                        benchmark_id, tenant_id, dataset_id, phase, phases, item_count,
+                        dataset_snapshot,
                     )
 
             status = benchmark_status(phases)
@@ -680,6 +686,7 @@ class BenchmarkRunner:
         phase: Dict[str, Any],
         phases: List[Dict[str, Any]],
         item_count: int,
+        dataset_snapshot: Dict[str, Any],
     ) -> Optional[str]:
         """Execute one phase to completion, mutating its record in place.
 
@@ -707,6 +714,7 @@ class BenchmarkRunner:
                 phase["evaluation_mode"],
                 phase["pipeline_mode"],
                 benchmark_id=benchmark_id,
+                dataset_snapshot=dataset_snapshot,
             )
         except (EvalValidationError, EvalNotFound, EvalAccessDenied) as exc:
             # The phase never opened a run, so there is nothing to attribute

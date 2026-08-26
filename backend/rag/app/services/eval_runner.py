@@ -65,6 +65,7 @@ from typing import (
     Dict,
     FrozenSet,
     List,
+    Mapping,
     Optional,
     Set,
     Tuple,
@@ -762,6 +763,7 @@ class EvalRunner:
         mode: str = MODE_RETRIEVAL,
         pipeline_mode: Optional[str] = None,
         benchmark_id: Optional[str] = None,
+        dataset_snapshot: Optional[Mapping[str, Any]] = None,
     ) -> "PreparedRun":
         """Validate and open a run document without executing it.
 
@@ -777,6 +779,9 @@ class EvalRunner:
                 defaults to :data:`PIPELINE_REGULAR` for an ``end_to_end``
                 run and stays ``None`` for a ``retrieval`` one, which drives
                 no pipeline.
+            dataset_snapshot: Immutable canonical scoring labels supplied by
+                a benchmark. Ordinary eval runs leave this as ``None`` and
+                read the live tenant-scoped dataset.
 
         Raises:
             EvalValidationError: On an unknown evaluation or pipeline mode,
@@ -805,9 +810,14 @@ class EvalRunner:
             )
         if mode == MODE_END_TO_END:
             pipeline_mode = pipeline_mode or PIPELINE_REGULAR
-        # Raises EvalAccessDenied / EvalNotFound before anything is written,
-        # so a refused request leaves no run document behind.
-        dataset = self.store.get_dataset(dataset_id)
+        # A benchmark supplies its immutable canonical scoring snapshot so a
+        # later Golden Set edit (or deletion) cannot change a queued phase.
+        # Ordinary eval runs retain the live-dataset lookup.
+        dataset = (
+            dict(dataset_snapshot)
+            if dataset_snapshot is not None
+            else self.store.get_dataset(dataset_id)
+        )
         identity = identity_from_context(required=True)
         items = dataset.get("items") or []
         if not items:
