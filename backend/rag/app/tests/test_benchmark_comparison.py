@@ -12,6 +12,12 @@ from app.services.benchmark_comparison import (
 
 def manifest(*, model="embed-v1", top_k=10, phases=None):
     return {
+        "build": {
+            "git_sha": "abc123",
+            "git_branch": "main",
+            "build_timestamp": "2026-01-01T00:00:00Z",
+            "image_tag": "rag:test",
+        },
         "dataset": {"phases": phases or ["retrieval_base"]},
         "chunking": {"strategy": "fixed", "size": 500, "overlap": 50},
         "vector_store": {"type": "qdrant", "collection": "chunks"},
@@ -20,8 +26,20 @@ def manifest(*, model="embed-v1", top_k=10, phases=None):
             "implementation": "openai",
             "chat_model": "gpt-test",
             "max_model_len": 4096,
+            "quantization": "none",
         },
-        "retrieval": {"top_k_documents": top_k, "reranker_enabled": False},
+        "retrieval": {
+            "top_k_documents": top_k,
+            "eval_candidate_k": 50,
+            "retrieval_strategy": "dense_vector",
+            "context_k": top_k,
+            "pass_two_active": True,
+            "pass_two_chunk_threshold": 4,
+            "pass_two_score_threshold": 0.5,
+            "reranker_active": False,
+            "hybrid_search_active": False,
+        },
+        "unobserved": [],
     }
 
 
@@ -64,7 +82,87 @@ def test_compatible_runs_report_baseline_candidate_and_deltas():
         "candidate": pytest.approx(0.75),
         "absolute_delta": pytest.approx(0.25),
         "percentage_delta": pytest.approx(50.0),
+        "authoritative": True,
     }
+
+
+def compatibility_field(result, name):
+    return next(row for row in result["compatibility_fields"] if row["field"] == name)
+
+
+def test_critical_fields_distinguish_same_different_and_unknown():
+    baseline = benchmark("base", created_at="2026-01-01")
+    candidate = benchmark("candidate", created_at="2026-01-02")
+    same = benchmark_compatibility(baseline, candidate)
+    assert compatibility_field(same, "embedding.model")["status"] == "same"
+    assert same["compatibility_status"] == "compatible"
+
+    candidate["manifest"]["embedding"]["model"] = "embed-v2"
+    different = benchmark_compatibility(baseline, candidate)
+    assert compatibility_field(different, "embedding.model")["status"] == "different"
+    assert different["compatibility_status"] == "incompatible"
+
+
+@pytest.mark.parametrize("left,right", [(None, None), ("embed-v1", None)])
+def test_null_critical_provenance_is_unknown(left, right):
+    baseline = benchmark("base", created_at="2026-01-01")
+    candidate = benchmark("candidate", created_at="2026-01-02")
+    baseline["manifest"]["embedding"]["model"] = left
+    candidate["manifest"]["embedding"]["model"] = right
+    result = benchmark_compatibility(baseline, candidate)
+    assert compatibility_field(result, "embedding.model")["status"] == "unknown"
+    assert result["compatibility_status"] == "unknown"
+    assert result["compatible"] is False
+
+
+def test_explicitly_unobserved_critical_value_is_unknown_even_when_present():
+    baseline = benchmark("base", created_at="2026-01-01")
+    candidate = benchmark("candidate", created_at="2026-01-02")
+    baseline["manifest"]["unobserved"] = ["embedding.model"]
+    result = benchmark_compatibility(baseline, candidate)
+    assert compatibility_field(result, "embedding.model")["status"] == "unknown"
+    assert result["compatibility_status"] == "unknown"
+
+
+def test_noncritical_unknown_does_not_block_compatibility():
+    baseline = benchmark("base", created_at="2026-01-01")
+    candidate = benchmark("candidate", created_at="2026-01-02")
+    baseline["manifest"]["software"] = {"platform": None}
+    candidate["manifest"]["software"] = {"platform": None}
+    baseline["manifest"]["unobserved"] = ["software.platform"]
+    candidate["manifest"]["unobserved"] = ["software.platform"]
+    assert (
+        benchmark_compatibility(baseline, candidate)["compatibility_status"]
+        == "compatible"
+    )
+
+
+def test_historical_manifest_schema_remains_readable_but_unknown():
+    baseline = benchmark("base", created_at="2026-01-01")
+    candidate = benchmark("candidate", created_at="2026-01-02")
+    baseline["manifest"] = {
+        "manifest_version": 1,
+        "embedding": {"model": "embed-v1"},
+        "retrieval": {"reranker_enabled": True},
+    }
+
+    result = benchmark_compatibility(baseline, candidate)
+
+    assert result["compatible"] is False
+    assert result["compatibility_status"] == "unknown"
+
+
+def test_unknown_comparison_keeps_non_authoritative_metric_deltas():
+    baseline = benchmark("base", created_at="2026-01-01", value=0.5)
+    candidate = benchmark("candidate", created_at="2026-01-02", value=0.75)
+    candidate["manifest"]["build"]["git_sha"] = None
+    candidate["manifest"]["unobserved"] = ["build.git_sha"]
+    comparison = compare_benchmarks(baseline, candidate)
+    assert comparison["compatibility_status"] == "unknown"
+    assert comparison["metrics_authoritative"] is False
+    row = metric(comparison, "phases.retrieval_base.retrieval.mrr")
+    assert row["absolute_delta"] == pytest.approx(0.25)
+    assert row["authoritative"] is False
 
 
 def test_mismatch_categories_are_explicit_and_not_selected_as_a_baseline():

@@ -178,6 +178,8 @@ def test_model_and_corpus_metadata_come_from_the_deployment(config):
             "CHUNK_OVERLAP": "120",
             "LLM_IMPLEMENTATION": "vllm",
             "RAG_CHAT_MODEL": "RedHatAI/Qwen3.5-4B-quantized.w4a16",
+            "VLLM_MAX_MODEL_LEN": "4096",
+            "VLLM_QUANTIZATION": "compressed-tensors",
         },
     )
 
@@ -189,11 +191,13 @@ def test_model_and_corpus_metadata_come_from_the_deployment(config):
     }
     assert manifest["vector_store"] == {"collection": "documents", "type": "qdrant"}
     assert manifest["llm"]["chat_model"].startswith("RedHatAI/")
+    assert manifest["llm"]["max_model_len"] == 4096
+    assert manifest["llm"]["quantization"] == "compressed-tensors"
     assert [
         path
         for path in manifest["unobserved"]
         if path.split(".")[0] in {"embedding", "chunking", "vector_store", "llm"}
-    ] == ["llm.max_model_len"]
+    ] == []
 
 
 def test_a_value_that_will_not_coerce_is_unknown_not_text(config):
