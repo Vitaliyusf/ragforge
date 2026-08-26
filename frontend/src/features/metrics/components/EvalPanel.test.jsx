@@ -17,7 +17,7 @@ vi.mock('@/features/metrics/hooks/useEvalRuns', () => ({
   isRunning: (run) => Boolean(run?.run_id) && !['completed', 'failed'].includes(run?.status),
 }))
 
-import EvalPanel, { diffSnapshots, estimateDescription } from './EvalPanel'
+import EvalPanel, { DatasetProvenance, diffSnapshots, estimateDescription } from './EvalPanel'
 
 const SNAPSHOT = {
   top_k_documents: 6,
@@ -38,9 +38,13 @@ const RESULTS = {
   mean_latency_ms: 120,
 }
 
+const SHA = '20b2ea7875df9e04c54d0b8af98f5ea6a96b764b0169a7763d01aa51b2887b3e'
+
 const COMPLETED_RUN = {
   run_id: 'r-2',
   dataset_id: 'd-1',
+  dataset_version: 2,
+  dataset_sha256: SHA,
   status: 'completed',
   started_at: '2026-08-25T10:00:00Z',
   match_mode: 'chunk_id',
@@ -73,6 +77,8 @@ const DATASETS = [
     dataset_id: 'd-1',
     name: 'Support golden set',
     item_count: 20,
+    dataset_version: 2,
+    dataset_sha256: SHA,
     last_run_at: '2026-08-25T10:00:00Z',
   },
 ]
@@ -323,6 +329,53 @@ const ESTIMATE = {
   model: 'some/model',
   model_priced: false,
 }
+
+// ── Dataset provenance ─────────────────────────────────────
+
+describe('EvalPanel dataset provenance', () => {
+  it('names the version and fingerprint of the labels the run scored', () => {
+    setup()
+
+    expect(screen.getByText(/Labels scored: version 2/)).toBeInTheDocument()
+    // Abbreviated for reading, whole in the title so it can still be copied.
+    const digest = screen.getByText('20b2ea7875df')
+    expect(digest).toBeInTheDocument()
+    expect(digest).toHaveAttribute('title', SHA)
+  })
+
+  it('warns when the dataset has been edited since the run', () => {
+    setup({
+      datasets: [{ ...DATASETS[0], dataset_version: 3, dataset_sha256: 'f'.repeat(64) }],
+    })
+
+    expect(screen.getByText(/dataset has been edited since this run/i)).toBeInTheDocument()
+  })
+
+  it('stays quiet while the run still matches the dataset', () => {
+    setup()
+
+    expect(screen.queryByText(/dataset has been edited since this run/i)).not.toBeInTheDocument()
+  })
+
+  it('says a pre-versioning run recorded nothing rather than borrowing the current labels', () => {
+    setup({
+      run: { ...COMPLETED_RUN, dataset_version: null, dataset_sha256: null },
+    })
+
+    expect(screen.getByText(/predates dataset versioning/i)).toBeInTheDocument()
+    expect(screen.queryByText(/Labels scored/)).not.toBeInTheDocument()
+  })
+})
+
+describe('DatasetProvenance', () => {
+  it('compares against the dataset only when the dataset carries a fingerprint', () => {
+    render(<DatasetProvenance run={COMPLETED_RUN} dataset={{ dataset_id: 'd-1' }} />)
+
+    // A dataset that has not been migrated yet is unknown, not different.
+    expect(screen.queryByText(/dataset has been edited/i)).not.toBeInTheDocument()
+    expect(screen.getByText(/Labels scored: version 2/)).toBeInTheDocument()
+  })
+})
 
 describe('EvalPanel run modes', () => {
   it('defaults to the free retrieval run and says so', () => {

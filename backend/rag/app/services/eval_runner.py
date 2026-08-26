@@ -372,6 +372,12 @@ class EvalRunner:
             ),
             match_mode,
             mode=mode,
+            # Snapshot, not a reference: the dataset can be edited between
+            # this run and the next time anybody reads it, and a run that
+            # re-reported its dataset's *current* labels would quietly
+            # rewrite its own provenance.
+            dataset_version=dataset.get("dataset_version"),
+            dataset_sha256=dataset.get("dataset_sha256"),
         )
 
         task = asyncio.create_task(

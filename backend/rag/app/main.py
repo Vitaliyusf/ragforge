@@ -71,6 +71,9 @@ async def lifespan(app: FastAPI):
     conversation_store.ensure_indexes()
     rag_service.graph_runner.metrics_facts.ensure_indexes()
     eval_store.ensure_indexes()
+    # Idempotent: stamps version/fingerprint onto golden sets uploaded before
+    # eval datasets were versioned, leaving already-stamped ones untouched.
+    eval_store.backfill_dataset_fingerprints()
     await rpc_client.connect()
 
     _consumer = MessageQueueFactory.create_consumer(config)

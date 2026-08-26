@@ -23,16 +23,22 @@ from shared.auth import AuthIdentity
 
 TENANT = "tenant-a"
 
+SHA = "a" * 64
+
 DATASET = {
     "dataset_id": "d-1",
     "tenant_id": TENANT,
     "name": "Support golden set",
+    "dataset_version": 1,
+    "dataset_sha256": SHA,
     "items": [{"item_id": "i-1", "query": "q", "relevant_chunk_ids": ["c1"]}],
 }
 
 RUN = {
     "run_id": "r-1",
     "dataset_id": "d-1",
+    "dataset_version": 2,
+    "dataset_sha256": SHA,
     "status": "running",
     "config_snapshot": {"top_k_documents": 6, "unobserved": ["embedding_model"]},
     "results": {},
@@ -57,7 +63,16 @@ class DummyRPCClient:
         # lookup works on the member itself because it hashes as its value.
         action = payload.get("action")
         return {
-            "list_eval_datasets": {"datasets": [{"dataset_id": "d-1", "item_count": 1}]},
+            "list_eval_datasets": {
+                "datasets": [
+                    {
+                        "dataset_id": "d-1",
+                        "item_count": 1,
+                        "dataset_version": 1,
+                        "dataset_sha256": SHA,
+                    }
+                ]
+            },
             "create_eval_dataset": {"dataset": DATASET},
             "update_eval_dataset": {"dataset": {**DATASET, "name": "Renamed"}},
             "delete_eval_dataset": {"dataset_id": "d-1", "deleted": True},
@@ -210,6 +225,23 @@ def test_one_run_carries_its_per_item_rows():
     assert response.status_code == 200
     assert response.json()["run"]["per_item"] == [{"item_id": "i-1"}]
     assert last_payload(service)["action"] == "get_eval_run"
+
+
+def test_dataset_provenance_reaches_the_client_unaltered():
+    """The eval routes are pass-through by design - no response model
+    narrows a rag reply - and the version/fingerprint a run scored is only
+    evidence if it survives that trip verbatim."""
+    service = build_service()
+    with TestClient(build_app(service)) as client:
+        run = client.get("/v1/metrics/eval/runs/r-1").json()["run"]
+        listed = client.get("/v1/metrics/eval/datasets").json()["datasets"]
+        created = client.post(
+            "/v1/metrics/eval/datasets", json={"name": "A", "items": [VALID_ITEM]}
+        ).json()["dataset"]
+
+    assert (run["dataset_version"], run["dataset_sha256"]) == (2, SHA)
+    assert (listed[0]["dataset_version"], listed[0]["dataset_sha256"]) == (1, SHA)
+    assert (created["dataset_version"], created["dataset_sha256"]) == (1, SHA)
 
 
 def test_the_run_carries_the_config_snapshot_for_comparison():

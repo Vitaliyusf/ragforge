@@ -251,6 +251,41 @@ def test_the_run_captures_a_config_snapshot_naming_what_it_cannot_see():
     assert "embedding_model" in snapshot["unobserved"]
 
 
+def test_the_run_snapshots_the_dataset_version_and_fingerprint():
+    """`dataset_id` alone cannot prove which labels a run scored: the items
+    behind it can be replaced. The run copies the pair at start."""
+    store, runner, _, dataset_id = build()
+    with bound_context(**ADMIN.to_dict()):
+        dataset = store.get_dataset(dataset_id)
+
+    run = execute(runner, dataset_id)
+    stored = fetch(store, run["run_id"])
+
+    assert stored["dataset_version"] == dataset["dataset_version"] == 1
+    assert stored["dataset_sha256"] == dataset["dataset_sha256"]
+
+
+def test_relabelling_a_dataset_does_not_rewrite_what_past_runs_scored():
+    """The regression evidence has to stay evidence. An edit after a run
+    moves the dataset forward and leaves the finished run describing the
+    labels it actually used."""
+    store, runner, _, dataset_id = build()
+    first = fetch(store, execute(runner, dataset_id)["run_id"])
+
+    with bound_context(**ADMIN.to_dict()):
+        store.update_dataset(
+            dataset_id,
+            items=[{"query": "first", "relevant_chunk_ids": ["relabelled"]}],
+        )
+    second = fetch(store, execute(runner, dataset_id)["run_id"])
+    unchanged = fetch(store, first["run_id"])
+
+    assert unchanged["dataset_version"] == first["dataset_version"] == 1
+    assert unchanged["dataset_sha256"] == first["dataset_sha256"]
+    assert second["dataset_version"] == 2
+    assert second["dataset_sha256"] != first["dataset_sha256"]
+
+
 # ── Failure paths ─────────────────────────────────────────────────────────
 
 def test_a_run_whose_every_item_fails_is_marked_failed():

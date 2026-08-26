@@ -368,6 +368,31 @@ export const GOLDEN_SET_HELP = [
   'Upload them as JSON. Re-run after any retrieval change to see the effect.',
 ]
 
+/** How many hex characters of a dataset fingerprint the UI shows. */
+export const FINGERPRINT_PREFIX = 12
+
+/**
+ * A dataset fingerprint, abbreviated for display.
+ *
+ * Twelve hex characters is plenty to tell two label sets apart by eye, which
+ * is all this is for; the full digest stays in the element's title so it can
+ * still be copied and compared exactly.
+ */
+export function formatFingerprint(sha) {
+  if (!sha) return EMPTY
+  return String(sha).slice(0, FINGERPRINT_PREFIX)
+}
+
+/** Shown for a run recorded before datasets carried a version. */
+export const UNVERSIONED_RUN_NOTE =
+  'This run predates dataset versioning, so which labels it scored was ' +
+  'never recorded. It cannot be compared against a versioned run.'
+
+/** Shown when the dataset has been edited since the displayed run. */
+export const DATASET_DRIFT_NOTE =
+  'The dataset has been edited since this run: a new run would score a ' +
+  'different set of labels, so the two are not directly comparable.'
+
 /** Render a boolean setting as a word rather than "true"/"false". */
 export function formatSetting(value) {
   if (value === null || value === undefined || value === '') return EMPTY
