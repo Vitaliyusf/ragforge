@@ -22,6 +22,31 @@ export function useBenchmarkRuns(datasetId) {
 
   useEffect(() => () => controllerRef.current?.abort(), [])
 
+  // The server is the source of truth.  Restoring from the dataset list also
+  // makes a fresh browser session behave exactly like an in-app remount.
+  useEffect(() => {
+    if (!datasetId) {
+      setBenchmark(null)
+      return undefined
+    }
+    const controller = new AbortController()
+    controllerRef.current?.abort()
+    controllerRef.current = controller
+    setBenchmark(null)
+    setError(null)
+    ;(async () => {
+      try {
+        const response = await metricsService.listBenchmarkRuns({ datasetId, signal: controller.signal })
+        const runs = response?.benchmarks || response?.runs || []
+        const restored = runs.find(isBenchmarkRunning) || runs[0] || null
+        if (!controller.signal.aborted) setBenchmark(restored)
+      } catch (err) {
+        if (err?.name !== 'AbortError' && !controller.signal.aborted) setError(err?.message || 'Could not restore benchmark history')
+      }
+    })()
+    return () => controller.abort()
+  }, [datasetId])
+
   useEffect(() => {
     if (!isBenchmarkRunning(benchmark) || document.visibilityState === 'hidden') return undefined
     let controller = new AbortController()
@@ -50,6 +75,7 @@ export function useBenchmarkRuns(datasetId) {
 
   const start = useCallback(async (phases) => {
     if (!datasetId) return null
+    controllerRef.current?.abort()
     setBusy(true)
     try {
       const response = await metricsService.startBenchmarkRun(datasetId, phases)

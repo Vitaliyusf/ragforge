@@ -21,6 +21,10 @@ export default function BenchmarkCenter({ datasetId, datasetName, ready }) {
   const progress = benchmark?.progress || {}
   const running = benchmark && !TERMINAL_EXPORTABLE.has(benchmark.status)
   const measured = phases.filter((phase) => ['completed', 'partial'].includes(phase.status))
+  const executableTotal = progress.executable_phases ?? progress.total_phases ?? phases.filter((phase) => phase.status !== 'unsupported').length
+  const completedPhases = progress.completed_phases ?? 0
+  const activePhase = phases.find((phase) => phase.status === 'running')
+  const itemProgress = activePhase?.item_progress || {}
 
   return (
     <Card>
@@ -30,18 +34,20 @@ export default function BenchmarkCenter({ datasetId, datasetName, ready }) {
             {running ? 'Benchmark running…' : 'Run full benchmark'}
           </Button>
           <Button variant="secondary" size="sm" onClick={download} disabled={!TERMINAL_EXPORTABLE.has(benchmark?.status) || busy} leftIcon={<Download size={13} />}>
-            Download ZIP
+            Download Diagnostic ZIP
           </Button>
         </div>
       } />
       <p className="text-[13px]" style={{ color: 'var(--fg-muted)' }}>
-        {ready ? `${datasetName || 'Selected golden set'} is ready for a full diagnostic run.` : 'Import and validate a golden set before starting a benchmark.'}
+        {ready ? `Golden Set / Dataset: ${datasetName || 'Selected golden set'} is ready for a Benchmark Run.` : 'Import and validate a Golden Set / Dataset before starting a Benchmark Run.'}
       </p>
       {benchmark && <>
-        <div className="mt-3 flex items-center gap-2 text-[13px]"><Badge dot>{benchmark.status}</Badge><span>{progress.completed_phases ?? 0} completed, {progress.partial_phases ?? 0} partial of {progress.executable_phases ?? progress.total_phases ?? phases.length} executable phases</span></div>
+        <div className="mt-3 flex items-center gap-2 text-[13px]"><Badge dot>{benchmark.status}</Badge><span>Benchmark Run: {completedPhases} / {executableTotal} executable phases complete</span></div>
+        {running && <p className="mt-2 text-[13px]" style={{ color: 'var(--fg-muted)' }}>Safe to leave this page. The benchmark runs on the server and progress is saved automatically.</p>}
         <ul className="mt-3 space-y-1 text-[13px]">
           {phases.map((phase) => <li key={phase.name} className="flex justify-between gap-4"><span>{PHASE_LABELS[phase.name] || phase.name}</span><span style={{ color: 'var(--fg-muted)' }}>{phase.status}{phase.reason || phase.error ? ` — ${phase.reason || phase.error}` : ''}</span></li>)}
         </ul>
+        {activePhase && <PhaseProgress phase={activePhase} progress={itemProgress} />}
         {measured.length > 0 && <div className="mt-3 text-[13px]" style={{ color: 'var(--fg-muted)'}}>
           <p className="font-medium" style={{ color: 'var(--fg)' }}>Summary</p>
           {measured.map((phase) => <p key={phase.name}>{PHASE_LABELS[phase.name] || phase.name}: MRR {formatMetric(phase.results?.mrr)}, mean latency {formatMetric(phase.results?.mean_latency_ms, ' ms')}</p>)}
@@ -53,6 +59,32 @@ export default function BenchmarkCenter({ datasetId, datasetName, ready }) {
     </Card>
   )
 }
+
+function PhaseProgress({ phase, progress }) {
+  const total = Number(progress.items_total ?? progress.items_per_phase ?? 0)
+  const completed = Number(progress.items_completed ?? 0)
+  const percent = total ? Math.round((completed / total) * 100) : null
+  const elapsed = formatElapsed(progress.phase_started_at)
+  const staleSeconds = ageSeconds(progress.last_progress_at)
+  return <div className="mt-3 rounded border p-3 text-[13px]" style={{ borderColor: 'var(--border)' }}>
+    <p className="font-medium">{PHASE_LABELS[phase.name] || phase.name}</p>
+    <p className="mt-1">{completed} / {total}{percent !== null ? `   ${percent}%` : ''}</p>
+    <div className="mt-2 grid grid-cols-2 gap-y-1" style={{ color: 'var(--fg-muted)' }}>
+      <span>Processed</span><span>{completed}</span><span>Successful</span><span>{progress.items_succeeded ?? 0}</span><span>Guardrail blocked</span><span>{progress.items_guardrail_blocked ?? 0}</span><span>Failed</span><span>{progress.items_failed ?? 0}</span><span>In flight</span><span>{progress.items_in_flight ?? 0}</span>
+      {elapsed && <><span className="mt-2">Elapsed</span><span className="mt-2">{elapsed}</span></>}
+      {staleSeconds !== null && <><span>Last progress</span><span>{formatAge(staleSeconds)} ago</span></>}
+    </div>
+    {staleSeconds !== null && staleSeconds >= 120 && <p className="mt-2" style={{ color: 'var(--warning, #b7791f)' }}>Possible stall: no benchmark item has completed for {formatAge(staleSeconds)}.</p>}
+  </div>
+}
+
+function ageSeconds(value) {
+  const timestamp = Date.parse(value || '')
+  return Number.isFinite(timestamp) ? Math.max(0, Math.floor((Date.now() - timestamp) / 1000)) : null
+}
+
+function formatElapsed(value) { const seconds = ageSeconds(value); return seconds === null ? null : formatAge(seconds) }
+function formatAge(seconds) { return `${Math.floor(seconds / 60)}m ${String(seconds % 60).padStart(2, '0')}s` }
 
 function formatMetric(value, suffix = '') {
   return Number.isFinite(value) ? `${value.toFixed(value <= 1 ? 3 : 0)}${suffix}` : '—'
