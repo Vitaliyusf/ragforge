@@ -675,7 +675,31 @@ def test_search_chunks_embeds_query_before_vector_search():
     assert envelope["payload"]["query_vector"] == [0.1, 0.2, 0.3]
     assert envelope["payload"]["query"] == "hello"
     assert envelope["payload"]["pass_name"] == "pass_one"
+    # Production retrieval keeps the configured answer-context depth: the
+    # eval harness's wider candidate depth must not leak into a user turn.
+    assert envelope["payload"]["top_k"] == config.top_k_documents
     assert "reply_to" not in envelope
+
+
+def test_search_chunks_top_k_can_be_overridden_for_an_eval_sweep():
+    """The retrieval eval must be able to ask beyond `top_k_documents`.
+
+    Recall@20 is only a measurement if twenty candidates were requested;
+    raising `top_k_documents` to get there would change what every user turn
+    is answered from.
+    """
+    config = RAGConfig(conversation_store_type="in_memory", enable_langsmith_tracing=False)
+    service_client = CaptureServiceClient(
+        responses=[{"embedding": [0.1, 0.2, 0.3]}, {"results": []}]
+    )
+    backend = ConversationBackendClient(config, service_client)
+    service, _, _ = build_service()
+    request = service.build_request({"question": "hello"})
+
+    asyncio.run(backend.search_chunks(request, "hello", {}, "eval", top_k=20))
+
+    assert config.top_k_documents == 6
+    assert service_client.calls[1]["payload"]["payload"]["top_k"] == 20
 
 
 def test_search_chunks_raises_when_embedding_reply_is_empty():

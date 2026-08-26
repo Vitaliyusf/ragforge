@@ -88,6 +88,16 @@ class RAGConfig(BaseSettings):
     # bottleneck, and an unbounded fan-out over a 200-item dataset buries it
     # while live traffic is still being served by the same instance.
     eval_run_concurrency: int = 4
+    # How many candidates a retrieval eval asks the vector store for.
+    #
+    # Deliberately separate from `top_k_documents`, which sizes the context an
+    # answer is generated from and is tuned for cost and prompt length. A run
+    # reporting Recall@20 must actually look at twenty candidates: scoring
+    # Recall@20 over six of them can only ever report the Recall@6 number
+    # under a wider name. `eval_runner` raises this to max(K_VALUES) if it is
+    # ever configured lower, because a k the run cannot observe is not a
+    # measurement. The vector_db payload caps top_k at 100.
+    eval_candidate_k: int = 20
     # Upload limits. Enforced in `eval_store` even though the gateway checks
     # them too — an RPC caller is not automatically the gateway, the same
     # reason `metrics_query` re-validates its window on arrival.

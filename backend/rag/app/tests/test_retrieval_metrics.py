@@ -79,6 +79,21 @@ def test_k_beyond_the_retrieved_length_is_well_defined():
     )
 
 
+def test_recall_is_not_clamped_to_the_number_of_candidates_returned():
+    """A short candidate list reads as a low recall, never as a full one.
+
+    This is the convention the eval harness depends on: if retrieval returns
+    six chunks, Recall@20 must still divide by the ground truth and report
+    the miss, rather than quietly rescoring itself as Recall@6.
+    """
+    retrieved = ["x", "y", "z", "a", "w", "v"]
+    relevant = {"a", "b"}
+
+    assert recall_at_k(retrieved, relevant, 20) == 0.5
+    assert recall_at_k(retrieved, relevant, 6) == 0.5
+    assert recall_at_k(retrieved, relevant, 3) == 0.0
+
+
 def test_empty_retrieved_list_is_zero_not_an_error():
     assert recall_at_k([], {"a"}, 5) == 0.0
     assert precision_at_k([], {"a"}, 5) == 0.0

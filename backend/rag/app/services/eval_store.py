@@ -106,6 +106,7 @@ def build_config_snapshot(
     config: RAGConfig,
     *,
     mode: str = "retrieval",
+    candidate_k: Optional[int] = None,
 ) -> Dict[str, Any]:
     """Capture the configuration a run is about to execute under.
 
@@ -119,6 +120,12 @@ def build_config_snapshot(
             config-diff warning fires when a retrieval-only run is compared
             against a run that also generated and judged answers — they
             measure different systems and their numbers are not comparable.
+        candidate_k: How many candidates the run's ranking was drawn from,
+            supplied by the caller because it depends on the run's mode and
+            not on config alone. It is recorded separately from
+            ``top_k_documents``: two runs scored over different candidate
+            depths are not comparable at the wider k values, and a snapshot
+            showing only the production depth would hide that.
 
     Returns:
         The observed settings, plus ``unobserved``: the names of the fields
@@ -128,6 +135,7 @@ def build_config_snapshot(
     snapshot: Dict[str, Any] = {
         "mode": mode,
         "top_k_documents": config.top_k_documents,
+        "candidate_k": candidate_k,
         "reranker_enabled": config.reranker_enabled,
         "reranker_top_k": config.reranker_top_k,
         "hybrid_search_enabled": config.hybrid_search_enabled,
