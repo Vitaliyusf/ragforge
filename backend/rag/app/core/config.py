@@ -83,6 +83,10 @@ class RAGConfig(BaseSettings):
     # Admin metrics retention
     metrics_retention_days: int = 90
 
+    # Optional operational evidence for benchmark artifacts. A monitoring
+    # outage must never prevent an evaluation from running.
+    prometheus_url: str = "http://prometheus:9090"
+
     # Retrieval eval harness.
     #
     # `eval_run_concurrency` bounds the semaphore in `eval_runner`. Raising

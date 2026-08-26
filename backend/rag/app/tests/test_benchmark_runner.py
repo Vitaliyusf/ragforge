@@ -166,13 +166,21 @@ class FakeGraphRunner:
         return GRAPH_RESULTS.get(request.user_message, {})
 
 
-def build(*, graph: Any = None, backend: Optional[FakeBackend] = None, items=ITEMS):
+def build(
+    *,
+    graph: Any = None,
+    backend: Optional[FakeBackend] = None,
+    items=ITEMS,
+    snapshotter: Any = None,
+):
     """A store with one dataset, an eval runner, and an orchestrator over it."""
     config = build_config()
     store = EvalStore(config)  # type: ignore[arg-type]
     backend = backend if backend is not None else FakeBackend()
     eval_runner = EvalRunner(config, store, backend, graph_runner=graph)  # type: ignore[arg-type]
-    orchestrator = BenchmarkRunner(config, store, eval_runner)  # type: ignore[arg-type]
+    orchestrator = BenchmarkRunner(  # type: ignore[arg-type]
+        config, store, eval_runner, snapshotter=snapshotter
+    )
     with bound_context(**ADMIN.to_dict()):
         dataset = store.create_dataset("Golden set", None, items)
     return store, orchestrator, backend, dataset["dataset_id"]
@@ -560,3 +568,43 @@ def test_a_benchmark_recorded_before_manifests_reads_back_as_null():
     with bound_context(**ADMIN.to_dict()):
         assert store.get_benchmark_run(benchmark["benchmark_id"])["manifest"] is None
         assert store.list_benchmark_runs()[0]["manifest"] is None
+
+
+class FakeSnapshotter:
+    def __init__(self, snapshots: List[Dict[str, Any]]) -> None:
+        self.snapshots = snapshots
+        self.calls = 0
+
+    async def capture(self) -> Dict[str, Any]:
+        result = self.snapshots[self.calls]
+        self.calls += 1
+        return result
+
+
+def test_a_benchmark_stores_before_and_after_operational_snapshots():
+    before = {"prometheus_available": True, "sections": {"overview": {"qps": []}}}
+    after = {"prometheus_available": True, "sections": {"overview": {"qps": [{"value": [0, "2"]}]}}}
+    snapshotter = FakeSnapshotter([before, after])
+    store, orchestrator, _, dataset_id = build(snapshotter=snapshotter)
+
+    benchmark = fetch(
+        store, run_benchmark(orchestrator, dataset_id, [PHASE_RETRIEVAL_BASE])["benchmark_id"]
+    )
+
+    assert benchmark["operational_metrics"] == {"before": before, "after": after}
+    assert snapshotter.calls == 2
+
+
+def test_a_snapshot_outage_does_not_fail_the_benchmark():
+    unavailable = {"prometheus_available": False, "sections": {}}
+    store, orchestrator, _, dataset_id = build(
+        snapshotter=FakeSnapshotter([unavailable, unavailable])
+    )
+
+    benchmark = fetch(
+        store, run_benchmark(orchestrator, dataset_id, [PHASE_RETRIEVAL_BASE])["benchmark_id"]
+    )
+
+    assert benchmark["status"] == BENCHMARK_COMPLETED
+    assert benchmark["operational_metrics"]["before"]["prometheus_available"] is False
+    assert benchmark["operational_metrics"]["after"]["prometheus_available"] is False

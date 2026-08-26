@@ -806,6 +806,7 @@ class EvalStore:
         dataset_version: Optional[int] = None,
         dataset_sha256: Optional[str] = None,
         manifest: Optional[Dict[str, Any]] = None,
+        operational_metrics: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """Open a benchmark document in ``queued`` state and return it.
 
@@ -839,6 +840,9 @@ class EvalStore:
                 let a config change during a run erase the evidence that the
                 run's own numbers came from the old one. ``None`` for a
                 benchmark opened before manifests existed.
+            operational_metrics: Before/after platform Prometheus snapshots.
+                These are deliberately separate from tenant-scoped eval scores
+                and may be unavailable when the metrics backend is down.
         """
         identity = _require_admin()
         document = {
@@ -854,10 +858,24 @@ class EvalStore:
             "phases": phases,
             "progress": progress,
             "manifest": manifest,
+            "operational_metrics": operational_metrics,
             "error": None,
         }
         self._insert(self.config.eval_benchmark_runs_collection, document)
         return _serialize(document)
+
+    def record_benchmark_operational_metrics(
+        self,
+        benchmark_id: str,
+        tenant_id: str,
+        operational_metrics: Dict[str, Any],
+    ) -> None:
+        """Persist before/after platform snapshots without changing run state."""
+        self._update_one(
+            self.config.eval_benchmark_runs_collection,
+            {"tenant_id": tenant_id, "benchmark_id": benchmark_id},
+            {"operational_metrics": operational_metrics},
+        )
 
     def record_benchmark_progress(
         self,
@@ -1244,7 +1262,7 @@ def _normalize_benchmark(document: Dict[str, Any]) -> Dict[str, Any]:
     the ones that benchmark actually ran under, and a confident wrong
     manifest is worse than a blank one a UI can label "not recorded".
     """
-    return {"manifest": None, **document}
+    return {"manifest": None, "operational_metrics": None, **document}
 
 
 def _serialize(document: Dict[str, Any]) -> Dict[str, Any]:
