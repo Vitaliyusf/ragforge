@@ -164,7 +164,9 @@ docs/multi-tenancy-security.md  RBAC, tenant isolation, and security runbook
 ## Development
 
 ```bash
-# Install dev tools (type checking, linting, testing)
+# Install dev tools (type checking, linting, testing).
+# requirements-dev.txt includes backend/requirements-test.txt, the single
+# canonical pytest/pytest-asyncio/pytest-mock set for the whole repository.
 pip install -r backend/requirements-dev.txt
 
 # Type-check shared library and gateway (strict)
@@ -200,7 +202,18 @@ pytest tests/test_public_repo_guardrails.py -q
 
 Each service needs its own `requirements.txt` installed for its tests to
 import; [the CI workflow](.github/workflows/ci.yml) does this per service and is
-the authoritative reference for a working setup.
+the authoritative reference for a working setup. Install into one Python 3.11
+environment in this order, and never add a second pytest on top:
+
+```bash
+pip install -r docker/requirements-base.txt
+pip install -r backend/<service>/requirements.txt   # repeat per service
+pip install -r backend/requirements-test.txt        # last: owns the test runner
+```
+
+Service `requirements.txt` files carry runtime dependencies only. Test-runner
+pins live solely in `backend/requirements-test.txt`, so installing several
+services side by side can no longer downgrade pytest and break plugin loading.
 
 ### Compose smoke checks
 

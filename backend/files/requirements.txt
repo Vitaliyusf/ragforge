@@ -4,8 +4,6 @@ kafka-python==2.0.2
 aio-pika>=9.4,<10.0
 pymongo==4.10.1
 pydantic-settings==2.7.1
-pytest==7.4.0
-pytest-asyncio==0.21.0
 prometheus-client==0.21.1
 prometheus-fastapi-instrumentator==7.1.0
 langgraph==0.2.74

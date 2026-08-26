@@ -6,7 +6,7 @@ Two halves, deliberately split across two modules:
   has no Kafka dependency, so those tests import it directly.
 - The wiring lives in ``shared.kafka_base``, which imports kafka-python. That
   driver is in neither ``docker/requirements-base.txt`` nor
-  ``backend/requirements-dev.txt``, so it is absent wherever these tests run;
+  ``backend/requirements-test.txt``, so it is absent wherever these tests run;
   the ``kafka_base`` fixture stubs it rather than skipping, so the wiring is
   actually exercised in CI instead of being permanently skipped.
 """

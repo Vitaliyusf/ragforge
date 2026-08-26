@@ -1,3 +1,7 @@
+# Local development tooling: static analysis plus the canonical test toolchain.
+# Test-runner pins live in requirements-test.txt so CI can install them alone.
+-r requirements-test.txt
+
 # Type checking
 mypy==1.10.1
 types-pyyaml
@@ -6,9 +10,3 @@ types-requests
 # Linting and formatting
 ruff==0.4.9
 black==24.4.2
-
-# Testing
-pytest==8.2.2
-pytest-asyncio==0.23.7
-pytest-mock==3.14.0
-httpx==0.28.1
