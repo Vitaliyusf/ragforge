@@ -27,6 +27,14 @@ from app.services.conversation_types import (
     build_initial_state,
     utc_now_iso,
 )
+from app.services.retrieval_trace import (
+    STAGE_BASE,
+    STAGE_FINAL_CONTEXT,
+    STAGE_MERGED,
+    STAGE_PASS_ONE,
+    STAGE_PASS_TWO,
+    RetrievalTrace,
+)
 from app.services.metrics_facts import (
     MetricsFactStore,
     build_turn_fact,
@@ -107,6 +115,7 @@ class ConversationGraphRunner:
         emitter: BaseConversationEmitter,
         resume: bool = False,
         record_metrics: bool = True,
+        retrieval_trace: Optional[RetrievalTrace] = None,
     ) -> Dict[str, Any]:
         """Run the conversation graph and return a normalized result.
 
@@ -119,8 +128,17 @@ class ConversationGraphRunner:
                 turns are synthetic, and letting a few hundred of them into
                 the fact collection would move the tenant quality averages an
                 eval run exists to measure.
+            retrieval_trace: A collector for this turn's candidate lineage,
+                or None. Passed only by the eval harness: a user's turn does
+                no trace work and its result carries no trace field, which is
+                what keeps the normal response payload unchanged.
         """
-        runtime = {"request": request, "emitter": emitter, "current_node": "graph_start"}
+        runtime = {
+            "request": request,
+            "emitter": emitter,
+            "current_node": "graph_start",
+            "retrieval_trace": retrieval_trace,
+        }
         state = build_initial_state(request)
         checkpoint = None
         if resume:
@@ -168,6 +186,13 @@ class ConversationGraphRunner:
                 else:
                     final_state = await self._run_fallback_graph(state, runtime)
                 trace_metadata["chunk_count"] = len(final_state.get("retrieved_chunks", []))
+            # The context generation actually ran on, recorded once from the
+            # final state rather than by each node that might have been last.
+            if retrieval_trace is not None:
+                retrieval_trace.record_stage(
+                    STAGE_FINAL_CONTEXT,
+                    final_state.get("retrieved_chunks", []),
+                )
             result = self._build_result(final_state)
             if record_metrics:
                 self._record_turn_metrics(
@@ -610,6 +635,47 @@ class ConversationGraphRunner:
             f"{prefix}_raw_output": response.get("raw_output"),
         }
 
+    def _trace_stage(
+        self,
+        runtime: Dict[str, Any],
+        stage: str,
+        chunks: List[Dict[str, Any]],
+        *,
+        query: Optional[str] = None,
+        query_source: Optional[str] = None,
+        returned_count: Optional[int] = None,
+    ) -> None:
+        """Report one retrieval step to this turn's collector, if it has one.
+
+        A no-op on a user's turn: the eval harness is the only caller that
+        supplies a collector, so nothing here costs a normal turn anything.
+        """
+        trace: Optional[RetrievalTrace] = runtime.get("retrieval_trace")
+        if trace is None:
+            return
+        trace.record_stage(
+            stage,
+            chunks,
+            query=query,
+            query_source=query_source,
+            returned_count=returned_count,
+        )
+
+    def _trace_decision(
+        self,
+        runtime: Dict[str, Any],
+        stage: str,
+        decision: str,
+        *,
+        reason: Optional[str] = None,
+        detail: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        """Report one pipeline branch to this turn's collector, if it has one."""
+        trace: Optional[RetrievalTrace] = runtime.get("retrieval_trace")
+        if trace is None:
+            return
+        trace.record_decision(stage, decision, reason=reason, detail=detail)
+
     def _normalize_chunks(self, payload: Dict[str, Any]) -> List[Dict[str, Any]]:
         chunks = payload.get("chunks") or payload.get("results") or []
         normalized = []
@@ -946,6 +1012,14 @@ class ConversationGraphRunner:
         request: ConversationRequest = runtime["request"]
         response = await self.backend_client.search_chunks(request, request.user_message, state.get("retrieval_plan", {}), "regular")
         chunks = self._normalize_chunks(response)
+        self._trace_stage(
+            runtime,
+            STAGE_BASE,
+            chunks,
+            query=request.user_message,
+            query_source="user_message",
+            returned_count=len(response.get("chunks") or response.get("results") or []),
+        )
         snapshot = copy.deepcopy(state)
         snapshot["retrieved_chunks"] = chunks
         self._save_checkpoint(request, snapshot, "retrieve_chunks_once", "after_retrieval", "ok")
@@ -989,9 +1063,20 @@ class ConversationGraphRunner:
         queries = [plan.get("rewritten_query") or request.user_message]
         queries.extend(plan.get("subqueries") or [])
         chunks: List[Dict[str, Any]] = []
-        for query in queries[: self.config.debug_payload_max_items]:
+        for index, query in enumerate(queries[: self.config.debug_payload_max_items]):
             response = await self.backend_client.search_chunks(request, query, plan, "pass_one")
-            chunks.extend(self._normalize_chunks(response))
+            normalized = self._normalize_chunks(response)
+            self._trace_stage(
+                runtime,
+                STAGE_PASS_ONE,
+                normalized,
+                query=query,
+                # Which query this was tells a reader whether a miss came
+                # from the rewrite or from one decomposed subquery.
+                query_source="rewritten_query" if index == 0 else f"subquery_{index}",
+                returned_count=len(response.get("chunks") or response.get("results") or []),
+            )
+            chunks.extend(normalized)
         snapshot = copy.deepcopy(state)
         snapshot["retrieved_chunks"] = chunks
         self._save_checkpoint(request, snapshot, "retrieve_pass_one", "after_retrieval", "ok")
@@ -1023,8 +1108,20 @@ class ConversationGraphRunner:
                 service="rag",
                 changed="true" if changed else "false",
             ).inc()
+            self._trace_decision(
+                runtime,
+                STAGE_MERGED,
+                "top1_changed" if changed else "top1_unchanged",
+                reason="rerank_and_merge",
+                detail={"previous_top_chunk_id": previous_top},
+            )
+        kept = reranked[: self.config.top_k_documents * 2]
+        # Recorded after the cap: the merge's own bound is part of why a
+        # candidate stopped travelling, and a trace showing the pre-cap list
+        # would attribute that loss to the wrong step.
+        self._trace_stage(runtime, STAGE_MERGED, kept, returned_count=len(reranked))
         return {
-            "retrieved_chunks": reranked[: self.config.top_k_documents * 2],
+            "retrieved_chunks": kept,
             "_meta": {
                 "message": "Chunks reranked and merged",
                 "counters": {"chunk_count": len(reranked)},
@@ -1042,6 +1139,18 @@ class ConversationGraphRunner:
             or bool(state.get("retrieval_plan", {}).get("pass_two_hints"))
         )
         if not should_run:
+            self._trace_decision(
+                runtime,
+                STAGE_PASS_TWO,
+                "skipped",
+                reason="sufficient_pass_one",
+                detail={
+                    "chunk_count": len(chunks),
+                    "top_score": top_score,
+                    "chunk_threshold": self.config.pass_two_chunk_threshold,
+                    "score_threshold": self.config.pass_two_score_threshold,
+                },
+            )
             return {
                 "_meta": {
                     "phase": "skipped",
@@ -1055,8 +1164,39 @@ class ConversationGraphRunner:
             or state.get("retrieval_plan", {}).get("rewritten_query")
             or request.user_message
         )
+        self._trace_decision(
+            runtime,
+            STAGE_PASS_TWO,
+            "triggered",
+            reason=(
+                "pass_two_hint"
+                if state.get("retrieval_plan", {}).get("pass_two_hints")
+                else "thin_pass_one"
+                if len(chunks) < self.config.pass_two_chunk_threshold
+                else "low_top_score"
+            ),
+            detail={
+                "chunk_count": len(chunks),
+                "top_score": top_score,
+                "chunk_threshold": self.config.pass_two_chunk_threshold,
+                "score_threshold": self.config.pass_two_score_threshold,
+            },
+        )
         response = await self.backend_client.search_chunks(request, alt_query, state.get("retrieval_plan", {}), "pass_two")
-        merged = chunks + self._normalize_chunks(response)
+        second = self._normalize_chunks(response)
+        self._trace_stage(
+            runtime,
+            STAGE_PASS_TWO,
+            second,
+            query=alt_query,
+            query_source=(
+                "pass_two_hint"
+                if state.get("retrieval_plan", {}).get("pass_two_hints")
+                else "rewritten_query"
+            ),
+            returned_count=len(response.get("chunks") or response.get("results") or []),
+        )
+        merged = chunks + second
         snapshot = copy.deepcopy(state)
         snapshot["retrieved_chunks"] = merged
         self._save_checkpoint(request, snapshot, "retrieve_pass_two_if_needed", "after_retrieval", "ok")

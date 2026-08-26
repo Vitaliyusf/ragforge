@@ -129,6 +129,20 @@ class RAGConfig(BaseSettings):
     # document.
     eval_max_reported_stale_ids: int = 50
 
+    # Per-item retrieval diagnostics.
+    #
+    # A trace explains one item's candidate movement: what each retrieval
+    # step returned, which branch the pipeline took, and where the finally
+    # selected chunks entered the ranking. It is collected only when an eval
+    # item asks for one, so a user's turn carries no trace at all.
+    #
+    # The bounds are what keep a drill-down from becoming a copy of the
+    # index. Candidate text is never stored at any bound: a trace holds ids,
+    # ranks and scores only.
+    eval_trace_max_candidates: int = 20
+    eval_trace_max_stages: int = 12
+    eval_trace_max_query_chars: int = 200
+
     # A turn whose groundedness falls below this counts toward the proxy
     # hallucination rate. It is a threshold over one judge score, not a
     # claim-level measurement — phase 6 replaces it with the real thing.

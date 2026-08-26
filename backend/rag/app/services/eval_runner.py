@@ -75,6 +75,14 @@ from app.services.eval_store import (
     build_config_snapshot,
 )
 from app.services.golden_set_parser import prepare_chunk_labels, prepare_file_labels
+from app.services.retrieval_trace import (
+    DROP_RETRIEVAL_NOT_ALLOWED,
+    DROP_REVIEW_REMOVED,
+    STAGE_BASE,
+    STAGE_FINAL_CONTEXT,
+    RetrievalTrace,
+    dropped_view,
+)
 from shared.auth import AuthIdentity, identity_from_context
 from shared.context import bound_context
 
@@ -413,14 +421,22 @@ def stale_label_policy(config: Any) -> str:
     return configured if configured in STALE_POLICIES else STALE_POLICY_FAIL
 
 
-def eligible_chunks(response: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """Retrieved chunks the application would have been willing to use.
+def partition_eligible(
+    response: Dict[str, Any],
+) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    """Split a search response into what the app would use and what it refused.
 
     Mirrors the policy gate in ``ConversationGraph._normalize_chunks``
     without its Prometheus side effects — see the module docstring. Handles
     both the flat and the Qdrant-nested payload shapes, as that method does.
+
+    The refusals are returned rather than discarded because they are the
+    difference between "the golden chunk was never retrieved" and "it was
+    retrieved and then barred", which are opposite bugs with the same
+    Recall@10.
     """
     eligible: List[Dict[str, Any]] = []
+    dropped: List[Dict[str, Any]] = []
     for item in response.get("chunks") or response.get("results") or []:
         if not isinstance(item, dict):
             continue
@@ -438,10 +454,19 @@ def eligible_chunks(response: Dict[str, Any]) -> List[Dict[str, Any]]:
                 payload.get("retrieval_allowed", metadata.get("retrieval_allowed", True)),
             )
         )
-        if not allowed or review_status == "removed":
+        if not allowed:
+            dropped.append(dropped_view(item, DROP_RETRIEVAL_NOT_ALLOWED))
+            continue
+        if review_status == "removed":
+            dropped.append(dropped_view(item, DROP_REVIEW_REMOVED))
             continue
         eligible.append({**metadata, **payload, **item})
-    return eligible
+    return eligible, dropped
+
+
+def eligible_chunks(response: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Retrieved chunks the application would have been willing to use."""
+    return partition_eligible(response)[0]
 
 
 def retrieved_ids(chunks: List[Dict[str, Any]], match_mode: str) -> List[str]:
@@ -996,6 +1021,11 @@ class EvalRunner:
         names ids the index cannot return, so every metric over it would be
         a measurement of the labels rather than of retrieval — and spending
         an embed call to produce one would be paying for a wrong number.
+
+        Every retrieved item carries a bounded ``retrieval_trace``: the
+        candidate lineage that explains its score. A failed item keeps
+        whatever lineage it reached before the failure — the step it died on
+        is the most useful thing it can still report.
         """
         tenant_id = identity.tenant_id
         query = str(item.get("query") or "")
@@ -1022,6 +1052,7 @@ class EvalRunner:
             self.store.append_item_result(run_id, tenant_id, row)
             return row
 
+        trace = RetrievalTrace.from_config(self.config)
         started = time.monotonic()
         try:
             async with semaphore:
@@ -1038,23 +1069,44 @@ class EvalRunner:
                     admin_id=identity.admin_id,
                 )
                 if mode == MODE_END_TO_END:
-                    ids = await self._run_graph_item(request, row, item_mode)
+                    ids = await self._run_graph_item(request, row, item_mode, trace)
                 else:
+                    depth = candidate_depth(self.config)
                     response = await self.backend_client.search_chunks(
                         request,
                         query,
                         {},
                         "eval",
-                        top_k=candidate_depth(self.config),
+                        top_k=depth,
                     )
-                    ids = retrieved_ids(eligible_chunks(response), item_mode)
+                    eligible, dropped = partition_eligible(response)
+                    # A retrieval run is one search, so its lineage is one
+                    # stage and the context is that stage after the
+                    # eligibility gate. Both are recorded: the pair is what
+                    # distinguishes a chunk that was never a candidate from
+                    # one the gate refused.
+                    trace.record_stage(
+                        STAGE_BASE,
+                        eligible,
+                        query=query,
+                        query_source="dataset_query",
+                        requested_k=depth,
+                        returned_count=len(
+                            response.get("chunks") or response.get("results") or []
+                        ),
+                        dropped=dropped,
+                    )
+                    trace.record_stage(STAGE_FINAL_CONTEXT, eligible)
+                    ids = retrieved_ids(eligible, item_mode)
         except Exception as exc:  # noqa: BLE001 - one item, not the run
             row["error"] = str(exc)
             row["latency_ms"] = (time.monotonic() - started) * 1000
+            row["retrieval_trace"] = trace.to_payload()
             self.store.append_item_result(run_id, tenant_id, row)
             return row
 
         row["latency_ms"] = (time.monotonic() - started) * 1000
+        row["retrieval_trace"] = trace.to_payload()
         row["retrieved_ids"] = ids[:MAX_ROW_IDS]
         if relevant:
             deduped = retrieval_metrics.dedupe(ids)
@@ -1074,6 +1126,7 @@ class EvalRunner:
         request: ConversationRequest,
         row: Dict[str, Any],
         item_mode: str,
+        trace: RetrievalTrace,
     ) -> List[str]:
         """Run the full graph for one item and record its answer quality.
 
@@ -1086,7 +1139,14 @@ class EvalRunner:
             does in retrieval mode — an `end_to_end` run reports both.
         """
         emitter = CollectingConversationEmitter(request)
-        result = await self.graph_runner.run(request, emitter, record_metrics=False)
+        # The graph fills the trace as it retrieves: an end_to_end item's
+        # lineage is the pipeline's own passes, not a reconstruction.
+        result = await self.graph_runner.run(
+            request,
+            emitter,
+            record_metrics=False,
+            retrieval_trace=trace,
+        )
         review = result.get("review") or {}
         citations = result.get("citation_metrics") or {}
         row["answer"] = result.get("answer", "")

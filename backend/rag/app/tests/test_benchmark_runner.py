@@ -154,7 +154,9 @@ class FakeGraphRunner:
         self.fail_queries = fail_queries or set()
         self.calls: List[Dict[str, Any]] = []
 
-    async def run(self, request, emitter, resume=False, record_metrics=True):
+    async def run(
+        self, request, emitter, resume=False, record_metrics=True, retrieval_trace=None
+    ):
         self.calls.append(
             {"query": request.user_message, "pipeline_mode": request.mode}
         )
