@@ -179,6 +179,7 @@ def test_model_and_corpus_metadata_come_from_the_deployment(config):
             "LLM_IMPLEMENTATION": "vllm",
             "RAG_CHAT_MODEL": "RedHatAI/Qwen3.5-4B-quantized.w4a16",
             "VLLM_MAX_MODEL_LEN": "4096",
+            "VLLM_MAX_NUM_SEQS": "3",
             "VLLM_QUANTIZATION": "compressed-tensors",
         },
     )
@@ -192,6 +193,7 @@ def test_model_and_corpus_metadata_come_from_the_deployment(config):
     assert manifest["vector_store"] == {"collection": "documents", "type": "qdrant"}
     assert manifest["llm"]["chat_model"].startswith("RedHatAI/")
     assert manifest["llm"]["max_model_len"] == 4096
+    assert manifest["llm"]["max_num_seqs"] == 3
     assert manifest["llm"]["quantization"] == "compressed-tensors"
     assert [
         path
@@ -209,6 +211,15 @@ def test_a_value_that_will_not_coerce_is_unknown_not_text(config):
     assert manifest["chunking"]["size"] is None
     assert manifest["chunking"]["overlap"] == 120
     assert "chunking.size" in manifest["unobserved"]
+
+
+def test_invalid_max_num_seqs_is_not_recorded_as_effective(config):
+    manifest = build_benchmark_manifest(
+        config, env={"VLLM_MAX_NUM_SEQS": "not-an-integer"}
+    )
+
+    assert manifest["llm"]["max_num_seqs"] is None
+    assert "llm.max_num_seqs" in manifest["unobserved"]
 
 
 def test_an_oversized_value_is_dropped_rather_than_stored(config):

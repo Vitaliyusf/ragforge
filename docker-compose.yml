@@ -96,7 +96,7 @@ services:
       - --gpu-memory-utilization
       - "${VLLM_GPU_MEMORY_UTILIZATION:-0.80}"
       - --max-num-seqs
-      - "${VLLM_MAX_NUM_SEQS:-2}"
+      - "${VLLM_MAX_NUM_SEQS:-4}"
       - --enable-prefix-caching
       - --reasoning-parser
       - qwen3
@@ -224,6 +224,8 @@ services:
     build:
       context: .
       dockerfile: backend/embedding/Dockerfile
+      args:
+        EMBEDDING_MODEL: ${EMBEDDING_MODEL:-intfloat/multilingual-e5-small}
     environment:
       INTERNAL_AUTH_REQUIRED: "true"
       INTERNAL_AUTH_SECRET: ${INTERNAL_AUTH_SECRET:?Set INTERNAL_AUTH_SECRET}
@@ -239,6 +241,8 @@ services:
       FILES_SERVICE_URL: http://files:8005
       METADATA_FETCH_TIMEOUT: ${METADATA_FETCH_TIMEOUT:-5.0}
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-intfloat/multilingual-e5-small}
+      HF_TOKEN: ${HF_TOKEN:-}
+      HF_HUB_DOWNLOAD_TIMEOUT: ${HF_HUB_DOWNLOAD_TIMEOUT:-30}
     volumes:
       - uploads_data:/app/uploads
       - logs_data:/app/logs
@@ -318,6 +322,8 @@ services:
       LLM_IMPLEMENTATION: ${LLM_IMPLEMENTATION:-vllm}
       RAG_CHAT_MODEL: ${VLLM_MODEL:-RedHatAI/Qwen3.5-4B-quantized.w4a16}
       VLLM_MAX_MODEL_LEN: ${VLLM_MAX_MODEL_LEN:-10240}
+      # Benchmark provenance for the vLLM scheduler candidate under test.
+      VLLM_MAX_NUM_SEQS: ${VLLM_MAX_NUM_SEQS:-4}
       VLLM_QUANTIZATION: ${VLLM_QUANTIZATION:-compressed-tensors}
       RERANKER_ENABLED: ${RERANKER_ENABLED:-false}
       RERANKER_TOP_K: ${RERANKER_TOP_K:-5}
