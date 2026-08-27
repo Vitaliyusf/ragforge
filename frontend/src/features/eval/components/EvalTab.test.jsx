@@ -333,4 +333,17 @@ describe('EvalTab active benchmark', () => {
     // Not the click event: download() treats its argument as a benchmark id.
     expect(benchmarkHook.download).toHaveBeenCalledWith()
   })
+  /**
+   * jsdom cannot lay flexbox out, so this pins the rule rather than the
+   * pixels: Card renders `overflow-hidden`, which removes a flex item's
+   * automatic minimum size, and without this the cards on a page taller
+   * than the viewport were squashed into slivers that clipped their own
+   * headers and buttons instead of letting the column scroll.
+   */
+  it('keeps the scrolling column from crushing its cards', () => {
+    setup()
+    const column = document.body.querySelector('.overflow-y-auto')
+    expect(column).not.toBeNull()
+    expect(column.className).toContain('[&>*]:shrink-0')
+  })
 })

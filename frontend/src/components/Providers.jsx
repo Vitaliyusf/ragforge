@@ -9,6 +9,7 @@ import { store } from '@/store'
 import { AuthProvider, LoginForm, useAuth } from '@/features/auth'
 import fileService from '@/features/files/services/fileService'
 import { setFiles } from '@/store/slices/filesSlice'
+import { ActivityProvider, EvalActivityProvider, FilesActivityBridge } from '@/features/activity'
 
 // Deliberately NOT `from '@/features/chat'`: that barrel also exports ChatTab,
 // which reaches TraceDebugPanel and react-markdown — pulling the whole chat
@@ -17,6 +18,13 @@ import { setFiles } from '@/store/slices/filesSlice'
 // since nothing below the auth gate renders until a session exists.
 const ChatProvider = dynamic(
   () => import('@/features/chat/context/ChatContext').then((m) => m.ChatProvider),
+  { ssr: false }
+)
+
+// Same reason as ChatProvider: the bridge reads the chat runtime, so a static
+// import here would pull the chat feature back into the first load.
+const ChatActivityBridge = dynamic(
+  () => import('@/features/activity/sources/ChatActivityBridge'),
   { ssr: false }
 )
 
@@ -38,15 +46,24 @@ function FilePrefetcher() {
 }
 
 function AuthenticatedApplication({ children }) {
-  const { isAuthenticated, loading } = useAuth()
+  const { isAuthenticated, loading, isAdmin } = useAuth()
   if (loading) {
     return <div className="min-h-screen bg-bg-primary" aria-label="Loading session" />
   }
   if (!isAuthenticated) return <LoginForm />
   return (
     <ChatProvider>
-      <FilePrefetcher />
-      {children}
+      {/* Activity lives above the shell: the point of the nav indicators is
+          that they survive leaving the feature that produced them. The Eval
+          and Files sources are admin-only because their endpoints are. */}
+      <ActivityProvider>
+        <EvalActivityProvider enabled={isAdmin}>
+          <FilePrefetcher />
+          <FilesActivityBridge enabled={isAdmin} />
+          <ChatActivityBridge />
+          {children}
+        </EvalActivityProvider>
+      </ActivityProvider>
     </ChatProvider>
   )
 }

@@ -30,6 +30,13 @@ import { useTheme } from '@/context/ThemeContext'
 import { config as appConfig } from '@/lib/config'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/features/auth'
+import {
+  ACTIVITY_FEATURES,
+  ACTIVITY_STATES,
+  NavActivityIndicator,
+  describeActivity,
+  useActivity,
+} from '@/features/activity'
 
 const ADMIN_TABS = [
   { id: 'chat', label: 'Chat', icon: MessageSquare },
@@ -55,8 +62,11 @@ const iconButtonClass = [
   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
 ].join(' ')
 
+const ACTIVITY_TABS = new Set(Object.values(ACTIVITY_FEATURES))
+
 export default function Header({ activeTab, setActiveTab }) {
   const { resolvedTheme, toggleTheme } = useTheme()
+  const { activities } = useActivity()
   const { user, isAdmin, logout } = useAuth()
   const navigationTabs = isAdmin ? ADMIN_TABS : USER_TABS
   const [showSettings, setShowSettings] = useState(false)
@@ -170,12 +180,21 @@ export default function Header({ activeTab, setActiveTab }) {
           >
             {navigationTabs.map(({ id, label, icon: Icon }) => {
               const active = activeTab === id
+              // Background work is announced on the item itself: the status
+              // has to survive a tooltip nobody hovers and a screen reader
+              // that never sees one.
+              const activity = ACTIVITY_TABS.has(id) ? activities[id] : null
+              const activityState = activity?.state || ACTIVITY_STATES.IDLE
+              const activityText =
+                activityState === ACTIVITY_STATES.IDLE ? null : describeActivity(id, activity)
               return (
                 <button
                   key={id}
                   type="button"
                   onClick={() => setActiveTab(id)}
-                  aria-label={label}
+                  aria-label={activityText || label}
+                  title={activityText || undefined}
+                  data-activity-state={activityState === ACTIVITY_STATES.IDLE ? undefined : activityState}
                   aria-current={active ? 'page' : undefined}
                   className={cn(
                     'relative flex h-9 shrink-0 items-center justify-center gap-2 rounded-lg px-3 text-[13px] font-medium',
@@ -200,9 +219,24 @@ export default function Header({ activeTab, setActiveTab }) {
                     size={16}
                     strokeWidth={active ? 2.2 : 1.8}
                     className="relative z-10"
-                    style={{ color: active ? 'var(--primary)' : undefined }}
+                    style={{
+                      color: active
+                        ? 'var(--primary)'
+                        : activityState === ACTIVITY_STATES.RUNNING ||
+                            activityState === ACTIVITY_STATES.QUEUED
+                          ? 'var(--accent)'
+                          : undefined,
+                    }}
                   />
                   <span className="relative z-10 hidden xl:inline">{label}</span>
+                  {activity && (
+                    <NavActivityIndicator state={activityState} selected={active} />
+                  )}
+                  {activityText && (
+                    <span className="sr-only" role="status">
+                      {activityText}
+                    </span>
+                  )}
                 </button>
               )
             })}

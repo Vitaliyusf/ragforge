@@ -248,6 +248,106 @@
 }
 .animate-dropdown-in { animation: dropdown-in 150ms ease-out }
 
+/* ─── Navigation activity ─────────────────────────────────────────────
+   One place for every activity animation the shell uses. Timings live here
+   as tokens rather than as ad-hoc keyframes inside feature components, and
+   each one is either a slow breath or a single pop — nothing blinks. */
+:root {
+  --activity-breathe-duration: 2100ms;
+  --activity-rail-duration:    1700ms;
+  --activity-pop-duration:      700ms;
+  --activity-emphasis-duration: 400ms;
+}
+
+@keyframes activity-breathe {
+  0%, 100% { opacity: 0.55; box-shadow: 0 0 0 0 currentColor }
+  50%      { opacity: 1;    box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 22%, transparent) }
+}
+@keyframes activity-rail {
+  from { background-position: -160% 0 }
+  to   { background-position:  160% 0 }
+}
+@keyframes activity-pop {
+  0%   { transform: scale(0.4); opacity: 0 }
+  55%  { transform: scale(1.25); opacity: 1 }
+  100% { transform: scale(1); opacity: 1 }
+}
+@keyframes activity-emphasis {
+  0%, 100% { transform: none }
+  50%      { transform: scale(1.3) }
+}
+
+/* Reserved whether or not anything is happening, so a tab that starts
+   working never changes the width of the nav. */
+.activity-slot {
+  position: relative;
+  z-index: 10;
+  display: inline-flex;
+  height: 10px;
+  width: 10px;
+  align-items: center;
+  justify-content: center;
+}
+
+.activity-mark {
+  display: inline-flex;
+  height: 6px;
+  width: 6px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+}
+.activity-mark[data-state='success'],
+.activity-mark[data-state='warning'],
+.activity-mark[data-state='failed'] {
+  height: 10px;
+  width: 10px;
+}
+.activity-mark--breathe  { animation: activity-breathe var(--activity-breathe-duration) ease-in-out infinite }
+.activity-mark--static   { opacity: 1 }
+/* The selected pill is already the dominant treatment; the halo steps back
+   rather than competing with it. */
+.activity-mark--selected { animation-duration: calc(var(--activity-breathe-duration) * 1.25); opacity: 0.9 }
+.activity-mark--pop      { animation: activity-pop var(--activity-pop-duration) ease-out 1 }
+.activity-mark--emphasis { animation: activity-emphasis var(--activity-emphasis-duration) ease-out 1 }
+
+.activity-rail {
+  position: absolute;
+  inset-inline: 6px;
+  bottom: 2px;
+  z-index: 10;
+  height: 2px;
+  border-radius: 9999px;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in srgb, var(--accent) 25%, transparent) 30%,
+    var(--accent) 50%,
+    color-mix(in srgb, var(--accent) 25%, transparent) 70%,
+    transparent 100%
+  );
+  background-size: 220% 100%;
+  animation: activity-rail var(--activity-rail-duration) linear infinite;
+}
+.activity-rail--selected { opacity: 0.75 }
+.activity-rail--static {
+  animation: none;
+  background: color-mix(in srgb, var(--accent) 70%, transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .activity-mark--breathe,
+  .activity-mark--pop,
+  .activity-mark--emphasis {
+    animation: none;
+    opacity: 1;
+  }
+  .activity-rail {
+    animation: none;
+    background: color-mix(in srgb, var(--accent) 70%, transparent);
+  }
+}
+
 .glass-panel {
   background: var(--glass);
   backdrop-filter: blur(18px) saturate(135%);
