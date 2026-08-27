@@ -45,6 +45,8 @@ SECRET_ENV = {
 BUILD_ENV = {
     "RAGFORGE_GIT_SHA": "1f2e3d4c5b6a7988",
     "RAGFORGE_GIT_BRANCH": "feat/benchmark-run-manifest",
+    "RAGFORGE_GIT_DIRTY": "true",
+    "RAGFORGE_SOURCE_FINGERPRINT_SHA256": "b" * 64,
     "RAGFORGE_BUILD_TIMESTAMP": "2026-08-26T12:00:00Z",
 }
 
@@ -172,6 +174,8 @@ def test_injected_build_identity_is_captured(config):
 
     assert manifest["build"]["git_sha"] == BUILD_ENV["RAGFORGE_GIT_SHA"]
     assert manifest["build"]["git_branch"] == "feat/benchmark-run-manifest"
+    assert manifest["build"]["git_dirty"] is True
+    assert manifest["build"]["source_fingerprint_sha256"] == "b" * 64
     assert manifest["build"]["build_timestamp"] == "2026-08-26T12:00:00Z"
     # An image tag is optional; it is the only build field left unknown.
     assert [
@@ -186,6 +190,34 @@ def test_the_ragforge_name_wins_over_the_generic_ci_one(config):
     )
 
     assert manifest["build"]["git_sha"] == "ragforge-sha"
+
+
+def test_a_clean_build_needs_no_dirty_source_fingerprint(config):
+    manifest = build_benchmark_manifest(
+        config,
+        env={
+            "RAGFORGE_GIT_SHA": "clean-sha",
+            "RAGFORGE_GIT_DIRTY": "false",
+        },
+    )
+
+    assert manifest["build"]["git_dirty"] is False
+    assert manifest["build"]["source_fingerprint_sha256"] is None
+    assert "build.source_fingerprint_sha256" not in manifest["unobserved"]
+
+
+@pytest.mark.parametrize("fingerprint", ["not-a-digest", "A" * 64])
+def test_an_invalid_dirty_source_fingerprint_is_unknown(config, fingerprint):
+    manifest = build_benchmark_manifest(
+        config,
+        env={
+            "RAGFORGE_GIT_DIRTY": "true",
+            "RAGFORGE_SOURCE_FINGERPRINT_SHA256": fingerprint,
+        },
+    )
+
+    assert manifest["build"]["source_fingerprint_sha256"] is None
+    assert "build.source_fingerprint_sha256" in manifest["unobserved"]
 
 
 def test_a_generic_ci_name_is_used_when_nothing_ragforge_is_set(config):
@@ -660,11 +692,15 @@ def test_build_provenance_still_degrades_to_unknown_without_injection(config):
 
     assert manifest["build"]["git_sha"] is None
     assert manifest["build"]["git_branch"] is None
+    assert manifest["build"]["git_dirty"] is None
+    assert manifest["build"]["source_fingerprint_sha256"] is None
     assert manifest["build"]["build_timestamp"] is None
     assert manifest["build"]["image_tag"] is None
     for path in (
         "build.git_sha",
         "build.git_branch",
+        "build.git_dirty",
+        "build.source_fingerprint_sha256",
         "build.build_timestamp",
         "build.image_tag",
     ):

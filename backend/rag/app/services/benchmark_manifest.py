@@ -83,7 +83,10 @@ from app.services.effective_retrieval import (
 # Version 9 records the answer-evaluation output-schema fingerprint and the
 # effective prompt version, so two runs scored under different judge contracts
 # stop reading as identical.
-MANIFEST_VERSION = 9
+# Version 10 records whether the built source tree was dirty and, when it was,
+# a deterministic SHA-256 fingerprint of that tree. The commit SHA alone is
+# not a source identity for a dirty build.
+MANIFEST_VERSION = 10
 
 # Longest env value copied into a manifest. A model identifier is tens of
 # characters; anything far larger is a mistake or a payload, and neither
@@ -150,6 +153,11 @@ _ENV_FIELDS: Dict[str, Dict[str, Tuple[Tuple[str, ...], str]]] = {
         # systems already export, and accepting them costs nothing.
         "git_sha": (("RAGFORGE_GIT_SHA", "GIT_SHA", "GIT_COMMIT"), "str"),
         "git_branch": (("RAGFORGE_GIT_BRANCH", "GIT_BRANCH"), "str"),
+        "git_dirty": (("RAGFORGE_GIT_DIRTY",), "bool"),
+        "source_fingerprint_sha256": (
+            ("RAGFORGE_SOURCE_FINGERPRINT_SHA256",),
+            "str",
+        ),
         "build_timestamp": (("RAGFORGE_BUILD_TIMESTAMP", "BUILD_TIMESTAMP"), "str"),
         "image_tag": (("RAGFORGE_IMAGE_TAG",), "str"),
     },
@@ -431,6 +439,13 @@ def _unobserved_paths(sections: Mapping[str, Mapping[str, Any]]) -> List[str]:
                 section == "retrieval" and field in EFFECTIVE_RETRIEVAL_FIELDS
             ) or (section == "vllm" and field in VLLM_UNCONFIGURED_FIELDS)
             exempt = exempt or nested_vllm_field in VLLM_UNCONFIGURED_FIELDS
+            # A clean tree needs no dirty-source digest. Its explicit false
+            # dirty flag is the complete answer; only dirty builds require the
+            # fingerprint that distinguishes modifications at the same SHA.
+            exempt = exempt or (
+                path == "build.source_fingerprint_sha256"
+                and sections.get("build", {}).get("git_dirty") is False
+            )
             if not exempt:
                 unobserved.append(path)
 
@@ -478,6 +493,9 @@ def build_benchmark_manifest(
     environment = os.environ if env is None else env
 
     build = _env_section(_ENV_FIELDS["build"], environment)
+    build["source_fingerprint_sha256"] = _pattern_value(
+        build.get("source_fingerprint_sha256"), _SHA256_HEX
+    )
     build["service"] = getattr(config, "service_name", None)
 
     dataset_doc = dataset or {}
