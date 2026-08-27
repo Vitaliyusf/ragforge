@@ -334,15 +334,28 @@ describe('EvalTab active benchmark', () => {
     expect(benchmarkHook.download).toHaveBeenCalledWith()
   })
   /**
-   * jsdom cannot lay flexbox out, so this pins the rule rather than the
-   * pixels: Card renders `overflow-hidden`, which removes a flex item's
-   * automatic minimum size, and without this the cards on a page taller
-   * than the viewport were squashed into slivers that clipped their own
-   * headers and buttons instead of letting the column scroll.
+   * jsdom cannot lay flexbox out, so these pin the rules rather than the
+   * pixels.
    */
-  it('keeps the scrolling column from crushing its cards', () => {
+  it('scrolls the full width, and caps the width one level in', () => {
     setup()
-    const column = document.body.querySelector('.overflow-y-auto')
+    const viewport = document.body.querySelector('.overflow-y-auto')
+    expect(viewport).not.toBeNull()
+    // The scroll viewport must not be the width-capped column: a scrollbar
+    // on a `max-w-*` element is painted at that column's edge, floating
+    // inside the page on a wide screen, with dead gutters either side.
+    expect(viewport.className).not.toMatch(/max-w-/)
+    expect(viewport.querySelector('.max-w-7xl')).not.toBeNull()
+  })
+
+  /**
+   * Card renders `overflow-hidden`, which removes a flex item's automatic
+   * minimum size; without this the cards on a page taller than the viewport
+   * were squashed into slivers that clipped their own headers and buttons.
+   */
+  it('keeps the column from crushing its cards', () => {
+    setup()
+    const column = document.body.querySelector('.max-w-7xl')
     expect(column).not.toBeNull()
     expect(column.className).toContain('[&>*]:shrink-0')
   })
