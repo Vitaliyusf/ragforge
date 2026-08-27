@@ -31,6 +31,7 @@ class RAGConfig(BaseSettings):
     mongodb_database: str = "rag"
     mongodb_max_retries: int = 10
     mongodb_retry_delay: int = 2
+    persistence_max_concurrency: int = 4
 
     # CORS configuration
     frontend_url: str = "http://localhost:3000"

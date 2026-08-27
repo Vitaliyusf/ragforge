@@ -1,13 +1,17 @@
 """Persistence layer for conversation state, checkpoints, reviews, and feedback."""
 from __future__ import annotations
 
+import asyncio
 import copy
 import os
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, TypeVar
 
 from app.core.config import RAGConfig
 from shared.auth import identity_from_context
+
+
+T = TypeVar("T")
 
 
 def _identity():
@@ -111,6 +115,54 @@ class BaseConversationStore:
         request_id: Optional[str] = None,
     ) -> Optional[Dict[str, Any]]:
         raise NotImplementedError
+
+
+class AsyncConversationPersistence:
+    """Bounded async boundary around the synchronous conversation store.
+
+    PyMongo and the in-memory test store keep their existing synchronous
+    contracts. Calls from the async graph are dispatched here so a delayed
+    database operation cannot block the event loop. The semaphore bounds both
+    active worker calls and submissions to asyncio's shared thread executor.
+    """
+
+    def __init__(self, store: BaseConversationStore, max_concurrency: int):
+        self._store = store
+        self._semaphore = asyncio.Semaphore(max(1, max_concurrency))
+
+    async def call(self, operation: Callable[..., T], *args: Any) -> T:
+        """Run one synchronous persistence operation without blocking the loop."""
+        async with self._semaphore:
+            return await asyncio.to_thread(operation, *args)
+
+    async def load_context(self, conversation_id: str, recent_limit: int) -> Dict[str, Any]:
+        return await self.call(self._store.load_context, conversation_id, recent_limit)
+
+    async def save_thread(self, document: Dict[str, Any]) -> None:
+        await self.call(self._store.save_thread, document)
+
+    async def save_turn(self, document: Dict[str, Any]) -> None:
+        await self.call(self._store.save_turn, document)
+
+    async def save_summary(self, document: Dict[str, Any]) -> None:
+        await self.call(self._store.save_summary, document)
+
+    async def save_answer_review(self, document: Dict[str, Any]) -> None:
+        await self.call(self._store.save_answer_review, document)
+
+    async def save_checkpoint(self, document: Dict[str, Any]) -> None:
+        await self.call(self._store.save_checkpoint, document)
+
+    async def get_latest_checkpoint(
+        self,
+        conversation_id: str,
+        request_id: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
+        return await self.call(
+            self._store.get_latest_checkpoint,
+            conversation_id,
+            request_id,
+        )
 
 
 class InMemoryConversationStore(BaseConversationStore):
