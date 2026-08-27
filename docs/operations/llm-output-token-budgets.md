@@ -8,7 +8,7 @@ Typed LLM actions can override the legacy `VLLM_MAX_TOKENS` fallback with:
 - `QUERY_REWRITE_MAX_TOKENS`
 - `MEMORY_EXTRACTION_MAX_TOKENS`
 
-The measured GEN-03 candidate defaults are:
+The accepted runtime defaults are:
 
 ```text
 answer_generation = 128

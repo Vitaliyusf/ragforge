@@ -73,20 +73,28 @@ RabbitMQ's exclusive auto-delete reply queues handle the RPC pattern directly. K
 | Backend | Python 3.11, FastAPI, Pydantic, pydantic-settings |
 | Messaging | RabbitMQ 3.13 (aio-pika, native RPC) · Apache Kafka (embedding pipeline) |
 | Data | MongoDB 7, Qdrant (vector store) |
-| AI/ML | vLLM (GPU inference), sentence-transformers (embeddings), cross-encoder reranking |
+| AI/ML | vLLM (GPU inference), sentence-transformers (embeddings), dense-vector retrieval |
 | Infra | Docker Compose, multi-stage builds, uv package manager |
 
 ## Results / Metrics
 
 - 8 backend microservices + 1 Next.js frontend in a single `docker compose up`
 - Hybrid RabbitMQ/Kafka messaging: native RPC for gateway flows, durable event stream for the embedding pipeline
-- Real-time chat with hybrid search (vector + keyword), optional cross-encoder reranking
+- Real-time chat with dense-vector retrieval and a score-ordered de-duplication/merge stage
 - LangChain tool-calling memory agent with consolidation/deduplication
 - QLoRA fine-tuning pipeline (dataset upload, training, adapter registry) — hidden by default in public stack
 - Centralized HTTP client with timeout, retry, and exponential backoff on both frontend and backend
-- 40+ automated tests across unit, integration, and guardrail layers
+- 1,200+ statically declared automated test cases across backend, frontend, and repository guardrail suites
 
 These are repository and runtime metrics, not benchmark claims.
+
+Hybrid lexical/vector fusion and model-based reranking are optional extension
+capabilities, not current runtime defaults. The active request path sends a dense
+query vector and `top_k` to the vector service; it has no lexical arm and no
+second model that rescores candidates. The RAG configuration retains legacy
+`hybrid_search_*` and `reranker_*` fields for compatibility, but those fields do
+not activate either stage. In the default Compose environment,
+`RERANKER_ENABLED=false` makes that inactive state explicit.
 
 ## Quick Start
 
@@ -95,6 +103,27 @@ These are repository and runtime metrics, not benchmark claims.
 - Docker and Docker Compose
 - NVIDIA GPU with CUDA drivers (for vLLM model serving)
 - ~6 GB VRAM minimum (default model: RedHatAI/Qwen3.5-4B-quantized.w4a16)
+
+The accepted default vLLM runtime profile is:
+
+| Setting | Effective default |
+|---------|-------------------|
+| Image | `vllm/vllm-openai:v0.27.1` |
+| Model | `RedHatAI/Qwen3.5-4B-quantized.w4a16` |
+| Quantization | `compressed-tensors` |
+| Model runner | V1 (`VLLM_USE_V2_MODEL_RUNNER=0`) |
+| Context window | 10,240 tokens |
+| GPU memory utilization | 0.85 |
+| Maximum concurrent sequences | 4 |
+| Maximum batched tokens | 2,048 |
+| Performance mode | `interactivity` |
+| Prefix caching | enabled |
+
+These values are defaults, not requirements: operators can override the
+corresponding variables in `.env`. The V1 runner is intentional for the
+accepted WSL2/Docker Desktop deployment because the V2 runner requires CUDA UVA.
+Per-action output-token defaults are documented in
+[LLM output-token budgets](docs/operations/llm-output-token-budgets.md).
 
 ### Run
 
@@ -118,7 +147,8 @@ leaves an existing `.env` untouched:
 pwsh ./scripts/initialize_docker_env.ps1
 ```
 
-First run takes 3-5 minutes for vLLM to download the model. Watch with:
+The first run must download the model and initialize vLLM, which can take several
+minutes. Watch readiness with:
 ```bash
 docker compose logs -f vllm   # ready when "Application startup complete" appears
 ```
@@ -142,7 +172,7 @@ backend/
   gateway/      HTTP API boundary — rate limiting, circuit breakers, RabbitMQ RPC client
   llm_agent/    Typed LLM orchestration — chat, summary, metadata, model management
   embedding/    Sentence-transformer embeddings + file extraction (PDF, DOCX, MD, TXT)
-  rag/          Real-time chat orchestrator — hybrid search, reranking, evaluation, Socket.IO
+  rag/          Real-time chat orchestrator — dense retrieval, score merge, evaluation, Socket.IO
   files/        File ingestion, review workflow, audit trail
   vector_db/    Qdrant vector storage and retrieval gating
   memory/       Chat persistence + long-term memory (LangChain tool-calling agent)
@@ -240,10 +270,14 @@ Application controls alone are not a certification. Internet production still re
 
 ## Public Repo Scope / Limitations
 
-This repository is a curated, history-free snapshot of the main development repo:
+This repository is a curated public snapshot of the main development repo. It
+does not include the private development history, but it does include the public
+CI workflow and the operator tooling needed to build, test, and run the snapshot:
 
 - **Included**: chat, retrieval, file ingestion, model management, config, memory, and health flows
-- **Excluded**: private git history, internal operations docs, CI/CD pipelines, internal tooling
+- **Project support included**: `.github/workflows/ci.yml`, public operator/security docs, initialization scripts, and repository guardrails
+- **Excluded**: private development history and private internal operations artifacts
 - **Hidden by default**: Training tab (finetuning service not in default compose stack; set `NEXT_PUBLIC_ENABLE_TRAINING_TAB=true` to expose)
 - **GPU required**: The default compose stack requires an NVIDIA GPU for vLLM. Without one, all services except vLLM will start, but chat/RAG flows will fail at inference time
-- **Verified end-to-end**: This snapshot was exercised with the full GPU Compose stack, including document ingestion to Qdrant and streamed RAG chat through RabbitMQ
+- **CI scope**: GitHub Actions runs Ruff, strict mypy, per-service backend tests, shared tests, frontend tests and production build, and public-repository guardrails; Python and frontend dependency audits are currently report-only
+- **GPU validation is separate**: CI does not start the GPU Compose stack. The documented chat and ingestion smoke commands are the operator checks for live end-to-end behavior
