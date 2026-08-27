@@ -45,7 +45,11 @@ SNAPSHOT_QUERIES: Dict[str, Dict[str, str]] = {
         "llm_input_token_rate": 'sum by (request_type, traffic_class) (rate(ragapp_llm_tokens_total{direction="input"}[5m]))',
         "llm_output_token_rate": 'sum by (request_type, traffic_class) (rate(ragapp_llm_tokens_total{direction="output"}[5m]))',
         "llm_total_token_rate": 'sum by (request_type, traffic_class) (rate(ragapp_llm_tokens_total{direction="total"}[5m]))',
+        # Legacy series: an application parse failure is counted here as
+        # `error`, hiding the provider's own reason. Kept for continuity with
+        # earlier runs; read the provider series below for what the model did.
         "llm_finish_reason_rate": "sum by (request_type, traffic_class, finish_reason) (rate(ragapp_llm_finish_reasons_total[5m]))",
+        "llm_provider_finish_reason_rate": "sum by (request_type, traffic_class, finish_reason) (rate(ragapp_llm_provider_finish_reasons_total[5m]))",
         "llm_output_tokens_p50_by_request_type": "histogram_quantile(0.50, sum by (request_type, traffic_class, le) (rate(ragapp_llm_output_tokens_bucket[5m])))",
         "llm_output_tokens_p95_by_request_type": "histogram_quantile(0.95, sum by (request_type, traffic_class, le) (rate(ragapp_llm_output_tokens_bucket[5m])))",
         "llm_output_tokens_p99_by_request_type": "histogram_quantile(0.99, sum by (request_type, traffic_class, le) (rate(ragapp_llm_output_tokens_bucket[5m])))",

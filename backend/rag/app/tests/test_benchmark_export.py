@@ -11,6 +11,7 @@ import pytest
 from app.services.benchmark_export import (
     MAX_TEXT_BYTES,
     _json_bytes,
+    _metrics_evidence,
     _sanitize,
     _trace_evidence,
     build_benchmark_export,
@@ -313,6 +314,170 @@ def test_token_metric_allowlist_does_not_allow_arbitrary_string_values():
     )
 
     assert sanitized["llm_output_token_rate"] == "[redacted]"
+
+
+def test_bounded_numeric_token_evidence_survives_and_secrets_do_not():
+    truncation = {"text_fields_truncated": 0, "examples": []}
+    document = {
+        "llm_actions": [
+            {
+                "input_tokens": 1234,
+                "output_tokens": 512,
+                "total_tokens": 1746,
+                "max_tokens": 512,
+            }
+        ],
+        "api_key": "secret",
+        "VLLM_API_KEY": "secret",
+        "HF_TOKEN": "secret",
+        "access_token": "secret",
+        "refresh_token": "secret",
+        "some_token": "arbitrary secret string",
+        "Authorization": "Bearer secret",
+    }
+
+    sanitized = _sanitize(
+        [document], path="phases/01-run/per-item.json", truncation=truncation
+    )[0]
+
+    assert sanitized["llm_actions"][0] == document["llm_actions"][0]
+    for key in (
+        "api_key",
+        "VLLM_API_KEY",
+        "HF_TOKEN",
+        "access_token",
+        "refresh_token",
+        "some_token",
+        "Authorization",
+    ):
+        assert sanitized[key] == "[redacted]"
+
+
+@pytest.mark.parametrize("max_num_batched_tokens", [None, 8192])
+def test_safe_vllm_numeric_telemetry_survives(max_num_batched_tokens):
+    truncation = {"text_fields_truncated": 0, "examples": []}
+    values = {
+        "kv_cache_size_tokens": 11421,
+        "max_num_batched_tokens": max_num_batched_tokens,
+        "generation_tokens_total": 1000,
+        "prompt_tokens_total": 2000,
+        "generation_token_rate": 42.5,
+        "prompt_token_rate": 81.25,
+        "inter_token_latency_p50": 0.012,
+        "inter_token_latency_p95": 0.035,
+    }
+
+    sanitized = _sanitize(
+        {"vllm": values}, path="runtime.json", truncation=truncation
+    )
+
+    assert sanitized["vllm"] == values
+    json.loads(_json_bytes(sanitized))
+
+
+def test_nested_kv_cache_size_is_numeric_but_untrusted_token_strings_stay_redacted():
+    truncation = {"text_fields_truncated": 0, "examples": []}
+    document = {
+        "vllm": {
+            "cache_config_info": [
+                {
+                    "metric": {
+                        "kv_cache_size_tokens": 11421,
+                        "session_token": "secret",
+                    }
+                }
+            ],
+            "untrusted": {"kv_cache_size_tokens": "secret"},
+        }
+    }
+
+    sanitized = _sanitize(document, path="runtime.json", truncation=truncation)
+
+    metric = sanitized["vllm"]["cache_config_info"][0]["metric"]
+    assert metric["kv_cache_size_tokens"] == 11421
+    assert metric["session_token"] == "[redacted]"
+    assert sanitized["vllm"]["untrusted"]["kv_cache_size_tokens"] == "[redacted]"
+
+
+def _snapshot(**values):
+    return {
+        "sections": {
+            "vllm": {
+                name: [{"metric": {}, "value": [1, str(value)]}]
+                for name, value in values.items()
+            }
+        }
+    }
+
+
+def test_counter_run_deltas_are_derived_without_differencing_gauges():
+    before = _snapshot(
+        num_preemptions_total=2,
+        generation_tokens_total=100,
+        prompt_tokens_total=200,
+        prefix_cache_hits_total=10,
+        prefix_cache_queries_total=20,
+        num_requests_waiting=4,
+    )
+    after = _snapshot(
+        num_preemptions_total=5,
+        generation_tokens_total=160,
+        prompt_tokens_total=280,
+        prefix_cache_hits_total=18,
+        prefix_cache_queries_total=32,
+        num_requests_waiting=1,
+    )
+
+    evidence = _metrics_evidence({"before": before, "after": after})
+
+    assert evidence["run_delta"] == {
+        "preemptions": 3.0,
+        "generation_tokens": 60.0,
+        "prompt_tokens": 80.0,
+        "prefix_cache_hits": 8.0,
+        "prefix_cache_queries": 12.0,
+    }
+    assert "num_requests_waiting" not in evidence["run_delta"]
+
+
+def test_counter_run_delta_is_omitted_when_either_snapshot_is_missing():
+    evidence = _metrics_evidence(
+        {"before": _snapshot(generation_tokens_total=100), "after": _snapshot()}
+    )
+
+    assert "generation_tokens" not in evidence["run_delta"]
+
+
+def test_llm_output_token_summary_distributions_survive():
+    truncation = {"text_fields_truncated": 0, "examples": []}
+    distribution = {
+        "count": 30,
+        "min": 12,
+        "max": 512,
+        "mean": 238.5,
+        "p50": 220.0,
+        "p95": 485.4,
+        "p99": 506.7,
+    }
+    document = {"llm_actions": {"output_tokens": {"answer_evaluation": distribution}}}
+
+    sanitized = _sanitize(document, path="summary.json", truncation=truncation)
+
+    assert sanitized == document
+
+
+def test_safe_token_paths_reject_strings_and_unapproved_locations():
+    truncation = {"text_fields_truncated": 0, "examples": []}
+    document = {
+        "llm_actions": [{"output_tokens": "secret", "max_tokens": True}],
+        "untrusted": {"output_tokens": 512},
+    }
+
+    sanitized = _sanitize(document, path="benchmark.json", truncation=truncation)
+
+    assert sanitized["llm_actions"][0]["output_tokens"] == "[redacted]"
+    assert sanitized["llm_actions"][0]["max_tokens"] == "[redacted]"
+    assert sanitized["untrusted"]["output_tokens"] == "[redacted]"
 
 
 @pytest.mark.parametrize(

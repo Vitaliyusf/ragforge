@@ -18,6 +18,7 @@ def manifest(
     vllm_version="0.28.0",
     vllm_image="vllm/vllm-openai:v0.28.0",
     vllm_overrides=None,
+    answer_evaluation_transport="legacy",
 ):
     return {
         "build": {
@@ -41,6 +42,9 @@ def manifest(
                 "content_risk_scan": 128,
                 "query_rewrite": 128,
                 "memory_extraction": 512,
+            },
+            "structured_output_transport": {
+                "answer_evaluation": answer_evaluation_transport
             },
         },
         "retrieval": {
@@ -340,6 +344,35 @@ def test_model_runner_change_is_incompatible():
     result = benchmark_compatibility(baseline, candidate)
 
     assert compatibility_field(result, "vllm.model_runner")["status"] == "different"
+
+
+def test_answer_evaluation_transport_change_is_incompatible():
+    baseline = benchmark("base", created_at="2026-01-01")
+    candidate = benchmark(
+        "candidate",
+        created_at="2026-01-02",
+        manifest_value=manifest(answer_evaluation_transport="json_schema"),
+    )
+
+    result = benchmark_compatibility(baseline, candidate)
+
+    assert compatibility_field(
+        result, "llm.structured_output_transport.answer_evaluation"
+    )["status"] == "different"
+    assert result["compatibility_status"] == "incompatible"
+
+
+def test_historical_manifest_without_transport_remains_readable_as_unknown():
+    legacy = manifest()
+    legacy["llm"].pop("structured_output_transport")
+    baseline = benchmark("base", created_at="2026-01-01", manifest_value=legacy)
+    candidate = benchmark("candidate", created_at="2026-01-02")
+
+    result = benchmark_compatibility(baseline, candidate)
+
+    assert compatibility_field(
+        result, "llm.structured_output_transport.answer_evaluation"
+    )["status"] == "unknown"
 
 
 def test_manifest_without_a_vllm_section_reads_as_unknown():

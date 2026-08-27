@@ -37,6 +37,8 @@ otherwise — a non-zero exit means do not start the benchmark yet.
 """
 from __future__ import annotations
 
+import concurrent.futures
+import datetime
 import json
 import os
 import sys
@@ -195,28 +197,61 @@ def exported_metric_names() -> Any:
     return sorted(name for name in names if name.startswith("vllm:"))
 
 
-def warm_up(model: str) -> Dict[str, Any]:
-    """Spend one tiny bounded generation so the benchmark does not.
+def _utc_now() -> str:
+    return datetime.datetime.now(datetime.timezone.utc).isoformat()
 
-    ``max_tokens=1`` and a two-word prompt: enough to force the first real
-    forward pass through the served graph, small enough that it cannot
-    meaningfully move the token counters the benchmark reads afterwards.
-    """
-    started = time.monotonic()
+
+def _completion(model: str, prompt: str, max_tokens: int) -> bool:
     body = _request(
-        "/v1/chat/completions",
+        "/v1/completions",
         payload={
             "model": model,
-            "messages": [{"role": "user", "content": "ping"}],
-            "max_tokens": 1,
+            "prompt": prompt,
+            "max_tokens": max_tokens,
             "temperature": 0,
             "stream": False,
         },
-        timeout=max(REQUEST_TIMEOUT_SECONDS, 120.0),
+        timeout=max(REQUEST_TIMEOUT_SECONDS, 180.0),
     )
+    return isinstance(body, dict) and bool(body.get("choices"))
+
+
+def _concurrency_pass(model: str) -> bool:
+    prompts = [f"Synthetic warmup request {index}." for index in range(4)]
+    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
+        results = list(executor.map(lambda prompt: _completion(model, prompt, 16), prompts))
+    return all(results)
+
+
+def warm_up(model: str) -> Dict[str, Any]:
+    """Exercise tiny, representative-prefill and concurrent request shapes."""
+    started_at = _utc_now()
+    started = time.monotonic()
+    shapes = [
+        {"name": "tiny", "requests": 1, "max_tokens": 8},
+        {
+            "name": "representative_prefill",
+            "requests": 1,
+            "approx_input_tokens": 3000,
+            "max_tokens": 32,
+        },
+        {"name": "concurrency", "requests": 4, "passes": 2, "max_tokens": 16},
+    ]
+    # Synthetic only: no benchmark question, answer, context or corpus text.
+    ok = _completion(model, "Synthetic readiness warmup.", 8)
+    ok = _completion(model, "the " * 3000, 32) and ok
+    ok = _concurrency_pass(model) and ok
+    # A second bounded pass ensures a kernel first seen at concurrency is warm
+    # before the benchmark window. Never loop indefinitely.
+    ok = _concurrency_pass(model) and ok
     elapsed_ms = round((time.monotonic() - started) * 1000.0, 1)
-    ok = isinstance(body, dict) and bool(body.get("choices"))
-    return {"ok": ok, "elapsed_ms": elapsed_ms if ok else None}
+    return {
+        "warmup_started_at": started_at,
+        "warmup_completed_at": _utc_now(),
+        "warmup_shapes": shapes,
+        "warmup_success": ok,
+        "elapsed_ms": elapsed_ms,
+    }
 
 
 def main() -> int:
@@ -224,7 +259,7 @@ def main() -> int:
 
     evidence["health"] = "ready" if wait_for_health() else "not_ready"
     if evidence["health"] != "ready":
-        evidence["warmup"] = {"ok": False, "elapsed_ms": None}
+        evidence["warmup"] = {"warmup_success": False, "elapsed_ms": None}
         evidence["error"] = "vLLM did not become healthy within the deadline"
         print(json.dumps(evidence, indent=2, sort_keys=True))
         return 1
@@ -236,14 +271,14 @@ def main() -> int:
     evidence["exported_vllm_metrics"] = exported_metric_names()
 
     if not models:
-        evidence["warmup"] = {"ok": False, "elapsed_ms": None}
+        evidence["warmup"] = {"warmup_success": False, "elapsed_ms": None}
         evidence["error"] = "server is healthy but reports no served model"
         print(json.dumps(evidence, indent=2, sort_keys=True))
         return 1
 
     evidence["warmup"] = warm_up(models[0])
     print(json.dumps(evidence, indent=2, sort_keys=True))
-    return 0 if evidence["warmup"]["ok"] else 1
+    return 0 if evidence["warmup"]["warmup_success"] else 1
 
 
 if __name__ == "__main__":

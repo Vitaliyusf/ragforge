@@ -3,12 +3,20 @@ from __future__ import annotations
 
 import json
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Mapping, Optional
 
 import httpx
 
 from app.core.config import Settings
-from app.llm.interfaces import ILLMClient, LLMGenerationResult, LLMInvocation, LLMUsage
+from app.llm.interfaces import (
+    ILLMClient,
+    LLMGenerationResult,
+    LLMInvocation,
+    LLMUsage,
+    ProviderHTTPError,
+    ProviderProtocolError,
+    ProviderTimeoutError,
+)
 
 
 # Qwen3 is a reasoning model: over raw /v1/completions it emits a <think>…</think>
@@ -64,20 +72,106 @@ class VLLMClient(ILLMClient):
             # the JSON the structured-output parsers require, which breaks
             # extraction. guided_json enforces this token-by-token so no
             # thinking/prose can precede the object.
-            payload["guided_json"] = {"type": "object"}
+            transport = invocation.metadata.get("structured_output_transport", "legacy")
+            if transport == "json_schema":
+                schema = invocation.metadata.get("structured_output_schema")
+                if not isinstance(schema, Mapping):
+                    raise ProviderProtocolError(
+                        "JSON-schema transport requires an authoritative object schema"
+                    )
+                payload["response_format"] = self._json_schema_response_format(
+                    "answer_evaluation", schema
+                )
+            elif transport == "legacy":
+                payload["guided_json"] = {"type": "object"}
+            else:
+                raise ProviderProtocolError(
+                    f"Unsupported structured-output transport: {transport!r}"
+                )
 
         try:
             if invocation.streaming:
                 return self._stream_generate(invocation, payload)
             return self._generate_once(invocation, payload)
         except httpx.ConnectError as exc:
-            raise RuntimeError("The AI service is not available right now. Please try again in a moment.") from exc
+            raise ProviderHTTPError(
+                "The AI service is not available right now. Please try again in a moment."
+            ) from exc
         except httpx.HTTPStatusError as exc:
-            if exc.response.status_code == 404:
-                raise RuntimeError("The AI model is not ready yet. Please wait a moment and try again.") from exc
-            raise RuntimeError("Something went wrong while generating the response. Please try again.") from exc
+            if exc.response.status_code in {400, 409, 415, 422}:
+                raise ProviderProtocolError(
+                    f"vLLM rejected the structured-output protocol (HTTP {exc.response.status_code})"
+                ) from exc
+            raise ProviderHTTPError(
+                f"vLLM request failed (HTTP {exc.response.status_code})"
+            ) from exc
         except httpx.TimeoutException as exc:
-            raise RuntimeError("The request took too long to process. Please try again.") from exc
+            raise ProviderTimeoutError(
+                "The request took too long to process. Please try again."
+            ) from exc
+
+    @staticmethod
+    def _json_schema_response_format(name: str, schema: Mapping[str, Any]) -> Dict[str, Any]:
+        """Build the OpenAI-compatible JSON Schema payload supported by vLLM 0.27.1."""
+        return {
+            "type": "json_schema",
+            "json_schema": {
+                "name": name,
+                "schema": dict(schema),
+                "strict": True,
+            },
+        }
+
+    def probe_json_schema_support(self, model: str, *, timeout: float = 30.0) -> Dict[str, Any]:
+        """Prove schema enforcement with a tiny authenticated synthetic request."""
+        schema = {
+            "type": "object",
+            "properties": {"probe_value": {"type": "integer", "const": 7}},
+            "required": ["probe_value"],
+            "additionalProperties": False,
+        }
+        payload: Dict[str, Any] = {
+            "model": model,
+            # Deliberately conflicts with the schema; enforcement must win.
+            "prompt": f"Return probe_value as the string wrong.{_NO_THINK_SUFFIX}",
+            "max_tokens": 32,
+            "temperature": 0.0,
+            "top_p": self.default_top_p,
+            "top_k": self.default_top_k,
+            "stream": False,
+            "response_format": self._json_schema_response_format(
+                "ragforge_structured_output_capability", schema
+            ),
+        }
+        try:
+            response = httpx.post(
+                f"{self.base_url}/v1/completions",
+                json=payload,
+                headers=self.headers,
+                timeout=timeout,
+            )
+            response.raise_for_status()
+            body = response.json()
+            choices = body.get("choices") if isinstance(body, dict) else None
+            raw = choices[0].get("text") if choices else None
+            parsed = json.loads(raw) if isinstance(raw, str) else None
+        except httpx.HTTPStatusError as exc:
+            raise ProviderProtocolError(
+                f"vLLM does not accept JSON-schema response_format (HTTP {exc.response.status_code})"
+            ) from exc
+        except httpx.TimeoutException as exc:
+            raise ProviderTimeoutError("JSON-schema capability probe timed out") from exc
+        except httpx.HTTPError as exc:
+            raise ProviderHTTPError("JSON-schema capability probe could not reach vLLM") from exc
+        except (json.JSONDecodeError, TypeError, ValueError, IndexError, AttributeError) as exc:
+            raise ProviderProtocolError(
+                "vLLM accepted JSON-schema response_format but returned invalid JSON"
+            ) from exc
+        if parsed != {"probe_value": 7}:
+            raise ProviderProtocolError(
+                "vLLM accepted JSON-schema response_format but did not enforce the schema"
+            )
+        return {"transport": "json_schema", "schema_enforced": True}
 
     def _generate_once(self, invocation: LLMInvocation, payload: Dict[str, object]) -> LLMGenerationResult:
         response = httpx.post(
@@ -210,11 +304,12 @@ class VLLMClient(ILLMClient):
             return False
 
     def get_model_info(self, model: str) -> Optional[Dict]:
-        """Get information about a specific model if the API exposes it."""
+        """Get a model from the collection endpoint vLLM actually exposes."""
         try:
-            response = httpx.get(f"{self.base_url}/v1/models/{model}", headers=self.headers, timeout=5.0)
+            response = httpx.get(f"{self.base_url}/v1/models", headers=self.headers, timeout=5.0)
             response.raise_for_status()
-            return response.json()
+            entries = response.json().get("data") or []
+            return next((entry for entry in entries if entry.get("id") == model), None)
         except Exception:
             return None
 

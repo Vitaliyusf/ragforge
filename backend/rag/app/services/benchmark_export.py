@@ -28,9 +28,36 @@ _SAFE_TOKEN_METRIC_KEYS = frozenset(
         "llm_output_token_rate",
         "llm_total_token_rate",
         "llm_finish_reason_rate",
+        "llm_provider_finish_reason_rate",
         "llm_output_tokens_p50_by_request_type",
         "llm_output_tokens_p95_by_request_type",
         "llm_output_tokens_p99_by_request_type",
+        "generation_token_rate",
+        "generation_tokens_total",
+        "prompt_token_rate",
+        "prompt_tokens_total",
+        "inter_token_latency_p50",
+        "inter_token_latency_p95",
+        "generation_tokens",
+        "prompt_tokens",
+        "prefix_cache_hits",
+        "prefix_cache_queries",
+    }
+)
+_SAFE_NUMERIC_TOKEN_KEYS = frozenset(
+    {
+        "input_tokens",
+        "output_tokens",
+        "total_tokens",
+        "max_tokens",
+        "kv_cache_size_tokens",
+        "max_num_batched_tokens",
+        "generation_token_rate",
+        "generation_tokens_total",
+        "prompt_token_rate",
+        "prompt_tokens_total",
+        "inter_token_latency_p50",
+        "inter_token_latency_p95",
     }
 )
 _TOKEN_BUDGET_ACTIONS = frozenset(
@@ -80,7 +107,7 @@ def build_benchmark_export(store: EvalStore, benchmark_id: str) -> Dict[str, str
         "validation.json": {run["run_id"]: run.get("label_validation") for run in runs},
         "summary.json": summary,
         "comparison.json": comparison_for_candidate(store, benchmark),
-        "metrics.json": benchmark.get("operational_metrics"),
+        "metrics.json": _metrics_evidence(benchmark.get("operational_metrics")),
         "runtime.json": _runtime_evidence(benchmark.get("manifest")),
         "errors.json": _errors(benchmark, runs),
         "benchmark.json": _benchmark_evidence(benchmark),
@@ -158,8 +185,63 @@ def _runtime_evidence(manifest: Any) -> Any:
         return None
     return {
         key: manifest.get(key)
-        for key in ("captured_at", "build", "runtime", "retrieval", "llm")
+        for key in ("captured_at", "build", "runtime", "retrieval", "llm", "vllm")
     }
+
+
+_RUN_DELTA_COUNTERS = {
+    "preemptions": ("num_preemptions_total", "request_preemptions_total"),
+    "generation_tokens": ("generation_tokens_total",),
+    "prompt_tokens": ("prompt_tokens_total",),
+    "prefix_cache_hits": ("prefix_cache_hits_total",),
+    "prefix_cache_queries": ("prefix_cache_queries_total",),
+}
+
+
+def _counter_total(snapshot: Any, names: Iterable[str]) -> Any:
+    """Return a summed Prometheus instant-vector counter, or None if absent."""
+    if not isinstance(snapshot, Mapping):
+        return None
+    sections = snapshot.get("sections")
+    vllm = sections.get("vllm") if isinstance(sections, Mapping) else None
+    if not isinstance(vllm, Mapping):
+        return None
+    for name in names:
+        series = vllm.get(name)
+        if not isinstance(series, list) or not series:
+            continue
+        total = 0.0
+        for sample in series:
+            value = sample.get("value") if isinstance(sample, Mapping) else None
+            if not isinstance(value, list) or len(value) < 2:
+                return None
+            try:
+                number = float(value[1])
+            except (TypeError, ValueError):
+                return None
+            if not math.isfinite(number):
+                return None
+            total += number
+        return total
+    return None
+
+
+def _metrics_evidence(operational_metrics: Any) -> Any:
+    """Add deltas for allowlisted counters; never difference gauges."""
+    if not isinstance(operational_metrics, Mapping):
+        return operational_metrics
+    evidence = dict(operational_metrics)
+    before = evidence.get("before")
+    after = evidence.get("after")
+    run_delta: Dict[str, float] = {}
+    for output_name, metric_names in _RUN_DELTA_COUNTERS.items():
+        start = _counter_total(before, metric_names)
+        finish = _counter_total(after, metric_names)
+        if start is None or finish is None or finish < start:
+            continue
+        run_delta[output_name] = finish - start
+    evidence["run_delta"] = run_delta
+    return evidence
 
 
 def _run_evidence(run: Mapping[str, Any]) -> Dict[str, Any]:
@@ -221,6 +303,11 @@ def _trace_evidence(rows: Any) -> list[Any]:
         "citation_recall",
         "unsupported_claim_count",
         "hallucination_verdict",
+        # Per-call LLM evidence: bounded request type, provider finish reason,
+        # application status, parse stage, token counts and the output ceiling
+        # the call used. Prompt, output, answer and context text are excluded
+        # by construction — the record never holds any.
+        "llm_actions",
     )
     evidence = []
     for row in rows if isinstance(rows, list) else []:
@@ -293,11 +380,22 @@ def _sanitize(
     path: str = "",
     truncation: Dict[str, Any],
 ) -> Any:
-    safe_metric_value = key in _SAFE_TOKEN_METRIC_KEYS and isinstance(
-        value, (int, float, list)
+    safe_metric_value = key in _SAFE_TOKEN_METRIC_KEYS and (
+        isinstance(value, (int, float, list)) or value is None
+    )
+    safe_numeric_value = _is_safe_numeric_token_evidence(path, key, value)
+    safe_summary_container = (
+        key == "output_tokens"
+        and isinstance(value, Mapping)
+        and ".llm_actions.output_tokens" in path
     )
     safe_token_budget = _is_safe_token_budget_provenance(path, value)
-    if _SECRET_KEY.search(key) and not (safe_metric_value or safe_token_budget):
+    if _SECRET_KEY.search(key) and not (
+        safe_metric_value
+        or safe_numeric_value
+        or safe_summary_container
+        or safe_token_budget
+    ):
         return "[redacted]"
     if isinstance(value, Mapping):
         return {
@@ -341,6 +439,50 @@ def _sanitize(
     if isinstance(value, (str, int, float, bool)) or value is None:
         return value
     return str(value)
+
+
+def _is_safe_numeric_token_evidence(path: str, key: str, value: Any) -> bool:
+    """Allow numeric/null token evidence only on bounded export paths.
+
+    The key-name exception is deliberately insufficient by itself: arbitrary
+    ``some_token`` values and credential-shaped strings remain redacted.
+    """
+    if key not in _SAFE_NUMERIC_TOKEN_KEYS:
+        return False
+    if isinstance(value, bool) or not (value is None or isinstance(value, (int, float))):
+        return False
+
+    per_action = re.search(
+        r"\.llm_actions\[\d+\]\.(?:input_tokens|output_tokens|total_tokens|max_tokens)$",
+        path,
+    )
+    if per_action:
+        return True
+
+    root = path.split(".", 1)[0].split("[", 1)[0]
+    if root not in {"metrics", "runtime", "manifest", "summary"}:
+        return False
+    if path == f"metrics.json.run_delta.{key}" and key in _RUN_DELTA_COUNTERS:
+        return True
+    if key == "kv_cache_size_tokens":
+        return bool(
+            re.search(
+                r"\.vllm(?:\.[^.\[]+|\[\d+\])*\.kv_cache_size_tokens$",
+                path,
+            )
+        )
+    if key == "max_num_batched_tokens":
+        return ".vllm." in path
+    if key in {
+        "generation_token_rate",
+        "generation_tokens_total",
+        "prompt_token_rate",
+        "prompt_tokens_total",
+        "inter_token_latency_p50",
+        "inter_token_latency_p95",
+    }:
+        return True
+    return ".llm_actions.output_tokens." in path
 
 
 def _is_safe_token_budget_provenance(path: str, value: Any) -> bool:

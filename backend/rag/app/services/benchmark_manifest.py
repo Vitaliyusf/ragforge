@@ -75,7 +75,12 @@ from app.services.effective_retrieval import (
 # Version 5 records effective per-action output-token ceilings.
 # Version 6 adds the `vllm` section: the served runtime's pinned version and
 # every scheduler knob RAGForge sets or deliberately leaves to the server.
-MANIFEST_VERSION = 6
+# Version 7 separates configured deployment intent from facts observed from
+# the running server. Flat fields remain as compatibility aliases for older
+# comparison/export readers; they are explicitly configuration-derived.
+# Version 8 records the answer-evaluation structured-output transport and an
+# observed vLLM version only when a runtime probe supplied one.
+MANIFEST_VERSION = 8
 
 # Longest env value copied into a manifest. A model identifier is tens of
 # characters; anything far larger is a mistake or a payload, and neither
@@ -222,6 +227,11 @@ _LLM_MAX_TOKEN_ENV_FIELDS: Dict[str, Tuple[Tuple[str, ...], str]] = {
     "memory_extraction": (("MEMORY_EXTRACTION_MAX_TOKENS",), "int"),
 }
 
+_ANSWER_EVALUATION_TRANSPORT_ENV = "ANSWER_EVALUATION_STRUCTURED_OUTPUT_TRANSPORT"
+_OBSERVED_VLLM_VERSION_ENV = "VLLM_OBSERVED_SERVER_VERSION"
+_assert_safe_name(_ANSWER_EVALUATION_TRANSPORT_ENV)
+_assert_safe_name(_OBSERVED_VLLM_VERSION_ENV)
+
 # Config-sourced retrieval settings: the part of the pipeline rag *can*
 # observe, so on a real `RAGConfig` none of these is ever unobserved. A field
 # a future config drops is reported as unknown rather than crashing a
@@ -361,9 +371,15 @@ def _unobserved_paths(sections: Mapping[str, Mapping[str, Any]]) -> List[str]:
                 visit(f"{path}.{child}" if path else str(child), child_value)
         elif value is None:
             section, _, field = path.partition(".")
+            nested_vllm_field = (
+                path.removeprefix("vllm.configured.")
+                if path.startswith("vllm.configured.")
+                else ""
+            )
             exempt = (
                 section == "retrieval" and field in EFFECTIVE_RETRIEVAL_FIELDS
             ) or (section == "vllm" and field in VLLM_UNCONFIGURED_FIELDS)
+            exempt = exempt or nested_vllm_field in VLLM_UNCONFIGURED_FIELDS
             if not exempt:
                 unobserved.append(path)
 
@@ -444,12 +460,34 @@ def build_benchmark_manifest(
 
     llm = _env_section(_ENV_FIELDS["llm"], environment)
     llm["max_tokens"] = _env_section(_LLM_MAX_TOKEN_ENV_FIELDS, environment)
+    transport = _coerce(environment.get(_ANSWER_EVALUATION_TRANSPORT_ENV, ""), "str")
+    llm["structured_output_transport"] = {
+        "answer_evaluation": transport if transport in {"legacy", "json_schema"} else None
+    }
 
-    vllm = _env_section(_ENV_FIELDS["vllm"], environment)
-    vllm["server_version"] = _vllm_server_version(vllm.get("image"))
-    vllm["model_runner"] = _vllm_model_runner(
+    configured_vllm = _env_section(_ENV_FIELDS["vllm"], environment)
+    configured_vllm["server_version"] = _vllm_server_version(
+        configured_vllm.get("image")
+    )
+    configured_vllm["model_runner"] = _vllm_model_runner(
         environment.get("VLLM_USE_V2_MODEL_RUNNER")
     )
+    # These values cannot be observed safely from this synchronous request
+    # path. The pre-benchmark warmup gate probes /version and /v1/models and
+    # records those observations separately; no image tag is promoted into
+    # this block as runtime proof.
+    observed_vllm = {
+        "server_version": _coerce(
+            environment.get(_OBSERVED_VLLM_VERSION_ENV, ""), "str"
+        ),
+        "model_runner": None,
+        "max_model_len": None,
+    }
+    vllm = {
+        **configured_vllm,
+        "configured": dict(configured_vllm),
+        "observed": observed_vllm,
+    }
 
     sections: Dict[str, Dict[str, Any]] = {
         "build": build,

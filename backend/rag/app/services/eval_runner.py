@@ -180,6 +180,12 @@ NOT_CHECKED_UNAVAILABLE = "unavailable"
 # display bound, never applied before scoring.
 MAX_ROW_IDS = max(K_VALUES)
 
+# How many typed LLM calls one item's evidence keeps. A turn makes a handful
+# — guardrails, rewrite, generation, evaluation — and a revision pass can add
+# a few more; the bound stops a pathological loop from growing a row without
+# limit. Each record is bounded labels and numbers only.
+MAX_LLM_ACTIONS = 16
+
 # Action strings, mirroring `RagAction` in the gateway's core/constants.py.
 # The rag service cannot import gateway code, so they are defined once here
 # and the two must stay in step — the same arrangement as METRICS_ACTION.
@@ -1129,6 +1135,10 @@ class EvalRunner:
             "outcome": "success",
             "guardrail_stage": None,
             "timed_out": False,
+            # Bounded per-call LLM evidence for this item: request type,
+            # provider finish reason, application status, token counts and the
+            # output ceiling the call was made with. No model text.
+            "llm_actions": [],
         }
         if unscorable:
             row["failure_attribution"] = classify_item(row)
@@ -1280,6 +1290,11 @@ class EvalRunner:
         )
         review = result.get("review") or {}
         citations = result.get("citation_metrics") or {}
+        actions = result.get("llm_actions")
+        row["llm_actions"] = [
+            action for action in (actions if isinstance(actions, list) else [])
+            if isinstance(action, dict)
+        ][:MAX_LLM_ACTIONS]
         row["answer"] = result.get("answer", "")
         row["groundedness"] = review.get("groundedness_score")
         row["hallucination_verdict"] = review.get("hallucination_verdict")

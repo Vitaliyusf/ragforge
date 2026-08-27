@@ -48,7 +48,7 @@ PROMETHEUS_SERVICE = service_block("prometheus")
 
 
 def test_the_default_image_is_the_pinned_candidate_release():
-    assert "image: ${VLLM_IMAGE:-vllm/vllm-openai:v0.28.0}" in VLLM
+    assert "image: ${VLLM_IMAGE:-vllm/vllm-openai:v0.28.0-cu129}" in VLLM
 
 
 def test_the_image_is_never_a_floating_tag():
@@ -59,7 +59,7 @@ def test_the_image_is_never_a_floating_tag():
 
 
 def test_the_documented_environment_pins_the_same_release():
-    assert "VLLM_IMAGE=vllm/vllm-openai:v0.28.0" in ENV_EXAMPLE
+    assert "VLLM_IMAGE=vllm/vllm-openai:v0.28.0-cu129" in ENV_EXAMPLE
 
 
 # ── What the upgrade must not change ────────────────────────
@@ -198,7 +198,7 @@ def test_rag_receives_the_vllm_provenance_it_records():
 def test_rag_provenance_cannot_drift_from_the_served_runtime():
     """The same ${VAR:-default} feeds the server and the manifest."""
     for expression in (
-        "${VLLM_IMAGE:-vllm/vllm-openai:v0.28.0}",
+        "${VLLM_IMAGE:-vllm/vllm-openai:v0.28.0-cu129}",
         "${VLLM_MAX_NUM_SEQS:-4}",
         "${VLLM_GPU_MEMORY_UTILIZATION:-0.80}",
         "${VLLM_MAX_MODEL_LEN:-10240}",
@@ -227,3 +227,18 @@ def test_no_scheduler_tuning_variable_is_injected_for_the_control_run():
 
 def test_the_vllm_api_key_is_not_handed_to_the_provenance_recorder():
     assert "VLLM_API_KEY" not in RAG
+
+
+def test_warmup_covers_the_application_path_and_required_shapes():
+    warmup = (REPO_ROOT / "scripts" / "vllm_warmup.py").read_text(encoding="utf-8")
+    assert '"/v1/completions"' in warmup
+    assert '"name": "tiny"' in warmup
+    assert '"name": "representative_prefill"' in warmup
+    assert '"approx_input_tokens": 3000' in warmup
+    assert '"name": "concurrency"' in warmup
+    assert '"requests": 4' in warmup
+    assert '"passes": 2' in warmup
+    assert "warmup_started_at" in warmup
+    assert "warmup_completed_at" in warmup
+    assert "warmup_success" in warmup
+    assert 'server_version()' in warmup

@@ -9,6 +9,18 @@ from typing import Any, Callable, Dict, Optional
 TokenCallback = Callable[[str, int], None]
 
 
+class ProviderProtocolError(RuntimeError):
+    """The provider rejected or violated the requested API protocol."""
+
+
+class ProviderHTTPError(RuntimeError):
+    """The provider failed at the HTTP boundary."""
+
+
+class ProviderTimeoutError(RuntimeError):
+    """The provider request exceeded its deadline."""
+
+
 @dataclass
 class LLMUsage:
     """Normalized token usage metadata returned by providers."""

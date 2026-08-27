@@ -12,7 +12,11 @@ from app.services.conversation_events import BaseConversationEmitter
 from app.services.conversation_backend_client import ConversationBackendClient
 from app.services.conversation_persistence import BaseConversationStore, make_json_safe
 from app.services.conversation_tracing import ConversationTracer
-from app.services.conversation_messages import chunk_passages
+from app.services.conversation_messages import (
+    LLM_EVIDENCE_KEY,
+    DownstreamRPCError,
+    chunk_passages,
+)
 from app.services.citation_metrics import (
     citation_f1,
     citation_precision,
@@ -152,6 +156,9 @@ class ConversationGraphRunner:
             "emitter": emitter,
             "current_node": "graph_start",
             "retrieval_trace": retrieval_trace,
+            # Bounded per-call LLM evidence for this turn, in call order. No
+            # prompt, output or context text ever enters it.
+            "llm_actions": [],
         }
         state = build_initial_state(request)
         checkpoint = None
@@ -207,6 +214,7 @@ class ConversationGraphRunner:
             self._commit_final_context(runtime, final_state)
             final_chunks = runtime["final_context"]
             result = self._build_result(final_state, sources=final_chunks)
+            result["llm_actions"] = self._llm_actions(runtime)
             if record_metrics:
                 self._record_turn_metrics(
                     request, result, runtime, emitter, time.monotonic() - t0
@@ -230,12 +238,19 @@ class ConversationGraphRunner:
             result = {
                 "answer": "", "sources": [], "review": {}, "citation_metrics": {},
                 "outcome": "guardrail_blocked", "guardrail_stage": exc.stage,
+                "llm_actions": self._llm_actions(runtime),
             }
             if record_metrics:
                 self._record_turn_metrics(request, result, runtime, emitter, time.monotonic() - t0)
             return result
         except Exception as exc:
             failed_node = runtime.get("current_node", "unknown")
+            # A downstream LLM reply that failed still reported what the
+            # provider did before this service rejected it. Losing that with
+            # the exception is what made an output-ceiling truncation
+            # indistinguishable from a malformed normal completion.
+            if isinstance(exc, DownstreamRPCError):
+                self._record_llm_failure_evidence(runtime, exc)
             self.logger.exception(
                 "conversation graph execution failed",
                 error=str(exc),
@@ -273,6 +288,7 @@ class ConversationGraphRunner:
                 "error": str(exc),
                 "error_class": type(exc).__name__,
                 "failed_node": failed_node,
+                "llm_actions": self._llm_actions(runtime),
             }
             if record_metrics:
                 # The turn fact describes a turn that finished. Keeping the
@@ -976,6 +992,32 @@ class ConversationGraphRunner:
             payload.update(make_json_safe(extra))
         self.store.save_checkpoint(payload)
 
+    @staticmethod
+    def _record_llm_evidence(runtime: Dict[str, Any], response: Any) -> None:
+        """Keep one typed LLM call's bounded evidence on this turn.
+
+        Recorded for successful calls too: proving that a failing evaluator
+        stopped at its output ceiling needs the distribution of the calls that
+        did not fail as its comparison.
+        """
+        evidence = (
+            response.get(LLM_EVIDENCE_KEY) if isinstance(response, dict) else None
+        )
+        if isinstance(evidence, dict):
+            runtime.setdefault("llm_actions", []).append(dict(evidence))
+
+    @staticmethod
+    def _record_llm_failure_evidence(runtime: Dict[str, Any], exc: BaseException) -> None:
+        """Keep the evidence a failed downstream LLM reply already carried."""
+        evidence = getattr(exc, "evidence", None)
+        if isinstance(evidence, dict):
+            runtime.setdefault("llm_actions", []).append(dict(evidence))
+
+    @staticmethod
+    def _llm_actions(runtime: Dict[str, Any]) -> List[Dict[str, Any]]:
+        actions = runtime.get("llm_actions")
+        return list(actions) if isinstance(actions, list) else []
+
     def _build_result(
         self,
         state: ConversationState,
@@ -1050,6 +1092,7 @@ class ConversationGraphRunner:
         if not user_message:
             raise ValueError("Question is required")
         scan = await self.backend_client.risk_scan(request, user_message, stage="input")
+        self._record_llm_evidence(runtime, scan)
         debug_payloads = self._append_debug(state, input_safety_flags=scan)
         if scan.get("blocked"):
             runtime["guardrail_blocked"] = True
@@ -1144,6 +1187,7 @@ class ConversationGraphRunner:
                 "memory_hits": state.get("memory_hits", []),
             },
         )
+        self._record_llm_evidence(runtime, response)
         plan = {
             "rewritten_query": response.get("rewritten_query") or request.user_message,
             "subqueries": response.get("subqueries") or [],
@@ -1355,6 +1399,7 @@ class ConversationGraphRunner:
             stream_request_id=request.request_id,
             token_callback=on_token,
         )
+        self._record_llm_evidence(runtime, response)
         answer_text = response.get("answer", "")
         draft_answer = {
             "text": answer_text,
@@ -1411,6 +1456,7 @@ class ConversationGraphRunner:
             chunks,
             mode,
         )
+        self._record_llm_evidence(runtime, response)
         review = self._build_review(response, request, self._prompt_passages(state))
         if state.get("draft_answer", {}).get("revision_attempted"):
             review["revision_applied"] = True
@@ -1468,6 +1514,7 @@ class ConversationGraphRunner:
         request: ConversationRequest = runtime["request"]
         answer_text = state.get("draft_answer", {}).get("text", "")
         response = await self.backend_client.risk_scan(request, answer_text, stage="output")
+        self._record_llm_evidence(runtime, response)
         runtime["guardrail_blocked"] = bool(response.get("blocked"))
         draft_answer = dict(state.get("draft_answer", {}))
         if response.get("blocked"):

@@ -84,12 +84,129 @@ def extract_message_payload(message: Optional[Dict[str, Any]]) -> Dict[str, Any]
     return make_json_safe(message)
 
 
+# Bounded provider finish reasons llm_agent may report. Anything else is
+# normalized to `other`; a missing value means no provider response was seen
+# and is reported as `unknown`, never as an error.
+_BOUNDED_FINISH_REASONS = frozenset(
+    {
+        "stop",
+        "length",
+        "completed",
+        "content_filter",
+        "tool_calls",
+        "cancelled",
+        "other",
+        "unknown",
+    }
+)
+# Bounded application statuses. An unrecognized one is reported as `unknown`
+# rather than passed through: these become metric-shaped summary keys, and a
+# raw provider string must never reach them.
+_BOUNDED_APPLICATION_STATUSES = frozenset(
+    {
+        "success",
+        "provider_error",
+        "structured_output_invalid",
+        "timeout",
+        "execution_error",
+        "streaming_not_supported",
+        "invalid_request",
+        "unknown",
+    }
+)
+_BOUNDED_PARSE_STAGES = frozenset({"parse", "validation", "unknown"})
+
+# Every field an llm action's evidence record may carry. All bounded labels or
+# numbers: no prompt, output, answer or context text is ever recorded here.
+LLM_EVIDENCE_KEY = "_llm_evidence"
+
+
+def _bounded(value: Any, allowed: frozenset, default: str) -> str:
+    text = str(value).strip().lower() if value is not None else ""
+    return text if text in allowed else default
+
+
+def _token_count(value: Any) -> Optional[int]:
+    """One reported token count, or ``None``. A missing count is never a 0."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return int(value)
+
+
+def llm_action_evidence(payload: Any) -> Optional[Dict[str, Any]]:
+    """Bounded diagnostic evidence for one typed llm_agent call.
+
+    The provider's finish reason and its usage are recorded whether or not
+    this service could parse the response, because "the model stopped at the
+    output ceiling" and "the model finished and the parser rejected it" are
+    different failures with different fixes, and a reply that only says
+    `structured_output_invalid` cannot tell them apart.
+
+    Returns:
+        The evidence record, or ``None`` when the payload is not a typed
+        llm_agent execution reply.
+    """
+    if not isinstance(payload, dict):
+        return None
+    request_type = payload.get("request_type")
+    if not isinstance(request_type, str) or not request_type:
+        return None
+    usage = payload.get("usage")
+    usage_map = usage if isinstance(usage, dict) else {}
+    status = payload.get("application_status")
+    if status is None:
+        # A reply from an llm_agent that predates the split contract: its
+        # bounded status is the first error code, or success.
+        errors = payload.get("errors")
+        first = errors[0] if isinstance(errors, list) and errors else None
+        if isinstance(first, dict) and first.get("code"):
+            status = first.get("code")
+        elif payload.get("status") == "success":
+            status = "success"
+    evidence: Dict[str, Any] = {
+        "request_type": request_type,
+        # An unrecognized non-empty reason is `other`; only an absent one is
+        # `unknown`. "The provider said something we do not model" and "the
+        # provider never answered" are different facts.
+        "provider_finish_reason": _bounded(
+            payload.get("provider_finish_reason"),
+            _BOUNDED_FINISH_REASONS,
+            "other" if str(payload.get("provider_finish_reason") or "").strip() else "unknown",
+        ),
+        "application_status": _bounded(
+            status, _BOUNDED_APPLICATION_STATUSES, "unknown"
+        ),
+        "input_tokens": _token_count(usage_map.get("input_tokens")),
+        "output_tokens": _token_count(usage_map.get("output_tokens")),
+        "total_tokens": _token_count(usage_map.get("total_tokens")),
+        "max_tokens": _token_count(payload.get("max_tokens")),
+        "latency_ms": _token_count(payload.get("latency_ms")),
+    }
+    parse_stage = payload.get("parse_stage")
+    if parse_stage is not None:
+        evidence["parse_stage"] = _bounded(
+            parse_stage, _BOUNDED_PARSE_STAGES, "unknown"
+        )
+    elif evidence["application_status"] == "structured_output_invalid":
+        evidence["parse_stage"] = "unknown"
+    return evidence
+
+
 class DownstreamRPCError(RuntimeError):
     """A verified downstream RPC reply reported a structured failure."""
 
-    def __init__(self, code: str, message: str) -> None:
+    def __init__(
+        self,
+        code: str,
+        message: str,
+        evidence: Optional[Dict[str, Any]] = None,
+    ) -> None:
         self.code = code
         self.message = message
+        # Bounded diagnostics from the failed reply, when it carried any. The
+        # failure is what killed the turn; this is what the provider had
+        # already reported when it did.
+        self.evidence = evidence
         super().__init__(f"{code}: {message}")
 
 
@@ -103,13 +220,23 @@ def extract_reply_payload(message: Optional[Dict[str, Any]]) -> Dict[str, Any]:
             if message.get("source_service") == "llm_agent":
                 return normalize_llm_agent_response(payload)
             return payload
+        evidence = (
+            llm_action_evidence(extract_message_payload(message))
+            if message.get("source_service") == "llm_agent"
+            else None
+        )
         error = message.get("error")
         if isinstance(error, dict):
             raise DownstreamRPCError(
                 str(error.get("code") or "downstream_error"),
                 str(error.get("message") or "Service request failed"),
+                evidence,
             )
-        raise DownstreamRPCError("downstream_error", str(error or "Service request failed"))
+        raise DownstreamRPCError(
+            "downstream_error",
+            str(error or "Service request failed"),
+            evidence,
+        )
     data = message.get("data")
     if isinstance(data, dict):
         return make_json_safe(data)
@@ -242,12 +369,17 @@ def normalize_llm_agent_response(payload: Dict[str, Any]) -> Dict[str, Any]:
         return {}
 
     request_type = payload.get("request_type")
+    evidence = llm_action_evidence(payload)
     parsed_output = payload.get("parsed_output")
     if not isinstance(parsed_output, dict):
+        if evidence is not None:
+            payload = {**payload, LLM_EVIDENCE_KEY: evidence}
         return payload
 
     structured_output_debug = _extract_structured_output_debug(payload.get("visible_reasoning_steps"))
     normalized = dict(parsed_output)
+    if evidence is not None:
+        normalized[LLM_EVIDENCE_KEY] = evidence
     normalized["status"] = payload.get("status")
     normalized["errors"] = payload.get("errors", [])
     normalized["trace"] = payload.get("trace", {})

@@ -2,7 +2,7 @@
 import logging
 import os
 import json
-from typing import ClassVar, Dict, Optional
+from typing import ClassVar, Dict, Literal, Optional
 from pathlib import Path
 
 from pydantic import Field, model_validator
@@ -92,6 +92,10 @@ class Settings(BaseSettings):
     )
     answer_generation_max_tokens: int = Field(default=128, ge=1, le=131072)
     answer_evaluation_max_tokens: int = Field(default=512, ge=1, le=131072)
+    answer_evaluation_structured_output_transport: Literal["legacy", "json_schema"] = Field(
+        default="legacy",
+        description="Provider transport used only for answer_evaluation structured output",
+    )
     content_risk_scan_max_tokens: int = Field(default=128, ge=1, le=131072)
     query_rewrite_max_tokens: int = Field(default=128, ge=1, le=131072)
     memory_extraction_max_tokens: int = Field(default=512, ge=1, le=131072)

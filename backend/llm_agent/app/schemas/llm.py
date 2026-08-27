@@ -14,6 +14,33 @@ RequestType = Literal[
     "memory_extraction",
 ]
 ReplyStatus = Literal["success", "error"]
+# The provider's own bounded finish reason. `unknown` = no provider response.
+FinishReason = Literal[
+    "stop",
+    "length",
+    "completed",
+    "content_filter",
+    "tool_calls",
+    "cancelled",
+    "other",
+    "unknown",
+]
+# What this service made of the provider response. Kept separate from
+# `FinishReason` so neither can overwrite the other.
+ApplicationStatus = Literal[
+    "success",
+    "provider_error",
+    "provider_protocol_error",
+    "provider_http_error",
+    "provider_timeout",
+    "structured_output_invalid",
+    "validation_error",
+    "timeout",
+    "execution_error",
+    "streaming_not_supported",
+    "invalid_request",
+]
+ParseStage = Literal["parse", "validation", "unknown"]
 MessageType = Literal["command", "query", "reply", "event", "stream_event"]
 StreamEventType = Literal["llm.token", "llm.done", "llm.error"]
 
@@ -234,7 +261,10 @@ class AnswerReviewParsedOutput(StrictSchema):
     completeness_score: Optional[float] = None
     safety_score: Optional[float] = None
     issues: List[str]
-    claims: List[ClaimAssessment] = Field(default_factory=list)
+    claims: List[ClaimAssessment] = Field(
+        default_factory=list,
+        max_length=4,
+    )
     unsupported_claim_count: Optional[int] = None
     hallucination_verdict: Optional[str] = None
     revision_applied: bool
@@ -344,6 +374,18 @@ class ModelExecutionResponsePayload(StrictSchema):
     raw_output: str
     parsed_output: Optional[ParsedOutput] = None
     usage: UsageInfo
+    # What the provider said about why generation stopped, independent of what
+    # this service then made of the output. `unknown` means no provider
+    # response was received — never an application failure state.
+    provider_finish_reason: FinishReason = "unknown"
+    # What this service made of that response. Bounded; a raw exception
+    # message never reaches this field.
+    application_status: ApplicationStatus = "success"
+    # Where a structured-output failure happened, when one did.
+    parse_stage: Optional[ParseStage] = None
+    # The output ceiling this call was actually made with, so a `length`
+    # finish can be read against the budget that caused it.
+    max_tokens: Optional[int] = None
     latency_ms: int
     model: str
     prompt_version: str

@@ -16,7 +16,14 @@ from app.core.errors import (
 from app.core.logging_config import ServiceLogger
 from app.core.safety import redact_secrets, sanitize_debug_text
 from app.core.tracing import ExecutionTracer
-from app.llm.interfaces import ILLMClient, LLMInvocation, LLMUsage
+from app.llm.interfaces import (
+    ILLMClient,
+    LLMInvocation,
+    LLMUsage,
+    ProviderHTTPError,
+    ProviderProtocolError,
+    ProviderTimeoutError,
+)
 from app.llm.prompt_registry import (
     PromptRegistry,
     STRUCTURED_OUTPUT_DEBUG_PREFIX,
@@ -39,13 +46,37 @@ _BOUNDED_FINISH_REASONS = frozenset(
     {"completed", "stop", "length", "content_filter", "tool_calls", "cancelled"}
 )
 
+# No provider response was received at all. Distinct from `other`, which means
+# the provider answered with a finish reason outside the bounded set.
+FINISH_REASON_UNKNOWN = "unknown"
 
-def _metric_finish_reason(value: str, *, errored: bool) -> str:
-    """Map provider-controlled finish text onto a bounded metric label."""
+
+def provider_finish_reason(value: Optional[str]) -> str:
+    """Map a provider-controlled finish reason onto a bounded label.
+
+    Application state is deliberately not an input here. A truncated response
+    the parser then rejected still finished on ``length``, and collapsing that
+    into ``error`` destroys the only evidence that says the output ceiling —
+    not the model or the prompt — is what broke the call.
+    """
+    if value is None:
+        return FINISH_REASON_UNKNOWN
+    normalized = str(value).strip().lower()
+    if not normalized:
+        return FINISH_REASON_UNKNOWN
+    return normalized if normalized in _BOUNDED_FINISH_REASONS else "other"
+
+
+def _metric_finish_reason(value: Optional[str], *, errored: bool) -> str:
+    """Legacy metric label: provider reason, collapsed to ``error`` on failure.
+
+    Kept only so `ragapp_llm_finish_reasons_total` keeps the meaning existing
+    dashboards were built against. New readers use
+    `ragapp_llm_provider_finish_reasons_total`.
+    """
     if errored:
         return "error"
-    normalized = str(value or "").strip().lower()
-    return normalized if normalized in _BOUNDED_FINISH_REASONS else "other"
+    return provider_finish_reason(value)
 
 
 class LLMService(BaseService):
@@ -122,6 +153,14 @@ class LLMService(BaseService):
         errors: List[ErrorEntry] = []
         usage = UsageInfo(provider=self.config.llm_implementation)
         finish_reason = "completed"
+        # None until the provider actually answers. A fabricated `completed`
+        # here would claim a finish reason for a call that never reached the
+        # provider at all.
+        raw_provider_finish_reason: Optional[str] = None
+        parse_stage: Optional[str] = None
+        # Unknown until the request type resolves; never reported as a number
+        # the call was not actually made with.
+        resolved_max_tokens: Optional[int] = None
         provider_duration_seconds: Optional[float] = None
         token_event_count = 0
         status = "success"
@@ -221,6 +260,18 @@ class LLMService(BaseService):
                         }
                         else None
                     ),
+                    "structured_output_transport": (
+                        self.config.answer_evaluation_structured_output_transport
+                        if request.request_type == "answer_evaluation"
+                        else "legacy"
+                    ),
+                    "structured_output_schema": (
+                        entry.output_model.model_json_schema()
+                        if request.request_type == "answer_evaluation"
+                        and self.config.answer_evaluation_structured_output_transport
+                        == "json_schema"
+                        else None
+                    ),
                 },
             )
 
@@ -236,6 +287,7 @@ class LLMService(BaseService):
                     provider_duration_seconds = time.perf_counter() - provider_started_at
                 raw_output = generation.raw_output or ""
                 finish_reason = generation.finish_reason or "completed"
+                raw_provider_finish_reason = finish_reason
                 usage = self._normalize_usage(generation.usage)
                 span.finish(
                     outputs={
@@ -253,9 +305,15 @@ class LLMService(BaseService):
             trace.finish(outputs={"status": status, "error_codes": [err.code for err in errors]}, error=exc)
         except Exception as exc:
             status = "error"
-            errors.append(self._error_entry("execution_error", str(exc)))
+            # A provider/inference failure and a local failure before the call
+            # are different diagnoses: one points at the model server, the
+            # other at this service.
+            error_code = self._provider_failure_code(
+                exc, provider_attempted=provider_duration_seconds is not None
+            )
+            errors.append(self._error_entry(error_code, str(exc)))
             visible_reasoning_steps.append("Execution failed")
-            self._publish_stream_error(stream_publisher, "execution_error", str(exc))
+            self._publish_stream_error(stream_publisher, error_code, str(exc))
             trace.finish(outputs={"status": status, "error_codes": [err.code for err in errors]}, error=exc)
         else:
             try:
@@ -274,6 +332,7 @@ class LLMService(BaseService):
                             structured_output_debug = parsed_payload.metadata
                             parsed_payload = parsed_payload.payload
                     except Exception as exc:
+                        parse_stage = "parse"
                         self._log_structured_output_failure(
                             request_message=request_message,
                             resolved_model=resolved_model,
@@ -299,6 +358,7 @@ class LLMService(BaseService):
                         )
                         parsed_output = entry.output_model.model_validate(parsed_payload)
                     except Exception as exc:
+                        parse_stage = "validation"
                         self._log_structured_output_failure(
                             request_message=request_message,
                             resolved_model=resolved_model,
@@ -345,10 +405,18 @@ class LLMService(BaseService):
             except Exception as exc:
                 status = "error"
                 error_code = (
-                    "structured_output_invalid"
-                    if entry.structured_output_required
-                    else "execution_error"
+                    "validation_error"
+                    if entry.structured_output_required and parse_stage == "validation"
+                    else (
+                        "structured_output_invalid"
+                        if entry.structured_output_required
+                        else "execution_error"
+                    )
                 )
+                if error_code == "structured_output_invalid" and parse_stage is None:
+                    # The output was rejected somewhere other than the two
+                    # instrumented stages. `unknown` is the honest label.
+                    parse_stage = "unknown"
                 errors.append(self._error_entry(error_code, str(exc)))
                 visible_reasoning_steps.append(
                     "Structured output validation failed"
@@ -416,7 +484,17 @@ class LLMService(BaseService):
             service=self.config.service_name,
             model=metric_model,
             request_type=request.request_type,
-            finish_reason=_metric_finish_reason(finish_reason, errored=status == "error"),
+            finish_reason=_metric_finish_reason(
+                raw_provider_finish_reason, errored=status == "error"
+            ),
+            traffic_class=traffic_class(),
+        ).inc()
+        bounded_finish_reason = provider_finish_reason(raw_provider_finish_reason)
+        METRICS.llm_provider_finish_reasons_total.labels(
+            service=self.config.service_name,
+            model=metric_model,
+            request_type=request.request_type,
+            finish_reason=bounded_finish_reason,
             traffic_class=traffic_class(),
         ).inc()
 
@@ -431,6 +509,13 @@ class LLMService(BaseService):
             raw_output=sanitize_debug_text(raw_output, self.config.debug_max_field_length),
             parsed_output=parsed_output,
             usage=usage,
+            # Provider evidence, kept whole. `application_status` says what
+            # this service made of the response; neither field overwrites the
+            # other.
+            provider_finish_reason=bounded_finish_reason,
+            application_status=errors[0].code if (status == "error" and errors) else status,
+            parse_stage=parse_stage,
+            max_tokens=resolved_max_tokens,
             latency_ms=latency_ms,
             model=resolved_model,
             prompt_version=resolved_prompt_version,
@@ -476,6 +561,24 @@ class LLMService(BaseService):
                 },
             )
         )
+
+    @staticmethod
+    def _provider_failure_code(exc: Exception, *, provider_attempted: bool) -> str:
+        """Bounded application status for a failure raised before parsing.
+
+        A timeout, a provider/inference failure and a local failure that never
+        reached the provider are three different diagnoses, and only the last
+        one is this service's own bug.
+        """
+        if isinstance(exc, ProviderProtocolError):
+            return "provider_protocol_error"
+        if isinstance(exc, ProviderTimeoutError):
+            return "provider_timeout"
+        if isinstance(exc, ProviderHTTPError):
+            return "provider_http_error"
+        if isinstance(exc, (TimeoutError, TimeoutException)):
+            return "provider_timeout"
+        return "provider_error" if provider_attempted else "execution_error"
 
     def _normalize_usage(self, usage: LLMUsage) -> UsageInfo:
         return UsageInfo(

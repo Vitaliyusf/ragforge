@@ -72,6 +72,7 @@ TOKEN_BUDGET_ENV = {
     "CONTENT_RISK_SCAN_MAX_TOKENS": "128",
     "QUERY_REWRITE_MAX_TOKENS": "128",
     "MEMORY_EXTRACTION_MAX_TOKENS": "512",
+    "ANSWER_EVALUATION_STRUCTURED_OUTPUT_TRANSPORT": "legacy",
 }
 
 
@@ -390,9 +391,19 @@ def test_the_deployed_vllm_runtime_is_recorded_from_its_pinned_image(config):
     assert manifest["vllm"]["gpu_memory_utilization"] == pytest.approx(0.80)
     assert manifest["vllm"]["max_model_len"] == 10240
     assert manifest["vllm"]["prefix_caching"] is True
-    assert [
+    assert manifest["vllm"]["configured"]["server_version"] == "0.28.0"
+    assert manifest["vllm"]["observed"] == {
+        "server_version": None,
+        "model_runner": None,
+        "max_model_len": None,
+    }
+    assert set(
         path for path in manifest["unobserved"] if path.startswith("vllm.")
-    ] == []
+    ) == {
+        "vllm.observed.server_version",
+        "vllm.observed.model_runner",
+        "vllm.observed.max_model_len",
+    }
 
 
 def test_the_previous_pinned_release_records_its_own_version(config):
@@ -402,6 +413,40 @@ def test_the_previous_pinned_release_records_its_own_version(config):
     )
 
     assert manifest["vllm"]["server_version"] == "0.27.1"
+
+
+def test_answer_evaluation_transport_is_explicit_in_manifest(config):
+    manifest = build_benchmark_manifest(
+        config,
+        env={
+            **VLLM_ENV,
+            "ANSWER_EVALUATION_STRUCTURED_OUTPUT_TRANSPORT": "json_schema",
+        },
+    )
+
+    assert manifest["llm"]["structured_output_transport"] == {
+        "answer_evaluation": "json_schema"
+    }
+
+
+def test_observed_server_version_comes_only_from_runtime_observation(config):
+    manifest = build_benchmark_manifest(
+        config,
+        env={
+            **VLLM_ENV,
+            "VLLM_OBSERVED_SERVER_VERSION": "0.27.1+runtime",
+        },
+    )
+
+    assert manifest["vllm"]["configured"]["server_version"] == "0.28.0"
+    assert manifest["vllm"]["observed"]["server_version"] == "0.27.1+runtime"
+    assert "vllm.observed.server_version" not in manifest["unobserved"]
+
+
+def test_missing_runtime_observation_remains_null(config):
+    manifest = build_benchmark_manifest(config, env=VLLM_ENV)
+
+    assert manifest["vllm"]["observed"]["server_version"] is None
 
 
 def test_scheduler_knobs_nobody_configured_are_null_and_not_unknown(config):

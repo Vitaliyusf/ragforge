@@ -54,6 +54,11 @@ CRITICAL_COMPATIBILITY_FIELDS: Sequence[tuple[str, str, str]] = (
     ("model", "vllm.server_version", "manifest.vllm.server_version"),
     ("model", "vllm.image", "manifest.vllm.image"),
     ("model", "vllm.model_runner", "manifest.vllm.model_runner"),
+    (
+        "config",
+        "llm.structured_output_transport.answer_evaluation",
+        "manifest.llm.structured_output_transport.answer_evaluation",
+    ),
     ("config", "vllm.max_num_seqs", "manifest.vllm.max_num_seqs"),
     (
         "config",
