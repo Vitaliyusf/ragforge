@@ -76,10 +76,11 @@ def test_ticket_enforces_signature_audience_purpose_and_lifetime() -> None:
         verify_auth_ticket(ticket, secret=SECRET, audience="files", now=1_060, clock_skew_seconds=0)
 
     encoded, signature = ticket.split(".", 1)
-    replacement = "A" if signature[-1] != "A" else "B"
+    replacement = "A" if signature[0] != "A" else "B"
+    tampered_signature = replacement + signature[1:]
     with pytest.raises(AuthError):
         verify_auth_ticket(
-            f"{encoded}.{signature[:-1]}{replacement}",
+            f"{encoded}.{tampered_signature}",
             secret=SECRET,
             audience="files",
             now=1_010,
