@@ -8,9 +8,19 @@ Typed LLM actions can override the legacy `VLLM_MAX_TOKENS` fallback with:
 - `QUERY_REWRITE_MAX_TOKENS`
 - `MEMORY_EXTRACTION_MAX_TOKENS`
 
-All overrides are optional positive integers. An unset typed override inherits
-`VLLM_MAX_TOKENS`, including for legacy or unknown callers, so upgrading does
-not change output limits by itself.
+The measured GEN-03 candidate defaults are:
+
+```text
+answer_generation = 128
+answer_evaluation = 512
+content_risk_scan = 128
+query_rewrite = 128
+memory_extraction = 512
+```
+
+All settings are positive integers no larger than `VLLM_MAX_MODEL_LEN`.
+Legacy or unknown callers use `VLLM_MAX_TOKENS`; summaries continue to use
+the independent `SUMMARY_MAX_TOKENS` setting.
 
 ## Selection rule
 

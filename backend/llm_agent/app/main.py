@@ -107,6 +107,14 @@ async def lifespan(app: FastAPI):
         "service_port": settings.service_port,
         "llm_implementation": settings.llm_implementation,
         "device": settings.device,
+        "primary_prefetch": settings.llm_request_prefetch,
+        "max_concurrent_requests": settings.max_concurrent_requests,
+        "vllm_max_tokens": settings.vllm_max_tokens,
+        "answer_generation_max_tokens": settings.answer_generation_max_tokens,
+        "answer_evaluation_max_tokens": settings.answer_evaluation_max_tokens,
+        "content_risk_scan_max_tokens": settings.content_risk_scan_max_tokens,
+        "query_rewrite_max_tokens": settings.query_rewrite_max_tokens,
+        "memory_extraction_max_tokens": settings.memory_extraction_max_tokens,
     })
 
     _startup_llm_checks()

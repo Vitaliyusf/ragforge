@@ -20,10 +20,6 @@ DEFAULT_CHARS_PER_TOKEN = 3.5
 # ordinary tokenizer variance.
 SAFETY_MARGIN_TOKENS = 128
 
-# Never hand the model a budget so small that splitting makes no progress.
-MIN_BUDGET_CHARS = 256
-
-
 def estimate_tokens(text: str, chars_per_token: float = DEFAULT_CHARS_PER_TOKEN) -> int:
     """Estimate the token count of ``text``, rounding up."""
     if not text:
@@ -78,6 +74,17 @@ def split_text(text: str, max_chars: int, overlap_chars: int = 0) -> List[str]:
         start = max(end - overlap, start + 1)
 
     return chunks
+
+
+def truncate_middle(text: str, max_chars: int) -> str:
+    """Fit one prompt while preserving both its framing and final instructions."""
+    if max_chars <= 0:
+        raise ValueError("max_chars must be positive")
+    if len(text) <= max_chars:
+        return text
+    prefix_chars = max_chars // 2
+    suffix_chars = max_chars - prefix_chars
+    return f"{text[:prefix_chars]}{text[-suffix_chars:]}"
 
 
 class ContextWindowResolver:
@@ -143,5 +150,8 @@ class ContextWindowResolver:
             - SAFETY_MARGIN_TOKENS
         )
         if available <= 0:
-            return MIN_BUDGET_CHARS
-        return max(MIN_BUDGET_CHARS, int(available * DEFAULT_CHARS_PER_TOKEN))
+            raise ValueError("Prompt reservations leave no room in the model context window")
+        # ``estimate_tokens`` rounds up, so reserve one token before converting
+        # back to characters; otherwise the computed boundary can exceed the
+        # context window by one token.
+        return max(1, int(max(1, available - 1) * DEFAULT_CHARS_PER_TOKEN))

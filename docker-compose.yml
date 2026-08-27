@@ -138,6 +138,12 @@ services:
       # Fallback context window used until vLLM can be probed for max_model_len.
       # Same variable as the vllm service's --max-model-len, so they cannot drift.
       VLLM_MAX_MODEL_LEN: ${VLLM_MAX_MODEL_LEN:-10240}
+      VLLM_MAX_TOKENS: ${VLLM_MAX_TOKENS:-512}
+      ANSWER_GENERATION_MAX_TOKENS: ${ANSWER_GENERATION_MAX_TOKENS:-128}
+      ANSWER_EVALUATION_MAX_TOKENS: ${ANSWER_EVALUATION_MAX_TOKENS:-512}
+      CONTENT_RISK_SCAN_MAX_TOKENS: ${CONTENT_RISK_SCAN_MAX_TOKENS:-128}
+      QUERY_REWRITE_MAX_TOKENS: ${QUERY_REWRITE_MAX_TOKENS:-128}
+      MEMORY_EXTRACTION_MAX_TOKENS: ${MEMORY_EXTRACTION_MAX_TOKENS:-512}
       SUMMARY_MODEL: ${SUMMARY_MODEL:-RedHatAI/Qwen3.5-4B-quantized.w4a16}
       METADATA_MODEL: ${METADATA_MODEL:-RedHatAI/Qwen3.5-4B-quantized.w4a16}
       RAG_CHAT_MODEL: ${RAG_CHAT_MODEL:-RedHatAI/Qwen3.5-4B-quantized.w4a16}
@@ -325,6 +331,11 @@ services:
       # Benchmark provenance for the vLLM scheduler candidate under test.
       VLLM_MAX_NUM_SEQS: ${VLLM_MAX_NUM_SEQS:-4}
       VLLM_QUANTIZATION: ${VLLM_QUANTIZATION:-compressed-tensors}
+      ANSWER_GENERATION_MAX_TOKENS: ${ANSWER_GENERATION_MAX_TOKENS:-128}
+      ANSWER_EVALUATION_MAX_TOKENS: ${ANSWER_EVALUATION_MAX_TOKENS:-512}
+      CONTENT_RISK_SCAN_MAX_TOKENS: ${CONTENT_RISK_SCAN_MAX_TOKENS:-128}
+      QUERY_REWRITE_MAX_TOKENS: ${QUERY_REWRITE_MAX_TOKENS:-128}
+      MEMORY_EXTRACTION_MAX_TOKENS: ${MEMORY_EXTRACTION_MAX_TOKENS:-512}
       RERANKER_ENABLED: ${RERANKER_ENABLED:-false}
       RERANKER_TOP_K: ${RERANKER_TOP_K:-5}
       # Chunks fed into the answer prompt. With the reranker disabled this is the

@@ -27,6 +27,13 @@ def manifest(*, model="embed-v1", top_k=10, phases=None):
             "chat_model": "gpt-test",
             "max_model_len": 4096,
             "quantization": "none",
+            "max_tokens": {
+                "answer_generation": 128,
+                "answer_evaluation": 512,
+                "content_risk_scan": 128,
+                "query_rewrite": 128,
+                "memory_extraction": 512,
+            },
         },
         "retrieval": {
             "top_k_documents": top_k,
@@ -101,6 +108,28 @@ def test_critical_fields_distinguish_same_different_and_unknown():
     different = benchmark_compatibility(baseline, candidate)
     assert compatibility_field(different, "embedding.model")["status"] == "different"
     assert different["compatibility_status"] == "incompatible"
+
+
+def test_known_token_budget_difference_is_incompatible():
+    baseline = benchmark("base", created_at="2026-01-01")
+    candidate = benchmark("candidate", created_at="2026-01-02")
+    baseline["manifest"]["llm"]["max_tokens"]["answer_generation"] = 512
+
+    result = benchmark_compatibility(baseline, candidate)
+
+    assert compatibility_field(result, "llm.max_tokens")["status"] == "different"
+    assert result["compatibility_status"] == "incompatible"
+
+
+def test_missing_historical_token_budgets_make_compatibility_unknown():
+    baseline = benchmark("base", created_at="2026-01-01")
+    candidate = benchmark("candidate", created_at="2026-01-02")
+    baseline["manifest"]["llm"].pop("max_tokens")
+
+    result = benchmark_compatibility(baseline, candidate)
+
+    assert compatibility_field(result, "llm.max_tokens")["status"] == "unknown"
+    assert result["compatibility_status"] == "unknown"
 
 
 @pytest.mark.parametrize("left,right", [(None, None), ("embed-v1", None)])

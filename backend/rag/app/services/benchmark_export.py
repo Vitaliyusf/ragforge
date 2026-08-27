@@ -143,7 +143,7 @@ def _runtime_evidence(manifest: Any) -> Any:
         return None
     return {
         key: manifest.get(key)
-        for key in ("captured_at", "build", "runtime", "retrieval")
+        for key in ("captured_at", "build", "runtime", "retrieval", "llm")
     }
 
 

@@ -8,7 +8,6 @@ from app.schemas.llm import AnswerEvaluationRequest
 from app.llm.prompts._base import (
     PromptRenderResult,
     StructuredExtractionResult,
-    StructuredOutputParseError,
     _coerce_bool,
     _coerce_number,
     _extract_json_payload_with_metadata,
@@ -21,19 +20,6 @@ from app.llm.prompts._base import (
 # None rather than guessed at: an unrecognised verdict is an unmeasured turn,
 # and treating it as "none" would quietly clear a possibly-hallucinated answer.
 HALLUCINATION_VERDICTS = ("none", "minor", "severe")
-
-_FALLBACK = {
-    "verdict": "unavailable",
-    "groundedness_score": None,
-    "completeness_score": None,
-    "safety_score": None,
-    "issues": [],
-    "claims": [],
-    "unsupported_claim_count": None,
-    "hallucination_verdict": None,
-    "revision_applied": False,
-}
-
 
 def _normalize_payload(payload: Any) -> Any:
     if not isinstance(payload, dict):
@@ -251,16 +237,8 @@ def build_prompt_v2(request: AnswerEvaluationRequest) -> PromptRenderResult:
 
 
 def parse(raw_output: str) -> Any:
-    try:
-        extracted = _extract_json_payload_with_metadata(raw_output, selection_policy="last_valid")
-        return StructuredExtractionResult(
-            payload=_normalize_payload(extracted.payload),
-            metadata=extracted.metadata,
-        )
-    except (StructuredOutputParseError, ValueError):
-        fallback_metadata = {
-            "extraction_mode": "prose_fallback",
-            "payload_count": 0,
-            "selected_payload_index": None,
-        }
-        return StructuredExtractionResult(payload=dict(_FALLBACK), metadata=fallback_metadata)
+    extracted = _extract_json_payload_with_metadata(raw_output, selection_policy="last_valid")
+    return StructuredExtractionResult(
+        payload=_normalize_payload(extracted.payload),
+        metadata=extracted.metadata,
+    )

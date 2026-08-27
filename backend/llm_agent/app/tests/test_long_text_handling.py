@@ -134,7 +134,9 @@ class SummaryChunkingTests(unittest.TestCase):
     def test_a_smaller_window_produces_more_calls(self):
         text = "word " * 40000
         wide = RecordingClient(window=8192)
-        narrow = RecordingClient(window=2048)
+        # Still narrower than the 8192-token control, but large enough to fit
+        # the independent 2048-token summary output reservation plus input.
+        narrow = RecordingClient(window=4096)
 
         SummaryService(wide, self.logger, self.config).generate_summary(text)
         SummaryService(narrow, self.logger, self.config).generate_summary(text)

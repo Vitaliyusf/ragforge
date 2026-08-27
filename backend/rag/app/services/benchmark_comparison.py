@@ -31,6 +31,7 @@ CRITICAL_COMPATIBILITY_FIELDS: Sequence[tuple[str, str, str]] = (
     ("model", "llm.chat_model", "manifest.llm.chat_model"),
     ("model", "llm.max_model_len", "manifest.llm.max_model_len"),
     ("model", "llm.quantization", "manifest.llm.quantization"),
+    ("config", "llm.max_tokens", "manifest.llm.max_tokens"),
     (
         "retrieval",
         "retrieval.retrieval_strategy",

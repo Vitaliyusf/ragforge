@@ -5,7 +5,7 @@ import json
 from typing import ClassVar, Dict, Optional
 from pathlib import Path
 
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 logger = logging.getLogger(__name__)
@@ -90,14 +90,11 @@ class Settings(BaseSettings):
         ge=1,
         description="Fallback output-token budget for legacy and unknown LLM actions",
     )
-    # Keep action defaults unset so existing deployments inherit VLLM_MAX_TOKENS.
-    # Configure these only from measured per-action output distributions; see
-    # docs/operations/llm-output-token-budgets.md.
-    answer_generation_max_tokens: Optional[int] = Field(default=None, ge=1)
-    answer_evaluation_max_tokens: Optional[int] = Field(default=None, ge=1)
-    content_risk_scan_max_tokens: Optional[int] = Field(default=None, ge=1)
-    query_rewrite_max_tokens: Optional[int] = Field(default=None, ge=1)
-    memory_extraction_max_tokens: Optional[int] = Field(default=None, ge=1)
+    answer_generation_max_tokens: int = Field(default=128, ge=1, le=131072)
+    answer_evaluation_max_tokens: int = Field(default=512, ge=1, le=131072)
+    content_risk_scan_max_tokens: int = Field(default=128, ge=1, le=131072)
+    query_rewrite_max_tokens: int = Field(default=128, ge=1, le=131072)
+    memory_extraction_max_tokens: int = Field(default=512, ge=1, le=131072)
     # Summaries need far more room than the chat default: a truncation at 512
     # tokens cuts a document summary off mid-sentence (and non-Latin scripts such
     # as Hebrew burn ~2 tokens/char, so 512 tokens is only ~1k characters).
@@ -217,11 +214,26 @@ class Settings(BaseSettings):
             return False
         return True
 
+    @model_validator(mode="after")
+    def validate_output_token_budgets(self) -> "Settings":
+        """Reject output ceilings that cannot fit inside the configured window."""
+        fields = (
+            "vllm_max_tokens",
+            "summary_max_tokens",
+            *self._ACTION_MAX_TOKEN_FIELDS.values(),
+        )
+        for field_name in fields:
+            if getattr(self, field_name) > self.vllm_max_model_len:
+                raise ValueError(
+                    f"{field_name} must not exceed vllm_max_model_len "
+                    f"({self.vllm_max_model_len})"
+                )
+        return self
+
     def max_tokens_for_request_type(self, request_type: str) -> int:
         """Resolve a typed action budget, falling back for legacy/unknown callers."""
         field_name = self._ACTION_MAX_TOKEN_FIELDS.get(request_type)
-        configured = getattr(self, field_name, None) if field_name else None
-        return configured if configured is not None else self.vllm_max_tokens
+        return getattr(self, field_name) if field_name else self.vllm_max_tokens
 
 
 # Global settings instance
