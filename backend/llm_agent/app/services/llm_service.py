@@ -194,6 +194,7 @@ class LLMService(BaseService):
                 raw_prompt=raw_prompt,
                 model=resolved_model,
                 timeout=timeout,
+                max_tokens=self.config.max_tokens_for_request_type(request.request_type),
                 on_token=on_token if can_stream else None,
                 metadata={
                     "request_type": request.request_type,

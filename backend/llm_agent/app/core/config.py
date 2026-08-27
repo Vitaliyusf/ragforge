@@ -2,7 +2,7 @@
 import logging
 import os
 import json
-from typing import Optional
+from typing import ClassVar, Dict, Optional
 from pathlib import Path
 
 from pydantic import Field
@@ -13,6 +13,14 @@ logger = logging.getLogger(__name__)
 
 class Settings(BaseSettings):
     """Configuration class for llm_agent service using Pydantic BaseSettings."""
+
+    _ACTION_MAX_TOKEN_FIELDS: ClassVar[Dict[str, str]] = {
+        "answer_generation": "answer_generation_max_tokens",
+        "answer_evaluation": "answer_evaluation_max_tokens",
+        "content_risk_scan": "content_risk_scan_max_tokens",
+        "query_rewrite": "query_rewrite_max_tokens",
+        "memory_extraction": "memory_extraction_max_tokens",
+    }
     
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -77,7 +85,19 @@ class Settings(BaseSettings):
     hf_do_sample: bool = Field(default=True, description="HF do sample")
     
     # vLLM generation parameters
-    vllm_max_tokens: int = Field(default=512, description="vLLM max tokens")
+    vllm_max_tokens: int = Field(
+        default=512,
+        ge=1,
+        description="Fallback output-token budget for legacy and unknown LLM actions",
+    )
+    # Keep action defaults unset so existing deployments inherit VLLM_MAX_TOKENS.
+    # Configure these only from measured per-action output distributions; see
+    # docs/operations/llm-output-token-budgets.md.
+    answer_generation_max_tokens: Optional[int] = Field(default=None, ge=1)
+    answer_evaluation_max_tokens: Optional[int] = Field(default=None, ge=1)
+    content_risk_scan_max_tokens: Optional[int] = Field(default=None, ge=1)
+    query_rewrite_max_tokens: Optional[int] = Field(default=None, ge=1)
+    memory_extraction_max_tokens: Optional[int] = Field(default=None, ge=1)
     # Summaries need far more room than the chat default: a truncation at 512
     # tokens cuts a document summary off mid-sentence (and non-Latin scripts such
     # as Hebrew burn ~2 tokens/char, so 512 tokens is only ~1k characters).
@@ -196,6 +216,12 @@ class Settings(BaseSettings):
         if not self.rabbitmq_exchange or not self.rabbitmq_queue:
             return False
         return True
+
+    def max_tokens_for_request_type(self, request_type: str) -> int:
+        """Resolve a typed action budget, falling back for legacy/unknown callers."""
+        field_name = self._ACTION_MAX_TOKEN_FIELDS.get(request_type)
+        configured = getattr(self, field_name, None) if field_name else None
+        return configured if configured is not None else self.vllm_max_tokens
 
 
 # Global settings instance
