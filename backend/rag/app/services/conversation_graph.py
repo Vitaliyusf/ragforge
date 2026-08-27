@@ -414,9 +414,9 @@ class ConversationGraphRunner:
         workflow.add_edge("evaluate_answer_light", "output_guardrails")
         workflow.add_edge("load_memory_deep", "rewrite_or_decompose_query")
         workflow.add_edge("rewrite_or_decompose_query", "retrieve_pass_one")
-        workflow.add_edge("retrieve_pass_one", "rerank_and_merge")
-        workflow.add_edge("rerank_and_merge", "retrieve_pass_two_if_needed")
-        workflow.add_edge("retrieve_pass_two_if_needed", "generate_draft_answer")
+        workflow.add_edge("retrieve_pass_one", "retrieve_pass_two_if_needed")
+        workflow.add_edge("retrieve_pass_two_if_needed", "rerank_and_merge")
+        workflow.add_edge("rerank_and_merge", "generate_draft_answer")
         workflow.add_edge("generate_draft_answer", "evaluate_answer_deep")
         workflow.add_edge("evaluate_answer_deep", "revise_once_if_needed")
         workflow.add_edge("revise_once_if_needed", "output_guardrails")
@@ -440,8 +440,8 @@ class ConversationGraphRunner:
                 "load_memory_deep",
                 "rewrite_or_decompose_query",
                 "retrieve_pass_one",
-                "rerank_and_merge",
                 "retrieve_pass_two_if_needed",
+                "rerank_and_merge",
                 "generate_draft_answer",
                 "evaluate_answer_deep",
                 "revise_once_if_needed",

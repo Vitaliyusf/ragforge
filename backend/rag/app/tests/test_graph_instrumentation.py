@@ -164,16 +164,16 @@ def test_ttft_is_recorded_for_non_admin_users():
 
 
 def test_reranker_top1_change_is_recorded_in_the_extended_flow():
-    before_false = counter_value(
-        METRICS.rag_reranker_changed_top1, service="rag", changed="false"
+    before_true = counter_value(
+        METRICS.rag_reranker_changed_top1, service="rag", changed="true"
     )
 
     run_turn("Needs a second retrieval", "extended")
 
-    # Pass one yields a single chunk, so the reranker cannot change first place.
+    # Global Pass1 + Pass2 ranking promotes Pass2's higher-scoring chunk.
     assert (
-        counter_value(METRICS.rag_reranker_changed_top1, service="rag", changed="false")
-        == before_false + 1
+        counter_value(METRICS.rag_reranker_changed_top1, service="rag", changed="true")
+        == before_true + 1
     )
 
 
