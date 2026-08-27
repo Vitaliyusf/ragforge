@@ -9,6 +9,7 @@ import TabSkeleton from '@/components/ui/TabSkeleton'
 import GoldenSetImporter from '@/features/metrics/components/benchmark/GoldenSetImporter'
 import { GOLDEN_SET_HELP } from '@/features/metrics/components/metricsConfig'
 import { useBenchmarkRuns } from '@/features/metrics/hooks/useBenchmarkRuns'
+import { useEvalActivityPublisher } from '@/features/activity/sources/EvalActivityProvider'
 import { useEvalRuns } from '@/features/metrics/hooks/useEvalRuns'
 import { isBenchmarkActive } from '../evalProfiles'
 import ActiveRunPanel from './ActiveRunPanel'
@@ -55,6 +56,10 @@ export default function EvalTab() {
     download,
   } = useBenchmarkRuns(datasetId)
 
+  // The page owns benchmark polling while it is mounted; the nav reads what
+  // it publishes rather than polling the same run a second time.
+  useEvalActivityPublisher(benchmark)
+
   const [importOpen, setImportOpen] = useState(false)
   const dataset = datasets.find((entry) => entry.dataset_id === datasetId)
   const benchmarkRunning = isBenchmarkActive(benchmark)
@@ -72,7 +77,12 @@ export default function EvalTab() {
   if (loading && !datasets.length) return <TabSkeleton />
 
   return (
-    <div className="mx-auto flex h-full w-full max-w-7xl flex-col gap-4 overflow-y-auto px-3 py-4 md:px-6 md:py-5">
+    // `[&>*]:shrink-0` is load-bearing, not decoration. Card sets
+    // `overflow-hidden`, and CSS only gives a flex item an automatic minimum
+    // size when its overflow is visible — so in this scrolling column the
+    // cards were free to be crushed to a sliver (clipping their own headers
+    // and buttons) instead of making the column scroll.
+    <div className="mx-auto flex h-full w-full max-w-7xl flex-col gap-4 overflow-y-auto px-3 py-4 [&>*]:shrink-0 md:px-6 md:py-5">
       <PageHeader
         className="mb-2"
         title="Eval"

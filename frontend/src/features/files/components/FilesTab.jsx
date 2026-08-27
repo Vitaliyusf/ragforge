@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { FolderOpen, Loader2, RefreshCw, Search, Upload } from 'lucide-react'
 import { toast } from 'sonner'
 import { useFiles } from '@/features/files'
+import { ACTIVITY_FEATURES, useLiveActivitySource } from '@/features/activity'
 import Button from '@/components/ui/Button'
 import Card from '@/components/ui/Card'
 import Badge from '@/components/ui/Badge'
@@ -33,6 +34,10 @@ const FILE_FILTERS = [
 ]
 
 export default function FilesTab() {
+  // useFiles already refreshes the shared file list every few seconds, so the
+  // nav's background poll stands down for as long as this tab is open.
+  useLiveActivitySource(ACTIVITY_FEATURES.FILES)
+
   const {
     files,
     loading,

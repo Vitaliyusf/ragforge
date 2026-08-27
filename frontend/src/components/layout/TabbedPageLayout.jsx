@@ -12,6 +12,7 @@ import TabSkeleton from '@/components/ui/TabSkeleton'
 import ErrorBoundary from '@/components/ErrorBoundary'
 import { config as appConfig } from '@/lib/config'
 import { useAuth } from '@/features/auth'
+import { ACTIVITY_FEATURES, isTerminalState, useActivity } from '@/features/activity'
 
 const ChatTab = dynamic(() => import('@/features/chat/components/ChatTab'), {
   loading: () => <TabSkeleton />, ssr: false,
@@ -88,8 +89,11 @@ export function resolveTab(tab) {
   return LEGACY_TAB_ALIASES[tab] || tab
 }
 
+const ACKNOWLEDGEABLE = new Set(Object.values(ACTIVITY_FEATURES))
+
 export default function TabbedPageLayout({ defaultTab = 'chat' }) {
   const { isAdmin } = useAuth()
+  const { activities, acknowledge } = useActivity()
   const [activeTab, setActiveTab] = useState(resolveTab(defaultTab))
   const allowedTabs = isAdmin
     ? new Set(['chat', 'files', 'logs', 'models', 'config', 'memory', 'health', 'metrics', 'eval', 'users', ...(appConfig.enableTrainingTab ? ['training'] : [])])
@@ -101,6 +105,15 @@ export default function TabbedPageLayout({ defaultTab = 'chat' }) {
   useEffect(() => {
     if (!allowedTabs.has(resolveTab(activeTab))) setActiveTab('chat')
   }, [activeTab, isAdmin])
+
+  // Opening a feature is the acknowledgement: the page itself now shows the
+  // authoritative result, so the nav marker has done its job. Only terminal
+  // state clears — work that is still running keeps its indicator.
+  const visibleActivityState = activities[safeActiveTab]?.state
+  useEffect(() => {
+    if (!ACKNOWLEDGEABLE.has(safeActiveTab)) return
+    if (isTerminalState(visibleActivityState)) acknowledge(safeActiveTab)
+  }, [safeActiveTab, visibleActivityState, acknowledge])
 
   return (
     <div
