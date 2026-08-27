@@ -8,10 +8,11 @@ sensitivity to the things that must not be lost, down to a single constraint.
 import hashlib
 import json
 import unittest
+from typing import Any
 
 from shared.schema_provenance import canonical_schema_json, canonical_schema_sha256
 
-SCHEMA = {
+SCHEMA: dict[str, Any] = {
     "title": "AnswerReview",
     "type": "object",
     "properties": {
@@ -22,13 +23,13 @@ SCHEMA = {
 
 
 class CanonicalSchemaJsonTests(unittest.TestCase):
-    def test_keys_are_sorted_and_separators_are_compact(self):
+    def test_keys_are_sorted_and_separators_are_compact(self) -> None:
         self.assertEqual(
             canonical_schema_json({"b": 1, "a": 2}),
             b'{"a":2,"b":1}',
         )
 
-    def test_non_ascii_is_encoded_as_utf8_not_escaped(self):
+    def test_non_ascii_is_encoded_as_utf8_not_escaped(self) -> None:
         self.assertEqual(
             canonical_schema_json({"description": "café"}),
             '{"description":"café"}'.encode("utf-8"),
@@ -36,16 +37,16 @@ class CanonicalSchemaJsonTests(unittest.TestCase):
 
 
 class CanonicalSchemaSha256Tests(unittest.TestCase):
-    def test_digest_matches_sha256_of_the_canonical_bytes(self):
+    def test_digest_matches_sha256_of_the_canonical_bytes(self) -> None:
         self.assertEqual(
             canonical_schema_sha256(SCHEMA),
             hashlib.sha256(canonical_schema_json(SCHEMA)).hexdigest(),
         )
 
-    def test_same_schema_hashes_the_same(self):
+    def test_same_schema_hashes_the_same(self) -> None:
         self.assertEqual(canonical_schema_sha256(SCHEMA), canonical_schema_sha256(SCHEMA))
 
-    def test_key_order_does_not_change_the_digest(self):
+    def test_key_order_does_not_change_the_digest(self) -> None:
         reordered = json.loads(json.dumps(SCHEMA))
         reordered["properties"] = {
             "issues": SCHEMA["properties"]["issues"],
@@ -56,7 +57,7 @@ class CanonicalSchemaSha256Tests(unittest.TestCase):
             canonical_schema_sha256(reordered),
         )
 
-    def test_changing_max_items_changes_the_digest(self):
+    def test_changing_max_items_changes_the_digest(self) -> None:
         loosened = json.loads(json.dumps(SCHEMA))
         loosened["properties"]["claims"]["maxItems"] = 8
         self.assertNotEqual(
@@ -64,7 +65,7 @@ class CanonicalSchemaSha256Tests(unittest.TestCase):
             canonical_schema_sha256(loosened),
         )
 
-    def test_removing_a_constraint_changes_the_digest(self):
+    def test_removing_a_constraint_changes_the_digest(self) -> None:
         unbounded = json.loads(json.dumps(SCHEMA))
         del unbounded["properties"]["claims"]["maxItems"]
         self.assertNotEqual(
