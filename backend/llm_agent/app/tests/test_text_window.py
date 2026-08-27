@@ -139,9 +139,20 @@ class ContextWindowResolverTests(unittest.TestCase):
         self.assertLess(estimate_tokens("x" * budget) + 512 + 100, 6144)
         self.assertGreater(budget, 0)
 
-    def test_budget_is_positive_even_on_a_tiny_window(self):
+    def test_budget_rejects_reservations_that_exhaust_the_window(self):
         resolver = ContextWindowResolver(FakeClient(window=600), self.config, self.logger)
-        self.assertGreater(resolver.input_budget_chars("m", reserved_tokens=50), 0)
+        with self.assertRaisesRegex(ValueError, "leave no room"):
+            resolver.input_budget_chars("m", reserved_tokens=50)
+
+    def test_budget_reserves_explicit_action_output_ceiling(self):
+        resolver = ContextWindowResolver(FakeClient(window=1024), self.config, self.logger)
+
+        generation = resolver.input_budget_chars("m", output_tokens=128)
+        evaluation = resolver.input_budget_chars("other-model", output_tokens=512)
+
+        self.assertGreater(generation, evaluation)
+        self.assertLessEqual(estimate_tokens("x" * generation) + 128 + 128, 1024)
+        self.assertLessEqual(estimate_tokens("x" * evaluation) + 512 + 128, 1024)
 
 
 if __name__ == "__main__":

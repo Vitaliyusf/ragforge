@@ -23,10 +23,4 @@ def build_prompt(request: QueryRewriteRequest) -> PromptRenderResult:
 
 
 def parse(raw_output: str) -> Any:
-    try:
-        return _extract_json_payload(raw_output)
-    except ValueError:
-        return {
-            "rewritten_query": raw_output.strip(),
-            "search_intent": None,
-        }
+    return _extract_json_payload(raw_output)

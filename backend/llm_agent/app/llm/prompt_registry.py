@@ -134,7 +134,7 @@ class PromptRegistry:
                     parser=_parse_query_rewrite,
                     output_model=QueryRewriteParsedOutput,
                     streaming_allowed=False,
-                    structured_output_required=False,
+                    structured_output_required=True,
                 )
             },
             "memory_extraction": {
@@ -146,7 +146,7 @@ class PromptRegistry:
                     parser=_parse_memory_extraction,
                     output_model=MemoryExtractionParsedOutput,
                     streaming_allowed=False,
-                    structured_output_required=False,
+                    structured_output_required=True,
                 )
             },
         }

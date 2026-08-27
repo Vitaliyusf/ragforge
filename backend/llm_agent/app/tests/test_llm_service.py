@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import unittest
+import os
 from typing import List
 from unittest.mock import patch
 
@@ -14,6 +15,7 @@ from app.schemas.llm import (
     validate_model_execution_request_message,
 )
 from app.services.llm_service import LLMService, _metric_finish_reason
+from app.services.text_window import SAFETY_MARGIN_TOKENS, estimate_tokens
 from shared.context import bound_context
 
 
@@ -190,6 +192,16 @@ def _request_message(request_type, input_payload, **overrides):
     return validate_model_execution_request_message(payload)
 
 
+def env_action_order():
+    return (
+        "answer_generation",
+        "answer_evaluation",
+        "content_risk_scan",
+        "query_rewrite",
+        "memory_extraction",
+    )
+
+
 class LLMServiceTests(unittest.TestCase):
     """Validate normalized replies, parsing, streaming, and safety behavior."""
 
@@ -216,18 +228,60 @@ class LLMServiceTests(unittest.TestCase):
         )
         self.assertEqual(settings.max_tokens_for_request_type("legacy_action"), 512)
 
-    def test_action_token_budget_defaults_preserve_legacy_budget(self):
+    def test_action_token_budget_defaults_match_measured_candidate(self):
         settings = _settings(vllm_max_tokens=777)
 
-        for action in Settings._ACTION_MAX_TOKEN_FIELDS:
-            with self.subTest(action=action):
-                self.assertEqual(settings.max_tokens_for_request_type(action), 777)
+        self.assertEqual(
+            {
+                action: settings.max_tokens_for_request_type(action)
+                for action in Settings._ACTION_MAX_TOKEN_FIELDS
+            },
+            {
+                "answer_generation": 128,
+                "answer_evaluation": 512,
+                "content_risk_scan": 128,
+                "query_rewrite": 128,
+                "memory_extraction": 512,
+            },
+        )
+        self.assertEqual(settings.max_tokens_for_request_type("unknown"), 777)
+
+    def test_action_budget_environment_overrides_are_independent(self):
+        env = {
+            "ANSWER_GENERATION_MAX_TOKENS": "201",
+            "ANSWER_EVALUATION_MAX_TOKENS": "202",
+            "CONTENT_RISK_SCAN_MAX_TOKENS": "203",
+            "QUERY_REWRITE_MAX_TOKENS": "204",
+            "MEMORY_EXTRACTION_MAX_TOKENS": "205",
+        }
+        with patch.dict(os.environ, env, clear=False):
+            settings = Settings()
+
+        self.assertEqual(
+            [settings.max_tokens_for_request_type(action) for action in env_action_order()],
+            [201, 202, 203, 204, 205],
+        )
+
+    def test_summary_budget_remains_independent(self):
+        settings = _settings(summary_max_tokens=2048, answer_generation_max_tokens=128)
+
+        self.assertEqual(settings.summary_max_tokens, 2048)
+        self.assertEqual(settings.max_tokens_for_request_type("answer_generation"), 128)
 
     def test_invalid_token_budgets_are_rejected(self):
         for field_name in ("vllm_max_tokens", *Settings._ACTION_MAX_TOKEN_FIELDS.values()):
-            with self.subTest(field_name=field_name):
-                with self.assertRaises(ValidationError):
-                    _settings(**{field_name: 0})
+            for invalid_value in (0, -1):
+                with self.subTest(field_name=field_name, invalid_value=invalid_value):
+                    with self.assertRaises(ValidationError):
+                        _settings(**{field_name: invalid_value})
+
+    def test_token_budget_cannot_exceed_context_window(self):
+        with self.assertRaises(ValidationError):
+            _settings(
+                vllm_max_model_len=1024,
+                summary_max_tokens=512,
+                answer_generation_max_tokens=1025,
+            )
 
     def test_request_specific_budget_reaches_typed_invocation(self):
         client = FakeLLMClient(
@@ -253,6 +307,97 @@ class LLMServiceTests(unittest.TestCase):
         self.assertEqual(reply.status, "success")
         self.assertEqual(client.invocations[0].max_tokens, 89)
         self.assertEqual(client.invocations[0].metadata["structured_output_hint"], "json_object")
+
+    def test_all_candidate_budgets_reach_typed_invocations(self):
+        responses = {
+            "answer_generation": "A supported answer.",
+            "answer_evaluation": (
+                '{"verdict":"pass","groundedness_score":1,"completeness_score":1,'
+                '"safety_score":1,"issues":[],"claims":[],"unsupported_claim_count":0,'
+                '"hallucination_verdict":"none","revision_applied":false}'
+            ),
+            "content_risk_scan": (
+                '{"risk_level":"low","categories":[],"flags":[],"summary":"safe"}'
+            ),
+            "query_rewrite": '{"rewritten_query":"widgets","search_intent":"lookup"}',
+            "memory_extraction": '{"memories":[]}',
+        }
+        inputs = {
+            "answer_generation": {"question": "Q?", "retrieved_context": "Context"},
+            "answer_evaluation": {
+                "question": "Q?",
+                "answer": "A.",
+                "reference_context": "Context",
+            },
+            "content_risk_scan": {"content": "safe", "policy_hints": []},
+            "query_rewrite": {"query": "widgets"},
+            "memory_extraction": {"conversation_history": []},
+        }
+        client = FakeLLMClient(responses)
+        service = LLMService(client, FakeLogger(), _settings())
+
+        for action in env_action_order():
+            with self.subTest(action=action):
+                self.assertEqual(service.execute(_request_message(action, inputs[action])).status, "success")
+
+        self.assertEqual(
+            {invocation.metadata["request_type"]: invocation.max_tokens for invocation in client.invocations},
+            {
+                "answer_generation": 128,
+                "answer_evaluation": 512,
+                "content_risk_scan": 128,
+                "query_rewrite": 128,
+                "memory_extraction": 512,
+            },
+        )
+
+    def test_typed_prompt_reserves_its_effective_output_budget(self):
+        client = FakeLLMClient({"answer_generation": "A concise answer."})
+        settings = _settings(
+            vllm_max_model_len=1024,
+            summary_max_tokens=512,
+            answer_generation_max_tokens=128,
+        )
+        service = LLMService(client, FakeLogger(), settings)
+
+        reply = service.execute(
+            _request_message(
+                "answer_generation",
+                {"question": "What?", "retrieved_context": "context " * 5000},
+            )
+        )
+
+        invocation = client.invocations[0]
+        self.assertEqual(reply.status, "success")
+        self.assertLessEqual(
+            estimate_tokens(invocation.system_prompt)
+            + estimate_tokens(invocation.raw_prompt)
+            + invocation.max_tokens
+            + SAFETY_MARGIN_TOKENS,
+            settings.vllm_max_model_len,
+        )
+
+    def test_truncated_structured_outputs_remain_explicit_errors(self):
+        inputs = {
+            "answer_evaluation": {
+                "question": "Q?",
+                "answer": "A.",
+                "reference_context": "Context",
+            },
+            "content_risk_scan": {"content": "safe", "policy_hints": []},
+            "query_rewrite": {"query": "widgets"},
+            "memory_extraction": {"conversation_history": []},
+        }
+        for action, input_payload in inputs.items():
+            with self.subTest(action=action):
+                service = LLMService(
+                    FakeLLMClient({action: '{"truncated":'}),
+                    FakeLogger(),
+                    _settings(),
+                )
+                reply = service.execute(_request_message(action, input_payload))
+                self.assertEqual(reply.status, "error")
+                self.assertEqual(reply.errors[0].code, "structured_output_invalid")
 
     def test_structured_parse_success_for_evaluation_uses_shared_answer_review_shape(self):
         service = LLMService(
@@ -346,7 +491,7 @@ class LLMServiceTests(unittest.TestCase):
         self.assertEqual(reply.parsed_output.groundedness_score, 0.75)
         self.assertFalse(reply.parsed_output.revision_applied)
 
-    def test_answer_evaluation_prose_fallback_preserves_debug_fields(self):
+    def test_answer_evaluation_invalid_output_is_an_explicit_error(self):
         service = LLMService(
             FakeLLMClient({"answer_evaluation": "not valid json"}),
             FakeLogger(),
@@ -364,11 +509,10 @@ class LLMServiceTests(unittest.TestCase):
             )
         )
 
-        self.assertEqual(reply.status, "success")
-        self.assertEqual(reply.parsed_output.verdict, "unavailable")
+        self.assertEqual(reply.status, "error")
+        self.assertIsNone(reply.parsed_output)
         self.assertEqual(reply.raw_output, "not valid json")
-        self.assertEqual(reply.errors, [])
-        self.assertIn("prose_fallback", "".join(reply.visible_reasoning_steps))
+        self.assertEqual(reply.errors[0].code, "structured_output_invalid")
 
     def test_streaming_answer_generation_publishes_inner_stream_payloads(self):
         service = LLMService(FakeLLMClient(), FakeLogger(), _settings())

@@ -8,6 +8,7 @@ from unittest.mock import Mock, patch
 
 from app.llm.implementations.vllm import VLLMClient
 from app.llm.interfaces import LLMInvocation
+from app.core.config import Settings
 
 
 def _config():
@@ -69,6 +70,40 @@ class VLLMStreamingUsageTests(unittest.TestCase):
             client._invoke_vllm(_invocation(max_tokens=37))
 
         self.assertEqual(post.call_args.kwargs["json"]["max_tokens"], 37)
+
+    def test_candidate_action_budgets_reach_provider_payload(self):
+        response = Mock()
+        response.raise_for_status.return_value = None
+        response.json.return_value = {"choices": [{"text": "ok", "finish_reason": "stop"}]}
+        post = Mock(return_value=response)
+        settings = Settings(
+            default_model="model-a",
+            vllm_base_url="http://vllm:8000",
+            vllm_api_key="private-vllm-token",
+            max_concurrent_requests=1,
+        )
+        client = VLLMClient(settings)
+        expected = {
+            "answer_generation": 128,
+            "answer_evaluation": 512,
+            "content_risk_scan": 128,
+            "query_rewrite": 128,
+            "memory_extraction": 512,
+        }
+
+        with patch("app.llm.implementations.vllm.httpx.post", post):
+            for action, max_tokens in expected.items():
+                with self.subTest(action=action):
+                    client._invoke_vllm(
+                        LLMInvocation(
+                            system_prompt="System",
+                            raw_prompt="Prompt",
+                            model="model-a",
+                            max_tokens=settings.max_tokens_for_request_type(action),
+                            metadata={"request_type": action},
+                        )
+                    )
+                    self.assertEqual(post.call_args.kwargs["json"]["max_tokens"], max_tokens)
 
     def test_stream_requests_usage_and_preserves_visible_stream(self):
         token_events = []

@@ -66,6 +66,15 @@ def manifest_text(manifest: Dict[str, Any]) -> str:
     return json.dumps(manifest, default=str)
 
 
+TOKEN_BUDGET_ENV = {
+    "ANSWER_GENERATION_MAX_TOKENS": "128",
+    "ANSWER_EVALUATION_MAX_TOKENS": "512",
+    "CONTENT_RISK_SCAN_MAX_TOKENS": "128",
+    "QUERY_REWRITE_MAX_TOKENS": "128",
+    "MEMORY_EXTRACTION_MAX_TOKENS": "512",
+}
+
+
 # ── Missing values ────────────────────────────────────────────────────────
 
 def test_a_bare_environment_serializes_with_nulls_not_guesses(config):
@@ -77,6 +86,13 @@ def test_a_bare_environment_serializes_with_nulls_not_guesses(config):
     assert manifest["embedding"]["model"] is None
     assert manifest["chunking"]["strategy"] is None
     assert manifest["llm"]["chat_model"] is None
+    assert manifest["llm"]["max_tokens"] == {
+        "answer_generation": None,
+        "answer_evaluation": None,
+        "content_risk_scan": None,
+        "query_rewrite": None,
+        "memory_extraction": None,
+    }
     for path in (
         "build.git_sha",
         "build.git_branch",
@@ -86,6 +102,7 @@ def test_a_bare_environment_serializes_with_nulls_not_guesses(config):
         "chunking.size",
         "vector_store.collection",
         "llm.chat_model",
+        "llm.max_tokens.answer_generation",
     ):
         assert path in manifest["unobserved"]
     # Serializable as-is: a manifest that only survives a populated
@@ -181,6 +198,7 @@ def test_model_and_corpus_metadata_come_from_the_deployment(config):
             "VLLM_MAX_MODEL_LEN": "4096",
             "VLLM_MAX_NUM_SEQS": "3",
             "VLLM_QUANTIZATION": "compressed-tensors",
+            **TOKEN_BUDGET_ENV,
         },
     )
 
@@ -195,6 +213,13 @@ def test_model_and_corpus_metadata_come_from_the_deployment(config):
     assert manifest["llm"]["max_model_len"] == 4096
     assert manifest["llm"]["max_num_seqs"] == 3
     assert manifest["llm"]["quantization"] == "compressed-tensors"
+    assert manifest["llm"]["max_tokens"] == {
+        "answer_generation": 128,
+        "answer_evaluation": 512,
+        "content_risk_scan": 128,
+        "query_rewrite": 128,
+        "memory_extraction": 512,
+    }
     assert [
         path
         for path in manifest["unobserved"]
@@ -220,6 +245,15 @@ def test_invalid_max_num_seqs_is_not_recorded_as_effective(config):
 
     assert manifest["llm"]["max_num_seqs"] is None
     assert "llm.max_num_seqs" in manifest["unobserved"]
+
+
+def test_invalid_action_budget_is_unknown_not_assumed(config):
+    manifest = build_benchmark_manifest(
+        config, env={**TOKEN_BUDGET_ENV, "QUERY_REWRITE_MAX_TOKENS": "invalid"}
+    )
+
+    assert manifest["llm"]["max_tokens"]["query_rewrite"] is None
+    assert "llm.max_tokens.query_rewrite" in manifest["unobserved"]
 
 
 def test_an_oversized_value_is_dropped_rather_than_stored(config):
@@ -287,9 +321,9 @@ def test_a_credential_shaped_name_cannot_be_allowlisted(name):
 
 def test_the_shipped_allowlist_passes_its_own_guard():
     """Import-time enforcement, restated so a regression names itself."""
-    from app.services.benchmark_manifest import _ENV_FIELDS
+    from app.services.benchmark_manifest import _ENV_FIELDS, _LLM_MAX_TOKEN_ENV_FIELDS
 
-    for section in _ENV_FIELDS.values():
+    for section in (*_ENV_FIELDS.values(), _LLM_MAX_TOKEN_ENV_FIELDS):
         for names, _kind in section.values():
             for name in names:
                 assert _assert_safe_name(name) == name

@@ -7,6 +7,7 @@ from typing import Any, Callable, Dict, List, Optional
 
 from app.core.config import Settings
 from app.services.base import BaseService
+from app.services.text_window import ContextWindowResolver, estimate_tokens, truncate_middle
 from app.core.errors import (
     ServiceException,
     StreamingNotSupportedException,
@@ -61,6 +62,7 @@ class LLMService(BaseService):
         self.config = config
         self.prompt_registry = PromptRegistry(config)
         self.tracer = ExecutionTracer(config)
+        self.context_window = ContextWindowResolver(llm_client, config, logger)
 
     def generate_text(
         self,
@@ -147,6 +149,7 @@ class LLMService(BaseService):
             entry = self.prompt_registry.resolve(request.request_type, request.prompt_version)
             resolved_prompt_version = entry.prompt_version
             resolved_model = request.model or entry.default_model(self.config)
+            resolved_max_tokens = self.config.max_tokens_for_request_type(request.request_type)
             trace.add_metadata(
                 self._build_trace_metadata(
                     request_message=request_message,
@@ -163,6 +166,12 @@ class LLMService(BaseService):
                 rendered_prompt = entry.build_prompt(request)
                 system_prompt = rendered_prompt.system_prompt
                 raw_prompt = rendered_prompt.raw_prompt
+                raw_prompt_budget = self.context_window.input_budget_chars(
+                    resolved_model,
+                    reserved_tokens=estimate_tokens(system_prompt),
+                    output_tokens=resolved_max_tokens,
+                )
+                raw_prompt = truncate_middle(raw_prompt, raw_prompt_budget)
                 span.finish(
                     outputs={
                         "system_prompt_length": len(system_prompt),
@@ -194,7 +203,7 @@ class LLMService(BaseService):
                 raw_prompt=raw_prompt,
                 model=resolved_model,
                 timeout=timeout,
-                max_tokens=self.config.max_tokens_for_request_type(request.request_type),
+                max_tokens=resolved_max_tokens,
                 on_token=on_token if can_stream else None,
                 metadata={
                     "request_type": request.request_type,
@@ -203,7 +212,13 @@ class LLMService(BaseService):
                     "correlation_id": request_message.correlation_id,
                     "structured_output_hint": (
                         "json_object"
-                        if request.request_type in {"answer_evaluation", "content_risk_scan", "memory_extraction"}
+                        if request.request_type
+                        in {
+                            "answer_evaluation",
+                            "content_risk_scan",
+                            "query_rewrite",
+                            "memory_extraction",
+                        }
                         else None
                     ),
                 },
@@ -519,7 +534,12 @@ class LLMService(BaseService):
         extraction_metadata: Optional[Dict[str, Any]] = None,
     ) -> None:
         request_type = request_message.payload.request_type
-        if request_type not in {"answer_evaluation", "content_risk_scan"}:
+        if request_type not in {
+            "answer_evaluation",
+            "content_risk_scan",
+            "query_rewrite",
+            "memory_extraction",
+        }:
             return
 
         data: Dict[str, Any] = {

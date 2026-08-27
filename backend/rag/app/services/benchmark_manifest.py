@@ -71,7 +71,8 @@ from app.services.effective_retrieval import (
 # interpreted as config's declaration rather than as what ran.
 # Version 3 adds the allowlisted LLM quantization used by the served runtime.
 # Version 4 records the effective vLLM scheduler concurrency candidate.
-MANIFEST_VERSION = 4
+# Version 5 records effective per-action output-token ceilings.
+MANIFEST_VERSION = 5
 
 # Longest env value copied into a manifest. A model identifier is tens of
 # characters; anything far larger is a mistake or a payload, and neither
@@ -110,8 +111,11 @@ def _assert_safe_name(name: str) -> str:
         ManifestAllowlistError: If the name contains a secret-shaped token.
     """
     upper = name.upper()
+    # In these numeric provenance fields TOKENS is a unit, not a credential
+    # marker. Values are still allowlisted individually and integer-coerced.
+    secret_shape = upper.removesuffix("_MAX_TOKENS")
     for token in _SECRET_NAME_TOKENS:
-        if token in upper:
+        if token in secret_shape:
             raise ManifestAllowlistError(
                 f"Environment variable {name!r} may carry a credential and "
                 "must not be captured in a benchmark manifest"
@@ -160,6 +164,14 @@ _ENV_FIELDS: Dict[str, Dict[str, Tuple[Tuple[str, ...], str]]] = {
     },
 }
 
+_LLM_MAX_TOKEN_ENV_FIELDS: Dict[str, Tuple[Tuple[str, ...], str]] = {
+    "answer_generation": (("ANSWER_GENERATION_MAX_TOKENS",), "int"),
+    "answer_evaluation": (("ANSWER_EVALUATION_MAX_TOKENS",), "int"),
+    "content_risk_scan": (("CONTENT_RISK_SCAN_MAX_TOKENS",), "int"),
+    "query_rewrite": (("QUERY_REWRITE_MAX_TOKENS",), "int"),
+    "memory_extraction": (("MEMORY_EXTRACTION_MAX_TOKENS",), "int"),
+}
+
 # Config-sourced retrieval settings: the part of the pipeline rag *can*
 # observe, so on a real `RAGConfig` none of these is ever unobserved. A field
 # a future config drops is reported as unknown rather than crashing a
@@ -194,6 +206,9 @@ for _section_fields in _ENV_FIELDS.values():
     for _names, _kind in _section_fields.values():
         for _name in _names:
             _assert_safe_name(_name)
+for _names, _kind in _LLM_MAX_TOKEN_ENV_FIELDS.values():
+    for _name in _names:
+        _assert_safe_name(_name)
 
 
 def _coerce(raw: str, kind: str) -> Optional[Any]:
@@ -240,13 +255,20 @@ def _unobserved_paths(sections: Mapping[str, Mapping[str, Any]]) -> List[str]:
     confusion, pointed the other way, that reporting a legacy flag as an
     active reranker created.
     """
-    return sorted(
-        f"{section}.{field}"
-        for section, values in sections.items()
-        for field, value in values.items()
-        if value is None
-        and not (section == "retrieval" and field in EFFECTIVE_RETRIEVAL_FIELDS)
-    )
+    unobserved: List[str] = []
+
+    def visit(path: str, value: Any) -> None:
+        if isinstance(value, Mapping):
+            for child, child_value in value.items():
+                visit(f"{path}.{child}" if path else str(child), child_value)
+        elif value is None:
+            section, _, field = path.partition(".")
+            if not (section == "retrieval" and field in EFFECTIVE_RETRIEVAL_FIELDS):
+                unobserved.append(path)
+
+    for section, values in sections.items():
+        visit(section, values)
+    return sorted(unobserved)
 
 
 def build_benchmark_manifest(
@@ -319,6 +341,9 @@ def build_benchmark_manifest(
         "implementation": sys.implementation.name,
     }
 
+    llm = _env_section(_ENV_FIELDS["llm"], environment)
+    llm["max_tokens"] = _env_section(_LLM_MAX_TOKEN_ENV_FIELDS, environment)
+
     sections: Dict[str, Dict[str, Any]] = {
         "build": build,
         "dataset": dataset_section,
@@ -327,7 +352,7 @@ def build_benchmark_manifest(
         "embedding": _env_section(_ENV_FIELDS["embedding"], environment),
         "chunking": _env_section(_ENV_FIELDS["chunking"], environment),
         "vector_store": _env_section(_ENV_FIELDS["vector_store"], environment),
-        "llm": _env_section(_ENV_FIELDS["llm"], environment),
+        "llm": llm,
         "software": software,
     }
 

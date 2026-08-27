@@ -77,129 +77,136 @@ export default function EvalTab() {
   if (loading && !datasets.length) return <TabSkeleton />
 
   return (
-    // `[&>*]:shrink-0` is load-bearing, not decoration. Card sets
-    // `overflow-hidden`, and CSS only gives a flex item an automatic minimum
-    // size when its overflow is visible — so in this scrolling column the
-    // cards were free to be crushed to a sliver (clipping their own headers
-    // and buttons) instead of making the column scroll.
-    <div className="mx-auto flex h-full w-full max-w-7xl flex-col gap-4 overflow-y-auto px-3 py-4 [&>*]:shrink-0 md:px-6 md:py-5">
-      <PageHeader
-        className="mb-2"
-        title="Eval"
-        description="Golden sets, benchmark profiles and quality diagnostics"
-        icon={FlaskConical}
-        actions={
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={refresh}
-            disabled={loading}
-            leftIcon={<RefreshCw size={13} className={loading ? 'animate-spin' : ''} />}
-          >
-            Refresh
-          </Button>
-        }
-      />
+    // Two elements, two jobs. The scroll viewport is the full-width outer
+    // div; the max-width cap lives on the inner column. Putting both on one
+    // element painted the scrollbar at the *column's* right edge — floating
+    // 80px inside the window on a wide screen, with dead gutters either side
+    // that swallowed the wheel.
+    <div className="h-full w-full overflow-y-auto">
+      {/* `[&>*]:shrink-0` is load-bearing, not decoration. Card sets
+          `overflow-hidden`, and CSS only gives a flex item an automatic
+          minimum size when its overflow is visible — so the cards were free
+          to be crushed to a sliver (clipping their own headers and buttons)
+          instead of making the column grow. */}
+      <div className="mx-auto flex w-full max-w-7xl flex-col gap-4 px-3 py-4 [&>*]:shrink-0 md:px-6 md:py-5">
+        <PageHeader
+          className="mb-2"
+          title="Eval"
+          description="Golden sets, benchmark profiles and quality diagnostics"
+          icon={FlaskConical}
+          actions={
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={refresh}
+              disabled={loading}
+              leftIcon={<RefreshCw size={13} className={loading ? 'animate-spin' : ''} />}
+            >
+              Refresh
+            </Button>
+          }
+        />
 
-      {!datasets.length ? (
-        <>
-          <EmptyState
-            icon={FlaskConical}
-            title="No golden set yet"
-            description={
-              'Live traffic can only show proxy quality. Recall and nDCG need ' +
-              'ground truth, which is a set of queries somebody labelled by hand.'
-            }
-            action={
-              <div className="flex flex-col items-center gap-4">
-                <ol
-                  className="max-w-md list-decimal space-y-1 pl-5 text-left text-[13px]"
-                  style={{ color: 'var(--fg-muted)' }}
-                >
-                  {GOLDEN_SET_HELP.map((step) => (
-                    <li key={step}>{step}</li>
-                  ))}
-                </ol>
-                <Button onClick={() => setImportOpen(true)} leftIcon={<Upload size={14} />}>
-                  Import a dataset
+        {!datasets.length ? (
+          <>
+            <EmptyState
+              icon={FlaskConical}
+              title="No golden set yet"
+              description={
+                'Live traffic can only show proxy quality. Recall and nDCG need ' +
+                'ground truth, which is a set of queries somebody labelled by hand.'
+              }
+              action={
+                <div className="flex flex-col items-center gap-4">
+                  <ol
+                    className="max-w-md list-decimal space-y-1 pl-5 text-left text-[13px]"
+                    style={{ color: 'var(--fg-muted)' }}
+                  >
+                    {GOLDEN_SET_HELP.map((step) => (
+                      <li key={step}>{step}</li>
+                    ))}
+                  </ol>
+                  <Button onClick={() => setImportOpen(true)} leftIcon={<Upload size={14} />}>
+                    Import a dataset
+                  </Button>
+                </div>
+              }
+            />
+            {importer}
+          </>
+        ) : (
+          <>
+            {(error || benchmarkError) && (
+              <div
+                className="flex items-center justify-between gap-3 rounded-xl px-4 py-3 text-[15px]"
+                style={{
+                  background: 'var(--danger-soft)',
+                  border: '1px solid rgba(239,68,68,0.25)',
+                  color: 'var(--danger)',
+                }}
+                role="alert"
+              >
+                <span className="flex items-center gap-2.5">
+                  <AlertTriangle size={15} aria-hidden="true" />
+                  {error || benchmarkError}
+                </span>
+                <Button variant="secondary" size="sm" onClick={refresh}>
+                  Retry
                 </Button>
               </div>
-            }
-          />
-          {importer}
-        </>
-      ) : (
-        <>
-          {(error || benchmarkError) && (
-            <div
-              className="flex items-center justify-between gap-3 rounded-xl px-4 py-3 text-[15px]"
-              style={{
-                background: 'var(--danger-soft)',
-                border: '1px solid rgba(239,68,68,0.25)',
-                color: 'var(--danger)',
-              }}
-              role="alert"
-            >
-              <span className="flex items-center gap-2.5">
-                <AlertTriangle size={15} aria-hidden="true" />
-                {error || benchmarkError}
-              </span>
-              <Button variant="secondary" size="sm" onClick={refresh}>
-                Retry
-              </Button>
-            </div>
-          )}
+            )}
 
-          <EvalSetupCard
-            datasets={datasets}
-            datasetId={datasetId}
-            dataset={dataset}
-            busy={busy}
-            running={running || benchmarkRunning}
-            onSelect={selectDataset}
-            onImport={() => setImportOpen(true)}
-            onDelete={deleteDataset}
-          />
-
-          <RunBenchmarkCard
-            itemCount={dataset?.item_count}
-            ready={Boolean(datasetId)}
-            busy={benchmarkBusy}
-            benchmark={benchmark}
-            running={benchmarkRunning}
-            onStart={start}
-          >
-            <SingleEvaluation
-              dataset={dataset}
+            <EvalSetupCard
+              datasets={datasets}
               datasetId={datasetId}
-              run={run}
+              dataset={dataset}
               busy={busy}
-              running={running}
-              onStart={startRun}
-              onEstimate={estimateRunCost}
+              running={running || benchmarkRunning}
+              onSelect={selectDataset}
+              onImport={() => setImportOpen(true)}
+              onDelete={deleteDataset}
             />
-          </RunBenchmarkCard>
 
-          <ActiveRunPanel
-            benchmark={benchmark}
-            history={history}
-            busy={benchmarkBusy}
-            onDownload={download}
-          />
+            <RunBenchmarkCard
+              itemCount={dataset?.item_count}
+              ready={Boolean(datasetId)}
+              busy={benchmarkBusy}
+              benchmark={benchmark}
+              running={benchmarkRunning}
+              onStart={start}
+            >
+              <SingleEvaluation
+                dataset={dataset}
+                datasetId={datasetId}
+                run={run}
+                busy={busy}
+                running={running}
+                onStart={startRun}
+                onEstimate={estimateRunCost}
+              />
+            </RunBenchmarkCard>
 
-          <EvalResults run={run} runs={runs} dataset={dataset} />
+            <ActiveRunPanel
+              benchmark={benchmark}
+              history={history}
+              busy={benchmarkBusy}
+              onDownload={download}
+            />
 
-          <BenchmarkHistoryTable
-            history={history}
-            selectedId={benchmark?.benchmark_id}
-            busy={benchmarkBusy}
-            onSelect={select}
-            onDownload={download}
-          />
+            <EvalResults run={run} runs={runs} dataset={dataset} />
 
-          {importer}
-        </>
-      )}
+            <BenchmarkHistoryTable
+              history={history}
+              selectedId={benchmark?.benchmark_id}
+              busy={benchmarkBusy}
+              onSelect={select}
+              onDownload={download}
+            />
+
+            {importer}
+          </>
+        )}
+      </div>
     </div>
   )
 }

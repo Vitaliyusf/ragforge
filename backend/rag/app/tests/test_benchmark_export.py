@@ -28,7 +28,16 @@ def _archive(store, benchmark_id):
     return zipfile.ZipFile(io.BytesIO(base64.b64decode(exported["content_base64"])))
 
 
-def test_export_has_the_evidence_layout_and_strict_json():
+def test_export_has_the_evidence_layout_and_strict_json(monkeypatch):
+    expected_budgets = {
+        "answer_generation": 128,
+        "answer_evaluation": 512,
+        "content_risk_scan": 128,
+        "query_rewrite": 128,
+        "memory_extraction": 512,
+    }
+    for action, budget in expected_budgets.items():
+        monkeypatch.setenv(f"{action.upper()}_MAX_TOKENS", str(budget))
     store, orchestrator, _, dataset_id = build()
     benchmark = run_benchmark(orchestrator, dataset_id, [PHASE_RETRIEVAL_BASE])
     with bound_context(**ADMIN.to_dict()):
@@ -45,6 +54,17 @@ def test_export_has_the_evidence_layout_and_strict_json():
                 "benchmark.json", "truncation.json"} <= names
         assert any(name.endswith("/per-item.json") for name in names)
         exported_phase = json.loads(archive.read("benchmark.json"))["phases"][0]
+        manifest = json.loads(archive.read("manifest.json"))
+        runtime = json.loads(archive.read("runtime.json"))
+        assert runtime["llm"] == manifest["llm"]
+        assert set(runtime["llm"]["max_tokens"]) == {
+            "answer_generation",
+            "answer_evaluation",
+            "content_risk_scan",
+            "query_rewrite",
+            "memory_extraction",
+        }
+        assert runtime["llm"]["max_tokens"] == expected_budgets
         assert exported_phase["phase_started_at"]
         assert exported_phase["phase_finished_at"]
         assert exported_phase["phase_wall_clock_ms"] >= 0
