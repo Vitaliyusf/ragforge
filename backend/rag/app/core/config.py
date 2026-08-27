@@ -1,9 +1,11 @@
 """Configuration management for the RAG service."""
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class RAGConfig(BaseSettings):
     """Configuration class for the `rag` service."""
+
+    model_config = SettingsConfigDict(env_file=".env", case_sensitive=False)
 
     # Service configuration
     service_name: str = "rag"
@@ -161,10 +163,6 @@ class RAGConfig(BaseSettings):
     # hallucination rate. It is a threshold over one judge score, not a
     # claim-level measurement — phase 6 replaces it with the real thing.
     hallucination_groundedness_threshold: float = 0.6
-
-    class Config:
-        env_file = ".env"
-        case_sensitive = False
 
     def validate(self) -> bool:
         """Validate configuration values."""
