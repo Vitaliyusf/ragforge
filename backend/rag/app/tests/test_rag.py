@@ -33,7 +33,7 @@ from app.services.retrieval_trace import RetrievalTrace
 from app.services.websocket_service import WebSocketService
 from app.messaging.rag_rpc_handler import build_reply_envelope, extract_request_payload
 from shared.auth import AuthError, AuthIdentity
-from shared.context import bound_context
+from shared.context import bound_context, get_context
 
 try:
     from fastapi.testclient import TestClient
@@ -373,6 +373,103 @@ def test_extended_flow_runs_second_retrieval_and_revises_once():
     review_events = [event for event in emitter.events if event["type"] == "answer_review"]
     assert review_events[-1]["data"]["revision_applied"] is True
     assert emitter.events[-1]["type"] == "done"
+
+
+def test_extended_pass_one_retrieval_is_bounded_and_deterministic():
+    service, backend, _ = build_service()
+    service.graph_runner.config.extended_retrieval_max_concurrency = 2
+    service.graph_runner.config.pass_two_chunk_threshold = 1
+    service.graph_runner.config.pass_two_score_threshold = 0.1
+    queries = ["rewrite", "slow subquery", "fast subquery", "last subquery"]
+    delays = {
+        "rewrite": 0.04,
+        "slow subquery": 0.03,
+        "fast subquery": 0.01,
+        "last subquery": 0.0,
+    }
+    active = 0
+    max_active = 0
+    saw_overlap = asyncio.Event()
+    propagated = []
+
+    async def rewrite(request, context):
+        return {"rewritten_query": queries[0], "subqueries": queries[1:]}
+
+    async def search_chunks(request, query, retrieval_plan=None, pass_name="pass_one"):
+        nonlocal active, max_active
+        assert pass_name == "pass_one"
+        active += 1
+        max_active = max(max_active, active)
+        if active > 1:
+            saw_overlap.set()
+        propagated.append(
+            (
+                request.request_id,
+                request.trace_id,
+                get_context().get("tenant_id"),
+                retrieval_plan["rewritten_query"],
+            )
+        )
+        try:
+            await asyncio.sleep(delays[query])
+        finally:
+            active -= 1
+        return {
+            "chunks": [
+                {
+                    "chunk_id": query,
+                    "text": query,
+                    "score": 0.8,
+                    "source": f"{query}.md",
+                }
+            ]
+        }
+
+    backend.query_rewrite = rewrite
+    backend.search_chunks = search_chunks
+    request = service.build_request({"question": "parallelize", "mode": "extended"})
+    result = asyncio.run(
+        service.graph_runner.run(request, CollectingConversationEmitter(request))
+    )
+
+    assert saw_overlap.is_set()
+    assert max_active == 2
+    assert [chunk["chunk_id"] for chunk in result["sources"]] == queries
+    assert propagated == [
+        (request.request_id, request.trace_id, TEST_IDENTITY.tenant_id, queries[0])
+    ] * len(queries)
+
+
+def test_extended_parallel_retrieval_preserves_downstream_error_policy():
+    service, backend, _ = build_service()
+    service.graph_runner.config.extended_retrieval_max_concurrency = 2
+
+    async def rewrite(request, context):
+        return {"rewritten_query": "ok", "subqueries": ["fails", "cancelled"]}
+
+    async def search_chunks(request, query, retrieval_plan=None, pass_name="pass_one"):
+        if query == "fails":
+            await asyncio.sleep(0.01)
+            raise ValueError("subquery retrieval failed")
+        await asyncio.sleep(0.03)
+        return {
+            "chunks": [
+                {"chunk_id": query, "text": query, "score": 0.8, "source": "source.md"}
+            ]
+        }
+
+    backend.query_rewrite = rewrite
+    backend.search_chunks = search_chunks
+    request = service.build_request({"question": "parallelize", "mode": "extended"})
+    result = asyncio.run(
+        service.graph_runner.run(request, CollectingConversationEmitter(request))
+    )
+
+    assert result["outcome"] == "failed"
+    assert result["error"] == "subquery retrieval failed"
+    assert result["error_class"] == "ValueError"
+    assert result["failed_node"] == "retrieve_pass_one"
+    assert result["sources"] == []
 
 
 def test_pass_two_candidates_are_globally_ranked_and_deduped():

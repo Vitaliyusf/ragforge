@@ -48,6 +48,7 @@ class RAGConfig(BaseSettings):
     min_similarity_threshold: float = 0.4
     pass_two_chunk_threshold: int = 3
     pass_two_score_threshold: float = 0.55
+    extended_retrieval_max_concurrency: int = 4
     debug_payload_max_chars: int = 2000
     debug_payload_max_items: int = 12
     feedback_memory_threshold: int = 3

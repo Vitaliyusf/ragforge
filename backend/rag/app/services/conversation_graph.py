@@ -1,6 +1,7 @@
 """LangGraph-backed conversation orchestration for the `rag` service."""
 from __future__ import annotations
 
+import asyncio
 import copy
 import re
 import time
@@ -1242,9 +1243,49 @@ class ConversationGraphRunner:
         plan = state.get("retrieval_plan", {})
         queries = [plan.get("rewritten_query") or request.user_message]
         queries.extend(plan.get("subqueries") or [])
+        queries = queries[: self.config.debug_payload_max_items]
+
+        # The rewritten query and decomposed subqueries share no results or
+        # mutable inputs, so their downstream retrieval calls may overlap.
+        # Keep only a fixed-size window of tasks alive: this bounds pressure on
+        # embedding/vector services without changing the exception type a
+        # failed downstream call raises. Awaiting the window in query order
+        # also makes the final merge independent of completion timing.
+        responses: List[Dict[str, Any]] = []
+        pending: List[asyncio.Task[Dict[str, Any]]] = []
+        concurrency = max(1, self.config.extended_retrieval_max_concurrency)
+        next_query = 0
+
+        while next_query < min(concurrency, len(queries)):
+            query = queries[next_query]
+            pending.append(
+                asyncio.create_task(
+                    self.backend_client.search_chunks(request, query, plan, "pass_one")
+                )
+            )
+            next_query += 1
+
+        try:
+            while pending:
+                response = await pending.pop(0)
+                responses.append(response)
+                if next_query < len(queries):
+                    query = queries[next_query]
+                    pending.append(
+                        asyncio.create_task(
+                            self.backend_client.search_chunks(request, query, plan, "pass_one")
+                        )
+                    )
+                    next_query += 1
+        except BaseException:
+            for task in pending:
+                task.cancel()
+            if pending:
+                await asyncio.gather(*pending, return_exceptions=True)
+            raise
+
         chunks: List[Dict[str, Any]] = []
-        for index, query in enumerate(queries[: self.config.debug_payload_max_items]):
-            response = await self.backend_client.search_chunks(request, query, plan, "pass_one")
+        for index, (query, response) in enumerate(zip(queries, responses)):
             normalized = self._normalize_chunks(response)
             self._trace_stage(
                 runtime,
