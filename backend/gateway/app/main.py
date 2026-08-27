@@ -27,20 +27,10 @@ from app.services.model_management_service import ModelManagementService
 from app.services.prometheus_client import PrometheusClient
 from app.services.rag_service import RagService
 from app.services.auth_service import AuthService
+from shared.rate_limiter import RateLimiterMiddleware
+from shared.security import SecurityHeadersMiddleware
 
-# ── Optional shared features ──────────────────────────────────────────────────
-
-try:
-    from shared.rate_limiter import RateLimiterMiddleware
-    _HAS_RATE_LIMITER = True
-except ImportError:
-    _HAS_RATE_LIMITER = False
-
-try:
-    from shared.security import SecurityHeadersMiddleware
-    _HAS_SECURITY_HEADERS = True
-except ImportError:
-    _HAS_SECURITY_HEADERS = False
+# ── Optional telemetry ───────────────────────────────────────────────────────────
 
 try:
     from shared.metrics import setup_metrics
@@ -117,11 +107,8 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Gateway Service", lifespan=lifespan)
 
-if _HAS_SECURITY_HEADERS:
-    app.add_middleware(SecurityHeadersMiddleware)
-
-if _HAS_RATE_LIMITER:
-    app.add_middleware(RateLimiterMiddleware, global_rate=100.0, per_ip_rate=20.0, burst_multiplier=2.0)
+app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(RateLimiterMiddleware, global_rate=100.0, per_ip_rate=20.0, burst_multiplier=2.0)
 
 app.add_middleware(CorrelationMiddleware)
 
