@@ -22,12 +22,13 @@ def _config():
     )
 
 
-def _invocation(on_token=None):
+def _invocation(on_token=None, max_tokens=None):
     return LLMInvocation(
         system_prompt="Be concise.",
         raw_prompt="Answer the question.",
         model="model-a",
         on_token=on_token,
+        max_tokens=max_tokens,
     )
 
 
@@ -57,6 +58,18 @@ def _sse(payload):
 
 
 class VLLMStreamingUsageTests(unittest.TestCase):
+    def test_invocation_budget_reaches_vllm_payload(self):
+        response = Mock()
+        response.raise_for_status.return_value = None
+        response.json.return_value = {"choices": [{"text": "ok", "finish_reason": "stop"}]}
+        post = Mock(return_value=response)
+        client = VLLMClient(_config())
+
+        with patch("app.llm.implementations.vllm.httpx.post", post):
+            client._invoke_vllm(_invocation(max_tokens=37))
+
+        self.assertEqual(post.call_args.kwargs["json"]["max_tokens"], 37)
+
     def test_stream_requests_usage_and_preserves_visible_stream(self):
         token_events = []
         stream = Mock(

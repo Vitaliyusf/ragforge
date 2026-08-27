@@ -5,6 +5,8 @@ import unittest
 from typing import List
 from unittest.mock import patch
 
+from pydantic import ValidationError
+
 from app.core.config import Settings
 from app.llm.interfaces import ILLMClient, LLMGenerationResult, LLMInvocation, LLMUsage
 from app.schemas.llm import (
@@ -44,8 +46,10 @@ class FakeLLMClient(ILLMClient):
             output_tokens=3,
             total_tokens=8,
         )
+        self.invocations = []
 
     def generate(self, invocation: LLMInvocation) -> LLMGenerationResult:
+        self.invocations.append(invocation)
         if self.exception is not None:
             raise self.exception
 
@@ -188,6 +192,67 @@ def _request_message(request_type, input_payload, **overrides):
 
 class LLMServiceTests(unittest.TestCase):
     """Validate normalized replies, parsing, streaming, and safety behavior."""
+
+    def test_action_token_budgets_resolve_independently_with_safe_fallback(self):
+        settings = _settings(
+            vllm_max_tokens=512,
+            answer_generation_max_tokens=101,
+            answer_evaluation_max_tokens=202,
+            content_risk_scan_max_tokens=303,
+            query_rewrite_max_tokens=404,
+            memory_extraction_max_tokens=505,
+        )
+
+        expected = {
+            "answer_generation": 101,
+            "answer_evaluation": 202,
+            "content_risk_scan": 303,
+            "query_rewrite": 404,
+            "memory_extraction": 505,
+        }
+        self.assertEqual(
+            {action: settings.max_tokens_for_request_type(action) for action in expected},
+            expected,
+        )
+        self.assertEqual(settings.max_tokens_for_request_type("legacy_action"), 512)
+
+    def test_action_token_budget_defaults_preserve_legacy_budget(self):
+        settings = _settings(vllm_max_tokens=777)
+
+        for action in Settings._ACTION_MAX_TOKEN_FIELDS:
+            with self.subTest(action=action):
+                self.assertEqual(settings.max_tokens_for_request_type(action), 777)
+
+    def test_invalid_token_budgets_are_rejected(self):
+        for field_name in ("vllm_max_tokens", *Settings._ACTION_MAX_TOKEN_FIELDS.values()):
+            with self.subTest(field_name=field_name):
+                with self.assertRaises(ValidationError):
+                    _settings(**{field_name: 0})
+
+    def test_request_specific_budget_reaches_typed_invocation(self):
+        client = FakeLLMClient(
+            {
+                "content_risk_scan": (
+                    '{"risk_level":"low","categories":[],"flags":[],"summary":"safe"}'
+                )
+            }
+        )
+        service = LLMService(
+            client,
+            FakeLogger(),
+            _settings(content_risk_scan_max_tokens=89),
+        )
+
+        reply = service.execute(
+            _request_message(
+                "content_risk_scan",
+                {"content": "A harmless sentence.", "policy_hints": []},
+            )
+        )
+
+        self.assertEqual(reply.status, "success")
+        self.assertEqual(client.invocations[0].max_tokens, 89)
+        self.assertEqual(client.invocations[0].metadata["structured_output_hint"], "json_object")
 
     def test_structured_parse_success_for_evaluation_uses_shared_answer_review_shape(self):
         service = LLMService(
