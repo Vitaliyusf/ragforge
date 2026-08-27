@@ -128,6 +128,29 @@ PIPELINE_REGULAR = "regular"
 PIPELINE_EXTENDED = "extended"
 PIPELINE_MODES = (PIPELINE_REGULAR, PIPELINE_EXTENDED)
 
+
+class EvalEvidenceConsistencyError(RuntimeError):
+    """A successful graph result lacks coherent terminal retrieval evidence.
+
+    Raised only when the graph reported success. A graph that reported a
+    failure has already said what went wrong, and that primary error must
+    reach the row instead of this secondary one.
+    """
+
+
+@dataclass(frozen=True)
+class GraphItemEvidence:
+    """What one end-to-end item's graph run left behind for scoring.
+
+    ``retrieval_measured`` is the difference between "the pipeline retrieved
+    nothing" and "the pipeline failed before it had a context". Only the
+    first is a retrieval result; scoring the second would invent a miss out
+    of an item that never reached the retriever.
+    """
+
+    ids: List[str]
+    retrieval_measured: bool
+
 MATCH_CHUNK = "chunk_id"
 MATCH_FILE = "file_id"
 MATCH_MIXED = "mixed"
@@ -156,6 +179,12 @@ NOT_CHECKED_UNAVAILABLE = "unavailable"
 # max(K_VALUES) so the row always shows every rank the run scores; it is a
 # display bound, never applied before scoring.
 MAX_ROW_IDS = max(K_VALUES)
+
+# How many typed LLM calls one item's evidence keeps. A turn makes a handful
+# — guardrails, rewrite, generation, evaluation — and a revision pass can add
+# a few more; the bound stops a pathological loop from growing a row without
+# limit. Each record is bounded labels and numbers only.
+MAX_LLM_ACTIONS = 16
 
 # Action strings, mirroring `RagAction` in the gateway's core/constants.py.
 # The rag service cannot import gateway code, so they are defined once here
@@ -1099,9 +1128,17 @@ class EvalRunner:
             "unscorable": unscorable,
             "error": None,
             "error_class": None,
+            # The graph node the failure happened in, when the graph knows
+            # it. A bounded internal node name — never prompt, answer or
+            # context text.
+            "failed_node": None,
             "outcome": "success",
             "guardrail_stage": None,
             "timed_out": False,
+            # Bounded per-call LLM evidence for this item: request type,
+            # provider finish reason, application status, token counts and the
+            # output ceiling the call was made with. No model text.
+            "llm_actions": [],
         }
         if unscorable:
             row["failure_attribution"] = classify_item(row)
@@ -1109,6 +1146,9 @@ class EvalRunner:
             return row
 
         trace = RetrievalTrace.from_config(self.config)
+        # A retrieval run always measures retrieval; only an end-to-end item
+        # can fail before it has a context to score.
+        retrieval_measured = True
         scheduled_at = time.monotonic()
         execution_started_at: Optional[float] = None
         try:
@@ -1128,7 +1168,11 @@ class EvalRunner:
                     admin_id=identity.admin_id,
                 )
                 if mode == MODE_END_TO_END:
-                    ids = await self._run_graph_item(request, row, item_mode, trace)
+                    evidence = await self._run_graph_item(
+                        request, row, item_mode, trace, run_id=run_id
+                    )
+                    ids = evidence.ids
+                    retrieval_measured = evidence.retrieval_measured
                 else:
                     depth = candidate_depth(self.config)
                     response = await self.backend_client.search_chunks(
@@ -1173,7 +1217,9 @@ class EvalRunner:
         _record_item_timing(row, scheduled_at, execution_started_at)
         row["retrieval_trace"] = trace.to_payload()
         row["retrieved_ids"] = ids[:MAX_ROW_IDS]
-        if row["outcome"] == "guardrail_blocked":
+        # An item whose retrieval was never measured is scored on no axis: a
+        # zero here would be a retrieval regression the retriever never had.
+        if row["outcome"] == "guardrail_blocked" or not retrieval_measured:
             row["failure_attribution"] = classify_item(row)
             await self._persist_item_result(run_id, tenant_id, row, on_item_completed)
             return row
@@ -1214,16 +1260,24 @@ class EvalRunner:
         row: Dict[str, Any],
         item_mode: str,
         trace: RetrievalTrace,
-    ) -> List[str]:
+        *,
+        run_id: str,
+    ) -> GraphItemEvidence:
         """Run the full graph for one item and record its answer quality.
 
         Turn-metric recording is off: these are synthetic turns, and letting
         them into `metrics_turn_facts` would shift the tenant averages the
         run exists to measure.
 
+        A graph failure is recorded as the row's error, class and node. That
+        is the primary failure; the evidence check below never overwrites it,
+        because "the generator raised" explains an item and "its evidence is
+        inconsistent" only explains the explanation.
+
         Returns:
-            The retrieved ids, so the caller scores retrieval exactly as it
-            does in retrieval mode — an `end_to_end` run reports both.
+            The retrieved ids and whether retrieval was measured at all, so
+            the caller scores retrieval exactly as it does in retrieval mode
+            — an `end_to_end` run reports both halves.
         """
         emitter = CollectingConversationEmitter(request)
         # The graph fills the trace as it retrieves: an end_to_end item's
@@ -1236,6 +1290,11 @@ class EvalRunner:
         )
         review = result.get("review") or {}
         citations = result.get("citation_metrics") or {}
+        actions = result.get("llm_actions")
+        row["llm_actions"] = [
+            action for action in (actions if isinstance(actions, list) else [])
+            if isinstance(action, dict)
+        ][:MAX_LLM_ACTIONS]
         row["answer"] = result.get("answer", "")
         row["groundedness"] = review.get("groundedness_score")
         row["hallucination_verdict"] = review.get("hallucination_verdict")
@@ -1243,9 +1302,76 @@ class EvalRunner:
         row["citation_precision"] = citations.get("citation_precision")
         row["citation_recall"] = citations.get("citation_recall")
         row["citation_count"] = citations.get("citation_count")
-        row["outcome"] = result.get("outcome", "success")
+        # A result that carries an error but no outcome predates the explicit
+        # failure contract; it is a failure, never a success by default.
+        outcome = result.get("outcome") or ("failed" if result.get("error") else "success")
+        row["outcome"] = outcome
         row["guardrail_stage"] = result.get("guardrail_stage")
-        return retrieved_ids(eligible_chunks({"chunks": result.get("sources") or []}), item_mode)
+        if outcome not in {"success", "guardrail_blocked"}:
+            row["error"] = (
+                str(result.get("error"))
+                if result.get("error") is not None
+                else "conversation graph failed"
+            )
+            row["error_class"] = str(result.get("error_class") or "ConversationGraphError")
+            row["failed_node"] = (
+                str(result["failed_node"]) if result.get("failed_node") else None
+            )
+        sources = result.get("sources")
+        source_chunks = (
+            [source for source in sources if isinstance(source, dict)]
+            if isinstance(sources, list)
+            else []
+        )
+        ids = retrieved_ids(eligible_chunks({"chunks": source_chunks}), item_mode)
+        if outcome == "guardrail_blocked":
+            # A deliberate refusal, whose evidence contract is the guardrail's
+            # own: the caller scores neither retrieval nor answer quality for
+            # it, and it is counted on its own axis.
+            return GraphItemEvidence(ids, retrieval_measured=False)
+        final_context = trace.final_context_stage()
+        trace_ids = (
+            retrieved_ids(final_context.get("candidates", []), item_mode)
+            if final_context is not None
+            else []
+        )
+        evidence_consistent = (
+            isinstance(sources, list)
+            and final_context is not None
+            and final_context.get("kept_count") == len(source_chunks)
+            and len(ids) == len(source_chunks)
+            and len(trace_ids) == len(final_context.get("candidates", []))
+            and trace_ids == ids[: len(trace_ids)]
+        )
+        if not evidence_consistent:
+            self._log(
+                "eval_evidence_inconsistency",
+                "end-to-end item has inconsistent final-context evidence",
+                {
+                    "run_id": run_id,
+                    "item_id": row.get("item_id"),
+                    "pipeline_mode": request.mode,
+                    "trace_stage_names": [
+                        str(stage.get("stage"))
+                        for stage in trace.stages
+                        if isinstance(stage, dict)
+                    ],
+                    "final_source_count": len(source_chunks),
+                    "outcome": outcome,
+                },
+            )
+            if outcome == "success":
+                raise EvalEvidenceConsistencyError(
+                    "Successful end-to-end graph result is missing or inconsistent "
+                    "final-context evidence"
+                )
+        if outcome == "success":
+            return GraphItemEvidence(ids, retrieval_measured=True)
+        # A failure with a terminal context still retrieved: the pipeline
+        # died after the context was chosen, and refusing to score that
+        # retrieval would understate a retriever that did its job. Without a
+        # terminal context the item never got one, and stays unmeasured.
+        return GraphItemEvidence(ids, retrieval_measured=final_context is not None)
 
     def _log(self, event: str, message: str, data: Dict[str, Any]) -> None:
         if self.logger is not None:

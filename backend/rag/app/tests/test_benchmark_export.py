@@ -11,6 +11,7 @@ import pytest
 from app.services.benchmark_export import (
     MAX_TEXT_BYTES,
     _json_bytes,
+    _metrics_evidence,
     _sanitize,
     _trace_evidence,
     build_benchmark_export,
@@ -151,6 +152,31 @@ def test_export_excludes_answers_and_redacts_secrets():
     assert "[redacted]" in text
 
 
+def test_per_item_export_carries_the_failed_node_but_no_answer_text():
+    """Which stage died is attributable without exporting what it was handling."""
+    evidence = _trace_evidence(
+        [
+            {
+                "item_id": "failed-1",
+                "outcome": "failed",
+                "error": "structured output validation failed",
+                "error_class": "ValueError",
+                "failed_node": "evaluate_answer_light",
+                "retrieved_ids": ["c1"],
+                "first_hit_rank": 1,
+                "answer": "private answer",
+                "query": "private prompt",
+            }
+        ]
+    )
+
+    assert evidence[0]["failed_node"] == "evaluate_answer_light"
+    assert evidence[0]["error_class"] == "ValueError"
+    assert evidence[0]["retrieved_ids"] == ["c1"]
+    assert "answer" not in evidence[0]
+    assert "query" not in evidence[0]
+
+
 def test_per_item_export_identifies_guardrail_outcome_and_stage():
     evidence = _trace_evidence(
         [
@@ -172,6 +198,7 @@ def test_per_item_export_identifies_guardrail_outcome_and_stage():
             "guardrail_stage": "input",
             "timed_out": False,
             "error_class": None,
+            "failed_node": None,
         }
     ]
 
@@ -289,6 +316,262 @@ def test_token_metric_allowlist_does_not_allow_arbitrary_string_values():
     assert sanitized["llm_output_token_rate"] == "[redacted]"
 
 
+def test_bounded_numeric_token_evidence_survives_and_secrets_do_not():
+    truncation = {"text_fields_truncated": 0, "examples": []}
+    document = {
+        "llm_actions": [
+            {
+                "input_tokens": 1234,
+                "output_tokens": 512,
+                "total_tokens": 1746,
+                "max_tokens": 512,
+            }
+        ],
+        "api_key": "secret",
+        "VLLM_API_KEY": "secret",
+        "HF_TOKEN": "secret",
+        "access_token": "secret",
+        "refresh_token": "secret",
+        "some_token": "arbitrary secret string",
+        "Authorization": "Bearer secret",
+    }
+
+    sanitized = _sanitize(
+        [document], path="phases/01-run/per-item.json", truncation=truncation
+    )[0]
+
+    assert sanitized["llm_actions"][0] == document["llm_actions"][0]
+    for key in (
+        "api_key",
+        "VLLM_API_KEY",
+        "HF_TOKEN",
+        "access_token",
+        "refresh_token",
+        "some_token",
+        "Authorization",
+    ):
+        assert sanitized[key] == "[redacted]"
+
+
+@pytest.mark.parametrize("max_num_batched_tokens", [None, 8192])
+def test_safe_vllm_numeric_telemetry_survives(max_num_batched_tokens):
+    truncation = {"text_fields_truncated": 0, "examples": []}
+    values = {
+        "kv_cache_size_tokens": 11421,
+        "max_num_batched_tokens": max_num_batched_tokens,
+        "generation_tokens_total": 1000,
+        "prompt_tokens_total": 2000,
+        "generation_token_rate": 42.5,
+        "prompt_token_rate": 81.25,
+        "inter_token_latency_p50": 0.012,
+        "inter_token_latency_p95": 0.035,
+    }
+
+    sanitized = _sanitize(
+        {"vllm": values}, path="runtime.json", truncation=truncation
+    )
+
+    assert sanitized["vllm"] == values
+    json.loads(_json_bytes(sanitized))
+
+
+def test_nested_kv_cache_size_is_numeric_but_untrusted_token_strings_stay_redacted():
+    truncation = {"text_fields_truncated": 0, "examples": []}
+    document = {
+        "vllm": {
+            "cache_config_info": [
+                {
+                    "metric": {
+                        "kv_cache_size_tokens": 11421,
+                        "session_token": "secret",
+                    }
+                }
+            ],
+            "untrusted": {"kv_cache_size_tokens": "secret"},
+        }
+    }
+
+    sanitized = _sanitize(document, path="runtime.json", truncation=truncation)
+
+    metric = sanitized["vllm"]["cache_config_info"][0]["metric"]
+    assert metric["kv_cache_size_tokens"] == 11421
+    assert metric["session_token"] == "[redacted]"
+    assert sanitized["vllm"]["untrusted"]["kv_cache_size_tokens"] == "[redacted]"
+
+
+def _snapshot(**values):
+    return {
+        "sections": {
+            "vllm": {
+                name: [{"metric": {}, "value": [1, str(value)]}]
+                for name, value in values.items()
+            }
+        }
+    }
+
+
+def test_counter_run_deltas_are_derived_without_differencing_gauges():
+    before = _snapshot(
+        num_preemptions_total=2,
+        generation_tokens_total=100,
+        prompt_tokens_total=200,
+        prefix_cache_hits_total=10,
+        prefix_cache_queries_total=20,
+        num_requests_waiting=4,
+    )
+    after = _snapshot(
+        num_preemptions_total=5,
+        generation_tokens_total=160,
+        prompt_tokens_total=280,
+        prefix_cache_hits_total=18,
+        prefix_cache_queries_total=32,
+        num_requests_waiting=1,
+    )
+
+    evidence = _metrics_evidence({"before": before, "after": after})
+
+    assert evidence["run_delta"] == {
+        "preemptions": 3.0,
+        "generation_tokens": 60.0,
+        "prompt_tokens": 80.0,
+        "prefix_cache_hits": 8.0,
+        "prefix_cache_queries": 12.0,
+    }
+    assert "num_requests_waiting" not in evidence["run_delta"]
+
+
+def test_counter_run_delta_is_omitted_when_either_snapshot_is_missing():
+    evidence = _metrics_evidence(
+        {"before": _snapshot(generation_tokens_total=100), "after": _snapshot()}
+    )
+
+    assert "generation_tokens" not in evidence["run_delta"]
+
+
+def test_llm_output_token_summary_distributions_survive():
+    truncation = {"text_fields_truncated": 0, "examples": []}
+    distribution = {
+        "count": 30,
+        "min": 12,
+        "max": 512,
+        "mean": 238.5,
+        "p50": 220.0,
+        "p95": 485.4,
+        "p99": 506.7,
+    }
+    document = {"llm_actions": {"output_tokens": {"answer_evaluation": distribution}}}
+
+    sanitized = _sanitize(document, path="summary.json", truncation=truncation)
+
+    assert sanitized == document
+
+
+def test_safe_token_paths_reject_strings_and_unapproved_locations():
+    truncation = {"text_fields_truncated": 0, "examples": []}
+    document = {
+        "llm_actions": [{"output_tokens": "secret", "max_tokens": True}],
+        "untrusted": {"output_tokens": 512},
+    }
+
+    sanitized = _sanitize(document, path="benchmark.json", truncation=truncation)
+
+    assert sanitized["llm_actions"][0]["output_tokens"] == "[redacted]"
+    assert sanitized["llm_actions"][0]["max_tokens"] == "[redacted]"
+    assert sanitized["untrusted"]["output_tokens"] == "[redacted]"
+
+
+@pytest.mark.parametrize(
+    "root_path",
+    ["manifest.json", "runtime.json"],
+)
+def test_safe_token_budget_provenance_survives_only_at_approved_export_paths(
+    root_path,
+):
+    truncation = {"text_fields_truncated": 0, "examples": []}
+    budgets = {
+        "answer_generation": 128,
+        "answer_evaluation": 512,
+        "content_risk_scan": 128,
+        "query_rewrite": 128,
+        "memory_extraction": 512,
+    }
+    document = {
+        "llm": {"max_tokens": budgets},
+        "access_token": "access-secret",
+        "refresh_token": "refresh-secret",
+        "some_token": "secret-value",
+    }
+
+    sanitized = _sanitize(document, path=root_path, truncation=truncation)
+
+    assert sanitized["llm"]["max_tokens"] == budgets
+    assert all(
+        isinstance(value, int)
+        for value in sanitized["llm"]["max_tokens"].values()
+    )
+    assert sanitized["access_token"] == "[redacted]"
+    assert sanitized["refresh_token"] == "[redacted]"
+    assert sanitized["some_token"] == "[redacted]"
+
+
+def test_token_budget_exception_rejects_unapproved_paths_and_malformed_maps():
+    truncation = {"text_fields_truncated": 0, "examples": []}
+    budgets = {
+        "answer_generation": 128,
+        "answer_evaluation": 512,
+        "content_risk_scan": 128,
+        "query_rewrite": 128,
+        "memory_extraction": 512,
+    }
+
+    unrelated = _sanitize(
+        {"llm": {"max_tokens": budgets}},
+        path="comparison.json",
+        truncation=truncation,
+    )
+    unknown = _sanitize(
+        {"llm": {"max_tokens": {**budgets, "unknown": 1}}},
+        path="manifest.json",
+        truncation=truncation,
+    )
+    text = _sanitize(
+        {"llm": {"max_tokens": {**budgets, "answer_generation": "secret"}}},
+        path="runtime.json",
+        truncation=truncation,
+    )
+    boolean = _sanitize(
+        {"llm": {"max_tokens": {**budgets, "answer_generation": True}}},
+        path="runtime.json",
+        truncation=truncation,
+    )
+
+    assert unrelated["llm"]["max_tokens"] == "[redacted]"
+    assert unknown["llm"]["max_tokens"] == "[redacted]"
+    assert text["llm"]["max_tokens"] == "[redacted]"
+    assert boolean["llm"]["max_tokens"] == "[redacted]"
+
+
+def test_safe_token_budget_map_normalizes_non_finite_values_to_null():
+    truncation = {"text_fields_truncated": 0, "examples": []}
+    budgets = {
+        "answer_generation": float("nan"),
+        "answer_evaluation": float("inf"),
+        "content_risk_scan": 128,
+        "query_rewrite": 128,
+        "memory_extraction": 512,
+    }
+
+    sanitized = _sanitize(
+        {"llm": {"max_tokens": budgets}},
+        path="manifest.json",
+        truncation=truncation,
+    )
+
+    assert sanitized["llm"]["max_tokens"]["answer_generation"] is None
+    assert sanitized["llm"]["max_tokens"]["answer_evaluation"] is None
+    json.loads(_json_bytes(sanitized))
+
+
 def test_export_reports_text_truncation_explicitly():
     store, orchestrator, _, dataset_id = build()
     benchmark = run_benchmark(orchestrator, dataset_id, [PHASE_RETRIEVAL_BASE])
@@ -341,3 +624,24 @@ def test_export_refuses_a_benchmark_owned_by_another_tenant():
 
     with bound_context(**other.to_dict()), pytest.raises(EvalNotFound):
         build_benchmark_export(store, benchmark["benchmark_id"])
+
+
+def test_judge_contract_provenance_reaches_the_exported_evidence(monkeypatch):
+    """GEN-03G: the schema digest and prompt version travel with the run."""
+    schema_sha = "0a82f6655e9b44131b110fa343dd64cd98de79b1e7fd407b59b8591d53654e92"
+    monkeypatch.setenv("ANSWER_EVALUATION_OUTPUT_SCHEMA_SHA256", schema_sha)
+    monkeypatch.setenv("ANSWER_EVALUATION_PROMPT_VERSION", "answer_evaluation.v2")
+    store, orchestrator, _, dataset_id = build()
+    benchmark = run_benchmark(orchestrator, dataset_id, [PHASE_RETRIEVAL_BASE])
+
+    with _archive(store, benchmark["benchmark_id"]) as archive:
+        manifest = json.loads(archive.read("manifest.json"))
+        runtime = json.loads(archive.read("runtime.json"))
+
+    # Not redacted on the way out: a 64-character digest is a fingerprint of a
+    # public schema, not a credential, and an export that dropped it could not
+    # prove which judge contract produced its quality numbers.
+    assert manifest["llm"]["output_schema_sha256"]["answer_evaluation"] == schema_sha
+    assert manifest["llm"]["prompt_version"]["answer_evaluation"] == "answer_evaluation.v2"
+    assert runtime["llm"]["output_schema_sha256"] == manifest["llm"]["output_schema_sha256"]
+    assert runtime["llm"]["prompt_version"] == manifest["llm"]["prompt_version"]

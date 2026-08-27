@@ -172,11 +172,6 @@ class RetrievalTrace:
                 separately so "filtered out" never looks like "never found".
             dropped: The candidates this step refused, each with its reason.
         """
-        if len(self.stages) >= max(1, self.max_stages):
-            # The lineage is longer than the bound. Flagged once rather than
-            # dropping steps silently.
-            self.truncated = True
-            return
         listed = [chunk for chunk in candidates if isinstance(chunk, dict)]
         views = candidate_views(listed, self.max_candidates)
         entry: Dict[str, Any] = {
@@ -196,7 +191,49 @@ class RetrievalTrace:
                 {"chunk_id": _clean_id(item.get("chunk_id")), "reason": item.get("reason")}
                 for item in dropped[: self.max_candidates]
             ]
+        stage_limit = max(1, self.max_stages)
+        if stage == STAGE_FINAL_CONTEXT:
+            # Terminal evidence is not an optional diagnostic stage: it is
+            # the context generation actually used. Replace an older terminal
+            # entry (defensive) and evict the least-recent diagnostic entry
+            # when the generic bound is already full.
+            self.stages = [
+                recorded
+                for recorded in self.stages
+                if recorded.get("stage") != STAGE_FINAL_CONTEXT
+            ]
+            if len(self.stages) >= stage_limit:
+                drop_index = next(
+                    (
+                        index
+                        for index, recorded in enumerate(self.stages)
+                        if recorded.get("stage")
+                        not in {STAGE_BASE, STAGE_MERGED, STAGE_PASS_TWO}
+                    ),
+                    len(self.stages) - 1,
+                )
+                self.stages.pop(drop_index)
+                self.truncated = True
+            self.stages.append(entry)
+            return
+        if len(self.stages) >= stage_limit:
+            # The lineage is longer than the bound. Flagged once rather than
+            # dropping steps silently. A later final-context stage can still
+            # displace one diagnostic entry.
+            self.truncated = True
+            return
         self.stages.append(entry)
+
+    def final_context_stage(self) -> Optional[Dict[str, Any]]:
+        """Return the mandatory terminal context entry, when recorded."""
+        return next(
+            (
+                stage
+                for stage in reversed(self.stages)
+                if stage.get("stage") == STAGE_FINAL_CONTEXT
+            ),
+            None,
+        )
 
     def record_decision(
         self,
@@ -249,10 +286,7 @@ class RetrievalTrace:
         Empty until a :data:`STAGE_FINAL_CONTEXT` stage exists: before that
         there is no final selection to explain.
         """
-        final = next(
-            (stage for stage in reversed(self.stages) if stage["stage"] == STAGE_FINAL_CONTEXT),
-            None,
-        )
+        final = self.final_context_stage()
         if final is None:
             return []
         earlier = [stage for stage in self.stages if stage["stage"] != STAGE_FINAL_CONTEXT]

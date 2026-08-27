@@ -11,6 +11,7 @@ from pydantic import ValidationError
 from app.core.config import Settings
 from app.llm.interfaces import ILLMClient, LLMGenerationResult, LLMInvocation, LLMUsage
 from app.schemas.llm import (
+    AnswerReviewParsedOutput,
     ModelExecutionStreamPayload,
     validate_model_execution_request_message,
 )
@@ -39,9 +40,10 @@ class FakeLogger:
 class FakeLLMClient(ILLMClient):
     """Configurable fake client for reply and streaming tests."""
 
-    def __init__(self, responses=None, exception=None, usage=None):
+    def __init__(self, responses=None, exception=None, usage=None, finish_reason="completed"):
         self.responses = responses or {}
         self.exception = exception
+        self.finish_reason = finish_reason
         self.usage = usage or LLMUsage(
             provider="fake",
             input_tokens=5,
@@ -67,7 +69,7 @@ class FakeLLMClient(ILLMClient):
         return LLMGenerationResult(
             raw_output=raw_output,
             usage=self.usage,
-            finish_reason="completed",
+            finish_reason=self.finish_reason,
         )
 
     def list_models(self) -> list:
@@ -156,6 +158,7 @@ class RecordingMetrics:
         self.llm_tokens_total = RecordingMetric()
         self.llm_output_tokens = RecordingMetric()
         self.llm_finish_reasons_total = RecordingMetric()
+        self.llm_provider_finish_reasons_total = RecordingMetric()
 
 
 def _settings(**overrides):
@@ -307,6 +310,55 @@ class LLMServiceTests(unittest.TestCase):
         self.assertEqual(reply.status, "success")
         self.assertEqual(client.invocations[0].max_tokens, 89)
         self.assertEqual(client.invocations[0].metadata["structured_output_hint"], "json_object")
+
+    def test_answer_evaluation_json_schema_comes_from_authoritative_model(self):
+        client = FakeLLMClient(
+            {
+                "answer_evaluation": (
+                    '{"verdict":"pass","issues":[],"revision_applied":false}'
+                )
+            }
+        )
+        service = LLMService(
+            client,
+            FakeLogger(),
+            _settings(answer_evaluation_structured_output_transport="json_schema"),
+        )
+
+        service.execute(
+            _request_message(
+                "answer_evaluation",
+                {"question": "Q?", "answer": "A.", "reference_context": "C."},
+            )
+        )
+
+        metadata = client.invocations[0].metadata
+        self.assertEqual(metadata["structured_output_transport"], "json_schema")
+        self.assertEqual(
+            metadata["structured_output_schema"],
+            AnswerReviewParsedOutput.model_json_schema(),
+        )
+
+    def test_json_schema_transport_is_scoped_to_answer_evaluation(self):
+        client = FakeLLMClient(
+            {"content_risk_scan": '{"risk_level":"low","categories":[],"flags":[],"summary":"safe"}'}
+        )
+        service = LLMService(
+            client,
+            FakeLogger(),
+            _settings(answer_evaluation_structured_output_transport="json_schema"),
+        )
+
+        service.execute(
+            _request_message(
+                "content_risk_scan",
+                {"content": "A harmless sentence.", "policy_hints": []},
+            )
+        )
+
+        metadata = client.invocations[0].metadata
+        self.assertEqual(metadata["structured_output_transport"], "legacy")
+        self.assertIsNone(metadata["structured_output_schema"])
 
     def test_all_candidate_budgets_reach_typed_invocations(self):
         responses = {
@@ -905,7 +957,10 @@ class LLMServiceTests(unittest.TestCase):
         )
 
         self.assertEqual(reply.status, "error")
-        self.assertEqual(reply.errors[0].code, "execution_error")
+        self.assertEqual(reply.errors[0].code, "provider_error")
+        self.assertEqual(reply.application_status, "provider_error")
+        # No provider response arrived, so no finish reason is invented.
+        self.assertEqual(reply.provider_finish_reason, "unknown")
         self.assertEqual(reply.usage.provider, "vllm")
         self.assertEqual(reply.prompt_version, "query_rewrite.v1")
 

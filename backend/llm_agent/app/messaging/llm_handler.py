@@ -155,6 +155,11 @@ class LLMHandler(BaseRabbitMQHandler):
             visible_reasoning_steps=["Request validation failed"],
             raw_output="",
             usage=UsageInfo(provider=self.config.llm_implementation),
+            # The request never reached a provider, so there is no finish
+            # reason to report — and the failure is this service's inbound
+            # contract, not the model's.
+            provider_finish_reason="unknown",
+            application_status="invalid_request",
             latency_ms=0,
             model=str(message.get("payload", {}).get("model", "")),
             prompt_version=str(message.get("payload", {}).get("prompt_version", "")),

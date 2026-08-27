@@ -49,6 +49,7 @@ from __future__ import annotations
 
 import os
 import platform
+import re
 import sys
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Mapping, Optional, Tuple
@@ -72,7 +73,17 @@ from app.services.effective_retrieval import (
 # Version 3 adds the allowlisted LLM quantization used by the served runtime.
 # Version 4 records the effective vLLM scheduler concurrency candidate.
 # Version 5 records effective per-action output-token ceilings.
-MANIFEST_VERSION = 5
+# Version 6 adds the `vllm` section: the served runtime's pinned version and
+# every scheduler knob RAGForge sets or deliberately leaves to the server.
+# Version 7 separates configured deployment intent from facts observed from
+# the running server. Flat fields remain as compatibility aliases for older
+# comparison/export readers; they are explicitly configuration-derived.
+# Version 8 records the answer-evaluation structured-output transport and an
+# observed vLLM version only when a runtime probe supplied one.
+# Version 9 records the answer-evaluation output-schema fingerprint and the
+# effective prompt version, so two runs scored under different judge contracts
+# stop reading as identical.
+MANIFEST_VERSION = 9
 
 # Longest env value copied into a manifest. A model identifier is tens of
 # characters; anything far larger is a mistake or a payload, and neither
@@ -111,9 +122,12 @@ def _assert_safe_name(name: str) -> str:
         ManifestAllowlistError: If the name contains a secret-shaped token.
     """
     upper = name.upper()
-    # In these numeric provenance fields TOKENS is a unit, not a credential
-    # marker. Values are still allowlisted individually and integer-coerced.
-    secret_shape = upper.removesuffix("_MAX_TOKENS")
+    # Plural TOKENS is a unit of work in these numeric provenance fields, not a
+    # credential marker: ANSWER_GENERATION_MAX_TOKENS and
+    # VLLM_MAX_NUM_BATCHED_TOKENS are integers. The singular TOKEN still
+    # disqualifies, so HF_TOKEN and any VLLM_API_TOKEN remain refused. Values
+    # are still allowlisted individually and numerically coerced.
+    secret_shape = upper.replace("TOKENS", "")
     for token in _SECRET_NAME_TOKENS:
         if token in secret_shape:
             raise ManifestAllowlistError(
@@ -162,7 +176,51 @@ _ENV_FIELDS: Dict[str, Dict[str, Tuple[Tuple[str, ...], str]]] = {
         "max_num_seqs": (("VLLM_MAX_NUM_SEQS",), "int"),
         "quantization": (("VLLM_QUANTIZATION",), "str"),
     },
+    # The served runtime itself. Deployment injects each of these from the same
+    # variable the `vllm` service is configured from, so the manifest cannot
+    # describe a server other than the one that answered the benchmark.
+    #
+    # The scheduler knobs are listed even though RAGForge passes none of them
+    # today. That is the point: a benchmark must be able to say "this run did
+    # not set max_num_batched_tokens" and have a later tuned run compare as
+    # different, rather than have both read as an absence nobody recorded.
+    "vllm": {
+        "image": (("VLLM_IMAGE",), "str"),
+        "max_model_len": (("VLLM_MAX_MODEL_LEN",), "int"),
+        "max_num_seqs": (("VLLM_MAX_NUM_SEQS",), "int"),
+        "gpu_memory_utilization": (("VLLM_GPU_MEMORY_UTILIZATION",), "float"),
+        "quantization": (("VLLM_QUANTIZATION",), "str"),
+        "prefix_caching": (("VLLM_PREFIX_CACHING",), "bool"),
+        "max_num_batched_tokens": (("VLLM_MAX_NUM_BATCHED_TOKENS",), "int"),
+        "performance_mode": (("VLLM_PERFORMANCE_MODE",), "str"),
+        "async_scheduling": (("VLLM_ASYNC_SCHEDULING",), "bool"),
+        "chunked_prefill": (("VLLM_ENABLE_CHUNKED_PREFILL",), "bool"),
+        "scheduler_reserve_full_isl": (("VLLM_SCHEDULER_RESERVE_FULL_ISL",), "bool"),
+    },
 }
+
+# Scheduler knobs whose ``None`` means "RAGForge passes no flag; the server
+# resolves its own value", not "nobody looked". They are exempt from
+# ``unobserved`` for the same reason the effective-retrieval nulls are: the
+# manifest is confident about them, and calling a proven non-configuration an
+# unknown would leave two identically-unconfigured runs incomparable forever.
+#
+# What the *server* then resolved is a separate question this section does not
+# answer and must not guess. Nothing here may be filled in from a release's
+# documented defaults; the observed side lives in the run's Prometheus
+# snapshot, which records what the running vLLM actually exported.
+VLLM_UNCONFIGURED_FIELDS = frozenset({
+    "max_num_batched_tokens",
+    "performance_mode",
+    "async_scheduling",
+    "chunked_prefill",
+    "scheduler_reserve_full_isl",
+})
+
+# An official version-pinned vLLM tag, e.g. `vllm/vllm-openai:v0.28.0`. A
+# floating tag (`latest`, `nightly`, `main`) names no version, so it yields
+# `None` rather than a version this module invented.
+_PINNED_VLLM_TAG = re.compile(r"^v?(\d+\.\d+(?:\.\d+)?(?:\.?post\d+)?)$")
 
 _LLM_MAX_TOKEN_ENV_FIELDS: Dict[str, Tuple[Tuple[str, ...], str]] = {
     "answer_generation": (("ANSWER_GENERATION_MAX_TOKENS",), "int"),
@@ -171,6 +229,45 @@ _LLM_MAX_TOKEN_ENV_FIELDS: Dict[str, Tuple[Tuple[str, ...], str]] = {
     "query_rewrite": (("QUERY_REWRITE_MAX_TOKENS",), "int"),
     "memory_extraction": (("MEMORY_EXTRACTION_MAX_TOKENS",), "int"),
 }
+
+_ANSWER_EVALUATION_TRANSPORT_ENV = "ANSWER_EVALUATION_STRUCTURED_OUTPUT_TRANSPORT"
+_OBSERVED_VLLM_VERSION_ENV = "VLLM_OBSERVED_SERVER_VERSION"
+
+# The judge's contract, in two parts: the exact JSON Schema the evaluator was
+# held to, and the prompt version that told it how to fill that schema in.
+#
+# Both are llm_agent facts, so rag receives them the way it receives the
+# embedding model — injected by deployment, never inferred. rag has no route
+# into llm_agent's Pydantic models and must not invent one from a request
+# path. The schema value is a digest llm_agent computes from
+# ``AnswerReviewParsedOutput.model_json_schema()``; it is generated by
+# ``scripts/answer_review_schema_sha.py``, never typed by hand, because a
+# hand-written digest would keep reading "unchanged" through exactly the edit
+# it exists to catch.
+#
+# Missing means unknown. A manifest without these keys cannot prove that its
+# benchmark was scored under the same judge contract as another, and the
+# comparison says so rather than assuming they match: the GEN-03F cap on
+# ``claims`` changed what the quality metrics measure, and two runs across
+# that change must not compare as apples to apples.
+_ANSWER_EVALUATION_SCHEMA_SHA_ENV = "ANSWER_EVALUATION_OUTPUT_SCHEMA_SHA256"
+_ANSWER_EVALUATION_PROMPT_VERSION_ENV = "ANSWER_EVALUATION_PROMPT_VERSION"
+
+_assert_safe_name(_ANSWER_EVALUATION_TRANSPORT_ENV)
+_assert_safe_name(_OBSERVED_VLLM_VERSION_ENV)
+_assert_safe_name(_ANSWER_EVALUATION_SCHEMA_SHA_ENV)
+_assert_safe_name(_ANSWER_EVALUATION_PROMPT_VERSION_ENV)
+
+# A SHA-256 hex digest and nothing else. Anything that is not one is not a
+# fingerprint of a schema, so it is recorded as unknown rather than copied
+# into the manifest as though it were provenance.
+_SHA256_HEX = re.compile(r"^[0-9a-f]{64}$")
+
+# ``<request_type>.v<N>``, the shape ``llm_agent``'s prompt registry uses. The
+# pattern keeps a stray value out of the manifest for the same reason the
+# digest pattern does, and keeps raw prompt *text* out of it by construction:
+# nothing that is not a short version label can pass.
+_PROMPT_VERSION = re.compile(r"^answer_evaluation\.v\d+$")
 
 # Config-sourced retrieval settings: the part of the pipeline rag *can*
 # observe, so on a real `RAGConfig` none of these is ever unobserved. A field
@@ -211,6 +308,10 @@ for _names, _kind in _LLM_MAX_TOKEN_ENV_FIELDS.values():
         _assert_safe_name(_name)
 
 
+_TRUE_TEXT = frozenset({"1", "true", "yes", "on"})
+_FALSE_TEXT = frozenset({"0", "false", "no", "off"})
+
+
 def _coerce(raw: str, kind: str) -> Optional[Any]:
     """Convert one raw env string, or return ``None`` if it will not convert."""
     text = raw.strip()
@@ -221,7 +322,65 @@ def _coerce(raw: str, kind: str) -> Optional[Any]:
             return int(text)
         except ValueError:
             return None
+    if kind == "float":
+        try:
+            return float(text)
+        except ValueError:
+            return None
+    if kind == "bool":
+        lowered = text.lower()
+        if lowered in _TRUE_TEXT:
+            return True
+        if lowered in _FALSE_TEXT:
+            return False
+        # Deliberately not `bool(text)`: a prefix-caching flag reading "maybe"
+        # must come out unknown, never enabled.
+        return None
     return text
+
+
+def _pattern_value(raw: Optional[str], pattern: "re.Pattern[str]") -> Optional[str]:
+    """Return ``raw`` only if it matches ``pattern``, else ``None``.
+
+    A value the manifest cannot recognise is worth less than no value at all:
+    recorded, it would make two runs compare as "different provenance" for a
+    typo, or as "same" for two copies of the same wrong string. Unknown is the
+    honest answer, and ``unobserved`` will say so.
+    """
+    value = _coerce(raw or "", "str")
+    if value is None or not pattern.match(value):
+        return None
+    return value
+
+
+def _vllm_server_version(image: Optional[str]) -> Optional[str]:
+    """The vLLM version a pinned image tag names, or ``None`` if it names none.
+
+    This is the version RAGForge deployed, read off the immutable tag it
+    deployed. It is not a probe of the running process: rag has no route to the
+    vLLM server, and a manifest built inside a request must not do blocking
+    network I/O to find out. Recording it still matters, because the
+    0.27.1-against-0.28.0 comparison this section exists for has to come out
+    *incompatible* rather than unknown.
+    """
+    if not image:
+        return None
+    _, _, tag = image.rpartition(":")
+    match = _PINNED_VLLM_TAG.match(tag)
+    return match.group(1) if match else None
+
+
+def _vllm_model_runner(raw: Optional[str]) -> Optional[str]:
+    """Which model-runner generation the server was told to use.
+
+    WSL2 cannot run the V2 runner, so which one a benchmark ran under is
+    performance provenance rather than trivia. An unrecognised value stays
+    unknown: guessing "v1" would silently certify a runner nobody verified.
+    """
+    enabled = _coerce(raw, "bool") if raw else None
+    if enabled is None:
+        return None
+    return "v2" if enabled else "v1"
 
 
 def _env_section(
@@ -263,7 +422,16 @@ def _unobserved_paths(sections: Mapping[str, Mapping[str, Any]]) -> List[str]:
                 visit(f"{path}.{child}" if path else str(child), child_value)
         elif value is None:
             section, _, field = path.partition(".")
-            if not (section == "retrieval" and field in EFFECTIVE_RETRIEVAL_FIELDS):
+            nested_vllm_field = (
+                path.removeprefix("vllm.configured.")
+                if path.startswith("vllm.configured.")
+                else ""
+            )
+            exempt = (
+                section == "retrieval" and field in EFFECTIVE_RETRIEVAL_FIELDS
+            ) or (section == "vllm" and field in VLLM_UNCONFIGURED_FIELDS)
+            exempt = exempt or nested_vllm_field in VLLM_UNCONFIGURED_FIELDS
+            if not exempt:
                 unobserved.append(path)
 
     for section, values in sections.items():
@@ -343,6 +511,44 @@ def build_benchmark_manifest(
 
     llm = _env_section(_ENV_FIELDS["llm"], environment)
     llm["max_tokens"] = _env_section(_LLM_MAX_TOKEN_ENV_FIELDS, environment)
+    transport = _coerce(environment.get(_ANSWER_EVALUATION_TRANSPORT_ENV, ""), "str")
+    llm["structured_output_transport"] = {
+        "answer_evaluation": transport if transport in {"legacy", "json_schema"} else None
+    }
+    llm["output_schema_sha256"] = {
+        "answer_evaluation": _pattern_value(
+            environment.get(_ANSWER_EVALUATION_SCHEMA_SHA_ENV), _SHA256_HEX
+        )
+    }
+    llm["prompt_version"] = {
+        "answer_evaluation": _pattern_value(
+            environment.get(_ANSWER_EVALUATION_PROMPT_VERSION_ENV), _PROMPT_VERSION
+        )
+    }
+
+    configured_vllm = _env_section(_ENV_FIELDS["vllm"], environment)
+    configured_vllm["server_version"] = _vllm_server_version(
+        configured_vllm.get("image")
+    )
+    configured_vllm["model_runner"] = _vllm_model_runner(
+        environment.get("VLLM_USE_V2_MODEL_RUNNER")
+    )
+    # These values cannot be observed safely from this synchronous request
+    # path. The pre-benchmark warmup gate probes /version and /v1/models and
+    # records those observations separately; no image tag is promoted into
+    # this block as runtime proof.
+    observed_vllm = {
+        "server_version": _coerce(
+            environment.get(_OBSERVED_VLLM_VERSION_ENV, ""), "str"
+        ),
+        "model_runner": None,
+        "max_model_len": None,
+    }
+    vllm = {
+        **configured_vllm,
+        "configured": dict(configured_vllm),
+        "observed": observed_vllm,
+    }
 
     sections: Dict[str, Dict[str, Any]] = {
         "build": build,
@@ -353,6 +559,7 @@ def build_benchmark_manifest(
         "chunking": _env_section(_ENV_FIELDS["chunking"], environment),
         "vector_store": _env_section(_ENV_FIELDS["vector_store"], environment),
         "llm": llm,
+        "vllm": vllm,
         "software": software,
     }
 

@@ -38,7 +38,7 @@ p95 that exists against one that silently does not.
 from __future__ import annotations
 
 import math
-from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence
+from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
 from app.services.eval_runner import K_VALUES
 from app.services.failure_attribution import FAILURE_CATEGORIES
@@ -46,7 +46,7 @@ from app.services.failure_attribution import FAILURE_CATEGORIES
 # Bumped when the summary's *shape* changes, for the reason the manifest
 # carries a version: a summary read back later must be interpretable under
 # the rules it was written with.
-SUMMARY_VERSION = 2
+SUMMARY_VERSION = 3
 
 # The IR metrics a retrieval phase reports at every k.
 _AT_K_METRICS = ("recall_at_k", "precision_at_k", "hit_rate_at_k", "ndcg_at_k")
@@ -177,6 +177,144 @@ def _retrieval_block(results: Mapping[str, Any]) -> Dict[str, Any]:
     return block
 
 
+# ── Typed LLM action evidence ─────────────────────────────────────────────
+
+# The typed LLM actions a turn can make. Bounded: an unrecognized request
+# type is counted under `other` rather than becoming a new summary key.
+LLM_REQUEST_TYPES: Tuple[str, ...] = (
+    "answer_generation",
+    "answer_evaluation",
+    "content_risk_scan",
+    "query_rewrite",
+    "memory_extraction",
+    "other",
+)
+
+# Application statuses that are a failure of the call. `success` is not one,
+# and is therefore never a key in a failure block.
+LLM_FAILURE_STATUSES: Tuple[str, ...] = (
+    "structured_output_invalid",
+    "provider_error",
+    "timeout",
+    "execution_error",
+    "streaming_not_supported",
+    "invalid_request",
+    "unknown",
+)
+
+# Provider finish reasons, as llm_agent bounds them. `unknown` means the
+# provider never answered — it is not an error state.
+LLM_FINISH_REASONS: Tuple[str, ...] = (
+    "stop",
+    "length",
+    "completed",
+    "content_filter",
+    "tool_calls",
+    "cancelled",
+    "other",
+    "unknown",
+)
+
+# The action whose output ceiling is the one under investigation, and whose
+# failure finish reasons are reported on their own key.
+EVALUATION_REQUEST_TYPE = "answer_evaluation"
+
+
+def _bounded_key(value: Any, allowed: Tuple[str, ...], default: str) -> str:
+    text = str(value).strip().lower() if value is not None else ""
+    return text if text in allowed else default
+
+
+def _llm_actions(rows: Optional[Iterable[Any]]) -> List[Mapping[str, Any]]:
+    """Every per-item LLM evidence record in the supplied rows."""
+    actions: List[Mapping[str, Any]] = []
+    for row in rows or ():
+        if not isinstance(row, Mapping):
+            continue
+        stored = row.get("llm_actions")
+        for action in stored if isinstance(stored, list) else ():
+            if isinstance(action, Mapping):
+                actions.append(action)
+    return actions
+
+
+def _token_distribution(samples: Iterable[Any]) -> Dict[str, Any]:
+    """Percentiles over observed token counts, or nulls when none were seen.
+
+    A call whose provider reported no usage contributes nothing rather than a
+    zero: "no usage reported" and "zero tokens" are different facts, and only
+    the second one is a measurement.
+    """
+    ordered = sorted(
+        number for number in (_number(value) for value in samples) if number is not None
+    )
+    block: Dict[str, Any] = {
+        "sample_count": len(ordered),
+        "max": None,
+        **{key: None for key, _ in _PERCENTILES},
+    }
+    if ordered:
+        block["max"] = ordered[-1]
+        for key, quantile in _PERCENTILES:
+            block[key] = _percentile(ordered, quantile)
+    return block
+
+
+def llm_action_summary(rows: Optional[Iterable[Any]]) -> Dict[str, Any]:
+    """Bounded evidence about the typed LLM calls the items made.
+
+    This answers one question the phase metrics cannot: when a call failed,
+    what had the provider already reported? An evaluator whose JSON was
+    rejected after finishing on ``length`` at its output ceiling is a budget
+    problem; one that finished on ``stop`` well under the ceiling and still
+    failed to parse is not, and raising the ceiling for it would only hide a
+    malformed output behind a bigger number.
+
+    Every key is bounded, every count is of records actually observed, and no
+    prompt, output or context text is read — the evidence records carry none.
+    """
+    actions = _llm_actions(rows)
+    failures: Dict[str, Dict[str, int]] = {}
+    evaluation_failure_finish: Dict[str, int] = {
+        reason: 0 for reason in LLM_FINISH_REASONS
+    }
+    output_tokens: Dict[str, List[Any]] = {}
+    calls: Dict[str, int] = {}
+    for action in actions:
+        request_type = _bounded_key(
+            action.get("request_type"), LLM_REQUEST_TYPES, "other"
+        )
+        status = _bounded_key(
+            action.get("application_status"),
+            ("success", *LLM_FAILURE_STATUSES),
+            "unknown",
+        )
+        calls[request_type] = calls.get(request_type, 0) + 1
+        output_tokens.setdefault(request_type, []).append(action.get("output_tokens"))
+        if status == "success":
+            continue
+        counts = failures.setdefault(
+            request_type,
+            {"total": 0, **{name: 0 for name in LLM_FAILURE_STATUSES}},
+        )
+        counts["total"] += 1
+        counts[status] += 1
+        if request_type == EVALUATION_REQUEST_TYPE:
+            reason = _bounded_key(
+                action.get("provider_finish_reason"), LLM_FINISH_REASONS, "other"
+            )
+            evaluation_failure_finish[reason] += 1
+    return {
+        "calls": calls,
+        "llm_action_failures": failures,
+        "answer_evaluation_failure_finish_reasons": evaluation_failure_finish,
+        "output_tokens": {
+            request_type: _token_distribution(samples)
+            for request_type, samples in output_tokens.items()
+        },
+    }
+
+
 def _scoring_block(results: Mapping[str, Any]) -> Dict[str, Any]:
     """The mutually exclusive scoring axis, with a legacy-safe fallback."""
     stored = results.get("scoring")
@@ -268,16 +406,19 @@ def _attribution_block(stored: Any) -> Optional[Dict[str, Any]]:
     )
 
 
-def _index_rows(runs: Optional[Iterable[Mapping[str, Any]]]) -> Dict[str, List[Any]]:
-    """Map each supplied run's id to its per-item latency values.
+def _index_rows(
+    runs: Optional[Iterable[Mapping[str, Any]]],
+) -> Dict[str, List[Mapping[str, Any]]]:
+    """Map each supplied run's id to its per-item rows.
 
     Runs are optional throughout: a caller holding only the benchmark
     document still gets a complete summary, with the latency blocks saying
-    they came from a phase aggregate. Nothing else is read from a run here —
-    its rows carry query text and retrieved content, and a summary is not
-    the place for either.
+    they came from a phase aggregate. Only two things are ever read out of a
+    row here — its latency and its bounded LLM evidence records. A row also
+    carries query text and retrieved content, and a summary is not the place
+    for either.
     """
-    rows: Dict[str, List[Any]] = {}
+    rows: Dict[str, List[Mapping[str, Any]]] = {}
     for run in runs or ():
         if not isinstance(run, Mapping):
             continue
@@ -286,28 +427,33 @@ def _index_rows(runs: Optional[Iterable[Mapping[str, Any]]]) -> Dict[str, List[A
             continue
         per_item = run.get("per_item")
         rows[str(run_id)] = [
-            row.get("latency_ms")
+            row
             for row in (per_item if isinstance(per_item, list) else ())
             if isinstance(row, Mapping)
         ]
     return rows
 
 
-def _phase_latency_samples(
+def _phase_rows(
     phase: Mapping[str, Any],
-    rows_by_run: Mapping[str, List[Any]],
-) -> List[Any]:
-    """The per-item latencies belonging to one phase's run, if we have them."""
+    rows_by_run: Mapping[str, List[Mapping[str, Any]]],
+) -> List[Mapping[str, Any]]:
+    """The per-item rows belonging to one phase's run, if we have them."""
     run_id = phase.get("run_id")
     if not run_id:
         return []
     return list(rows_by_run.get(str(run_id), ()))
 
 
+def _latency_samples(rows: Iterable[Mapping[str, Any]]) -> List[Any]:
+    return [row.get("latency_ms") for row in rows]
+
+
 def summarize_phase(
     phase: Mapping[str, Any],
     *,
     latency_samples: Optional[Iterable[Any]] = None,
+    rows: Optional[Iterable[Mapping[str, Any]]] = None,
 ) -> Dict[str, Any]:
     """Flatten one phase record into the summary's phase shape.
 
@@ -339,12 +485,17 @@ def summarize_phase(
             latency_samples or (),
             fallback_mean_ms=results.get("mean_latency_ms"),
         ),
+        # Bounded evidence about this phase's typed LLM calls. Empty rather
+        # than null when the rows were not supplied: the blocks say how many
+        # records they saw, and zero records is visibly zero records.
+        "llm_actions": llm_action_summary(rows),
     }
 
 
 def _totals(
     phases: List[Dict[str, Any]],
     pooled_latency: List[Any],
+    pooled_rows: Optional[List[Mapping[str, Any]]] = None,
 ) -> Dict[str, Any]:
     """Roll the phase table up into the figures that survive a rollup.
 
@@ -400,6 +551,9 @@ def _totals(
         # hundred, and there is no honest pooled percentile at all without
         # the samples themselves.
         "latency_ms": latency_distribution(pooled_latency),
+        # Pooled over every phase's rows: LLM calls are independent
+        # observations, so their counts and token samples do sum.
+        "llm_actions": llm_action_summary(pooled_rows),
     }
 
 
@@ -429,12 +583,17 @@ def summarize_benchmark(
     rows_by_run = _index_rows(runs)
     phases: List[Dict[str, Any]] = []
     pooled: List[Any] = []
+    pooled_rows: List[Mapping[str, Any]] = []
     for phase in stored_phases if isinstance(stored_phases, list) else ():
         if not isinstance(phase, Mapping):
             continue
-        samples = _phase_latency_samples(phase, rows_by_run)
+        phase_rows = _phase_rows(phase, rows_by_run)
+        samples = _latency_samples(phase_rows)
         pooled.extend(samples)
-        phases.append(summarize_phase(phase, latency_samples=samples))
+        pooled_rows.extend(phase_rows)
+        phases.append(
+            summarize_phase(phase, latency_samples=samples, rows=phase_rows)
+        )
 
     return {
         "summary_version": SUMMARY_VERSION,
@@ -448,5 +607,5 @@ def summarize_benchmark(
         "finished_at": benchmark.get("finished_at"),
         "error": benchmark.get("error"),
         "phases": phases,
-        "totals": _totals(phases, pooled),
+        "totals": _totals(phases, pooled, pooled_rows),
     }

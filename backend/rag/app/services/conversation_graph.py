@@ -12,7 +12,11 @@ from app.services.conversation_events import BaseConversationEmitter
 from app.services.conversation_backend_client import ConversationBackendClient
 from app.services.conversation_persistence import BaseConversationStore, make_json_safe
 from app.services.conversation_tracing import ConversationTracer
-from app.services.conversation_messages import chunk_passages
+from app.services.conversation_messages import (
+    LLM_EVIDENCE_KEY,
+    DownstreamRPCError,
+    chunk_passages,
+)
 from app.services.citation_metrics import (
     citation_f1,
     citation_precision,
@@ -42,6 +46,12 @@ from app.services.metrics_facts import (
     create_metrics_fact_store,
 )
 from shared.metrics import METRICS
+
+
+# The nodes that consume the selected context. They are the last point at
+# which `retrieved_chunks` can still change: evaluation, revision, output
+# guardrails and persistence all read the selection without rewriting it.
+GENERATION_NODES = frozenset({"generate_answer", "generate_draft_answer"})
 
 
 class GuardrailBlockedError(Exception):
@@ -146,6 +156,9 @@ class ConversationGraphRunner:
             "emitter": emitter,
             "current_node": "graph_start",
             "retrieval_trace": retrieval_trace,
+            # Bounded per-call LLM evidence for this turn, in call order. No
+            # prompt, output or context text ever enters it.
+            "llm_actions": [],
         }
         state = build_initial_state(request)
         checkpoint = None
@@ -194,14 +207,14 @@ class ConversationGraphRunner:
                 else:
                     final_state = await self._run_fallback_graph(state, runtime)
                 trace_metadata["chunk_count"] = len(final_state.get("retrieved_chunks", []))
-            # The context generation actually ran on, recorded once from the
-            # final state rather than by each node that might have been last.
-            if retrieval_trace is not None:
-                retrieval_trace.record_stage(
-                    STAGE_FINAL_CONTEXT,
-                    final_state.get("retrieved_chunks", []),
-                )
-            result = self._build_result(final_state)
+            # The context generation actually ran on. Normally already
+            # committed at the generation boundary; committed here only for a
+            # run whose remaining nodes never reached generation (a resume
+            # past it, or a flow that produced no answer).
+            self._commit_final_context(runtime, final_state)
+            final_chunks = runtime["final_context"]
+            result = self._build_result(final_state, sources=final_chunks)
+            result["llm_actions"] = self._llm_actions(runtime)
             if record_metrics:
                 self._record_turn_metrics(
                     request, result, runtime, emitter, time.monotonic() - t0
@@ -225,12 +238,19 @@ class ConversationGraphRunner:
             result = {
                 "answer": "", "sources": [], "review": {}, "citation_metrics": {},
                 "outcome": "guardrail_blocked", "guardrail_stage": exc.stage,
+                "llm_actions": self._llm_actions(runtime),
             }
             if record_metrics:
                 self._record_turn_metrics(request, result, runtime, emitter, time.monotonic() - t0)
             return result
         except Exception as exc:
             failed_node = runtime.get("current_node", "unknown")
+            # A downstream LLM reply that failed still reported what the
+            # provider did before this service rejected it. Losing that with
+            # the exception is what made an output-ceiling truncation
+            # indistinguishable from a malformed normal completion.
+            if isinstance(exc, DownstreamRPCError):
+                self._record_llm_failure_evidence(runtime, exc)
             self.logger.exception(
                 "conversation graph execution failed",
                 error=str(exc),
@@ -252,10 +272,37 @@ class ConversationGraphRunner:
                         "message": str(exc),
                     },
                 )
-            result = {"answer": "", "sources": [], "review": {}, "error": str(exc)}
+            # A failure after the context was chosen does not unmake the
+            # retrieval that succeeded: the last authoritative context is
+            # returned with the failure, from graph state rather than from
+            # any reconstruction. Before that point there is nothing to
+            # report, and an empty list there means "unknown", not "none".
+            known_context = runtime.get("final_context")
+            result = {
+                "answer": "",
+                "sources": list(known_context) if known_context is not None else [],
+                "review": {},
+                "citation_metrics": {},
+                # Explicit, so no reader can default this result to success.
+                "outcome": "failed",
+                "error": str(exc),
+                "error_class": type(exc).__name__,
+                "failed_node": failed_node,
+                "llm_actions": self._llm_actions(runtime),
+            }
             if record_metrics:
+                # The turn fact describes a turn that finished. Keeping the
+                # known context on the failure result is for the caller and
+                # the eval trace; letting it into the live retrieval averages
+                # would move dashboards that have only ever counted completed
+                # turns.
                 self._record_turn_metrics(
-                    request, result, runtime, emitter, time.monotonic() - t0, error=exc
+                    request,
+                    {**result, "sources": []},
+                    runtime,
+                    emitter,
+                    time.monotonic() - t0,
+                    error=exc,
                 )
             return result
 
@@ -539,6 +586,11 @@ class ConversationGraphRunner:
     def _wrap_node(self, name: str, func, runtime: Dict[str, Any]):
         async def node(state: ConversationState) -> ConversationState:
             runtime["current_node"] = name
+            if name in GENERATION_NODES:
+                # Before the node runs: the context entering generation is
+                # the context generation uses, and it must survive the node
+                # failing.
+                self._commit_final_context(runtime, state)
             emitter: BaseConversationEmitter = runtime["emitter"]
             request: ConversationRequest = runtime["request"]
             started = time.monotonic()
@@ -690,6 +742,32 @@ class ConversationGraphRunner:
             query_source=query_source,
             returned_count=returned_count,
         )
+
+    def _commit_final_context(
+        self,
+        runtime: Dict[str, Any],
+        state: ConversationState,
+    ) -> None:
+        """Freeze the context the answer will be generated from.
+
+        Called at the boundary into generation, which is the last node that
+        can still change ``retrieved_chunks``: everything after it reads the
+        selection without rewriting it. Recording the terminal context only
+        after the whole graph returned meant that a failure in generation,
+        the judge, an output guardrail or persistence erased retrieval
+        evidence that was already known — and an eval row with no final
+        context then read as a retrieval miss rather than as the downstream
+        failure it was.
+
+        Committed once. The first commit wins, so a later re-entry into
+        generation (a revision pass) cannot write a second, contradicting
+        terminal stage.
+        """
+        if runtime.get("final_context") is not None:
+            return
+        chunks = list(state.get("retrieved_chunks", []) or [])
+        runtime["final_context"] = chunks
+        self._trace_stage(runtime, STAGE_FINAL_CONTEXT, chunks)
 
     def _trace_decision(
         self,
@@ -914,10 +992,44 @@ class ConversationGraphRunner:
             payload.update(make_json_safe(extra))
         self.store.save_checkpoint(payload)
 
-    def _build_result(self, state: ConversationState) -> Dict[str, Any]:
+    @staticmethod
+    def _record_llm_evidence(runtime: Dict[str, Any], response: Any) -> None:
+        """Keep one typed LLM call's bounded evidence on this turn.
+
+        Recorded for successful calls too: proving that a failing evaluator
+        stopped at its output ceiling needs the distribution of the calls that
+        did not fail as its comparison.
+        """
+        evidence = (
+            response.get(LLM_EVIDENCE_KEY) if isinstance(response, dict) else None
+        )
+        if isinstance(evidence, dict):
+            runtime.setdefault("llm_actions", []).append(dict(evidence))
+
+    @staticmethod
+    def _record_llm_failure_evidence(runtime: Dict[str, Any], exc: BaseException) -> None:
+        """Keep the evidence a failed downstream LLM reply already carried."""
+        evidence = getattr(exc, "evidence", None)
+        if isinstance(evidence, dict):
+            runtime.setdefault("llm_actions", []).append(dict(evidence))
+
+    @staticmethod
+    def _llm_actions(runtime: Dict[str, Any]) -> List[Dict[str, Any]]:
+        actions = runtime.get("llm_actions")
+        return list(actions) if isinstance(actions, list) else []
+
+    def _build_result(
+        self,
+        state: ConversationState,
+        *,
+        sources: Optional[List[Dict[str, Any]]] = None,
+    ) -> Dict[str, Any]:
+        final_sources = (
+            state.get("retrieved_chunks", []) if sources is None else sources
+        )
         return {
             "answer": state.get("draft_answer", {}).get("text", ""),
-            "sources": state.get("retrieved_chunks", []),
+            "sources": final_sources,
             "citations": state.get("draft_answer", {}).get("citations"),
             "review": self._public_review(state.get("answer_review", {})),
             # Numbers only, derived from the internal review. The claim text
@@ -980,6 +1092,7 @@ class ConversationGraphRunner:
         if not user_message:
             raise ValueError("Question is required")
         scan = await self.backend_client.risk_scan(request, user_message, stage="input")
+        self._record_llm_evidence(runtime, scan)
         debug_payloads = self._append_debug(state, input_safety_flags=scan)
         if scan.get("blocked"):
             runtime["guardrail_blocked"] = True
@@ -1074,6 +1187,7 @@ class ConversationGraphRunner:
                 "memory_hits": state.get("memory_hits", []),
             },
         )
+        self._record_llm_evidence(runtime, response)
         plan = {
             "rewritten_query": response.get("rewritten_query") or request.user_message,
             "subqueries": response.get("subqueries") or [],
@@ -1285,6 +1399,7 @@ class ConversationGraphRunner:
             stream_request_id=request.request_id,
             token_callback=on_token,
         )
+        self._record_llm_evidence(runtime, response)
         answer_text = response.get("answer", "")
         draft_answer = {
             "text": answer_text,
@@ -1341,6 +1456,7 @@ class ConversationGraphRunner:
             chunks,
             mode,
         )
+        self._record_llm_evidence(runtime, response)
         review = self._build_review(response, request, self._prompt_passages(state))
         if state.get("draft_answer", {}).get("revision_attempted"):
             review["revision_applied"] = True
@@ -1398,6 +1514,7 @@ class ConversationGraphRunner:
         request: ConversationRequest = runtime["request"]
         answer_text = state.get("draft_answer", {}).get("text", "")
         response = await self.backend_client.risk_scan(request, answer_text, stage="output")
+        self._record_llm_evidence(runtime, response)
         runtime["guardrail_blocked"] = bool(response.get("blocked"))
         draft_answer = dict(state.get("draft_answer", {}))
         if response.get("blocked"):

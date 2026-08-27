@@ -5,6 +5,8 @@ from typing import Annotated, Any, Dict, List, Literal, Optional, Union
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, model_validator
 
+from shared.schema_provenance import canonical_schema_sha256
+
 
 RequestType = Literal[
     "answer_generation",
@@ -14,6 +16,33 @@ RequestType = Literal[
     "memory_extraction",
 ]
 ReplyStatus = Literal["success", "error"]
+# The provider's own bounded finish reason. `unknown` = no provider response.
+FinishReason = Literal[
+    "stop",
+    "length",
+    "completed",
+    "content_filter",
+    "tool_calls",
+    "cancelled",
+    "other",
+    "unknown",
+]
+# What this service made of the provider response. Kept separate from
+# `FinishReason` so neither can overwrite the other.
+ApplicationStatus = Literal[
+    "success",
+    "provider_error",
+    "provider_protocol_error",
+    "provider_http_error",
+    "provider_timeout",
+    "structured_output_invalid",
+    "validation_error",
+    "timeout",
+    "execution_error",
+    "streaming_not_supported",
+    "invalid_request",
+]
+ParseStage = Literal["parse", "validation", "unknown"]
 MessageType = Literal["command", "query", "reply", "event", "stream_event"]
 StreamEventType = Literal["llm.token", "llm.done", "llm.error"]
 
@@ -52,7 +81,12 @@ class ContextPassage(StrictSchema):
 
 
 class ClaimAssessment(StrictSchema):
-    """One atomic claim the judge extracted, and whether context supports it."""
+    """One material claim the judge reviewed, and whether context supports it.
+
+    Not every atomic claim in the answer: the reviewed set is bounded (see
+    :attr:`AnswerReviewParsedOutput.claims`), so this is one entry from a
+    diagnostic sample of the answer's most material claims.
+    """
 
     claim: str
     supported: bool
@@ -224,6 +258,20 @@ class AnswerReviewParsedOutput(StrictSchema):
     Score fields are Optional so that partial evaluations (where the model omits
     one or more scores) do not hard-fail validation.  Callers must treat None
     scores as unavailable rather than zero.
+
+    ``claims`` is a **bounded diagnostic sample**, not an enumeration of every
+    sentence in the answer. The cap of four is load-bearing: an unbounded array
+    let the judge spend its whole output budget listing claims and stop at
+    ``finish_reason=length`` before emitting a closing brace, which failed the
+    review outright. Four material claims fit inside the budget with room for
+    the scores, so the evaluator's own instruction tells it to spend those four
+    slots on the claims that are unsupported, then the claims that materially
+    affect the answer, then the most information-bearing distinct ones.
+
+    ``unsupported_claim_count`` is therefore scoped to that sample: it counts
+    the unsupported claims **among the at most four reviewed**, and it is not
+    evidence that the answer contains no other unsupported claim. A bounded
+    judge cannot prove an exhaustive count, so none is claimed.
     """
 
     model_config = ConfigDict(extra="forbid", protected_namespaces=())
@@ -234,7 +282,11 @@ class AnswerReviewParsedOutput(StrictSchema):
     completeness_score: Optional[float] = None
     safety_score: Optional[float] = None
     issues: List[str]
-    claims: List[ClaimAssessment] = Field(default_factory=list)
+    claims: List[ClaimAssessment] = Field(
+        default_factory=list,
+        max_length=4,
+    )
+    # Unsupported claims among `claims` only — a sample count, not a total.
     unsupported_claim_count: Optional[int] = None
     hallucination_verdict: Optional[str] = None
     revision_applied: bool
@@ -344,6 +396,18 @@ class ModelExecutionResponsePayload(StrictSchema):
     raw_output: str
     parsed_output: Optional[ParsedOutput] = None
     usage: UsageInfo
+    # What the provider said about why generation stopped, independent of what
+    # this service then made of the output. `unknown` means no provider
+    # response was received — never an application failure state.
+    provider_finish_reason: FinishReason = "unknown"
+    # What this service made of that response. Bounded; a raw exception
+    # message never reaches this field.
+    application_status: ApplicationStatus = "success"
+    # Where a structured-output failure happened, when one did.
+    parse_stage: Optional[ParseStage] = None
+    # The output ceiling this call was actually made with, so a `length`
+    # finish can be read against the budget that caused it.
+    max_tokens: Optional[int] = None
     latency_ms: int
     model: str
     prompt_version: str
@@ -374,3 +438,20 @@ class ModelExecutionStreamEventMessage(SharedEnvelopeBase):
     action: Literal["answer_generation"] = "answer_generation"
     stream_to: str
     payload: ModelExecutionStreamPayload
+
+
+def answer_review_output_schema_sha256() -> str:
+    """Fingerprint of the exact answer-evaluation schema sent to the provider.
+
+    Derived from :meth:`AnswerReviewParsedOutput.model_json_schema` — the same
+    call :class:`~app.services.llm_service.LLMService` puts on the invocation
+    as ``structured_output_schema`` — so the digest cannot describe a contract
+    other than the one the judge was actually held to. Never hard-coded: a
+    stored constant would keep reading "unchanged" through the next edit to
+    the model, which is the one case the digest exists to catch.
+
+    Deployment injects this value into rag as
+    ``ANSWER_EVALUATION_OUTPUT_SCHEMA_SHA256`` so a benchmark manifest can
+    record it; see ``scripts/answer_review_schema_sha.py``.
+    """
+    return canonical_schema_sha256(AnswerReviewParsedOutput.model_json_schema())

@@ -10,7 +10,26 @@ from app.services.benchmark_comparison import (
 )
 
 
-def manifest(*, model="embed-v1", top_k=10, phases=None):
+# One benchmark's judge contract: the digest of the JSON Schema the evaluator
+# was held to, and the prompt version that told it how to fill the schema in.
+SCHEMA_SHA = "0a82f6655e9b44131b110fa343dd64cd98de79b1e7fd407b59b8591d53654e92"
+# The same schema with `claims` unbounded hashes differently — that is the
+# whole point of recording it.
+UNBOUNDED_SCHEMA_SHA = "b3" + SCHEMA_SHA[2:]
+
+
+def manifest(
+    *,
+    model="embed-v1",
+    top_k=10,
+    phases=None,
+    vllm_version="0.28.0",
+    vllm_image="vllm/vllm-openai:v0.28.0",
+    vllm_overrides=None,
+    answer_evaluation_transport="legacy",
+    answer_evaluation_schema_sha=SCHEMA_SHA,
+    answer_evaluation_prompt_version="answer_evaluation.v2",
+):
     return {
         "build": {
             "git_sha": "abc123",
@@ -34,6 +53,11 @@ def manifest(*, model="embed-v1", top_k=10, phases=None):
                 "query_rewrite": 128,
                 "memory_extraction": 512,
             },
+            "structured_output_transport": {
+                "answer_evaluation": answer_evaluation_transport
+            },
+            "output_schema_sha256": {"answer_evaluation": answer_evaluation_schema_sha},
+            "prompt_version": {"answer_evaluation": answer_evaluation_prompt_version},
         },
         "retrieval": {
             "top_k_documents": top_k,
@@ -45,6 +69,24 @@ def manifest(*, model="embed-v1", top_k=10, phases=None):
             "pass_two_score_threshold": 0.5,
             "reranker_active": False,
             "hybrid_search_active": False,
+        },
+        "vllm": {
+            "image": vllm_image,
+            "server_version": vllm_version,
+            "model_runner": "v1",
+            "max_model_len": 4096,
+            "max_num_seqs": 4,
+            "gpu_memory_utilization": 0.8,
+            "quantization": "none",
+            "prefix_caching": True,
+            # Recorded nulls: RAGForge passes no scheduler flag, and the
+            # manifest says so rather than omitting the knob.
+            "max_num_batched_tokens": None,
+            "performance_mode": None,
+            "async_scheduling": None,
+            "chunked_prefill": None,
+            "scheduler_reserve_full_isl": None,
+            **(vllm_overrides or {}),
         },
         "unobserved": [],
     }
@@ -227,3 +269,268 @@ def test_missing_and_zero_baseline_values_never_fabricate_percentage_changes():
     latency = metric(comparison, "phases.retrieval_base.latency_ms.mean")
     assert latency["candidate"] is None
     assert latency["absolute_delta"] is None
+
+
+# ── vLLM runtime provenance ─────────────────────────────────
+
+
+def test_identical_unset_vllm_scheduler_knobs_stay_compatible():
+    """A knob neither run configured must not make them incomparable."""
+    baseline = benchmark("base", created_at="2026-01-01")
+    candidate = benchmark("candidate", created_at="2026-01-02")
+
+    result = benchmark_compatibility(baseline, candidate)
+
+    assert (
+        compatibility_field(result, "vllm.max_num_batched_tokens")["status"] == "same"
+    )
+    assert compatibility_field(result, "vllm.performance_mode")["status"] == "same"
+    assert result["compatibility_status"] == "compatible"
+
+
+def test_vllm_version_upgrade_is_incompatible_not_unknown():
+    """The whole point of the upgrade experiment: 0.27.1 != 0.28.0."""
+    baseline = benchmark(
+        "base",
+        created_at="2026-01-01",
+        manifest_value=manifest(
+            vllm_version="0.27.1", vllm_image="vllm/vllm-openai:v0.27.1"
+        ),
+    )
+    candidate = benchmark("candidate", created_at="2026-01-02")
+
+    result = benchmark_compatibility(baseline, candidate)
+
+    assert compatibility_field(result, "vllm.server_version")["status"] == "different"
+    assert compatibility_field(result, "vllm.image")["status"] == "different"
+    assert result["compatibility_status"] == "incompatible"
+
+
+def test_version_incompatible_runs_still_report_their_metrics():
+    """Incompatible only demotes authority; it must not hide the numbers."""
+    baseline = benchmark(
+        "base",
+        created_at="2026-01-01",
+        value=0.5,
+        manifest_value=manifest(
+            vllm_version="0.27.1", vllm_image="vllm/vllm-openai:v0.27.1"
+        ),
+    )
+    candidate = benchmark("candidate", created_at="2026-01-02", value=0.75)
+
+    comparison = compare_benchmarks(baseline, candidate)
+    row = metric(comparison, "phases.retrieval_base.retrieval.mrr")
+
+    assert comparison["compatibility_status"] == "incompatible"
+    assert comparison["metrics_authoritative"] is False
+    assert row["baseline"] == pytest.approx(0.5)
+    assert row["candidate"] == pytest.approx(0.75)
+    assert row["percentage_delta"] == pytest.approx(50.0)
+
+
+def test_tuned_scheduler_knob_differs_from_the_unset_reference():
+    baseline = benchmark("base", created_at="2026-01-01")
+    candidate = benchmark(
+        "candidate",
+        created_at="2026-01-02",
+        manifest_value=manifest(vllm_overrides={"max_num_batched_tokens": 8192}),
+    )
+
+    result = benchmark_compatibility(baseline, candidate)
+
+    assert (
+        compatibility_field(result, "vllm.max_num_batched_tokens")["status"]
+        == "different"
+    )
+    assert result["compatibility_status"] == "incompatible"
+
+
+def test_model_runner_change_is_incompatible():
+    baseline = benchmark("base", created_at="2026-01-01")
+    candidate = benchmark(
+        "candidate",
+        created_at="2026-01-02",
+        manifest_value=manifest(vllm_overrides={"model_runner": "v2"}),
+    )
+
+    result = benchmark_compatibility(baseline, candidate)
+
+    assert compatibility_field(result, "vllm.model_runner")["status"] == "different"
+
+
+def test_answer_evaluation_transport_change_is_incompatible():
+    baseline = benchmark("base", created_at="2026-01-01")
+    candidate = benchmark(
+        "candidate",
+        created_at="2026-01-02",
+        manifest_value=manifest(answer_evaluation_transport="json_schema"),
+    )
+
+    result = benchmark_compatibility(baseline, candidate)
+
+    assert compatibility_field(
+        result, "llm.structured_output_transport.answer_evaluation"
+    )["status"] == "different"
+    assert result["compatibility_status"] == "incompatible"
+
+
+def test_historical_manifest_without_transport_remains_readable_as_unknown():
+    legacy = manifest()
+    legacy["llm"].pop("structured_output_transport")
+    baseline = benchmark("base", created_at="2026-01-01", manifest_value=legacy)
+    candidate = benchmark("candidate", created_at="2026-01-02")
+
+    result = benchmark_compatibility(baseline, candidate)
+
+    assert compatibility_field(
+        result, "llm.structured_output_transport.answer_evaluation"
+    )["status"] == "unknown"
+
+
+def test_manifest_without_a_vllm_section_reads_as_unknown():
+    """Runs recorded before manifest v6 must stay readable and conservative."""
+    legacy = manifest()
+    del legacy["vllm"]
+    baseline = benchmark("base", created_at="2026-01-01", manifest_value=legacy)
+    candidate = benchmark("candidate", created_at="2026-01-02")
+
+    result = benchmark_compatibility(baseline, candidate)
+
+    assert (
+        compatibility_field(result, "vllm.server_version")["status"] == "unknown"
+    )
+    assert (
+        compatibility_field(result, "vllm.max_num_batched_tokens")["status"]
+        == "unknown"
+    )
+    assert result["compatibility_status"] == "unknown"
+
+
+def test_unobserved_vllm_version_is_never_treated_as_agreement():
+    baseline = benchmark("base", created_at="2026-01-01")
+    candidate = benchmark("candidate", created_at="2026-01-02")
+    candidate["manifest"]["vllm"]["server_version"] = None
+    candidate["manifest"]["unobserved"] = ["vllm.server_version"]
+
+    result = benchmark_compatibility(baseline, candidate)
+
+    assert compatibility_field(result, "vllm.server_version")["status"] == "unknown"
+
+
+# ── Judge-contract compatibility (GEN-03G) ────────────────────────────────
+
+def test_identical_judge_contracts_compare_as_same():
+    baseline = benchmark("base", created_at="2026-01-01")
+    candidate = benchmark("candidate", created_at="2026-01-02")
+
+    result = benchmark_compatibility(baseline, candidate)
+
+    for field in (
+        "llm.output_schema_sha256.answer_evaluation",
+        "llm.prompt_version.answer_evaluation",
+    ):
+        assert compatibility_field(result, field)["status"] == "same"
+    assert result["compatibility_status"] == "compatible"
+
+
+def test_output_schema_difference_is_incompatible():
+    """The GEN-03F claims cap changed what the quality metrics measure."""
+    baseline = benchmark(
+        "base",
+        created_at="2026-01-01",
+        manifest_value=manifest(answer_evaluation_schema_sha=UNBOUNDED_SCHEMA_SHA),
+    )
+    candidate = benchmark("candidate", created_at="2026-01-02")
+
+    result = benchmark_compatibility(baseline, candidate)
+
+    row = compatibility_field(result, "llm.output_schema_sha256.answer_evaluation")
+    assert row["status"] == "different"
+    assert row["baseline"] == UNBOUNDED_SCHEMA_SHA
+    assert row["candidate"] == SCHEMA_SHA
+    assert result["compatibility_status"] == "incompatible"
+
+
+def test_prompt_version_difference_is_incompatible():
+    baseline = benchmark(
+        "base",
+        created_at="2026-01-01",
+        manifest_value=manifest(answer_evaluation_prompt_version="answer_evaluation.v1"),
+    )
+    candidate = benchmark("candidate", created_at="2026-01-02")
+
+    result = benchmark_compatibility(baseline, candidate)
+
+    assert compatibility_field(
+        result, "llm.prompt_version.answer_evaluation"
+    )["status"] == "different"
+    assert result["compatibility_status"] == "incompatible"
+
+
+def test_incompatible_judge_contracts_still_report_their_metrics():
+    """Incompatible is a verdict on comparability, not a refusal to report."""
+    baseline = benchmark(
+        "base",
+        created_at="2026-01-01",
+        value=0.5,
+        manifest_value=manifest(answer_evaluation_schema_sha=UNBOUNDED_SCHEMA_SHA),
+    )
+    candidate = benchmark("candidate", created_at="2026-01-02", value=0.75)
+
+    comparison = compare_benchmarks(baseline, candidate)
+    row = metric(comparison, "phases.retrieval_base.retrieval.mrr")
+
+    assert comparison["compatible"] is False
+    assert row["baseline"] == pytest.approx(0.5)
+    assert row["candidate"] == pytest.approx(0.75)
+    assert row["authoritative"] is False
+
+
+@pytest.mark.parametrize(
+    "missing",
+    ["output_schema_sha256", "prompt_version"],
+)
+def test_historical_manifest_without_judge_contract_is_unknown_not_same(missing):
+    """Readable, but it cannot prove the judge contract either way."""
+    legacy = manifest()
+    legacy["llm"].pop(missing)
+    baseline = benchmark("base", created_at="2026-01-01", manifest_value=legacy)
+    candidate = benchmark("candidate", created_at="2026-01-02")
+
+    result = benchmark_compatibility(baseline, candidate)
+
+    row = compatibility_field(result, f"llm.{missing}.answer_evaluation")
+    assert row["status"] == "unknown"
+    assert row["baseline"] is None
+    assert result["compatibility_status"] != "compatible"
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("answer_evaluation_schema_sha", None),
+        ("answer_evaluation_prompt_version", None),
+    ],
+)
+def test_null_judge_contract_provenance_is_unknown(field, value):
+    baseline = benchmark(
+        "base", created_at="2026-01-01", manifest_value=manifest(**{field: value})
+    )
+    candidate = benchmark("candidate", created_at="2026-01-02")
+
+    result = benchmark_compatibility(baseline, candidate)
+
+    assert result["compatibility_status"] != "compatible"
+
+
+def test_unobserved_judge_contract_is_never_treated_as_agreement():
+    legacy = manifest()
+    legacy["unobserved"] = ["llm.output_schema_sha256.answer_evaluation"]
+    baseline = benchmark("base", created_at="2026-01-01", manifest_value=legacy)
+    candidate = benchmark("candidate", created_at="2026-01-02")
+
+    result = benchmark_compatibility(baseline, candidate)
+
+    assert compatibility_field(
+        result, "llm.output_schema_sha256.answer_evaluation"
+    )["status"] == "unknown"

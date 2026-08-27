@@ -135,11 +135,21 @@ def _normalize_unsupported_count(
     value: Any,
     claims: List[Dict[str, Any]],
 ) -> Optional[int]:
-    """Return the unsupported-claim count, preferring the claim list itself.
+    """Return the reviewed-claim unsupported count, preferring the claim list.
 
     The judge often reports a count that disagrees with the claims it just
     listed. The list is the auditable artefact, so it wins whenever it is
     non-empty; the reported number is only used when no claims came back.
+
+    Scope matters as much as the arithmetic. ``claims`` is capped at four
+    material claims (see ``AnswerReviewParsedOutput.claims``), so the number
+    returned here counts the unsupported claims **among those reviewed**. It
+    is not an exhaustive count of every unsupported claim in the answer, and
+    nothing downstream may read it as one: a bounded judge cannot prove that
+    the claims it did not review were supported. Preferring the list keeps the
+    count and its evidence describing the same bounded sample; taking the
+    judge's own number would silently mix an unbounded assertion into a
+    bounded measurement.
     """
     if claims:
         return sum(1 for claim in claims if not claim.get("supported"))
@@ -209,16 +219,29 @@ def build_prompt_v2(request: AnswerEvaluationRequest) -> PromptRenderResult:
             f"Answer:\n{request.input.answer}\n\n"
             f"Reference Context:\n{_format_numbered_context(request.input.reference_context)}\n\n"
             f"Rubric:\n{json.dumps(rubric)}\n\n"
-            "Split the answer into atomic claims. For each, decide whether the\n"
-            "reference context above supports it, and list the passage numbers\n"
-            "that do. A claim no passage supports is unsupported.\n\n"
+            "Split the answer into atomic claims, then review AT MOST 4 MATERIAL\n"
+            "claims. For each reviewed claim, decide whether the reference context\n"
+            "above supports it, and list the passage numbers that do. A claim no\n"
+            "passage supports is unsupported.\n\n"
+            "If the answer contains more than 4 atomic claims, choose which 4 to\n"
+            "review in this order of priority:\n"
+            "1. claims that are unsupported or contradicted by the reference context;\n"
+            "2. claims that materially affect the answer to the user's question;\n"
+            "3. otherwise the most information-bearing distinct claims.\n"
+            "Do not spend a claim slot on a trivial restatement or on a claim you\n"
+            "have already listed.\n\n"
+            'The "claims" array is a bounded diagnostic sample of the most\n'
+            'material claims, not an exhaustive enumeration of every sentence in the\n'
+            'answer. "unsupported_claim_count" counts the unsupported claims\n'
+            'among the claims you reviewed; it is not a count of every unsupported\n'
+            'claim in the whole answer.\n\n'
             "Return exactly one JSON object with these keys and value types:\n"
             '- "verdict": string\n- "groundedness_score": number\n'
             '- "completeness_score": number\n- "safety_score": number\n'
             '- "issues": array of strings\n'
-            '- "claims": array of {"claim": string, "supported": boolean, '
-            '"supporting_passage_ids": array of strings}\n'
-            '- "unsupported_claim_count": number\n'
+            '- "claims": array of AT MOST 4 objects {"claim": string, '
+            '"supported": boolean, "supporting_passage_ids": array of strings}\n'
+            '- "unsupported_claim_count": number of unsupported claims among "claims"\n'
             '- "hallucination_verdict": one of "none", "minor", "severe"\n'
             '- "revision_applied": boolean\n\n'
             "Use \"none\" when every claim is supported, \"minor\" for an unsupported\n"

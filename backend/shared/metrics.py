@@ -292,9 +292,23 @@ class ServiceMetrics:
             ["service", "model", "request_type", "error_type", "traffic_class"],
         )
 
+        # Legacy: mixes the provider's finish reason with application failure
+        # state (an application parse failure is counted as `error` here, even
+        # when the provider itself finished on `length`). Retained for existing
+        # dashboards; use `llm_provider_finish_reasons_total` for provider
+        # evidence and `llm_errors_total` for application status.
         self.llm_finish_reasons_total = Counter(
             "ragapp_llm_finish_reasons_total",
-            "LLM requests by bounded provider finish reason",
+            "LLM requests by bounded finish reason (legacy: error-collapsed)",
+            ["service", "model", "request_type", "finish_reason", "traffic_class"],
+        )
+
+        # The provider's own finish reason, never overwritten by a later
+        # application parse/validation failure. `unknown` means no provider
+        # response was received at all — it is not an error label.
+        self.llm_provider_finish_reasons_total = Counter(
+            "ragapp_llm_provider_finish_reasons_total",
+            "LLM requests by bounded provider finish reason, free of application state",
             ["service", "model", "request_type", "finish_reason", "traffic_class"],
         )
 
