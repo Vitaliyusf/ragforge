@@ -365,3 +365,149 @@ def test_the_manifest_describes_the_pipeline_stages_a_benchmark_drives(config):
     assert retrieval["merge_kept_k"] == config.top_k_documents * 2
     assert retrieval["pass_two_active"] is True
     assert retrieval["pass_two_score_threshold"] == config.pass_two_score_threshold
+
+
+# ── vLLM runtime provenance ───────────────────────────────────────────────
+
+VLLM_ENV = {
+    "VLLM_IMAGE": "vllm/vllm-openai:v0.28.0",
+    "VLLM_USE_V2_MODEL_RUNNER": "0",
+    "VLLM_MAX_MODEL_LEN": "10240",
+    "VLLM_MAX_NUM_SEQS": "4",
+    "VLLM_GPU_MEMORY_UTILIZATION": "0.80",
+    "VLLM_QUANTIZATION": "compressed-tensors",
+    "VLLM_PREFIX_CACHING": "true",
+}
+
+
+def test_the_deployed_vllm_runtime_is_recorded_from_its_pinned_image(config):
+    manifest = build_benchmark_manifest(config, env=VLLM_ENV)
+
+    assert manifest["vllm"]["image"] == "vllm/vllm-openai:v0.28.0"
+    assert manifest["vllm"]["server_version"] == "0.28.0"
+    assert manifest["vllm"]["model_runner"] == "v1"
+    assert manifest["vllm"]["max_num_seqs"] == 4
+    assert manifest["vllm"]["gpu_memory_utilization"] == pytest.approx(0.80)
+    assert manifest["vllm"]["max_model_len"] == 10240
+    assert manifest["vllm"]["prefix_caching"] is True
+    assert [
+        path for path in manifest["unobserved"] if path.startswith("vllm.")
+    ] == []
+
+
+def test_the_previous_pinned_release_records_its_own_version(config):
+    """The 0.27.1 control must not read as the 0.28.0 candidate."""
+    manifest = build_benchmark_manifest(
+        config, env={**VLLM_ENV, "VLLM_IMAGE": "vllm/vllm-openai:v0.27.1"}
+    )
+
+    assert manifest["vllm"]["server_version"] == "0.27.1"
+
+
+def test_scheduler_knobs_nobody_configured_are_null_and_not_unknown(config):
+    """Null here means "RAGForge passes no flag", which is an answer."""
+    manifest = build_benchmark_manifest(config, env=VLLM_ENV)
+
+    for field in (
+        "max_num_batched_tokens",
+        "performance_mode",
+        "async_scheduling",
+        "chunked_prefill",
+        "scheduler_reserve_full_isl",
+    ):
+        assert manifest["vllm"][field] is None
+        assert f"vllm.{field}" not in manifest["unobserved"]
+
+
+def test_no_scheduler_default_is_ever_invented(config):
+    """0.28's documented defaults must not appear as though observed."""
+    manifest = build_benchmark_manifest(config, env=VLLM_ENV)
+
+    assert manifest["vllm"]["performance_mode"] != "balanced"
+    assert manifest["vllm"]["async_scheduling"] is not True
+    assert manifest["vllm"]["chunked_prefill"] is not True
+
+
+def test_a_configured_scheduler_knob_is_recorded_when_one_is_set(config):
+    manifest = build_benchmark_manifest(
+        config,
+        env={
+            **VLLM_ENV,
+            "VLLM_MAX_NUM_BATCHED_TOKENS": "8192",
+            "VLLM_PERFORMANCE_MODE": "throughput",
+            "VLLM_ASYNC_SCHEDULING": "1",
+        },
+    )
+
+    assert manifest["vllm"]["max_num_batched_tokens"] == 8192
+    assert manifest["vllm"]["performance_mode"] == "throughput"
+    assert manifest["vllm"]["async_scheduling"] is True
+
+
+def test_a_floating_image_tag_names_no_version(config):
+    """`latest` pins nothing, so no version may be claimed from it."""
+    manifest = build_benchmark_manifest(
+        config, env={**VLLM_ENV, "VLLM_IMAGE": "vllm/vllm-openai:latest"}
+    )
+
+    assert manifest["vllm"]["image"] == "vllm/vllm-openai:latest"
+    assert manifest["vllm"]["server_version"] is None
+    assert "vllm.server_version" in manifest["unobserved"]
+
+
+def test_the_v2_model_runner_is_recorded_when_it_is_enabled(config):
+    """WSL2 cannot run V2, so a run under it must be identifiable."""
+    manifest = build_benchmark_manifest(
+        config, env={**VLLM_ENV, "VLLM_USE_V2_MODEL_RUNNER": "1"}
+    )
+
+    assert manifest["vllm"]["model_runner"] == "v2"
+
+
+def test_an_uninterpretable_runner_flag_is_unknown_not_v1(config):
+    manifest = build_benchmark_manifest(
+        config, env={**VLLM_ENV, "VLLM_USE_V2_MODEL_RUNNER": "maybe"}
+    )
+
+    assert manifest["vllm"]["model_runner"] is None
+    assert "vllm.model_runner" in manifest["unobserved"]
+
+
+def test_an_uninterpretable_boolean_or_float_is_unknown_not_assumed(config):
+    manifest = build_benchmark_manifest(
+        config,
+        env={
+            **VLLM_ENV,
+            "VLLM_PREFIX_CACHING": "sometimes",
+            "VLLM_GPU_MEMORY_UTILIZATION": "most-of-it",
+        },
+    )
+
+    assert manifest["vllm"]["prefix_caching"] is None
+    assert manifest["vllm"]["gpu_memory_utilization"] is None
+    assert "vllm.prefix_caching" in manifest["unobserved"]
+    assert "vllm.gpu_memory_utilization" in manifest["unobserved"]
+
+
+def test_a_bare_environment_knows_nothing_about_the_served_runtime(config):
+    manifest = build_benchmark_manifest(config, env={})
+
+    assert manifest["vllm"]["server_version"] is None
+    for path in (
+        "vllm.image",
+        "vllm.server_version",
+        "vllm.model_runner",
+        "vllm.max_num_seqs",
+        "vllm.gpu_memory_utilization",
+        "vllm.prefix_caching",
+    ):
+        assert path in manifest["unobserved"]
+
+
+def test_the_vllm_api_key_never_reaches_the_manifest(config):
+    """The section names the server; it must not carry the key to it."""
+    manifest = build_benchmark_manifest(
+        config, env={**VLLM_ENV, "VLLM_API_KEY": "vllm-live-key-value"}
+    )
+
+    assert "vllm-live-key-value" not in manifest_text(manifest)

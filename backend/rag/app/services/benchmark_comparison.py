@@ -8,7 +8,7 @@ from app.services.benchmark_summary import summarize_benchmark
 if TYPE_CHECKING:
     from app.services.eval_store import EvalStore
 
-COMPARISON_VERSION = 2
+COMPARISON_VERSION = 3
 TERMINAL_STATUSES = frozenset({"completed", "partial", "failed", "interrupted"})
 
 CRITICAL_COMPATIBILITY_FIELDS: Sequence[tuple[str, str, str]] = (
@@ -46,6 +46,49 @@ CRITICAL_COMPATIBILITY_FIELDS: Sequence[tuple[str, str, str]] = (
         "retrieval.hybrid_search_active",
         "manifest.retrieval.hybrid_search_active",
     ),
+    # The served vLLM runtime. A version change is the loudest possible reason
+    # two benchmarks are not apples-to-apples, so `server_version` is critical
+    # here rather than omitted to keep an upgrade experiment looking clean: a
+    # 0.27.1-against-0.28.0 run is *meant* to read as incompatible, and the
+    # metrics are still reported alongside that verdict.
+    ("model", "vllm.server_version", "manifest.vllm.server_version"),
+    ("model", "vllm.image", "manifest.vllm.image"),
+    ("model", "vllm.model_runner", "manifest.vllm.model_runner"),
+    ("config", "vllm.max_num_seqs", "manifest.vllm.max_num_seqs"),
+    (
+        "config",
+        "vllm.gpu_memory_utilization",
+        "manifest.vllm.gpu_memory_utilization",
+    ),
+    ("config", "vllm.prefix_caching", "manifest.vllm.prefix_caching"),
+    (
+        "config",
+        "vllm.max_num_batched_tokens",
+        "manifest.vllm.max_num_batched_tokens",
+    ),
+    ("config", "vllm.performance_mode", "manifest.vllm.performance_mode"),
+    ("config", "vllm.async_scheduling", "manifest.vllm.async_scheduling"),
+    ("config", "vllm.chunked_prefill", "manifest.vllm.chunked_prefill"),
+)
+
+# Fields where a recorded ``null`` is an answer rather than a gap: the manifest
+# states that RAGForge passed no such flag and let vLLM resolve its own value.
+# Two runs that both left a knob alone agree about it, and treating that as
+# unknown would make every untuned run permanently incomparable with every
+# other one — the exact opposite of what recording the knob is for.
+#
+# The null must be *present* in the manifest and absent from its `unobserved`
+# list to count. A manifest written before the `vllm` section existed has no
+# such key, reads as unknown, and keeps the old conservative verdict.
+KNOWN_NULL_FIELDS = frozenset(
+    f"manifest.vllm.{field}"
+    for field in (
+        "max_num_batched_tokens",
+        "performance_mode",
+        "async_scheduling",
+        "chunked_prefill",
+        "scheduler_reserve_full_isl",
+    )
 )
 
 
@@ -56,6 +99,29 @@ def _path(document: Mapping[str, Any], path: str) -> Any:
             return None
         value = value[part]
     return value
+
+
+def _has_path(document: Mapping[str, Any], path: str) -> bool:
+    """Whether every segment of ``path`` is actually a key in ``document``.
+
+    Distinguishes "recorded as null" from "never recorded", which ``_path``
+    alone cannot: both hand back ``None``.
+    """
+    value: Any = document
+    for part in path.split("."):
+        if not isinstance(value, Mapping) or part not in value:
+            return False
+        value = value[part]
+    return True
+
+
+def _is_known(document: Mapping[str, Any], source_path: str, value: Any) -> bool:
+    """Whether this run states a usable value for ``source_path``."""
+    if _is_unobserved(document, source_path):
+        return False
+    if value is not None:
+        return True
+    return source_path in KNOWN_NULL_FIELDS and _has_path(document, source_path)
 
 
 def _is_unobserved(document: Mapping[str, Any], source_path: str) -> bool:
@@ -106,11 +172,9 @@ def _compatibility_checks(
     for category, field, source_path in fields:
         left = _path(baseline, source_path)
         right = _path(candidate, source_path)
-        if (
-            left is None
-            or right is None
-            or _is_unobserved(baseline, source_path)
-            or _is_unobserved(candidate, source_path)
+        if not (
+            _is_known(baseline, source_path, left)
+            and _is_known(candidate, source_path, right)
         ):
             status = "unknown"
             reason = "critical provenance is missing or unobserved on at least one run"

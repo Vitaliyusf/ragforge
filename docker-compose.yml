@@ -62,14 +62,15 @@ services:
     networks: [data]
 
   vllm:
-    image: ${VLLM_IMAGE:-vllm/vllm-openai:v0.27.1}
+    image: ${VLLM_IMAGE:-vllm/vllm-openai:v0.28.0}
     volumes:
       - hf_cache:/root/.cache/huggingface
     environment:
       HF_TOKEN: ${HF_TOKEN:-}
-      # vLLM 0.27's default "V2 model runner" requires CUDA UVA, which WSL2 /
+      # vLLM's default "V2 model runner" requires CUDA UVA, which WSL2 /
       # Docker Desktop doesn't expose ("RuntimeError: UVA is not available").
-      # Force the V1 runner by default so it boots everywhere; set to 1 on a
+      # 0.28 still ships no safe general fallback for that failure, so the V1
+      # runner stays the default here and boots everywhere; set to 1 on a
       # native-Linux GPU host to opt back into the V2 runner.
       VLLM_USE_V2_MODEL_RUNNER: ${VLLM_USE_V2_MODEL_RUNNER:-0}
     deploy:
@@ -105,6 +106,23 @@ services:
       - qwen3_coder
       - --api-key
       - ${VLLM_API_KEY:?Set VLLM_API_KEY}
+    healthcheck:
+      # `/health` is the OpenAI server's own readiness endpoint: it answers 200
+      # only once weights are loaded and the engine accepts requests, and it is
+      # exempt from --api-key. python3 rather than curl because the vLLM image
+      # ships the interpreter and not curl. Deliberately no generation work —
+      # a healthcheck that ran a completion would compete with the benchmark it
+      # exists to protect. The long start_period covers a cold weight download
+      # plus CUDA-graph capture without counting those seconds as failures.
+      test:
+        - CMD
+        - python3
+        - -c
+        - import urllib.request; urllib.request.urlopen("http://127.0.0.1:8000/health", timeout=5)
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 900s
     restart: unless-stopped
     networks: [ai, vllm_egress]
 
@@ -158,7 +176,7 @@ services:
       rabbitmq:
         condition: service_healthy
       vllm:
-        condition: service_started
+        condition: service_healthy
     restart: unless-stopped
     volumes:
       - logs_data:/app/logs
@@ -190,7 +208,7 @@ services:
       qdrant:
         condition: service_started
       vllm:
-        condition: service_started
+        condition: service_healthy
     restart: unless-stopped
     networks: [messaging, data, ai]
 
@@ -328,9 +346,17 @@ services:
       LLM_IMPLEMENTATION: ${LLM_IMPLEMENTATION:-vllm}
       RAG_CHAT_MODEL: ${VLLM_MODEL:-RedHatAI/Qwen3.5-4B-quantized.w4a16}
       VLLM_MAX_MODEL_LEN: ${VLLM_MAX_MODEL_LEN:-10240}
-      # Benchmark provenance for the vLLM scheduler candidate under test.
+      # Benchmark provenance for the vLLM runtime under test. Every value here
+      # is the same variable the vllm service itself is configured from, so the
+      # manifest cannot drift from the server that produced the numbers.
+      # VLLM_PREFIX_CACHING is the one literal, mirroring the
+      # --enable-prefix-caching flag on that service's command line.
+      VLLM_IMAGE: ${VLLM_IMAGE:-vllm/vllm-openai:v0.28.0}
+      VLLM_USE_V2_MODEL_RUNNER: ${VLLM_USE_V2_MODEL_RUNNER:-0}
       VLLM_MAX_NUM_SEQS: ${VLLM_MAX_NUM_SEQS:-4}
+      VLLM_GPU_MEMORY_UTILIZATION: ${VLLM_GPU_MEMORY_UTILIZATION:-0.80}
       VLLM_QUANTIZATION: ${VLLM_QUANTIZATION:-compressed-tensors}
+      VLLM_PREFIX_CACHING: "true"
       ANSWER_GENERATION_MAX_TOKENS: ${ANSWER_GENERATION_MAX_TOKENS:-128}
       ANSWER_EVALUATION_MAX_TOKENS: ${ANSWER_EVALUATION_MAX_TOKENS:-512}
       CONTENT_RISK_SCAN_MAX_TOKENS: ${CONTENT_RISK_SCAN_MAX_TOKENS:-128}
@@ -424,7 +450,9 @@ services:
       - --storage.tsdb.path=/prometheus
       - --storage.tsdb.retention.time=30d
     restart: unless-stopped
-    networks: [messaging]
+    # `ai` is joined only to scrape vllm:8000/metrics. Both networks are
+    # internal, so this adds a scrape path and no new external exposure.
+    networks: [messaging, ai]
 
   frontend:
     build:

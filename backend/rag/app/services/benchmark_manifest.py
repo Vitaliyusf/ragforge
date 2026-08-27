@@ -49,6 +49,7 @@ from __future__ import annotations
 
 import os
 import platform
+import re
 import sys
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Mapping, Optional, Tuple
@@ -72,7 +73,9 @@ from app.services.effective_retrieval import (
 # Version 3 adds the allowlisted LLM quantization used by the served runtime.
 # Version 4 records the effective vLLM scheduler concurrency candidate.
 # Version 5 records effective per-action output-token ceilings.
-MANIFEST_VERSION = 5
+# Version 6 adds the `vllm` section: the served runtime's pinned version and
+# every scheduler knob RAGForge sets or deliberately leaves to the server.
+MANIFEST_VERSION = 6
 
 # Longest env value copied into a manifest. A model identifier is tens of
 # characters; anything far larger is a mistake or a payload, and neither
@@ -111,9 +114,12 @@ def _assert_safe_name(name: str) -> str:
         ManifestAllowlistError: If the name contains a secret-shaped token.
     """
     upper = name.upper()
-    # In these numeric provenance fields TOKENS is a unit, not a credential
-    # marker. Values are still allowlisted individually and integer-coerced.
-    secret_shape = upper.removesuffix("_MAX_TOKENS")
+    # Plural TOKENS is a unit of work in these numeric provenance fields, not a
+    # credential marker: ANSWER_GENERATION_MAX_TOKENS and
+    # VLLM_MAX_NUM_BATCHED_TOKENS are integers. The singular TOKEN still
+    # disqualifies, so HF_TOKEN and any VLLM_API_TOKEN remain refused. Values
+    # are still allowlisted individually and numerically coerced.
+    secret_shape = upper.replace("TOKENS", "")
     for token in _SECRET_NAME_TOKENS:
         if token in secret_shape:
             raise ManifestAllowlistError(
@@ -162,7 +168,51 @@ _ENV_FIELDS: Dict[str, Dict[str, Tuple[Tuple[str, ...], str]]] = {
         "max_num_seqs": (("VLLM_MAX_NUM_SEQS",), "int"),
         "quantization": (("VLLM_QUANTIZATION",), "str"),
     },
+    # The served runtime itself. Deployment injects each of these from the same
+    # variable the `vllm` service is configured from, so the manifest cannot
+    # describe a server other than the one that answered the benchmark.
+    #
+    # The scheduler knobs are listed even though RAGForge passes none of them
+    # today. That is the point: a benchmark must be able to say "this run did
+    # not set max_num_batched_tokens" and have a later tuned run compare as
+    # different, rather than have both read as an absence nobody recorded.
+    "vllm": {
+        "image": (("VLLM_IMAGE",), "str"),
+        "max_model_len": (("VLLM_MAX_MODEL_LEN",), "int"),
+        "max_num_seqs": (("VLLM_MAX_NUM_SEQS",), "int"),
+        "gpu_memory_utilization": (("VLLM_GPU_MEMORY_UTILIZATION",), "float"),
+        "quantization": (("VLLM_QUANTIZATION",), "str"),
+        "prefix_caching": (("VLLM_PREFIX_CACHING",), "bool"),
+        "max_num_batched_tokens": (("VLLM_MAX_NUM_BATCHED_TOKENS",), "int"),
+        "performance_mode": (("VLLM_PERFORMANCE_MODE",), "str"),
+        "async_scheduling": (("VLLM_ASYNC_SCHEDULING",), "bool"),
+        "chunked_prefill": (("VLLM_ENABLE_CHUNKED_PREFILL",), "bool"),
+        "scheduler_reserve_full_isl": (("VLLM_SCHEDULER_RESERVE_FULL_ISL",), "bool"),
+    },
 }
+
+# Scheduler knobs whose ``None`` means "RAGForge passes no flag; the server
+# resolves its own value", not "nobody looked". They are exempt from
+# ``unobserved`` for the same reason the effective-retrieval nulls are: the
+# manifest is confident about them, and calling a proven non-configuration an
+# unknown would leave two identically-unconfigured runs incomparable forever.
+#
+# What the *server* then resolved is a separate question this section does not
+# answer and must not guess. Nothing here may be filled in from a release's
+# documented defaults; the observed side lives in the run's Prometheus
+# snapshot, which records what the running vLLM actually exported.
+VLLM_UNCONFIGURED_FIELDS = frozenset({
+    "max_num_batched_tokens",
+    "performance_mode",
+    "async_scheduling",
+    "chunked_prefill",
+    "scheduler_reserve_full_isl",
+})
+
+# An official version-pinned vLLM tag, e.g. `vllm/vllm-openai:v0.28.0`. A
+# floating tag (`latest`, `nightly`, `main`) names no version, so it yields
+# `None` rather than a version this module invented.
+_PINNED_VLLM_TAG = re.compile(r"^v?(\d+\.\d+(?:\.\d+)?(?:\.?post\d+)?)$")
 
 _LLM_MAX_TOKEN_ENV_FIELDS: Dict[str, Tuple[Tuple[str, ...], str]] = {
     "answer_generation": (("ANSWER_GENERATION_MAX_TOKENS",), "int"),
@@ -211,6 +261,10 @@ for _names, _kind in _LLM_MAX_TOKEN_ENV_FIELDS.values():
         _assert_safe_name(_name)
 
 
+_TRUE_TEXT = frozenset({"1", "true", "yes", "on"})
+_FALSE_TEXT = frozenset({"0", "false", "no", "off"})
+
+
 def _coerce(raw: str, kind: str) -> Optional[Any]:
     """Convert one raw env string, or return ``None`` if it will not convert."""
     text = raw.strip()
@@ -221,7 +275,51 @@ def _coerce(raw: str, kind: str) -> Optional[Any]:
             return int(text)
         except ValueError:
             return None
+    if kind == "float":
+        try:
+            return float(text)
+        except ValueError:
+            return None
+    if kind == "bool":
+        lowered = text.lower()
+        if lowered in _TRUE_TEXT:
+            return True
+        if lowered in _FALSE_TEXT:
+            return False
+        # Deliberately not `bool(text)`: a prefix-caching flag reading "maybe"
+        # must come out unknown, never enabled.
+        return None
     return text
+
+
+def _vllm_server_version(image: Optional[str]) -> Optional[str]:
+    """The vLLM version a pinned image tag names, or ``None`` if it names none.
+
+    This is the version RAGForge deployed, read off the immutable tag it
+    deployed. It is not a probe of the running process: rag has no route to the
+    vLLM server, and a manifest built inside a request must not do blocking
+    network I/O to find out. Recording it still matters, because the
+    0.27.1-against-0.28.0 comparison this section exists for has to come out
+    *incompatible* rather than unknown.
+    """
+    if not image:
+        return None
+    _, _, tag = image.rpartition(":")
+    match = _PINNED_VLLM_TAG.match(tag)
+    return match.group(1) if match else None
+
+
+def _vllm_model_runner(raw: Optional[str]) -> Optional[str]:
+    """Which model-runner generation the server was told to use.
+
+    WSL2 cannot run the V2 runner, so which one a benchmark ran under is
+    performance provenance rather than trivia. An unrecognised value stays
+    unknown: guessing "v1" would silently certify a runner nobody verified.
+    """
+    enabled = _coerce(raw, "bool") if raw else None
+    if enabled is None:
+        return None
+    return "v2" if enabled else "v1"
 
 
 def _env_section(
@@ -263,7 +361,10 @@ def _unobserved_paths(sections: Mapping[str, Mapping[str, Any]]) -> List[str]:
                 visit(f"{path}.{child}" if path else str(child), child_value)
         elif value is None:
             section, _, field = path.partition(".")
-            if not (section == "retrieval" and field in EFFECTIVE_RETRIEVAL_FIELDS):
+            exempt = (
+                section == "retrieval" and field in EFFECTIVE_RETRIEVAL_FIELDS
+            ) or (section == "vllm" and field in VLLM_UNCONFIGURED_FIELDS)
+            if not exempt:
                 unobserved.append(path)
 
     for section, values in sections.items():
@@ -344,6 +445,12 @@ def build_benchmark_manifest(
     llm = _env_section(_ENV_FIELDS["llm"], environment)
     llm["max_tokens"] = _env_section(_LLM_MAX_TOKEN_ENV_FIELDS, environment)
 
+    vllm = _env_section(_ENV_FIELDS["vllm"], environment)
+    vllm["server_version"] = _vllm_server_version(vllm.get("image"))
+    vllm["model_runner"] = _vllm_model_runner(
+        environment.get("VLLM_USE_V2_MODEL_RUNNER")
+    )
+
     sections: Dict[str, Dict[str, Any]] = {
         "build": build,
         "dataset": dataset_section,
@@ -353,6 +460,7 @@ def build_benchmark_manifest(
         "chunking": _env_section(_ENV_FIELDS["chunking"], environment),
         "vector_store": _env_section(_ENV_FIELDS["vector_store"], environment),
         "llm": llm,
+        "vllm": vllm,
         "software": software,
     }
 

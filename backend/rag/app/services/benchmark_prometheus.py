@@ -51,6 +51,47 @@ SNAPSHOT_QUERIES: Dict[str, Dict[str, str]] = {
         "llm_output_tokens_p99_by_request_type": "histogram_quantile(0.99, sum by (request_type, traffic_class, le) (rate(ragapp_llm_output_tokens_bucket[5m])))",
         "ingestion_stage_rate": "sum by (stage, outcome) (rate(ragapp_ingestion_stage_total[5m]))",
     },
+    # The vLLM server's own view of itself, scraped from vllm:8000/metrics.
+    # RAGForge's ragapp_llm_* series measure the client side of the same
+    # requests; these measure the scheduler behind them — what was running,
+    # what was queued, how full the KV cache was, what the prefix cache hit.
+    #
+    # Metric names are not identical across vLLM releases and this repository
+    # cannot prove which ones a given image exposes without running it, so
+    # where a name moved between engine versions both spellings are queried.
+    # A name the running server does not export returns an empty result, which
+    # is recorded as "no data" — never as a zero. Reading an empty list here
+    # as "no preemptions occurred" would be exactly the wrong conclusion.
+    "vllm": {
+        # Whether the scrape target is even up. Without this, every other
+        # empty result below is ambiguous between "vLLM did not export it"
+        # and "Prometheus never reached vLLM".
+        "scrape_up": 'up{job="vllm"}',
+        "num_requests_running": "vllm:num_requests_running",
+        "num_requests_waiting": "vllm:num_requests_waiting",
+        # v1 renamed the KV-cache gauge; older releases used the gpu_ spelling.
+        "kv_cache_usage_perc": "vllm:kv_cache_usage_perc",
+        "gpu_cache_usage_perc": "vllm:gpu_cache_usage_perc",
+        "prefix_cache_queries_total": "vllm:prefix_cache_queries_total",
+        "prefix_cache_hits_total": "vllm:prefix_cache_hits_total",
+        "prompt_tokens_total": "vllm:prompt_tokens_total",
+        "generation_tokens_total": "vllm:generation_tokens_total",
+        "prompt_token_rate": "sum by (model_name) (rate(vllm:prompt_tokens_total[5m]))",
+        "generation_token_rate": "sum by (model_name) (rate(vllm:generation_tokens_total[5m]))",
+        "finish_reason_total": "sum by (model_name, finished_reason) (vllm:request_success_total)",
+        "ttft_p50": "histogram_quantile(0.50, sum by (model_name, le) (rate(vllm:time_to_first_token_seconds_bucket[5m])))",
+        "ttft_p95": "histogram_quantile(0.95, sum by (model_name, le) (rate(vllm:time_to_first_token_seconds_bucket[5m])))",
+        "inter_token_latency_p50": "histogram_quantile(0.50, sum by (model_name, le) (rate(vllm:time_per_output_token_seconds_bucket[5m])))",
+        "inter_token_latency_p95": "histogram_quantile(0.95, sum by (model_name, le) (rate(vllm:time_per_output_token_seconds_bucket[5m])))",
+        # Preemption/recompute counters, whose name also moved between engine
+        # versions. Both empty means the release exposes neither, not zero.
+        "num_preemptions_total": "vllm:num_preemptions_total",
+        "request_preemptions_total": "vllm:request_preemptions_total",
+        # Info-style series: whatever the running server chose to publish
+        # about its resolved cache configuration, recorded verbatim rather
+        # than re-derived from flags RAGForge believes it passed.
+        "cache_config_info": "vllm:cache_config_info",
+    },
 }
 
 

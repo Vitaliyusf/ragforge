@@ -10,7 +10,15 @@ from app.services.benchmark_comparison import (
 )
 
 
-def manifest(*, model="embed-v1", top_k=10, phases=None):
+def manifest(
+    *,
+    model="embed-v1",
+    top_k=10,
+    phases=None,
+    vllm_version="0.28.0",
+    vllm_image="vllm/vllm-openai:v0.28.0",
+    vllm_overrides=None,
+):
     return {
         "build": {
             "git_sha": "abc123",
@@ -45,6 +53,24 @@ def manifest(*, model="embed-v1", top_k=10, phases=None):
             "pass_two_score_threshold": 0.5,
             "reranker_active": False,
             "hybrid_search_active": False,
+        },
+        "vllm": {
+            "image": vllm_image,
+            "server_version": vllm_version,
+            "model_runner": "v1",
+            "max_model_len": 4096,
+            "max_num_seqs": 4,
+            "gpu_memory_utilization": 0.8,
+            "quantization": "none",
+            "prefix_caching": True,
+            # Recorded nulls: RAGForge passes no scheduler flag, and the
+            # manifest says so rather than omitting the knob.
+            "max_num_batched_tokens": None,
+            "performance_mode": None,
+            "async_scheduling": None,
+            "chunked_prefill": None,
+            "scheduler_reserve_full_isl": None,
+            **(vllm_overrides or {}),
         },
         "unobserved": [],
     }
@@ -227,3 +253,120 @@ def test_missing_and_zero_baseline_values_never_fabricate_percentage_changes():
     latency = metric(comparison, "phases.retrieval_base.latency_ms.mean")
     assert latency["candidate"] is None
     assert latency["absolute_delta"] is None
+
+
+# ── vLLM runtime provenance ─────────────────────────────────
+
+
+def test_identical_unset_vllm_scheduler_knobs_stay_compatible():
+    """A knob neither run configured must not make them incomparable."""
+    baseline = benchmark("base", created_at="2026-01-01")
+    candidate = benchmark("candidate", created_at="2026-01-02")
+
+    result = benchmark_compatibility(baseline, candidate)
+
+    assert (
+        compatibility_field(result, "vllm.max_num_batched_tokens")["status"] == "same"
+    )
+    assert compatibility_field(result, "vllm.performance_mode")["status"] == "same"
+    assert result["compatibility_status"] == "compatible"
+
+
+def test_vllm_version_upgrade_is_incompatible_not_unknown():
+    """The whole point of the upgrade experiment: 0.27.1 != 0.28.0."""
+    baseline = benchmark(
+        "base",
+        created_at="2026-01-01",
+        manifest_value=manifest(
+            vllm_version="0.27.1", vllm_image="vllm/vllm-openai:v0.27.1"
+        ),
+    )
+    candidate = benchmark("candidate", created_at="2026-01-02")
+
+    result = benchmark_compatibility(baseline, candidate)
+
+    assert compatibility_field(result, "vllm.server_version")["status"] == "different"
+    assert compatibility_field(result, "vllm.image")["status"] == "different"
+    assert result["compatibility_status"] == "incompatible"
+
+
+def test_version_incompatible_runs_still_report_their_metrics():
+    """Incompatible only demotes authority; it must not hide the numbers."""
+    baseline = benchmark(
+        "base",
+        created_at="2026-01-01",
+        value=0.5,
+        manifest_value=manifest(
+            vllm_version="0.27.1", vllm_image="vllm/vllm-openai:v0.27.1"
+        ),
+    )
+    candidate = benchmark("candidate", created_at="2026-01-02", value=0.75)
+
+    comparison = compare_benchmarks(baseline, candidate)
+    row = metric(comparison, "phases.retrieval_base.retrieval.mrr")
+
+    assert comparison["compatibility_status"] == "incompatible"
+    assert comparison["metrics_authoritative"] is False
+    assert row["baseline"] == pytest.approx(0.5)
+    assert row["candidate"] == pytest.approx(0.75)
+    assert row["percentage_delta"] == pytest.approx(50.0)
+
+
+def test_tuned_scheduler_knob_differs_from_the_unset_reference():
+    baseline = benchmark("base", created_at="2026-01-01")
+    candidate = benchmark(
+        "candidate",
+        created_at="2026-01-02",
+        manifest_value=manifest(vllm_overrides={"max_num_batched_tokens": 8192}),
+    )
+
+    result = benchmark_compatibility(baseline, candidate)
+
+    assert (
+        compatibility_field(result, "vllm.max_num_batched_tokens")["status"]
+        == "different"
+    )
+    assert result["compatibility_status"] == "incompatible"
+
+
+def test_model_runner_change_is_incompatible():
+    baseline = benchmark("base", created_at="2026-01-01")
+    candidate = benchmark(
+        "candidate",
+        created_at="2026-01-02",
+        manifest_value=manifest(vllm_overrides={"model_runner": "v2"}),
+    )
+
+    result = benchmark_compatibility(baseline, candidate)
+
+    assert compatibility_field(result, "vllm.model_runner")["status"] == "different"
+
+
+def test_manifest_without_a_vllm_section_reads_as_unknown():
+    """Runs recorded before manifest v6 must stay readable and conservative."""
+    legacy = manifest()
+    del legacy["vllm"]
+    baseline = benchmark("base", created_at="2026-01-01", manifest_value=legacy)
+    candidate = benchmark("candidate", created_at="2026-01-02")
+
+    result = benchmark_compatibility(baseline, candidate)
+
+    assert (
+        compatibility_field(result, "vllm.server_version")["status"] == "unknown"
+    )
+    assert (
+        compatibility_field(result, "vllm.max_num_batched_tokens")["status"]
+        == "unknown"
+    )
+    assert result["compatibility_status"] == "unknown"
+
+
+def test_unobserved_vllm_version_is_never_treated_as_agreement():
+    baseline = benchmark("base", created_at="2026-01-01")
+    candidate = benchmark("candidate", created_at="2026-01-02")
+    candidate["manifest"]["vllm"]["server_version"] = None
+    candidate["manifest"]["unobserved"] = ["vllm.server_version"]
+
+    result = benchmark_compatibility(baseline, candidate)
+
+    assert compatibility_field(result, "vllm.server_version")["status"] == "unknown"
