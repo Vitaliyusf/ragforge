@@ -10,7 +10,11 @@ from uuid import uuid4
 from app.core.config import RAGConfig
 from app.services.conversation_events import BaseConversationEmitter
 from app.services.conversation_backend_client import ConversationBackendClient
-from app.services.conversation_persistence import BaseConversationStore, make_json_safe
+from app.services.conversation_persistence import (
+    AsyncConversationPersistence,
+    BaseConversationStore,
+    make_json_safe,
+)
 from app.services.conversation_tracing import ConversationTracer
 from app.services.conversation_messages import (
     LLM_EVIDENCE_KEY,
@@ -86,6 +90,10 @@ class ConversationGraphRunner:
         self.config = config
         self.backend_client = backend_client
         self.store = store
+        self.persistence = AsyncConversationPersistence(
+            store,
+            config.persistence_max_concurrency,
+        )
         self.tracer = tracer
         self.logger = logger
         self.metrics_facts = metrics_facts or create_metrics_fact_store(config)
@@ -163,7 +171,10 @@ class ConversationGraphRunner:
         state = build_initial_state(request)
         checkpoint = None
         if resume:
-            checkpoint = self.store.get_latest_checkpoint(request.conversation_id, request.request_id)
+            checkpoint = await self.persistence.get_latest_checkpoint(
+                request.conversation_id,
+                request.request_id,
+            )
             if checkpoint and checkpoint.get("state"):
                 state = checkpoint["state"]
             if checkpoint and checkpoint.get("graph_run_id"):
@@ -216,7 +227,7 @@ class ConversationGraphRunner:
             result = self._build_result(final_state, sources=final_chunks)
             result["llm_actions"] = self._llm_actions(runtime)
             if record_metrics:
-                self._record_turn_metrics(
+                await self._record_turn_metrics(
                     request, result, runtime, emitter, time.monotonic() - t0
                 )
             return result
@@ -231,7 +242,7 @@ class ConversationGraphRunner:
                     "request_id": request.request_id,
                 },
             )
-            self._save_checkpoint(
+            await self._save_checkpoint(
                 request, state, runtime.get("current_node", "unknown"), "guardrail_blocked",
                 "guardrail_blocked", {"outcome": "guardrail_blocked", "guardrail_stage": exc.stage},
             )
@@ -241,7 +252,13 @@ class ConversationGraphRunner:
                 "llm_actions": self._llm_actions(runtime),
             }
             if record_metrics:
-                self._record_turn_metrics(request, result, runtime, emitter, time.monotonic() - t0)
+                await self._record_turn_metrics(
+                    request,
+                    result,
+                    runtime,
+                    emitter,
+                    time.monotonic() - t0,
+                )
             return result
         except Exception as exc:
             failed_node = runtime.get("current_node", "unknown")
@@ -261,7 +278,14 @@ class ConversationGraphRunner:
                     "request_id": request.request_id,
                 },
             )
-            self._save_checkpoint(request, state, failed_node, "error", "error", {"error": str(exc)})
+            await self._save_checkpoint(
+                request,
+                state,
+                failed_node,
+                "error",
+                "error",
+                {"error": str(exc)},
+            )
             if not emitter.terminal_sent:
                 await emitter.emit(
                     "error",
@@ -296,7 +320,7 @@ class ConversationGraphRunner:
                 # the eval trace; letting it into the live retrieval averages
                 # would move dashboards that have only ever counted completed
                 # turns.
-                self._record_turn_metrics(
+                await self._record_turn_metrics(
                     request,
                     {**result, "sources": []},
                     runtime,
@@ -306,7 +330,7 @@ class ConversationGraphRunner:
                 )
             return result
 
-    def _record_turn_metrics(
+    async def _record_turn_metrics(
         self,
         request: ConversationRequest,
         result: Dict[str, Any],
@@ -366,7 +390,8 @@ class ConversationGraphRunner:
                 if recall is not None:
                     METRICS.rag_citation_recall.labels(service="rag").observe(recall)
 
-            self.metrics_facts.save_fact(
+            await self.persistence.call(
+                self.metrics_facts.save_fact,
                 build_turn_fact(
                     request,
                     result,
@@ -964,7 +989,7 @@ class ConversationGraphRunner:
         snippet = f"User: {state.get('user_message', '')} Assistant: {state.get('draft_answer', {}).get('text', '')}"
         return f"{existing} {snippet}".strip()[: self.config.debug_payload_max_chars]
 
-    def _save_checkpoint(
+    async def _save_checkpoint(
         self,
         request: ConversationRequest,
         state: ConversationState,
@@ -990,7 +1015,7 @@ class ConversationGraphRunner:
         }
         if extra:
             payload.update(make_json_safe(extra))
-        self.store.save_checkpoint(payload)
+        await self.persistence.save_checkpoint(payload)
 
     @staticmethod
     def _record_llm_evidence(runtime: Dict[str, Any], response: Any) -> None:
@@ -1100,7 +1125,7 @@ class ConversationGraphRunner:
         snapshot = copy.deepcopy(state)
         snapshot["user_message"] = user_message
         snapshot["debug_payloads"] = debug_payloads
-        self._save_checkpoint(request, snapshot, "input_guardrails", "graph_start", "started")
+        await self._save_checkpoint(request, snapshot, "input_guardrails", "graph_start", "started")
         return {
             "mode": request.mode,
             "user_message": user_message,
@@ -1110,13 +1135,22 @@ class ConversationGraphRunner:
 
     async def _load_short_term_context(self, state: ConversationState, runtime: Dict[str, Any]) -> Dict[str, Any]:
         request: ConversationRequest = runtime["request"]
-        context = self.store.load_context(request.conversation_id, self.config.max_recent_messages)
+        context = await self.persistence.load_context(
+            request.conversation_id,
+            self.config.max_recent_messages,
+        )
         summary = context.get("summary") or state.get("short_term_summary", "")
         recent_messages = context.get("recent_messages") or state.get("recent_messages", [])
         snapshot = copy.deepcopy(state)
         snapshot["short_term_summary"] = summary
         snapshot["recent_messages"] = recent_messages
-        self._save_checkpoint(request, snapshot, "load_short_term_context", "after_context_load", "ok")
+        await self._save_checkpoint(
+            request,
+            snapshot,
+            "load_short_term_context",
+            "after_context_load",
+            "ok",
+        )
         return {
             "short_term_summary": summary,
             "recent_messages": recent_messages,
@@ -1167,7 +1201,7 @@ class ConversationGraphRunner:
         )
         snapshot = copy.deepcopy(state)
         snapshot["retrieved_chunks"] = chunks
-        self._save_checkpoint(request, snapshot, "retrieve_chunks_once", "after_retrieval", "ok")
+        await self._save_checkpoint(request, snapshot, "retrieve_chunks_once", "after_retrieval", "ok")
         return {
             "retrieved_chunks": chunks,
             "_meta": {
@@ -1225,7 +1259,7 @@ class ConversationGraphRunner:
             chunks.extend(normalized)
         snapshot = copy.deepcopy(state)
         snapshot["retrieved_chunks"] = chunks
-        self._save_checkpoint(request, snapshot, "retrieve_pass_one", "after_retrieval", "ok")
+        await self._save_checkpoint(request, snapshot, "retrieve_pass_one", "after_retrieval", "ok")
         return {
             "retrieved_chunks": chunks,
             "_meta": {
@@ -1345,7 +1379,13 @@ class ConversationGraphRunner:
         merged = chunks + second
         snapshot = copy.deepcopy(state)
         snapshot["retrieved_chunks"] = merged
-        self._save_checkpoint(request, snapshot, "retrieve_pass_two_if_needed", "after_retrieval", "ok")
+        await self._save_checkpoint(
+            request,
+            snapshot,
+            "retrieve_pass_two_if_needed",
+            "after_retrieval",
+            "ok",
+        )
         return {
             "retrieved_chunks": merged,
             "_meta": {
@@ -1427,7 +1467,7 @@ class ConversationGraphRunner:
         snapshot = copy.deepcopy(state)
         snapshot["draft_answer"] = draft_answer
         snapshot["debug_payloads"] = debug_payloads
-        self._save_checkpoint(request, snapshot, checkpoint_node, "after_generation", "ok")
+        await self._save_checkpoint(request, snapshot, checkpoint_node, "after_generation", "ok")
         return {
             "draft_answer": draft_answer,
             "debug_payloads": debug_payloads,
@@ -1468,7 +1508,7 @@ class ConversationGraphRunner:
         snapshot = copy.deepcopy(state)
         snapshot["answer_review"] = review
         snapshot["debug_payloads"] = debug_payloads
-        self._save_checkpoint(request, snapshot, "evaluate_answer", "after_evaluation", "ok")
+        await self._save_checkpoint(request, snapshot, "evaluate_answer", "after_evaluation", "ok")
         return {
             "answer_review": review,
             "debug_payloads": debug_payloads,
@@ -1563,7 +1603,7 @@ class ConversationGraphRunner:
             }
 
     async def _do_persist_turn(self, state: ConversationState, runtime: Dict[str, Any], request, review, summary) -> Dict[str, Any]:
-        self.store.save_thread(
+        await self.persistence.save_thread(
             {
                 "conversation_id": request.conversation_id,
                 "owner_id": request.owner_id,
@@ -1578,7 +1618,7 @@ class ConversationGraphRunner:
                 "updated_at": utc_now_iso(),
             }
         )
-        self.store.save_turn(
+        await self.persistence.save_turn(
             {
                 "conversation_id": request.conversation_id,
                 "turn_id": request.turn_id,
@@ -1596,7 +1636,7 @@ class ConversationGraphRunner:
                 "created_at": utc_now_iso(),
             }
         )
-        self.store.save_summary(
+        await self.persistence.save_summary(
             {
                 "conversation_id": request.conversation_id,
                 "graph_run_id": request.graph_run_id,
@@ -1609,7 +1649,7 @@ class ConversationGraphRunner:
             }
         )
         if review:
-            self.store.save_answer_review(
+            await self.persistence.save_answer_review(
                 {
                     **review,
                     "conversation_id": request.conversation_id,
@@ -1624,7 +1664,13 @@ class ConversationGraphRunner:
             )
         snapshot = copy.deepcopy(state)
         snapshot["short_term_summary"] = summary
-        self._save_checkpoint(request, snapshot, "persist_turn", "after_persistence", "persisted")
+        await self._save_checkpoint(
+            request,
+            snapshot,
+            "persist_turn",
+            "after_persistence",
+            "persisted",
+        )
         self.backend_client.publish_answer_generated(request, len(state.get("retrieved_chunks", [])))
         self.backend_client.publish_answer_evaluated(request, review.get("verdict", "unknown"))
         self.logger.info(

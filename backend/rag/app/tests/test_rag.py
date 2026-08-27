@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import asyncio
+import threading
+import time
 import uuid
 from typing import Any, Dict, List
 
@@ -20,7 +22,10 @@ from app.services.conversation_messages import (
     extract_stream_event,
     normalize_llm_agent_response,
 )
-from app.services.conversation_persistence import InMemoryConversationStore
+from app.services.conversation_persistence import (
+    AsyncConversationPersistence,
+    InMemoryConversationStore,
+)
 from app.services.conversation_tracing import ConversationTracer
 from app.services.conversation_types import build_initial_state
 from app.services.rag_service import RAGService
@@ -563,6 +568,45 @@ def test_checkpoint_restore_resumes_from_after_generation_without_retrieval():
     assert not any(call["type"] == "vector_db" for call in backend.calls)
     assert any(call["type"] == "llm_agent" and call["request_type"] == "answer_evaluation" for call in backend.calls)
     assert emitter.events[-1]["type"] == "done"
+
+
+def test_async_persistence_is_non_blocking_and_concurrency_bounded():
+    class DelayedStore(InMemoryConversationStore):
+        def __init__(self):
+            super().__init__(RAGConfig(conversation_store_type="in_memory"))
+            self.active_calls = 0
+            self.max_active_calls = 0
+            self.call_lock = threading.Lock()
+
+        def save_checkpoint(self, document: Dict[str, Any]) -> None:
+            with self.call_lock:
+                self.active_calls += 1
+                self.max_active_calls = max(self.max_active_calls, self.active_calls)
+            try:
+                time.sleep(0.05)
+                super().save_checkpoint(document)
+            finally:
+                with self.call_lock:
+                    self.active_calls -= 1
+
+    async def exercise() -> DelayedStore:
+        store = DelayedStore()
+        persistence = AsyncConversationPersistence(store, max_concurrency=2)
+        tasks = [
+            asyncio.create_task(persistence.save_checkpoint({"sequence": sequence}))
+            for sequence in range(4)
+        ]
+
+        await asyncio.sleep(0.01)
+        assert not all(task.done() for task in tasks)
+
+        await asyncio.gather(*tasks)
+        return store
+
+    store = asyncio.run(exercise())
+
+    assert len(store.checkpoints) == 4
+    assert store.max_active_calls == 2
 
 
 def test_feedback_persistence_and_memory_threshold():
