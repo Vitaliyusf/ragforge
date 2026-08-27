@@ -47,28 +47,26 @@ import app.main
 
 
 @pytest.mark.parametrize(
-    ("override", "message"),
+    ("auth_required", "session_cookie_secure", "message"),
     [
-        ({"auth_required": False}, "AUTH_REQUIRED must be true in production"),
-        ({"session_cookie_secure": False}, "SESSION_COOKIE_SECURE must be true in production"),
+        (False, True, "AUTH_REQUIRED must be true in production"),
+        (True, False, "SESSION_COOKIE_SECURE must be true in production"),
     ],
 )
 def test_production_security_misconfiguration_fails_closed(
-    override: dict[str, object],
+    auth_required: bool,
+    session_cookie_secure: bool,
     message: str,
 ) -> None:
-    production_settings: dict[str, object] = {
-        "environment": "production",
-        "auth_required": True,
-        "session_cookie_secure": True,
-        "session_cookie_name": "__Host-ragapp_session",
-        "csrf_cookie_name": "__Host-ragapp_csrf",
-        "internal_auth_secret": "internal-auth-secret-with-32-bytes-minimum",
-        "password_pepper": "password-pepper-with-at-least-32-bytes",
-        "session_pepper": "session-pepper-with-at-least-32-bytes",
-        "cors_origins": "https://app.example.test",
-    }
-    production_settings.update(override)
-
     with pytest.raises(ValidationError, match=message):
-        GatewayConfig(**production_settings)
+        GatewayConfig(
+            environment="production",
+            auth_required=auth_required,
+            session_cookie_secure=session_cookie_secure,
+            session_cookie_name="__Host-ragapp_session",
+            csrf_cookie_name="__Host-ragapp_csrf",
+            internal_auth_secret="internal-auth-secret-with-32-bytes-minimum",
+            password_pepper="password-pepper-with-at-least-32-bytes",
+            session_pepper="session-pepper-with-at-least-32-bytes",
+            cors_origins="https://app.example.test",
+        )
