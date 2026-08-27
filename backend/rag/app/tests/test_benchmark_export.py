@@ -624,3 +624,24 @@ def test_export_refuses_a_benchmark_owned_by_another_tenant():
 
     with bound_context(**other.to_dict()), pytest.raises(EvalNotFound):
         build_benchmark_export(store, benchmark["benchmark_id"])
+
+
+def test_judge_contract_provenance_reaches_the_exported_evidence(monkeypatch):
+    """GEN-03G: the schema digest and prompt version travel with the run."""
+    schema_sha = "0a82f6655e9b44131b110fa343dd64cd98de79b1e7fd407b59b8591d53654e92"
+    monkeypatch.setenv("ANSWER_EVALUATION_OUTPUT_SCHEMA_SHA256", schema_sha)
+    monkeypatch.setenv("ANSWER_EVALUATION_PROMPT_VERSION", "answer_evaluation.v2")
+    store, orchestrator, _, dataset_id = build()
+    benchmark = run_benchmark(orchestrator, dataset_id, [PHASE_RETRIEVAL_BASE])
+
+    with _archive(store, benchmark["benchmark_id"]) as archive:
+        manifest = json.loads(archive.read("manifest.json"))
+        runtime = json.loads(archive.read("runtime.json"))
+
+    # Not redacted on the way out: a 64-character digest is a fingerprint of a
+    # public schema, not a credential, and an export that dropped it could not
+    # prove which judge contract produced its quality numbers.
+    assert manifest["llm"]["output_schema_sha256"]["answer_evaluation"] == schema_sha
+    assert manifest["llm"]["prompt_version"]["answer_evaluation"] == "answer_evaluation.v2"
+    assert runtime["llm"]["output_schema_sha256"] == manifest["llm"]["output_schema_sha256"]
+    assert runtime["llm"]["prompt_version"] == manifest["llm"]["prompt_version"]

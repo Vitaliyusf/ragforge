@@ -8,7 +8,7 @@ from app.services.benchmark_summary import summarize_benchmark
 if TYPE_CHECKING:
     from app.services.eval_store import EvalStore
 
-COMPARISON_VERSION = 3
+COMPARISON_VERSION = 4
 TERMINAL_STATUSES = frozenset({"completed", "partial", "failed", "interrupted"})
 
 CRITICAL_COMPATIBILITY_FIELDS: Sequence[tuple[str, str, str]] = (
@@ -58,6 +58,24 @@ CRITICAL_COMPATIBILITY_FIELDS: Sequence[tuple[str, str, str]] = (
         "config",
         "llm.structured_output_transport.answer_evaluation",
         "manifest.llm.structured_output_transport.answer_evaluation",
+    ),
+    # The judge's contract. Every quality metric in this comparison —
+    # groundedness, hallucination verdict, unsupported claim count — is the
+    # output of one evaluator held to one schema by one prompt. Bounding
+    # `claims` at four changed what those numbers measure, so a run scored
+    # under the bounded schema is not comparable with one scored under the
+    # unbounded schema even though every other field matches. A manifest
+    # written before these were recorded reads as `unknown` here, which is the
+    # point: it cannot prove either way.
+    (
+        "model",
+        "llm.output_schema_sha256.answer_evaluation",
+        "manifest.llm.output_schema_sha256.answer_evaluation",
+    ),
+    (
+        "model",
+        "llm.prompt_version.answer_evaluation",
+        "manifest.llm.prompt_version.answer_evaluation",
     ),
     ("config", "vllm.max_num_seqs", "manifest.vllm.max_num_seqs"),
     (

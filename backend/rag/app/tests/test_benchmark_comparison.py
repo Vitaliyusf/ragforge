@@ -10,6 +10,14 @@ from app.services.benchmark_comparison import (
 )
 
 
+# One benchmark's judge contract: the digest of the JSON Schema the evaluator
+# was held to, and the prompt version that told it how to fill the schema in.
+SCHEMA_SHA = "0a82f6655e9b44131b110fa343dd64cd98de79b1e7fd407b59b8591d53654e92"
+# The same schema with `claims` unbounded hashes differently — that is the
+# whole point of recording it.
+UNBOUNDED_SCHEMA_SHA = "b3" + SCHEMA_SHA[2:]
+
+
 def manifest(
     *,
     model="embed-v1",
@@ -19,6 +27,8 @@ def manifest(
     vllm_image="vllm/vllm-openai:v0.28.0",
     vllm_overrides=None,
     answer_evaluation_transport="legacy",
+    answer_evaluation_schema_sha=SCHEMA_SHA,
+    answer_evaluation_prompt_version="answer_evaluation.v2",
 ):
     return {
         "build": {
@@ -46,6 +56,8 @@ def manifest(
             "structured_output_transport": {
                 "answer_evaluation": answer_evaluation_transport
             },
+            "output_schema_sha256": {"answer_evaluation": answer_evaluation_schema_sha},
+            "prompt_version": {"answer_evaluation": answer_evaluation_prompt_version},
         },
         "retrieval": {
             "top_k_documents": top_k,
@@ -403,3 +415,122 @@ def test_unobserved_vllm_version_is_never_treated_as_agreement():
     result = benchmark_compatibility(baseline, candidate)
 
     assert compatibility_field(result, "vllm.server_version")["status"] == "unknown"
+
+
+# ── Judge-contract compatibility (GEN-03G) ────────────────────────────────
+
+def test_identical_judge_contracts_compare_as_same():
+    baseline = benchmark("base", created_at="2026-01-01")
+    candidate = benchmark("candidate", created_at="2026-01-02")
+
+    result = benchmark_compatibility(baseline, candidate)
+
+    for field in (
+        "llm.output_schema_sha256.answer_evaluation",
+        "llm.prompt_version.answer_evaluation",
+    ):
+        assert compatibility_field(result, field)["status"] == "same"
+    assert result["compatibility_status"] == "compatible"
+
+
+def test_output_schema_difference_is_incompatible():
+    """The GEN-03F claims cap changed what the quality metrics measure."""
+    baseline = benchmark(
+        "base",
+        created_at="2026-01-01",
+        manifest_value=manifest(answer_evaluation_schema_sha=UNBOUNDED_SCHEMA_SHA),
+    )
+    candidate = benchmark("candidate", created_at="2026-01-02")
+
+    result = benchmark_compatibility(baseline, candidate)
+
+    row = compatibility_field(result, "llm.output_schema_sha256.answer_evaluation")
+    assert row["status"] == "different"
+    assert row["baseline"] == UNBOUNDED_SCHEMA_SHA
+    assert row["candidate"] == SCHEMA_SHA
+    assert result["compatibility_status"] == "incompatible"
+
+
+def test_prompt_version_difference_is_incompatible():
+    baseline = benchmark(
+        "base",
+        created_at="2026-01-01",
+        manifest_value=manifest(answer_evaluation_prompt_version="answer_evaluation.v1"),
+    )
+    candidate = benchmark("candidate", created_at="2026-01-02")
+
+    result = benchmark_compatibility(baseline, candidate)
+
+    assert compatibility_field(
+        result, "llm.prompt_version.answer_evaluation"
+    )["status"] == "different"
+    assert result["compatibility_status"] == "incompatible"
+
+
+def test_incompatible_judge_contracts_still_report_their_metrics():
+    """Incompatible is a verdict on comparability, not a refusal to report."""
+    baseline = benchmark(
+        "base",
+        created_at="2026-01-01",
+        value=0.5,
+        manifest_value=manifest(answer_evaluation_schema_sha=UNBOUNDED_SCHEMA_SHA),
+    )
+    candidate = benchmark("candidate", created_at="2026-01-02", value=0.75)
+
+    comparison = compare_benchmarks(baseline, candidate)
+    row = metric(comparison, "phases.retrieval_base.retrieval.mrr")
+
+    assert comparison["compatible"] is False
+    assert row["baseline"] == pytest.approx(0.5)
+    assert row["candidate"] == pytest.approx(0.75)
+    assert row["authoritative"] is False
+
+
+@pytest.mark.parametrize(
+    "missing",
+    ["output_schema_sha256", "prompt_version"],
+)
+def test_historical_manifest_without_judge_contract_is_unknown_not_same(missing):
+    """Readable, but it cannot prove the judge contract either way."""
+    legacy = manifest()
+    legacy["llm"].pop(missing)
+    baseline = benchmark("base", created_at="2026-01-01", manifest_value=legacy)
+    candidate = benchmark("candidate", created_at="2026-01-02")
+
+    result = benchmark_compatibility(baseline, candidate)
+
+    row = compatibility_field(result, f"llm.{missing}.answer_evaluation")
+    assert row["status"] == "unknown"
+    assert row["baseline"] is None
+    assert result["compatibility_status"] != "compatible"
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("answer_evaluation_schema_sha", None),
+        ("answer_evaluation_prompt_version", None),
+    ],
+)
+def test_null_judge_contract_provenance_is_unknown(field, value):
+    baseline = benchmark(
+        "base", created_at="2026-01-01", manifest_value=manifest(**{field: value})
+    )
+    candidate = benchmark("candidate", created_at="2026-01-02")
+
+    result = benchmark_compatibility(baseline, candidate)
+
+    assert result["compatibility_status"] != "compatible"
+
+
+def test_unobserved_judge_contract_is_never_treated_as_agreement():
+    legacy = manifest()
+    legacy["unobserved"] = ["llm.output_schema_sha256.answer_evaluation"]
+    baseline = benchmark("base", created_at="2026-01-01", manifest_value=legacy)
+    candidate = benchmark("candidate", created_at="2026-01-02")
+
+    result = benchmark_compatibility(baseline, candidate)
+
+    assert compatibility_field(
+        result, "llm.output_schema_sha256.answer_evaluation"
+    )["status"] == "unknown"

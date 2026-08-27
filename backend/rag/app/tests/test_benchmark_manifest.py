@@ -74,6 +74,17 @@ TOKEN_BUDGET_ENV = {
     "MEMORY_EXTRACTION_MAX_TOKENS": "512",
     "ANSWER_EVALUATION_STRUCTURED_OUTPUT_TRANSPORT": "legacy",
 }
+# A real digest of a real schema, held here as a literal because rag cannot
+# import llm_agent's model. The llm_agent suite owns the derivation itself;
+# what this file asserts is that whatever digest deployment injects is
+# recorded, validated and diffable.
+SCHEMA_SHA = "0a82f6655e9b44131b110fa343dd64cd98de79b1e7fd407b59b8591d53654e92"
+
+JUDGE_CONTRACT_ENV = {
+    "ANSWER_EVALUATION_OUTPUT_SCHEMA_SHA256": SCHEMA_SHA,
+    "ANSWER_EVALUATION_PROMPT_VERSION": "answer_evaluation.v2",
+}
+
 
 
 # ── Missing values ────────────────────────────────────────────────────────
@@ -200,6 +211,7 @@ def test_model_and_corpus_metadata_come_from_the_deployment(config):
             "VLLM_MAX_NUM_SEQS": "3",
             "VLLM_QUANTIZATION": "compressed-tensors",
             **TOKEN_BUDGET_ENV,
+            **JUDGE_CONTRACT_ENV,
         },
     )
 
@@ -556,3 +568,104 @@ def test_the_vllm_api_key_never_reaches_the_manifest(config):
     )
 
     assert "vllm-live-key-value" not in manifest_text(manifest)
+
+
+# ── Judge-contract provenance (GEN-03G) ───────────────────────────────────
+
+
+def test_judge_contract_provenance_is_recorded(config):
+    manifest = build_benchmark_manifest(config, env=JUDGE_CONTRACT_ENV)
+
+    assert manifest["llm"]["output_schema_sha256"] == {"answer_evaluation": SCHEMA_SHA}
+    assert manifest["llm"]["prompt_version"] == {"answer_evaluation": "answer_evaluation.v2"}
+    for path in (
+        "llm.output_schema_sha256.answer_evaluation",
+        "llm.prompt_version.answer_evaluation",
+    ):
+        assert path not in manifest["unobserved"]
+
+
+def test_missing_judge_contract_provenance_is_unknown_not_assumed(config):
+    """No injection: null and named, never a stand-in for "same as before"."""
+    manifest = build_benchmark_manifest(config, env={})
+
+    assert manifest["llm"]["output_schema_sha256"]["answer_evaluation"] is None
+    assert manifest["llm"]["prompt_version"]["answer_evaluation"] is None
+    assert "llm.output_schema_sha256.answer_evaluation" in manifest["unobserved"]
+    assert "llm.prompt_version.answer_evaluation" in manifest["unobserved"]
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "not-a-digest",
+        SCHEMA_SHA.upper(),
+        SCHEMA_SHA[:-1],
+        SCHEMA_SHA + "0",
+        "",
+    ],
+)
+def test_a_schema_digest_that_is_not_a_sha256_is_rejected(config, value):
+    manifest = build_benchmark_manifest(
+        config, env={"ANSWER_EVALUATION_OUTPUT_SCHEMA_SHA256": value}
+    )
+
+    assert manifest["llm"]["output_schema_sha256"]["answer_evaluation"] is None
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "v2",
+        "content_risk_scan.v2",
+        "answer_evaluation.vtwo",
+        "Split the answer into atomic claims, then review AT MOST 4 MATERIAL claims.",
+    ],
+)
+def test_a_prompt_version_that_is_not_a_version_label_is_rejected(config, value):
+    """Raw prompt text cannot pass for a version, by construction."""
+    manifest = build_benchmark_manifest(
+        config, env={"ANSWER_EVALUATION_PROMPT_VERSION": value}
+    )
+
+    assert manifest["llm"]["prompt_version"]["answer_evaluation"] is None
+    assert value not in manifest_text(manifest)
+
+
+def test_no_raw_prompt_text_reaches_the_manifest(config):
+    """Only the short version label travels; never the instruction itself."""
+    prompt_body = (
+        "Split the answer into atomic claims, then review AT MOST 4 MATERIAL "
+        "claims. For each reviewed claim, decide whether the reference context "
+        "above supports it."
+    )
+    manifest = build_benchmark_manifest(
+        config,
+        env={
+            **JUDGE_CONTRACT_ENV,
+            "ANSWER_EVALUATION_PROMPT": prompt_body,
+            "ANSWER_EVALUATION_PROMPT_TEXT": prompt_body,
+        },
+    )
+
+    text = manifest_text(manifest)
+    assert prompt_body not in text
+    assert "atomic claims" not in text
+    assert manifest["llm"]["prompt_version"]["answer_evaluation"] == "answer_evaluation.v2"
+
+
+def test_build_provenance_still_degrades_to_unknown_without_injection(config):
+    """PART E: nothing here invents a branch, timestamp or image tag."""
+    manifest = build_benchmark_manifest(config, env=JUDGE_CONTRACT_ENV)
+
+    assert manifest["build"]["git_sha"] is None
+    assert manifest["build"]["git_branch"] is None
+    assert manifest["build"]["build_timestamp"] is None
+    assert manifest["build"]["image_tag"] is None
+    for path in (
+        "build.git_sha",
+        "build.git_branch",
+        "build.build_timestamp",
+        "build.image_tag",
+    ):
+        assert path in manifest["unobserved"]
