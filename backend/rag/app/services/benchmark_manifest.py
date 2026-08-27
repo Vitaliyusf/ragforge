@@ -70,7 +70,8 @@ from app.services.effective_retrieval import (
 # reads a manifest to drive behavior — but its retrieval section must be
 # interpreted as config's declaration rather than as what ran.
 # Version 3 adds the allowlisted LLM quantization used by the served runtime.
-MANIFEST_VERSION = 3
+# Version 4 records the effective vLLM scheduler concurrency candidate.
+MANIFEST_VERSION = 4
 
 # Longest env value copied into a manifest. A model identifier is tens of
 # characters; anything far larger is a mistake or a payload, and neither
@@ -154,6 +155,7 @@ _ENV_FIELDS: Dict[str, Dict[str, Tuple[Tuple[str, ...], str]]] = {
         "implementation": (("LLM_IMPLEMENTATION",), "str"),
         "chat_model": (("RAG_CHAT_MODEL",), "str"),
         "max_model_len": (("VLLM_MAX_MODEL_LEN",), "int"),
+        "max_num_seqs": (("VLLM_MAX_NUM_SEQS",), "int"),
         "quantization": (("VLLM_QUANTIZATION",), "str"),
     },
 }
