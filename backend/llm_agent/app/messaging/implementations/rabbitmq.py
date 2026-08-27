@@ -16,11 +16,16 @@ class _QueueConfig:
 
 def make_consumer(settings: Settings, queue_name: str) -> BaseRabbitMQConsumer:
     """Create a consumer for a specific queue, sharing the exchange config."""
+    prefetch_count = (
+        settings.llm_request_prefetch
+        if queue_name == settings.rabbitmq_queue
+        else settings.rabbitmq_prefetch_count
+    )
     cfg = _QueueConfig(
         rabbitmq_url=settings.rabbitmq_url,
         rabbitmq_exchange=settings.rabbitmq_exchange,
         rabbitmq_queue=queue_name,
-        rabbitmq_prefetch_count=settings.rabbitmq_prefetch_count,
+        rabbitmq_prefetch_count=prefetch_count,
     )
     return BaseRabbitMQConsumer(cfg)
 

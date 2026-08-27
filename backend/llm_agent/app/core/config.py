@@ -32,6 +32,12 @@ class Settings(BaseSettings):
     rabbitmq_exchange: str = Field(default="ragapp.requests")
     rabbitmq_queue: str = Field(default="llm_agent")
     rabbitmq_prefetch_count: int = Field(default=1)
+    llm_request_prefetch: int = Field(
+        default=4,
+        ge=1,
+        le=4,
+        description="Prefetch for the primary typed LLM request queue",
+    )
 
     # Additional queues consumed by llm_agent
     summary_queue: str = Field(default="summary")

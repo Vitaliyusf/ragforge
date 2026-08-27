@@ -819,6 +819,7 @@ def test_prometheus_evidence_groups_llm_metrics_by_bounded_dimensions():
     pipeline = SNAPSHOT_QUERIES["pipeline"]
 
     for name in (
+        "llm_p50_by_request_type",
         "llm_p95_by_request_type",
         "llm_provider_p95_by_request_type",
         "llm_wall_time_rate",
@@ -846,6 +847,9 @@ def test_prometheus_evidence_groups_llm_metrics_by_bounded_dimensions():
         )
 
     assert "finish_reason" in pipeline["llm_finish_reason_rate"]
+    assert "histogram_quantile(0.50" in pipeline["llm_p50_by_request_type"]
+    assert "ragapp_llm_request_duration_seconds_bucket" in pipeline["llm_p50_by_request_type"]
+    assert "le" in pipeline["llm_p50_by_request_type"]
     for name, quantile in (
         ("llm_output_tokens_p50_by_request_type", "0.50"),
         ("llm_output_tokens_p95_by_request_type", "0.95"),

@@ -147,7 +147,9 @@ async def lifespan(app: FastAPI):
         _consumers.append(consumer)
 
     logger.log("main:startup", "All RabbitMQ consumers started", {
-        "queues": [q for q, _ in handlers]
+        "queues": [q for q, _ in handlers],
+        "llm_request_prefetch": settings.llm_request_prefetch,
+        "auxiliary_queue_prefetch": settings.rabbitmq_prefetch_count,
     })
 
     try:
