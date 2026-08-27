@@ -2,6 +2,7 @@
 import unittest
 from unittest.mock import patch
 
+from app.llm.prompt_registry import StructuredOutputParseError
 from app.llm.prompts import answer_generation
 from app.llm.prompts.answer_evaluation import _normalize_payload, parse as parse_review
 from app.schemas.llm import AnswerGenerationParsedOutput, AnswerGenerationRequest
@@ -176,16 +177,12 @@ class JudgeClaimNormalizationTests(unittest.TestCase):
         self.assertEqual(normalized["unsupported_claim_count"], 0)
 
 
-class JudgeFallbackTests(unittest.TestCase):
-    """A malformed judge response must degrade, not raise."""
+class JudgeParseFailureTests(unittest.TestCase):
+    """A malformed judge response must fail closed."""
 
-    def test_malformed_json_falls_back_to_defaults(self):
-        result = parse_review("I think the answer looks fine, honestly.")
-
-        self.assertEqual(result.payload["verdict"], "unavailable")
-        self.assertEqual(result.payload["claims"], [])
-        self.assertIsNone(result.payload["unsupported_claim_count"])
-        self.assertIsNone(result.payload["hallucination_verdict"])
+    def test_malformed_json_raises_structured_output_parse_error(self):
+        with self.assertRaises(StructuredOutputParseError):
+            parse_review("I think the answer looks fine, honestly.")
 
     def test_partial_json_keeps_missing_claim_fields_empty(self):
         result = parse_review('{"verdict":"pass","groundedness_score":0.9}')
