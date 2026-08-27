@@ -235,7 +235,18 @@ def benchmark_compatibility(
     """Classify critical provenance without treating unknown as equality."""
     fields = _compatibility_checks(baseline, candidate)
     statuses = {check["status"] for check in fields}
-    if "different" in statuses:
+    different_fields = {
+        check["field"] for check in fields if check["status"] == "different"
+    }
+    fingerprint_unknown = any(
+        check["field"] == "build.source_fingerprint_sha256"
+        and check["status"] == "unknown"
+        for check in fields
+    )
+    incomplete_dirty_identity = (
+        fingerprint_unknown and different_fields == {"build.git_dirty"}
+    )
+    if "different" in statuses and not incomplete_dirty_identity:
         state = "incompatible"
         conclusion = "known incompatible comparison"
     elif "unknown" in statuses:
