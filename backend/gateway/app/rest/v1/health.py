@@ -20,7 +20,7 @@ async def health():
 @router.get("/v1/health/detailed", dependencies=[Depends(require_admin)])
 async def health_detailed():
     """Detailed health including circuit-breaker and topology state."""
-    from app.main import _rabbitmq_client, _HAS_RATE_LIMITER, app  # deferred to avoid circular import
+    from app.main import _rabbitmq_client, app  # deferred to avoid circular import
 
     services = {
         name: {"status": "healthy" if name == "gateway" else "unknown", "port": port}
@@ -38,7 +38,7 @@ async def health_detailed():
 
     rate_limiter: dict = {}
     try:
-        if _HAS_RATE_LIMITER and hasattr(app, "_rate_limiter"):
+        if hasattr(app, "_rate_limiter"):
             rate_limiter = app._rate_limiter.metrics
     except Exception:
         pass

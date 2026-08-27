@@ -135,6 +135,54 @@ jobs:
       - name: vitest
         working-directory: frontend
         run: npm test
+      - name: Production build
+        working-directory: frontend
+        run: npm run build
+
+  python-dependency-audit:
+    name: Security scan (Python dependencies, report-only)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version-file: .python-version
+          cache: pip
+      - name: Install pip-audit
+        run: python -m pip install pip-audit
+      - name: Audit each requirements manifest
+        # Dependency scans begin report-only so existing findings remain visible
+        # without destabilizing CI. The failing step can become blocking once
+        # the reported baseline has been triaged.
+        continue-on-error: true
+        shell: bash
+        run: |
+          status=0
+          while IFS= read -r requirements_file; do
+            echo "::group::pip-audit ${requirements_file}"
+            python -m pip_audit --requirement "${requirements_file}" || status=1
+            echo "::endgroup::"
+          done < <(find backend docker -name 'requirements*.txt' -type f | sort)
+          exit "${status}"
+
+  frontend-dependency-audit:
+    name: Security scan (frontend dependencies, report-only)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Audit npm lockfile
+        # Report high/critical findings now; make this blocking after the
+        # existing dependency baseline has been triaged.
+        continue-on-error: true
+        working-directory: frontend
+        run: npm audit --audit-level=high
 
   guardrails:
     name: Repo guardrails
