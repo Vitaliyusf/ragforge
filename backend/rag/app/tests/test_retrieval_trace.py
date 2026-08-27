@@ -333,6 +333,36 @@ def test_a_skipped_second_pass_is_recorded_as_a_decision():
     assert STAGE_PASS_TWO not in stages_by_name(trace.to_payload())
 
 
+def test_a_revised_turn_records_one_terminal_context_not_two():
+    """Two terminal stages would leave a reader with two answers to one question."""
+    trace = RetrievalTrace()
+
+    run_turn("Please do a second retrieval", "extended", trace)
+
+    names = [stage["stage"] for stage in trace.stages]
+    assert names.count(STAGE_FINAL_CONTEXT) == 1
+
+
+def test_the_terminal_context_survives_a_full_bound_and_a_later_failure():
+    """Neither the stage bound nor a downstream failure may erase it."""
+    service, backend, _ = build_service()
+    backend.fail_generation = True
+    trace = RetrievalTrace(max_stages=1)
+
+    with bound_context(**TEST_IDENTITY.to_dict()):
+        request = service.build_request({"question": "Break generation", "mode": "regular"})
+        emitter = CollectingConversationEmitter(request)
+        result = asyncio.run(
+            service.graph_runner.run(request, emitter, retrieval_trace=trace)
+        )
+
+    assert result["outcome"] == "failed"
+    final = trace.final_context_stage()
+    assert final is not None
+    assert [candidate["chunk_id"] for candidate in final["candidates"]] == ["c1"]
+    assert trace.to_payload()["truncated"] is True
+
+
 def test_an_end_to_end_eval_item_is_traced_by_the_graph_itself():
     store, runner, _, dataset_id = build(
         items=[{"query": "What is RAG?", "relevant_chunk_ids": ["c1"]}],

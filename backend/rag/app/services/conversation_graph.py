@@ -44,6 +44,12 @@ from app.services.metrics_facts import (
 from shared.metrics import METRICS
 
 
+# The nodes that consume the selected context. They are the last point at
+# which `retrieved_chunks` can still change: evaluation, revision, output
+# guardrails and persistence all read the selection without rewriting it.
+GENERATION_NODES = frozenset({"generate_answer", "generate_draft_answer"})
+
+
 class GuardrailBlockedError(Exception):
     """A deliberate safety decision, not a graph execution failure."""
 
@@ -194,14 +200,12 @@ class ConversationGraphRunner:
                 else:
                     final_state = await self._run_fallback_graph(state, runtime)
                 trace_metadata["chunk_count"] = len(final_state.get("retrieved_chunks", []))
-            # The context generation actually ran on, recorded once from the
-            # final state rather than by each node that might have been last.
-            final_chunks = final_state.get("retrieved_chunks", [])
-            if retrieval_trace is not None:
-                retrieval_trace.record_stage(
-                    STAGE_FINAL_CONTEXT,
-                    final_chunks,
-                )
+            # The context generation actually ran on. Normally already
+            # committed at the generation boundary; committed here only for a
+            # run whose remaining nodes never reached generation (a resume
+            # past it, or a flow that produced no answer).
+            self._commit_final_context(runtime, final_state)
+            final_chunks = runtime["final_context"]
             result = self._build_result(final_state, sources=final_chunks)
             if record_metrics:
                 self._record_turn_metrics(
@@ -253,10 +257,36 @@ class ConversationGraphRunner:
                         "message": str(exc),
                     },
                 )
-            result = {"answer": "", "sources": [], "review": {}, "error": str(exc)}
+            # A failure after the context was chosen does not unmake the
+            # retrieval that succeeded: the last authoritative context is
+            # returned with the failure, from graph state rather than from
+            # any reconstruction. Before that point there is nothing to
+            # report, and an empty list there means "unknown", not "none".
+            known_context = runtime.get("final_context")
+            result = {
+                "answer": "",
+                "sources": list(known_context) if known_context is not None else [],
+                "review": {},
+                "citation_metrics": {},
+                # Explicit, so no reader can default this result to success.
+                "outcome": "failed",
+                "error": str(exc),
+                "error_class": type(exc).__name__,
+                "failed_node": failed_node,
+            }
             if record_metrics:
+                # The turn fact describes a turn that finished. Keeping the
+                # known context on the failure result is for the caller and
+                # the eval trace; letting it into the live retrieval averages
+                # would move dashboards that have only ever counted completed
+                # turns.
                 self._record_turn_metrics(
-                    request, result, runtime, emitter, time.monotonic() - t0, error=exc
+                    request,
+                    {**result, "sources": []},
+                    runtime,
+                    emitter,
+                    time.monotonic() - t0,
+                    error=exc,
                 )
             return result
 
@@ -540,6 +570,11 @@ class ConversationGraphRunner:
     def _wrap_node(self, name: str, func, runtime: Dict[str, Any]):
         async def node(state: ConversationState) -> ConversationState:
             runtime["current_node"] = name
+            if name in GENERATION_NODES:
+                # Before the node runs: the context entering generation is
+                # the context generation uses, and it must survive the node
+                # failing.
+                self._commit_final_context(runtime, state)
             emitter: BaseConversationEmitter = runtime["emitter"]
             request: ConversationRequest = runtime["request"]
             started = time.monotonic()
@@ -691,6 +726,32 @@ class ConversationGraphRunner:
             query_source=query_source,
             returned_count=returned_count,
         )
+
+    def _commit_final_context(
+        self,
+        runtime: Dict[str, Any],
+        state: ConversationState,
+    ) -> None:
+        """Freeze the context the answer will be generated from.
+
+        Called at the boundary into generation, which is the last node that
+        can still change ``retrieved_chunks``: everything after it reads the
+        selection without rewriting it. Recording the terminal context only
+        after the whole graph returned meant that a failure in generation,
+        the judge, an output guardrail or persistence erased retrieval
+        evidence that was already known — and an eval row with no final
+        context then read as a retrieval miss rather than as the downstream
+        failure it was.
+
+        Committed once. The first commit wins, so a later re-entry into
+        generation (a revision pass) cannot write a second, contradicting
+        terminal stage.
+        """
+        if runtime.get("final_context") is not None:
+            return
+        chunks = list(state.get("retrieved_chunks", []) or [])
+        runtime["final_context"] = chunks
+        self._trace_stage(runtime, STAGE_FINAL_CONTEXT, chunks)
 
     def _trace_decision(
         self,

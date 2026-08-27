@@ -52,6 +52,7 @@ from app.services.eval_runner import (
     PIPELINE_REGULAR,
     EvalRunner,
 )
+from app.services.retrieval_trace import STAGE_FINAL_CONTEXT
 from app.services.eval_store import (
     BENCHMARK_COMPLETED,
     BENCHMARK_FAILED,
@@ -175,7 +176,15 @@ class FakeGraphRunner:
         await asyncio.sleep(0)
         if request.user_message in self.fail_queries:
             raise RuntimeError("generation unavailable")
-        return GRAPH_RESULTS.get(request.user_message, {})
+        result = GRAPH_RESULTS.get(request.user_message, {})
+        if retrieval_trace is not None:
+            # The real graph commits its terminal context at the generation
+            # boundary; a fake that skipped it would leave every item without
+            # the evidence the runner scores.
+            retrieval_trace.record_stage(
+                STAGE_FINAL_CONTEXT, result.get("sources") or []
+            )
+        return result
 
 
 def build(

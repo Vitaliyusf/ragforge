@@ -24,6 +24,7 @@ from app.services.conversation_persistence import InMemoryConversationStore
 from app.services.conversation_tracing import ConversationTracer
 from app.services.conversation_types import build_initial_state
 from app.services.rag_service import RAGService
+from app.services.retrieval_trace import RetrievalTrace
 from app.services.websocket_service import WebSocketService
 from app.messaging.rag_rpc_handler import build_reply_envelope, extract_request_payload
 from shared.auth import AuthError, AuthIdentity
@@ -384,6 +385,81 @@ def test_error_path_emits_single_terminal_error():
     assert len(terminal_events) == 1
     assert terminal_events[0]["type"] == "error"
     assert "conversation graph execution failed" in logger.events
+
+
+def run_traced_turn(service, question: str, mode: str = "regular"):
+    """Run one turn with a collector attached, as the eval harness does."""
+    trace = RetrievalTrace()
+    request = service.build_request({"question": question, "mode": mode})
+    emitter = CollectingConversationEmitter(request)
+    result = asyncio.run(
+        service.graph_runner.run(request, emitter, retrieval_trace=trace)
+    )
+    return result, trace
+
+
+def test_a_generation_failure_is_an_explicit_failure_that_keeps_its_context():
+    """The retrieval that succeeded is not unmade by the generator failing."""
+    service, backend, _ = build_service()
+    backend.fail_generation = True
+
+    result, trace = run_traced_turn(service, "Break generation")
+
+    assert result["outcome"] == "failed"
+    assert result["error"] == "generation failed"
+    assert result["error_class"] == "RuntimeError"
+    assert result["failed_node"] == "generate_answer"
+    assert [chunk["chunk_id"] for chunk in result["sources"]] == ["c1"]
+    final = trace.final_context_stage()
+    assert final is not None
+    assert [candidate["chunk_id"] for candidate in final["candidates"]] == ["c1"]
+
+
+def test_an_evaluation_failure_keeps_the_context_the_answer_was_generated_from():
+    """The judge is downstream of retrieval; its failure is not a miss."""
+    service, backend, _ = build_service()
+
+    async def unparseable_review(request, answer, retrieved_chunks, mode):
+        raise ValueError("structured output validation failed")
+
+    backend.evaluate_answer = unparseable_review
+
+    result, trace = run_traced_turn(service, "What is RAG?")
+
+    assert result["outcome"] == "failed"
+    assert result["error_class"] == "ValueError"
+    assert result["failed_node"] == "evaluate_answer_light"
+    assert [chunk["chunk_id"] for chunk in result["sources"]] == ["c1"]
+    assert trace.final_context_stage() is not None
+
+
+def test_a_failure_before_retrieval_reports_no_context_at_all():
+    """An unknown context is absent, never an empty one — that would score."""
+    service, backend, _ = build_service()
+
+    async def unavailable(request, query, retrieval_plan=None, pass_name="pass_one"):
+        raise RuntimeError("vector store unavailable")
+
+    backend.search_chunks = unavailable
+
+    result, trace = run_traced_turn(service, "What is RAG?")
+
+    assert result["outcome"] == "failed"
+    assert result["error_class"] == "RuntimeError"
+    assert result["failed_node"] == "retrieve_chunks_once"
+    assert result["sources"] == []
+    assert trace.final_context_stage() is None
+
+
+def test_a_successful_turn_still_reports_success_and_its_context():
+    service, _, _ = build_service()
+
+    result, trace = run_traced_turn(service, "What is RAG?")
+
+    assert result["outcome"] == "success"
+    assert "error" not in result
+    assert [chunk["chunk_id"] for chunk in result["sources"]] == ["c1"]
+    assert trace.final_context_stage()["kept_count"] == 1
 
 
 def test_input_guardrail_block_is_a_structured_outcome_not_a_graph_failure():

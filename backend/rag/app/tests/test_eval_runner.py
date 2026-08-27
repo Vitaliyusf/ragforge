@@ -1138,6 +1138,212 @@ def test_success_without_final_context_is_failed_not_scored_as_a_miss():
     assert stored["results"]["items_evaluated"] == 0
 
 
+class FailingGraph(FakeGraphRunner):
+    """A graph that dies at a chosen point, reporting it the way the real one does."""
+
+    def __init__(self, result: Dict[str, Any], *, context: Any = None) -> None:
+        super().__init__({})
+        self.result = result
+        self.context = context
+
+    async def run(self, request, emitter, **kwargs):
+        trace = kwargs["retrieval_trace"]
+        if self.context is not None:
+            trace.record_stage("base", self.context)
+            # Committed by the graph at the generation boundary, before the
+            # node that is about to fail.
+            trace.record_stage("final_context", self.context)
+        await asyncio.sleep(0)
+        return self.result
+
+
+def test_a_post_retrieval_failure_keeps_its_error_and_still_scores_retrieval():
+    """The generator failing is not the retriever missing."""
+    store, runner, _, dataset_id = build(
+        items=[{"query": "first", "relevant_chunk_ids": ["c1"]}]
+    )
+    runner.graph_runner = FailingGraph(
+        {
+            "outcome": "failed",
+            "error": "structured output validation failed",
+            "error_class": "ValueError",
+            "failed_node": "evaluate_answer_light",
+            "answer": "",
+            "sources": [{"chunk_id": "c1"}],
+        },
+        context=[{"chunk_id": "c1"}],
+    )
+
+    run = run_end_to_end(runner, dataset_id)
+    stored = fetch(store, run["run_id"])
+    row = stored["per_item"][0]
+
+    # The primary pipeline failure, not the secondary evidence complaint.
+    assert row["outcome"] == "failed"
+    assert row["error"] == "structured output validation failed"
+    assert row["error_class"] == "ValueError"
+    assert row["failed_node"] == "evaluate_answer_light"
+    # Retrieval was measured and is scored on its own axis.
+    assert row["retrieved_ids"] == ["c1"]
+    assert row["first_hit_rank"] == 1
+    assert row["reciprocal_rank"] == 1.0
+    assert row["retrieval_trace"]["stages"][-1]["stage"] == "final_context"
+    # Answer quality was never measured, so it contributes nothing.
+    assert row.get("groundedness") is None
+    assert stored["results"]["items_evaluated"] == 1
+    assert stored["results"]["execution"]["failed"] == 1
+    assert stored["results"]["scoring"]["scored"] == 1
+    assert stored["results"]["answer_quality"]["items_judged"] == 0
+
+
+def test_a_pre_retrieval_failure_fabricates_no_retrieval_evidence():
+    store, runner, _, dataset_id = build(
+        items=[{"query": "first", "relevant_chunk_ids": ["c1"]}]
+    )
+    runner.graph_runner = FailingGraph(
+        {
+            "outcome": "failed",
+            "error": "vector store unavailable",
+            "error_class": "RuntimeError",
+            "failed_node": "retrieve_chunks_once",
+            "answer": "",
+            "sources": [],
+        }
+    )
+
+    run = run_end_to_end(runner, dataset_id)
+    stored = fetch(store, run["run_id"])
+    row = stored["per_item"][0]
+
+    assert row["outcome"] == "failed"
+    assert row["error"] == "vector store unavailable"
+    assert row["failed_node"] == "retrieve_chunks_once"
+    assert row["retrieved_ids"] == []
+    # Unmeasured, not missed: a zero here would be a regression nobody caused.
+    assert "scores" not in row
+    assert row["reciprocal_rank"] is None
+    assert stored["results"]["items_evaluated"] == 0
+    assert stored["results"]["scoring"]["unscorable"] == 1
+
+
+def test_a_graph_error_without_an_outcome_is_still_a_failure_not_a_success():
+    """The pre-contract result shape must not default to success."""
+    store, runner, _, dataset_id = build(
+        items=[{"query": "first", "relevant_chunk_ids": ["c1"]}]
+    )
+    runner.graph_runner = FailingGraph({"error": "boom", "answer": "", "sources": []})
+
+    run = run_end_to_end(runner, dataset_id)
+    row = fetch(store, run["run_id"])["per_item"][0]
+
+    assert row["outcome"] == "failed"
+    assert row["error"] == "boom"
+    assert row["error_class"] == "ConversationGraphError"
+
+
+def test_a_primary_graph_error_outranks_an_evidence_inconsistency():
+    """A failed graph already said what went wrong; that must reach the row."""
+    store, runner, _, dataset_id = build(
+        items=[{"query": "first", "relevant_chunk_ids": ["c1"]}]
+    )
+    # Sources without a terminal stage: incoherent evidence *and* a real
+    # failure. The failure is the one worth reporting.
+    runner.graph_runner = FailingGraph(
+        {
+            "outcome": "failed",
+            "error": "generation failed",
+            "error_class": "RuntimeError",
+            "failed_node": "generate_answer",
+            "sources": [{"chunk_id": "c1"}],
+        }
+    )
+
+    run = run_end_to_end(runner, dataset_id)
+    row = fetch(store, run["run_id"])["per_item"][0]
+
+    assert row["error"] == "generation failed"
+    assert row["error_class"] == "RuntimeError"
+    assert "scores" not in row
+
+
+def test_mixed_outcomes_are_accounted_on_independent_axes():
+    """Execution, retrieval scoring and answer quality each count separately."""
+    store, runner, _, dataset_id = build(
+        items=[
+            {"query": "first", "relevant_chunk_ids": ["c1"]},
+            {"query": "second", "relevant_chunk_ids": ["c1"]},
+            {"query": "third", "relevant_chunk_ids": ["c9"]},
+            {"query": "fourth", "relevant_chunk_ids": ["c1"]},
+        ]
+    )
+
+    class MixedGraph(FakeGraphRunner):
+        async def run(self, request, emitter, **kwargs):
+            trace = kwargs["retrieval_trace"]
+            query = request.user_message
+            await asyncio.sleep(0)
+            if query == "first":
+                trace.record_stage("final_context", [{"chunk_id": "c1"}])
+                return {
+                    "answer": "Alpha [1].",
+                    "sources": [{"chunk_id": "c1"}],
+                    "review": {
+                        "groundedness_score": 0.8,
+                        "hallucination_verdict": "none",
+                    },
+                }
+            if query == "second":
+                # Post-retrieval failure: the context is known, the judge died.
+                trace.record_stage("final_context", [{"chunk_id": "c1"}])
+                return {
+                    "outcome": "failed",
+                    "error": "judge timed out",
+                    "error_class": "TimeoutError",
+                    "failed_node": "evaluate_answer_light",
+                    "sources": [{"chunk_id": "c1"}],
+                }
+            if query == "third":
+                # Pre-retrieval failure: no context ever existed.
+                return {
+                    "outcome": "failed",
+                    "error": "vector store unavailable",
+                    "error_class": "RuntimeError",
+                    "failed_node": "retrieve_chunks_once",
+                    "sources": [],
+                }
+            return {
+                "outcome": "guardrail_blocked",
+                "guardrail_stage": "input",
+                "sources": [],
+            }
+
+    runner.graph_runner = MixedGraph({})
+
+    stored = fetch(store, run_end_to_end(runner, dataset_id)["run_id"])
+    results = stored["results"]
+
+    assert results["execution"] == {
+        "total": 4,
+        "succeeded": 1,
+        "guardrail_blocked": 1,
+        "failed": 2,
+        "timed_out": 0,
+        "interrupted": 0,
+    }
+    # The post-retrieval failure is scored for retrieval; the pre-retrieval
+    # failure and the guardrail block are not.
+    assert results["scoring"] == {
+        "dataset_items": 4,
+        "scored": 2,
+        "skipped": 0,
+        "unscorable": 2,
+    }
+    assert results["mrr"] == pytest.approx(1.0)
+    assert results["answer_quality"]["items_judged"] == 1
+    assert results["items_guardrail_blocked"] == 1
+    assert results["items_failed"] == 2
+
+
 def test_guardrail_blocked_items_are_separate_from_failures_and_answer_denominators():
     store, runner, _, dataset_id = build()
     runner.graph_runner = FakeGraphRunner({

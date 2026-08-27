@@ -151,6 +151,31 @@ def test_export_excludes_answers_and_redacts_secrets():
     assert "[redacted]" in text
 
 
+def test_per_item_export_carries_the_failed_node_but_no_answer_text():
+    """Which stage died is attributable without exporting what it was handling."""
+    evidence = _trace_evidence(
+        [
+            {
+                "item_id": "failed-1",
+                "outcome": "failed",
+                "error": "structured output validation failed",
+                "error_class": "ValueError",
+                "failed_node": "evaluate_answer_light",
+                "retrieved_ids": ["c1"],
+                "first_hit_rank": 1,
+                "answer": "private answer",
+                "query": "private prompt",
+            }
+        ]
+    )
+
+    assert evidence[0]["failed_node"] == "evaluate_answer_light"
+    assert evidence[0]["error_class"] == "ValueError"
+    assert evidence[0]["retrieved_ids"] == ["c1"]
+    assert "answer" not in evidence[0]
+    assert "query" not in evidence[0]
+
+
 def test_per_item_export_identifies_guardrail_outcome_and_stage():
     evidence = _trace_evidence(
         [
@@ -172,6 +197,7 @@ def test_per_item_export_identifies_guardrail_outcome_and_stage():
             "guardrail_stage": "input",
             "timed_out": False,
             "error_class": None,
+            "failed_node": None,
         }
     ]
 

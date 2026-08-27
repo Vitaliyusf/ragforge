@@ -207,6 +207,10 @@ def _trace_evidence(rows: Any) -> list[Any]:
         "unscorable",
         "error",
         "error_class",
+        # Which graph node the failure happened in. A bounded internal name,
+        # so a downstream failure is attributable without exporting any of
+        # the prompt, answer or context text that node was handling.
+        "failed_node",
         "outcome",
         "guardrail_stage",
         "timed_out",
@@ -223,7 +227,13 @@ def _trace_evidence(rows: Any) -> list[Any]:
         if not isinstance(row, Mapping):
             continue
         exported = {key: row.get(key) for key in allowed if key in row}
-        for key in ("outcome", "guardrail_stage", "timed_out", "error_class"):
+        for key in (
+            "outcome",
+            "guardrail_stage",
+            "timed_out",
+            "error_class",
+            "failed_node",
+        ):
             exported.setdefault(key, None)
         evidence.append(exported)
     return evidence
