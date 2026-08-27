@@ -370,6 +370,42 @@ def test_extended_flow_runs_second_retrieval_and_revises_once():
     assert emitter.events[-1]["type"] == "done"
 
 
+def test_pass_two_candidates_are_globally_ranked_and_deduped():
+    service, backend, _ = build_service()
+    service.graph_runner.config.top_k_documents = 2
+
+    async def search_chunks(request, query, retrieval_plan=None, pass_name="pass_one"):
+        backend.calls.append({"type": "vector_db", "pass_name": pass_name, "query": query})
+        if pass_name == "pass_two":
+            return {
+                "chunks": [
+                    {"chunk_id": "c1", "text": "Duplicate", "score": 0.5, "source": "one.md"},
+                    {"chunk_id": "c2", "text": "Best Pass2", "score": 0.95, "source": "two.md"},
+                    {"chunk_id": "c4", "text": "Tied Pass2", "score": 0.7, "source": "four.md"},
+                ]
+            }
+        return {
+            "chunks": [
+                {"chunk_id": "c1", "text": "Best duplicate", "score": 0.8, "source": "one.md"},
+                {"chunk_id": "c3", "text": "Tied Pass1", "score": 0.7, "source": "three.md"},
+            ]
+        }
+
+    backend.search_chunks = search_chunks
+    request = service.build_request(
+        {"question": "Need second retrieval and revise this answer", "mode": "extended"}
+    )
+    emitter = CollectingConversationEmitter(request)
+
+    result = asyncio.run(service.graph_runner.run(request, emitter))
+
+    chunk_ids = [chunk["chunk_id"] for chunk in result["sources"]]
+    assert chunk_ids == ["c2", "c1", "c3", "c4"]
+    assert chunk_ids[: service.graph_runner.config.top_k_documents] == ["c2", "c1"]
+    assert chunk_ids.count("c1") == 1
+    assert result["sources"][1]["score"] == 0.8
+
+
 def test_error_path_emits_single_terminal_error():
     service, backend, _ = build_service()
     logger = RecordingLogger()
