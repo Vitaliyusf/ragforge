@@ -104,6 +104,29 @@ def test_stages_beyond_the_bound_are_dropped_and_flagged():
     assert trace.truncated is True
 
 
+def test_final_context_displaces_diagnostic_stage_when_bound_is_full():
+    trace = RetrievalTrace(max_stages=2)
+    trace.record_stage(STAGE_BASE, [{"chunk_id": "base"}])
+    trace.record_stage(STAGE_PASS_ONE, [{"chunk_id": "pass-one"}])
+    trace.record_stage(STAGE_FINAL_CONTEXT, [{"chunk_id": "final"}])
+
+    assert len(trace.stages) == 2
+    assert trace.final_context_stage() is trace.stages[-1]
+    assert trace.stages[-1]["candidates"][0]["chunk_id"] == "final"
+    assert trace.truncated is True
+
+
+def test_empty_final_context_is_still_explicit_when_bound_is_full():
+    trace = RetrievalTrace(max_stages=1)
+    trace.record_stage(STAGE_BASE, [{"chunk_id": "base"}])
+    trace.record_stage(STAGE_FINAL_CONTEXT, [])
+
+    assert trace.stages == [trace.final_context_stage()]
+    assert trace.stages[0]["kept_count"] == 0
+    assert trace.stages[0]["candidates"] == []
+    assert trace.truncated is True
+
+
 def test_a_long_query_is_truncated():
     trace = RetrievalTrace(max_query_chars=10)
     trace.record_stage(STAGE_BASE, [], query="q" * 40)
@@ -329,3 +352,6 @@ def test_an_end_to_end_eval_item_is_traced_by_the_graph_itself():
     stages = stages_by_name(row["retrieval_trace"])
     assert STAGE_FINAL_CONTEXT in stages
     assert stages[STAGE_FINAL_CONTEXT]["candidates"][0]["chunk_id"] == "c1"
+    assert row["retrieved_ids"][0] == "c1"
+    assert row["first_hit_rank"] == 1
+    assert row["reciprocal_rank"] == 1.0

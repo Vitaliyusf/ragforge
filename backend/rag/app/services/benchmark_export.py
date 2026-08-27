@@ -33,6 +33,21 @@ _SAFE_TOKEN_METRIC_KEYS = frozenset(
         "llm_output_tokens_p99_by_request_type",
     }
 )
+_TOKEN_BUDGET_ACTIONS = frozenset(
+    {
+        "answer_generation",
+        "answer_evaluation",
+        "content_risk_scan",
+        "query_rewrite",
+        "memory_extraction",
+    }
+)
+_SAFE_TOKEN_BUDGET_PATHS = frozenset(
+    {
+        "manifest.json.llm.max_tokens",
+        "runtime.json.llm.max_tokens",
+    }
+)
 _NON_FINITE_STRINGS = {
     "nan",
     "+nan",
@@ -271,7 +286,8 @@ def _sanitize(
     safe_metric_value = key in _SAFE_TOKEN_METRIC_KEYS and isinstance(
         value, (int, float, list)
     )
-    if _SECRET_KEY.search(key) and not safe_metric_value:
+    safe_token_budget = _is_safe_token_budget_provenance(path, value)
+    if _SECRET_KEY.search(key) and not (safe_metric_value or safe_token_budget):
         return "[redacted]"
     if isinstance(value, Mapping):
         return {
@@ -315,6 +331,24 @@ def _sanitize(
     if isinstance(value, (str, int, float, bool)) or value is None:
         return value
     return str(value)
+
+
+def _is_safe_token_budget_provenance(path: str, value: Any) -> bool:
+    """Allow only the two exported, bounded numeric budget maps."""
+    if path not in _SAFE_TOKEN_BUDGET_PATHS or not isinstance(value, Mapping):
+        return False
+    if set(value) != _TOKEN_BUDGET_ACTIONS:
+        return False
+    for budget in value.values():
+        if budget is None:
+            continue
+        if isinstance(budget, bool) or not isinstance(budget, (int, float)):
+            return False
+        if isinstance(budget, int) and budget < 0:
+            return False
+        if isinstance(budget, float) and math.isfinite(budget) and budget < 0:
+            return False
+    return True
 
 
 def _safe_name(value: str) -> str:

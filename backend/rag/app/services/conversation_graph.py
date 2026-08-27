@@ -196,12 +196,13 @@ class ConversationGraphRunner:
                 trace_metadata["chunk_count"] = len(final_state.get("retrieved_chunks", []))
             # The context generation actually ran on, recorded once from the
             # final state rather than by each node that might have been last.
+            final_chunks = final_state.get("retrieved_chunks", [])
             if retrieval_trace is not None:
                 retrieval_trace.record_stage(
                     STAGE_FINAL_CONTEXT,
-                    final_state.get("retrieved_chunks", []),
+                    final_chunks,
                 )
-            result = self._build_result(final_state)
+            result = self._build_result(final_state, sources=final_chunks)
             if record_metrics:
                 self._record_turn_metrics(
                     request, result, runtime, emitter, time.monotonic() - t0
@@ -914,10 +915,18 @@ class ConversationGraphRunner:
             payload.update(make_json_safe(extra))
         self.store.save_checkpoint(payload)
 
-    def _build_result(self, state: ConversationState) -> Dict[str, Any]:
+    def _build_result(
+        self,
+        state: ConversationState,
+        *,
+        sources: Optional[List[Dict[str, Any]]] = None,
+    ) -> Dict[str, Any]:
+        final_sources = (
+            state.get("retrieved_chunks", []) if sources is None else sources
+        )
         return {
             "answer": state.get("draft_answer", {}).get("text", ""),
-            "sources": state.get("retrieved_chunks", []),
+            "sources": final_sources,
             "citations": state.get("draft_answer", {}).get("citations"),
             "review": self._public_review(state.get("answer_review", {})),
             # Numbers only, derived from the internal review. The claim text

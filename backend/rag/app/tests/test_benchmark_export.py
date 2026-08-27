@@ -289,6 +289,98 @@ def test_token_metric_allowlist_does_not_allow_arbitrary_string_values():
     assert sanitized["llm_output_token_rate"] == "[redacted]"
 
 
+@pytest.mark.parametrize(
+    "root_path",
+    ["manifest.json", "runtime.json"],
+)
+def test_safe_token_budget_provenance_survives_only_at_approved_export_paths(
+    root_path,
+):
+    truncation = {"text_fields_truncated": 0, "examples": []}
+    budgets = {
+        "answer_generation": 128,
+        "answer_evaluation": 512,
+        "content_risk_scan": 128,
+        "query_rewrite": 128,
+        "memory_extraction": 512,
+    }
+    document = {
+        "llm": {"max_tokens": budgets},
+        "access_token": "access-secret",
+        "refresh_token": "refresh-secret",
+        "some_token": "secret-value",
+    }
+
+    sanitized = _sanitize(document, path=root_path, truncation=truncation)
+
+    assert sanitized["llm"]["max_tokens"] == budgets
+    assert all(
+        isinstance(value, int)
+        for value in sanitized["llm"]["max_tokens"].values()
+    )
+    assert sanitized["access_token"] == "[redacted]"
+    assert sanitized["refresh_token"] == "[redacted]"
+    assert sanitized["some_token"] == "[redacted]"
+
+
+def test_token_budget_exception_rejects_unapproved_paths_and_malformed_maps():
+    truncation = {"text_fields_truncated": 0, "examples": []}
+    budgets = {
+        "answer_generation": 128,
+        "answer_evaluation": 512,
+        "content_risk_scan": 128,
+        "query_rewrite": 128,
+        "memory_extraction": 512,
+    }
+
+    unrelated = _sanitize(
+        {"llm": {"max_tokens": budgets}},
+        path="comparison.json",
+        truncation=truncation,
+    )
+    unknown = _sanitize(
+        {"llm": {"max_tokens": {**budgets, "unknown": 1}}},
+        path="manifest.json",
+        truncation=truncation,
+    )
+    text = _sanitize(
+        {"llm": {"max_tokens": {**budgets, "answer_generation": "secret"}}},
+        path="runtime.json",
+        truncation=truncation,
+    )
+    boolean = _sanitize(
+        {"llm": {"max_tokens": {**budgets, "answer_generation": True}}},
+        path="runtime.json",
+        truncation=truncation,
+    )
+
+    assert unrelated["llm"]["max_tokens"] == "[redacted]"
+    assert unknown["llm"]["max_tokens"] == "[redacted]"
+    assert text["llm"]["max_tokens"] == "[redacted]"
+    assert boolean["llm"]["max_tokens"] == "[redacted]"
+
+
+def test_safe_token_budget_map_normalizes_non_finite_values_to_null():
+    truncation = {"text_fields_truncated": 0, "examples": []}
+    budgets = {
+        "answer_generation": float("nan"),
+        "answer_evaluation": float("inf"),
+        "content_risk_scan": 128,
+        "query_rewrite": 128,
+        "memory_extraction": 512,
+    }
+
+    sanitized = _sanitize(
+        {"llm": {"max_tokens": budgets}},
+        path="manifest.json",
+        truncation=truncation,
+    )
+
+    assert sanitized["llm"]["max_tokens"]["answer_generation"] is None
+    assert sanitized["llm"]["max_tokens"]["answer_evaluation"] is None
+    json.loads(_json_bytes(sanitized))
+
+
 def test_export_reports_text_truncation_explicitly():
     store, orchestrator, _, dataset_id = build()
     benchmark = run_benchmark(orchestrator, dataset_id, [PHASE_RETRIEVAL_BASE])

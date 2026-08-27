@@ -128,6 +128,10 @@ PIPELINE_REGULAR = "regular"
 PIPELINE_EXTENDED = "extended"
 PIPELINE_MODES = (PIPELINE_REGULAR, PIPELINE_EXTENDED)
 
+
+class EvalEvidenceConsistencyError(RuntimeError):
+    """A successful graph result lacks coherent terminal retrieval evidence."""
+
 MATCH_CHUNK = "chunk_id"
 MATCH_FILE = "file_id"
 MATCH_MIXED = "mixed"
@@ -1128,7 +1132,9 @@ class EvalRunner:
                     admin_id=identity.admin_id,
                 )
                 if mode == MODE_END_TO_END:
-                    ids = await self._run_graph_item(request, row, item_mode, trace)
+                    ids = await self._run_graph_item(
+                        request, row, item_mode, trace, run_id=run_id
+                    )
                 else:
                     depth = candidate_depth(self.config)
                     response = await self.backend_client.search_chunks(
@@ -1214,6 +1220,8 @@ class EvalRunner:
         row: Dict[str, Any],
         item_mode: str,
         trace: RetrievalTrace,
+        *,
+        run_id: str,
     ) -> List[str]:
         """Run the full graph for one item and record its answer quality.
 
@@ -1245,7 +1253,51 @@ class EvalRunner:
         row["citation_count"] = citations.get("citation_count")
         row["outcome"] = result.get("outcome", "success")
         row["guardrail_stage"] = result.get("guardrail_stage")
-        return retrieved_ids(eligible_chunks({"chunks": result.get("sources") or []}), item_mode)
+        sources = result.get("sources")
+        source_chunks = (
+            [source for source in sources if isinstance(source, dict)]
+            if isinstance(sources, list)
+            else []
+        )
+        ids = retrieved_ids(eligible_chunks({"chunks": source_chunks}), item_mode)
+        if row["outcome"] == "success":
+            final_context = trace.final_context_stage()
+            trace_ids = (
+                retrieved_ids(final_context.get("candidates", []), item_mode)
+                if final_context is not None
+                else []
+            )
+            evidence_consistent = (
+                isinstance(sources, list)
+                and final_context is not None
+                and final_context.get("kept_count") == len(source_chunks)
+                and len(ids) == len(source_chunks)
+                and len(trace_ids) == len(final_context.get("candidates", []))
+                and trace_ids == ids[: len(trace_ids)]
+            )
+            if not evidence_consistent:
+                stage_names = [
+                    str(stage.get("stage"))
+                    for stage in trace.stages
+                    if isinstance(stage, dict)
+                ]
+                self._log(
+                    "eval_evidence_inconsistency",
+                    "successful end-to-end item has inconsistent final-context evidence",
+                    {
+                        "run_id": run_id,
+                        "item_id": row.get("item_id"),
+                        "pipeline_mode": request.mode,
+                        "trace_stage_names": stage_names,
+                        "final_source_count": len(source_chunks),
+                        "outcome": row["outcome"],
+                    },
+                )
+                raise EvalEvidenceConsistencyError(
+                    "Successful end-to-end graph result is missing or inconsistent "
+                    "final-context evidence"
+                )
+        return ids
 
     def _log(self, event: str, message: str, data: Dict[str, Any]) -> None:
         if self.logger is not None:

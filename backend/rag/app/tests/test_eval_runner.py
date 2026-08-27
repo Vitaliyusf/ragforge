@@ -899,7 +899,13 @@ class FakeGraphRunner:
             }
         )
         await asyncio.sleep(0)
-        return self.results.get(request.user_message, {})
+        result = self.results.get(request.user_message, {})
+        if retrieval_trace is not None and result.get("outcome", "success") == "success":
+            retrieval_trace.record_stage(
+                "final_context",
+                result.get("sources") if isinstance(result.get("sources"), list) else [],
+            )
+        return result
 
 
 GRAPH_RESULTS = {
@@ -1061,6 +1067,77 @@ def test_end_to_end_run_reports_answer_quality_and_retrieval():
     assert quality["items_judged"] == 2
 
 
+def test_end_to_end_scoring_uses_reordered_final_context_not_base_stage():
+    store, runner, _, dataset_id = build(
+        items=[{"query": "first", "relevant_chunk_ids": ["c1"]}]
+    )
+
+    class ReorderedGraph(FakeGraphRunner):
+        async def run(self, request, emitter, **kwargs):
+            trace = kwargs["retrieval_trace"]
+            trace.record_stage(
+                "base", [{"chunk_id": "c1"}, {"chunk_id": "c2"}]
+            )
+            return await super().run(request, emitter, **kwargs)
+
+    runner.graph_runner = ReorderedGraph(
+        {"first": {"sources": [{"chunk_id": "c2"}, {"chunk_id": "c1"}]}}
+    )
+
+    run = run_end_to_end(runner, dataset_id)
+    row = fetch(store, run["run_id"])["per_item"][0]
+
+    assert row["retrieved_ids"] == ["c2", "c1"]
+    assert row["first_hit_rank"] == 2
+    assert row["reciprocal_rank"] == 0.5
+
+
+def test_end_to_end_allows_explicitly_empty_final_context():
+    store, runner, _, dataset_id = build(
+        items=[{"query": "first", "relevant_chunk_ids": ["c1"]}]
+    )
+
+    class EmptyFinalGraph(FakeGraphRunner):
+        async def run(self, request, emitter, **kwargs):
+            kwargs["retrieval_trace"].record_stage("base", [{"chunk_id": "c1"}])
+            return await super().run(request, emitter, **kwargs)
+
+    runner.graph_runner = EmptyFinalGraph({"first": {"sources": []}})
+
+    run = run_end_to_end(runner, dataset_id)
+    row = fetch(store, run["run_id"])["per_item"][0]
+
+    assert row["outcome"] == "success"
+    assert row["retrieved_ids"] == []
+    assert row["reciprocal_rank"] == 0.0
+    final = row["retrieval_trace"]["stages"][-1]
+    assert final["stage"] == "final_context"
+    assert final["kept_count"] == 0
+
+
+def test_success_without_final_context_is_failed_not_scored_as_a_miss():
+    store, runner, _, dataset_id = build(
+        items=[{"query": "first", "relevant_chunk_ids": ["c1"]}]
+    )
+
+    class MissingEvidenceGraph(FakeGraphRunner):
+        async def run(self, request, emitter, **kwargs):
+            kwargs["retrieval_trace"].record_stage("base", [{"chunk_id": "c1"}])
+            return {"outcome": "success", "sources": []}
+
+    runner.graph_runner = MissingEvidenceGraph({})
+
+    run = run_end_to_end(runner, dataset_id)
+    stored = fetch(store, run["run_id"])
+    row = stored["per_item"][0]
+
+    assert row["outcome"] == "failed"
+    assert row["error_class"] == "EvalEvidenceConsistencyError"
+    assert "final-context evidence" in row["error"]
+    assert "scores" not in row
+    assert stored["results"]["items_evaluated"] == 0
+
+
 def test_guardrail_blocked_items_are_separate_from_failures_and_answer_denominators():
     store, runner, _, dataset_id = build()
     runner.graph_runner = FakeGraphRunner({
@@ -1139,11 +1216,20 @@ def test_end_to_end_respects_the_phase_five_concurrency_bound():
             self.in_flight = 0
             self.max_in_flight = 0
 
-        async def run(self, request, emitter, resume=False, record_metrics=True):
+        async def run(
+            self,
+            request,
+            emitter,
+            resume=False,
+            record_metrics=True,
+            retrieval_trace=None,
+        ):
             self.in_flight += 1
             self.max_in_flight = max(self.max_in_flight, self.in_flight)
             try:
                 await asyncio.sleep(0)
+                if retrieval_trace is not None:
+                    retrieval_trace.record_stage("final_context", [])
                 return {"answer": "", "sources": [], "review": {}}
             finally:
                 self.in_flight -= 1
