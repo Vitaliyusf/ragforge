@@ -8,7 +8,7 @@ from app.services.benchmark_summary import summarize_benchmark
 if TYPE_CHECKING:
     from app.services.eval_store import EvalStore
 
-COMPARISON_VERSION = 4
+COMPARISON_VERSION = 5
 TERMINAL_STATUSES = frozenset({"completed", "partial", "failed", "interrupted"})
 
 CRITICAL_COMPATIBILITY_FIELDS: Sequence[tuple[str, str, str]] = (
@@ -18,6 +18,12 @@ CRITICAL_COMPATIBILITY_FIELDS: Sequence[tuple[str, str, str]] = (
     ("config", "dataset.phases", "manifest.dataset.phases"),
     ("build", "build.git_sha", "manifest.build.git_sha"),
     ("build", "build.git_branch", "manifest.build.git_branch"),
+    ("build", "build.git_dirty", "manifest.build.git_dirty"),
+    (
+        "build",
+        "build.source_fingerprint_sha256",
+        "manifest.build.source_fingerprint_sha256",
+    ),
     ("build", "build.build_timestamp", "manifest.build.build_timestamp"),
     ("build", "build.image_tag", "manifest.build.image_tag"),
     ("model", "embedding.model", "manifest.embedding.model"),
@@ -144,6 +150,11 @@ def _is_known(document: Mapping[str, Any], source_path: str, value: Any) -> bool
         return False
     if value is not None:
         return True
+    if source_path == "manifest.build.source_fingerprint_sha256":
+        return (
+            _path(document, "manifest.build.git_dirty") is False
+            and _has_path(document, source_path)
+        )
     return source_path in KNOWN_NULL_FIELDS and _has_path(document, source_path)
 
 

@@ -321,12 +321,15 @@ services:
     networks: [messaging, data]
 
   rag:
+    image: ${RAGFORGE_IMAGE_TAG:-ragforge-rag:local}
     build:
       context: .
       dockerfile: backend/rag/Dockerfile
       args:
         RAGFORGE_GIT_SHA: ${RAGFORGE_GIT_SHA:-}
         RAGFORGE_GIT_BRANCH: ${RAGFORGE_GIT_BRANCH:-}
+        RAGFORGE_GIT_DIRTY: ${RAGFORGE_GIT_DIRTY:-}
+        RAGFORGE_SOURCE_FINGERPRINT_SHA256: ${RAGFORGE_SOURCE_FINGERPRINT_SHA256:-}
         RAGFORGE_BUILD_TIMESTAMP: ${RAGFORGE_BUILD_TIMESTAMP:-}
         RAGFORGE_IMAGE_TAG: ${RAGFORGE_IMAGE_TAG:-}
     ports:
@@ -338,7 +341,6 @@ services:
       MONGODB_URL: mongodb://rag:${MONGO_RAG_PASSWORD}@mongodb:27017/rag?authSource=rag
       FRONTEND_URL: ${FRONTEND_PUBLIC_URL:-http://localhost:3000}
       LOG_DIR: /app/logs
-      RAGFORGE_IMAGE_TAG: ${RAGFORGE_IMAGE_TAG:-}
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-intfloat/multilingual-e5-small}
       VECTOR_DB_VECTOR_SIZE: ${VECTOR_DB_VECTOR_SIZE:-384}
       VECTOR_DB_COLLECTION_NAME: ${VECTOR_DB_COLLECTION_NAME:-vectors}

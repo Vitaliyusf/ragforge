@@ -34,6 +34,8 @@ def manifest(
         "build": {
             "git_sha": "abc123",
             "git_branch": "main",
+            "git_dirty": False,
+            "source_fingerprint_sha256": None,
             "build_timestamp": "2026-01-01T00:00:00Z",
             "image_tag": "rag:test",
         },
@@ -184,6 +186,42 @@ def test_null_critical_provenance_is_unknown(left, right):
     assert compatibility_field(result, "embedding.model")["status"] == "unknown"
     assert result["compatibility_status"] == "unknown"
     assert result["compatible"] is False
+
+
+def test_materially_different_dirty_trees_are_incompatible_at_the_same_sha():
+    baseline = benchmark("base", created_at="2026-01-01")
+    candidate = benchmark("candidate", created_at="2026-01-02")
+    baseline["manifest"]["build"].update({
+        "git_dirty": True,
+        "source_fingerprint_sha256": "a" * 64,
+    })
+    candidate["manifest"]["build"].update({
+        "git_dirty": True,
+        "source_fingerprint_sha256": "b" * 64,
+    })
+
+    result = benchmark_compatibility(baseline, candidate)
+
+    assert compatibility_field(result, "build.git_sha")["status"] == "same"
+    assert (
+        compatibility_field(result, "build.source_fingerprint_sha256")["status"]
+        == "different"
+    )
+    assert result["compatibility_status"] == "incompatible"
+
+
+def test_a_dirty_build_without_a_fingerprint_is_unknown():
+    baseline = benchmark("base", created_at="2026-01-01")
+    candidate = benchmark("candidate", created_at="2026-01-02")
+    candidate["manifest"]["build"]["git_dirty"] = True
+
+    result = benchmark_compatibility(baseline, candidate)
+
+    assert (
+        compatibility_field(result, "build.source_fingerprint_sha256")["status"]
+        == "unknown"
+    )
+    assert result["compatibility_status"] == "unknown"
 
 
 def test_explicitly_unobserved_critical_value_is_unknown_even_when_present():
