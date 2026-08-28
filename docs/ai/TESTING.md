@@ -100,12 +100,21 @@ Use only for:
 - runtime/dependency/CI changes;
 - release verification.
 
-## Environment doctor
+## Validation environment
 
-Run once per task before the first Python validation:
+`doctor` is a diagnostic tool, not a universal validation gate. Run it only when the
+task or an observed environment failure calls for diagnosis:
 
 ```bash
 python scripts/ai/check.py doctor
+```
+
+Do not repair `.venv` unless environment repair is the task. A missing or broken
+`.venv` must not block task validation when an isolated run is available. An accepted
+fallback is direct isolated Python 3.11, with the task's required tools or requirements:
+
+```bash
+uv run --isolated --python 3.11 ...
 ```
 
 Do not repeatedly probe:
@@ -122,6 +131,32 @@ BLOCKED
 ```
 
 Do not disable plugin autoload and call the suite green.
+
+## Test selection and ownership
+
+Run the smallest suite that can falsify the change, and keep the complete suite in CI.
+During iteration, use exact focused or domain tests. Run a full affected-service suite
+once near completion only for cross-cutting or high-risk changes; reserve full-repository
+validation mainly for CI, releases, or explicitly broad infrastructure work.
+
+Each behavior should have a primary test layer:
+
+- pure calculation: unit test;
+- serializer/schema: contract test;
+- graph/service wiring: integration or orchestration test;
+- browser workflow: end-to-end test;
+- supported historical artifact: compatibility lane.
+
+Higher layers prove wiring rather than duplicate lower-layer truth tables.
+
+## Compatibility lane
+
+Keep compatibility tests first-class but isolated from normal behavior tests. When a
+compatibility version is retired, delete its production path and tests together and
+update the support policy.
+
+Raw test count is not a quality or optimization target. Do not combine independent cases
+into giant loops, delete valuable contract coverage, or otherwise game reported test count.
 
 ## Ruff
 

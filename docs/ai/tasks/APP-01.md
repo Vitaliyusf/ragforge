@@ -1,28 +1,53 @@
-# APP-01 — ApplicationRuntime and FastAPI dependency ownership
+# APP-01 — Residual ApplicationRuntime and lifecycle consolidation
 
-**Branch:** `refactor/service-runtime-containers`
+**Order:** 21  
+**Phase:** 2 Simplification  
+**Priority:** P2  
+**Branch:** `refactor/service-runtime-containers`  
+**Depends on:** `EMBED-01`, `FILES-02`, `LLM-CTRL-01`, `CHAT-01`
 
 ## Goal
-Replace fragile module-global service singletons/deferred imports with lifespan-owned runtime containers.
-
-## Problem
-Gateway/RAG and other services build many runtime objects as globals/import-time state, complicating tests/lifecycle/DI.
+Finish explicit lifespan-owned runtime/dependency ownership only for services that still rely on fragile mutable module globals after domain tasks.
 
 ## Primary scope
-- `start with Gateway runtime/deps; extend only as task explicitly allows`
+- `remaining service main.py/deps/runtime modules`
 - `FastAPI lifespan/tests`
 
 ## Required behavior
-- Runtime object on app.state or equivalent explicit DI.
+- Use app.state.runtime or equivalent explicit ownership.
 - No import-time network/database connection.
-- Clean shutdown ownership.
+- One startup/shutdown owner for clients/consumers/threads.
+- Dependencies read runtime-owned objects.
+- Do not refactor already-clean services solely for uniformity.
 
-## Acceptance
-- Gateway tests pass and deps no longer import mutable singletons from `app.main`.
+## Local refactor budget
+This task may perform behavior-neutral cleanup only in code it already needs to touch.
 
-## Task rules
-- Follow root and scoped AGENTS.md/CLAUDE.md.
-- Inspect current code before editing; current implementation wins over stale assumptions.
-- Keep this branch limited to this task.
-- Run focused tests, then broader affected checks.
-- Do not commit or push; return a recommended Conventional Commit message.
+- If a touched production file is already a hotspot (>500 lines or clearly multi-responsibility), evaluate extracting the concern changed by this task.
+- Prefer deleting/moving an obsolete path over adding a wrapper around it.
+- At most 2 cohesive new production modules unless this task explicitly requires more.
+- Do not create generic `utils`, `helpers`, `manager`, `common2`, `misc`, `v2`, or parallel compatibility layers without a concrete domain owner.
+- Do not split code merely to satisfy a line-count target.
+- Remove stale narrative comments in touched code; keep comments for invariants, security, recovery, protocol semantics, or non-obvious trade-offs.
+- Final report: production files added/deleted, hotspot before/after line counts where relevant, obsolete paths removed, and new dependencies.
+
+
+**Task-specific refactor target:** Residual task only; most service-local lifecycle cleanup should happen inside domain tasks.
+
+## Non-goals
+- No repo-wide rewrite.
+
+## Validation
+- Affected service suites
+- Lifecycle/shutdown/readiness tests
+- Ruff
+
+## Execution rules
+- Current source wins over stale assumptions.
+- Preserve unrelated dirty files; never reset/stash/revert/clean.
+- Do not commit or push.
+- Do not run `doctor` as a generic prerequisite.
+- Do not repair `.venv` as part of normal task work.
+- If the local Python environment is unsuitable, use direct `uv run --isolated --python 3.11`.
+- Iterate with focused tests; run the affected service suite once near completion.
+- Do not run expensive benchmarks unless the task explicitly requires them.

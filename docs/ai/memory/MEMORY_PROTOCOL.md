@@ -72,6 +72,12 @@ Update `CAPABILITIES.json`, `SERVICES.json`, `CONTRACTS.json`, `DECISIONS.json` 
 
 Do not touch public memory merely because files changed.
 
+Before recording a new capability, search the capability registry, symbols and direct
+callers. Update the authoritative capability record instead of creating a parallel owner.
+Configuration records describe implemented effective behavior only. Temporary compatibility
+records must include a concrete removal condition and tracking task and must be deleted when
+the supported production path is retired.
+
 ## Security vulnerability rule
 Unfixed vulnerability details are private by default.
 Never commit exploit details, vulnerable endpoints, credentials, customer impact or reproduction payloads to the public repository.

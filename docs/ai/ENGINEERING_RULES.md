@@ -65,3 +65,91 @@
 - Behavior-neutral refactors and behavior changes should be separate branches when possible.
 - Delete compatibility/dead code only after repo-wide reference verification and tests.
 - Prefer fewer code paths over permanent "legacy + v2" dual implementations.
+
+## 1. Complexity ratchet
+Line count is a review signal, not architecture.
+
+- New production file >400 lines: justify why it is one cohesive responsibility.
+- New production file >600 lines: do not create it without explicit task acceptance.
+- Touched existing production file >500 lines: inspect whether the concern changed by the task can be extracted safely.
+- Touched existing production file >700 lines: it should not materially grow unless the task explicitly explains why extraction would worsen design.
+- New/touched function >80 lines: inspect for a cohesive extraction.
+- New function >150 lines: requires explicit justification.
+- Tests, generated files, migrations and declarative data may be exceptions.
+- Never split code merely to satisfy a numeric limit.
+
+## 2. Local refactor budget
+Every task may perform behavior-neutral cleanup in its already-touched scope.
+
+Allowed:
+- extract the exact concern being changed from a hotspot;
+- delete replaced/dead compatibility code after reference proof;
+- collapse duplicate branches;
+- rename misleading symbols;
+- remove stale narrative comments;
+- move one responsibility to a domain-owned module;
+- simplify lifecycle/dependency ownership.
+
+Default budget:
+- at most 2 cohesive new production modules unless task scope explicitly requires more;
+- prefer code deletion or neutral movement over parallel implementations.
+
+Not allowed:
+- unrelated repo-wide cleanup;
+- architecture rewrite;
+- speculative generic framework;
+- multiple new abstractions “for future flexibility.”
+
+## 3. New-file gate
+Before creating a production file:
+1. Search for the existing capability/symbol/domain owner.
+2. State the new file's responsibility in one sentence.
+3. Prefer extending/replacing the canonical owner.
+4. Give the file one clear domain responsibility and owner.
+5. Reject dumping-ground names such as `utils`, `utils2`, `helpers`, `manager`, `misc`, `common`, `common2`, `v2`.
+6. Prefer domain names such as `context_assembler.py`, `checkpoint_policy.py`, `memory_reconciliation.py`.
+
+## 4. One authoritative implementation per capability
+Each capability has one authoritative implementation. Before adding another path for:
+- chat execution;
+- embedding handling;
+- extraction/chunking;
+- vector backend;
+- config mutation;
+- LLM provider/control;
+- tracing exporter;
+
+search references, capability records, symbols and direct callers. Extend or replace the
+canonical owner; do not create a second implementation unless the task explicitly requires
+a separate supported capability and names its domain owner.
+
+## 5. Compatibility rule
+Default: migrate and delete.
+
+Temporary compatibility is allowed only when:
+- a real supported caller still exists;
+- a concrete removal condition and tracking task are recorded;
+- both paths cannot silently diverge.
+
+Migrate supported callers and delete the old path as soon as the removal condition is met.
+Do not create permanent `legacy + v2` architecture.
+
+## 6. Configuration honesty
+A configuration option must represent real, implemented effective behavior.
+
+Unsupported updates fail explicitly.
+Do not preserve flags for nonexistent hybrid/reranker/provider/runtime behavior.
+
+## 7. Comment policy
+Keep comments for:
+- security invariants;
+- recovery/checkpoint invariants;
+- protocol and delivery semantics;
+- concurrency/cancellation ordering;
+- benchmark/eval semantics;
+- non-obvious performance trade-offs.
+
+Delete:
+- syntax narration;
+- comments that simply restate names;
+- historical incident stories better placed in ADR/task history.

@@ -40,6 +40,11 @@ If unrelated and the environment safely supports isolated work, continue without
 5. Create a new task spec only when needed.
 6. Never create a second implementation before checking capability/symbol/contract indexes.
 
+When creating a task against a hotspot, include the behavior change, the local refactor
+target for that same concern, any deletion candidates made obsolete, and a non-goal that
+forbids a parallel implementation. Create a standalone refactor task only when cleanup is
+genuinely cross-cutting or cannot safely accompany the behavior task.
+
 ## Cross-agent switching
 Claude and Codex communicate through repository memory, not hidden chat state.
 Before continuing another agent's work:
@@ -48,3 +53,31 @@ Before continuing another agent's work:
 - read referenced memory IDs;
 - verify current tests/diff before extending work.
 After work, update private handoff/history using `MEMORY_PROTOCOL.md`.
+
+## Before editing
+1. Read only the requested task plus relevant brain entries.
+2. Search the existing capability/symbol/call path before creating a new implementation.
+3. Identify whether any touched file is already a hotspot.
+4. State internally which concern owns the change.
+
+## While editing
+- Implement the task.
+- Apply the task's local refactor budget to the same concern.
+- If the new behavior supersedes a path and zero supported callers remain, remove the old path in the same task.
+- Do not create compatibility wrappers by default.
+- Do not create new generic helper modules.
+
+## Before final response
+Report:
+- behavior result;
+- focused/service validation;
+- production files added/deleted;
+- hotspot line count before/after where relevant;
+- legacy/duplicate paths removed;
+- any deliberately deferred cleanup and why.
+
+## Environment
+`doctor` is opt-in per task, not a universal prerequisite.
+Do not repair `.venv` unless explicitly required.
+A missing or broken `.venv` must not by itself block task validation.
+When local Python is unsuitable, direct `uv run --isolated --python 3.11` is an accepted fallback.

@@ -1,32 +1,63 @@
 # TASK-ID — Short Title
 
-**Branch:** `type/short-branch-name`
+**Order:** N
+**Phase:** X
+**Priority:** P0/P1/P2/P3
+**Branch:** `type/short-name`
+**Depends on:** `TASK-X`, ...
 
 ## Goal
-One sentence describing the outcome.
-
-## Problem
-2–5 sentences describing the observed issue, not a speculative implementation.
+One observable outcome.
 
 ## Primary scope
-- `path/to/file.py`
-- direct callers/tests
+- exact domain files/direct callers/tests
 
 ## Required behavior
-- Requirement 1
-- Requirement 2
-- Requirement 3
+- observable requirements
+
+## Local refactor budget
+- Improve readability only inside code this task already touches.
+- If a touched production hotspot is >500 lines, inspect whether the changed concern can be extracted.
+- At most 2 cohesive new production modules unless explicitly required.
+- Prefer deleting replaced/legacy code to adding wrappers.
+- Give each new file one clear domain responsibility and owner.
+- No generic `utils/helpers/manager/common/misc/v2` dumping grounds.
+- No unrelated cross-domain refactor.
+- Remove stale narrative comments; keep invariants/WHY.
+- Report files added/deleted, before/after hotspot line counts, legacy paths removed and new dependencies.
+
+## Task-specific refactor target
+Name the exact concern that may be extracted/simplified.
 
 ## Non-goals
-Only include likely scope traps.
+Only realistic scope traps.
 
-## Acceptance
-- Observable/testable condition 1
-- Observable/testable condition 2
-- Relevant tests/checks pass
+## Validation
+- focused tests during iteration
+- affected service suite once near completion only when cross-cutting/high-risk
+- Ruff / diff
+- mypy only when relevant
+- benchmark only when semantics require it
 
 ## Measurement
-Only when this is a quality/performance task:
-- baseline metric(s)
-- candidate metric(s)
-- variables that must remain fixed
+Only for quality/performance work.
+
+## Execution rules
+- Current source wins.
+- Preserve unrelated dirty files.
+- No reset/stash/revert/clean.
+- No commit/push.
+- No generic doctor gate.
+- Do not repair `.venv`.
+- Use isolated uv Python 3.11 when local environment is unsuitable.
+
+## Final complexity report
+Every task reports:
+
+```text
+production files added:
+production files deleted:
+hotspot before/after lines:
+legacy/duplicate paths removed:
+new dependencies:
+```
