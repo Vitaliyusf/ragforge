@@ -18,13 +18,10 @@ class EmbeddingConfig:
             "KAFKA_BOOTSTRAP_SERVERS", 
             "localhost:9092"
         )
-        self.request_topic: str = os.getenv("REQUEST_TOPIC", "embedding_requests")
         self.extract_topic: str = os.getenv("EXTRACT_TOPIC", "embedding.requests")
-        self.response_topic: str = os.getenv("RESPONSE_TOPIC", "gateway_responses")
-        self.summary_topic: str = os.getenv("SUMMARY_TOPIC", "summary_requests")
-        self.metadata_topic: str = os.getenv("METADATA_TOPIC", "metadata_requests")
+        self.summary_topic: str = os.getenv("SUMMARY_TOPIC", "summary")
+        self.metadata_topic: str = os.getenv("METADATA_TOPIC", "metadata")
         self.files_topic: str = os.getenv("FILES_TOPIC", "files.requests")
-        self.vector_db_topic: str = os.getenv("VECTOR_DB_TOPIC", "vector_db_requests")
         self.embedding_jobs_requested_topic: str = os.getenv(
             "EMBEDDING_JOBS_REQUESTED_TOPIC",
             "embedding.jobs.requested"
@@ -85,19 +82,11 @@ class EmbeddingConfig:
         self.mongo_database_name: str = os.getenv("MONGO_DATABASE_NAME", "gateway")
         self.gridfs_bucket_name: str = os.getenv("GRIDFS_BUCKET_NAME", "gateway_files")
 
-        # Chunking configuration
-        # paragraph_aware gives the best retrieval quality for structured documents
-        self.chunking_strategy: str = os.getenv("CHUNKING_STRATEGY", "paragraph_aware")
-        self.chunk_size: int = int(os.getenv("CHUNK_SIZE", "1024"))
-        self.chunk_overlap: int = int(os.getenv("CHUNK_OVERLAP", "200"))
 
-        # HTTP timeout (seconds) for metadata fetch calls to the files service
-        self.metadata_fetch_timeout: float = float(os.getenv("METADATA_FETCH_TIMEOUT", "5.0"))
-    
     def validate(self) -> bool:
         """Validate configuration values."""
         if not self.kafka_bootstrap_servers:
             return False
-        if not self.request_topic or not self.response_topic:
+        if not self.extract_topic or not self.embedding_jobs_requested_topic:
             return False
         return True

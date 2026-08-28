@@ -1,8 +1,6 @@
 """Strict Pydantic models for typed embedding-job Kafka messages.
 
-These models describe the typed embedding-job path only. They do not normalize
-or validate the older flat legacy payloads used by EmbeddingHandler or
-ExtractionHandler.
+These models describe the typed embedding-job path only.
 """
 import json
 from typing import Any, Dict, List, Literal, Optional, Type, TypeVar

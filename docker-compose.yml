@@ -327,10 +327,7 @@ services:
       EMBEDDING_JOBS_COMPLETED_TOPIC: ${EMBEDDING_JOBS_COMPLETED_TOPIC:-embedding.jobs.completed}
       RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672/
       EXTRACT_TOPIC: embedding.requests
-      UPLOAD_DIR: /app/uploads
       LOG_DIR: /app/logs
-      FILES_SERVICE_URL: http://files:8005
-      METADATA_FETCH_TIMEOUT: ${METADATA_FETCH_TIMEOUT:-5.0}
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-intfloat/multilingual-e5-small}
       HF_TOKEN: ${HF_TOKEN:-}
       HF_HUB_DOWNLOAD_TIMEOUT: ${HF_HUB_DOWNLOAD_TIMEOUT:-30}

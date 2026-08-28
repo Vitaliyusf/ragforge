@@ -8,15 +8,10 @@ from pathlib import Path
 import pytest
 
 from app.embedding.interfaces import IEmbeddingModel
-from app.services.embedding_job_service import (
-    EmbeddingJobService,
-    SERVICE_ROOT,
-    _load_shared_module,
-    _resolve_shared_module_path,
-)
+from app.services.embedding_job_service import EmbeddingJobService
 from app.services.embedding_job_tracing import EmbeddingLangSmithTracer
 from app.services.embedding_job_worker import EmbeddingJobConsumerWorker
-from app.services.embedding_handler import EmbeddingHandler
+from app.services.embedding_handler import QueryEmbeddingHandler
 from app.services.extraction_handler import ExtractionHandler
 from app.messaging.embedding_kafka import EmbeddingKafkaConsumer, EmbeddingKafkaProducer
 
@@ -128,6 +123,7 @@ def make_config(**overrides):
         "kafka_retry_delay": 0,
         "embedding_max_batch_size": 2,
         "embedding_batch_size": 2,
+        "embedding_query_prefix": "query: ",
         "embedding_passage_prefix": "passage: ",
         "model_name": "intfloat/multilingual-e5-small",
         "vector_db_collection_name": "rag_chunks_v1",
@@ -139,9 +135,6 @@ def make_config(**overrides):
         "kafka_bootstrap_servers": "localhost:9092",
         "kafka_consumer_timeout_ms": 1000,
         "kafka_api_version": (0, 10, 1),
-        "chunking_strategy": "paragraph_aware",
-        "chunk_size": 1024,
-        "chunk_overlap": 200,
     }
     base.update(overrides)
     return SimpleNamespace(**base)
@@ -518,7 +511,6 @@ def test_extraction_handler_publishes_complete_extraction_for_typed_requests():
         files_topic="files.requests",
         summary_topic="summary_requests",
         metadata_topic="metadata_requests",
-        embedding_topic="embedding_requests",
         config=make_config(),
     )
     handler._get_extractor = lambda filename: FakeExtractor()
@@ -574,43 +566,33 @@ def test_worker_does_not_commit_when_processing_raises():
     assert consumer.commit_count == 0
 
 
-def test_embedding_handler_honors_reply_to_for_legacy_embedding_requests():
-    """Legacy embedding replies should use caller-provided reply_to when present."""
+def test_query_embedding_handler_embeds_one_prefixed_query():
+    """The RPC boundary must never chunk or route queries through passage code."""
 
-    producer = RecordingProducer()
     logger = RecordingLogger()
-    handler = EmbeddingHandler(
-        producer=producer,
-        embedding_model=FakeEmbeddingModel(responses=[[[0.1, 0.2, 0.3]]]),
+    model = FakeEmbeddingModel(responses=[[[0.1, 0.2, 0.3]]])
+    handler = QueryEmbeddingHandler(
+        embedding_model=model,
         logger=logger,
-        response_topic="gateway_responses",
-        vector_db_topic="vector_db_requests",
-        files_topic="files.requests",
         config=make_config(),
     )
 
-    handler.process_request(
+    reply = handler.process_request_with_reply(
         {
+            "message_type": "query",
             "action": "embed",
             "correlation_id": "corr-1",
-            "reply_to": "rag.replies",
-            "text": "hello world",
-        }
+            "payload": {"text": "hello world"},
+        },
+        "rag.replies",
+        "corr-1",
     )
 
-    assert producer.messages == [
-        (
-            "rag.replies",
-            {
-                "correlation_id": "corr-1",
-                "data": {
-                    "embedding": [0.1, 0.2, 0.3],
-                    "num_chunks": 1,
-                    "vectors_sent": 0,
-                },
-            },
-        )
-    ]
+    assert reply == {
+        "correlation_id": "corr-1",
+        "data": {"embedding": [0.1, 0.2, 0.3]},
+    }
+    assert model.calls == [{"texts": ["query: hello world"], "batch_size": 1}]
 
 
 def test_consumer_commit_delegates_to_raw_kafka_consumer():
@@ -624,30 +606,3 @@ def test_consumer_commit_delegates_to_raw_kafka_consumer():
     consumer.commit()
 
     assert raw_consumer.commit_count == 1
-
-
-def test_shared_module_path_resolves_under_service_root():
-    """Shared helpers should resolve from the service root, not filesystem root."""
-
-    module_path = _resolve_shared_module_path("dlq")
-
-    expected_candidates = {
-        SERVICE_ROOT / "shared" / "dlq.py",
-        SERVICE_ROOT.parent / "shared" / "dlq.py",
-    }
-    assert module_path in expected_candidates
-    assert module_path.is_absolute()
-    assert str(module_path) != "/shared/dlq.py"
-    assert module_path.is_file()
-
-
-def test_missing_shared_module_raises_clear_import_error():
-    """Missing shared helpers should raise a path-specific import error."""
-
-    missing_name = "__missing_embedding_shared_helper__"
-
-    with pytest.raises(ImportError) as exc_info:
-        _load_shared_module(missing_name)
-
-    assert missing_name in str(exc_info.value)
-    assert str(_resolve_shared_module_path(missing_name)) in str(exc_info.value)

@@ -3,8 +3,7 @@ from enum import Enum
 
 
 class EmbeddingAction(str, Enum):
-    BATCH_INSERT = "batch_insert"       # legacy vector_db_requests path
-    UPSERT_CHUNKS = "upsert_chunks"     # typed vector_db.upsert.requested path
+    UPSERT_CHUNKS = "upsert_chunks"
     UPDATE_STAGE = "update_stage"
     COMPLETE_EXTRACTION = "complete_extraction"
 

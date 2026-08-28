@@ -1,4 +1,4 @@
-"""Legacy extraction request handler."""
+"""File extraction bridge used by the active Files ingestion workflow."""
 from typing import Any, Dict, List, Optional
 import os
 import time
@@ -15,11 +15,10 @@ from shared.auth import attach_internal_auth_context
 
 
 class ExtractionHandler(BaseKafkaHandlerService):
-    """Process legacy extraction requests and fan extracted text downstream.
+    """Process Files extraction commands and fan extracted text downstream.
 
-    Accepts flat extraction payloads, chooses an extractor based on the file
-    extension, updates the files service stage, and republishes the extracted
-    text to the legacy embedding, summary, and metadata topics.
+    Chooses an extractor based on the file extension, returns extracted text to
+    Files, and requests summary and metadata enrichment.
     """
 
     def __init__(
@@ -30,7 +29,6 @@ class ExtractionHandler(BaseKafkaHandlerService):
         files_topic: str,
         summary_topic: str,
         metadata_topic: str,
-        embedding_topic: str,
         config: Optional[EmbeddingConfig] = None,
         rpc_producer: Optional[IProducer] = None,
     ):
@@ -39,11 +37,10 @@ class ExtractionHandler(BaseKafkaHandlerService):
         self.files_topic = files_topic
         self.summary_topic = summary_topic
         self.metadata_topic = metadata_topic
-        self.embedding_topic = embedding_topic
         self.rpc_producer = rpc_producer or producer
 
     def process_request(self, request: Dict[str, Any]) -> None:
-        """Handle a single legacy file extraction request."""
+        """Handle a single typed file extraction command."""
         normalized = self._normalize_request(request)
         file_id = normalized.get("file_id")
         file_path = normalized.get("path")

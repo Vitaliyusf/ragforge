@@ -1,178 +1,203 @@
-"""FastAPI entrypoint for the embedding service.
-
-Exposes GET /health and starts three background Kafka consumer threads:
-  - legacy direct embedding requests  (embedding_requests)
-  - legacy extraction requests         (extract)
-  - typed embedding job requests       (embedding.jobs.requested)
-"""
+"""FastAPI entrypoint for query embeddings and typed passage jobs."""
 import asyncio
-from contextvars import copy_context
 from contextlib import asynccontextmanager
+from contextvars import copy_context
+from dataclasses import dataclass
 from functools import partial
-from threading import Thread
+from threading import Event, Thread
+from typing import Any
 
 from fastapi import FastAPI
 
 try:
     from shared.metrics import setup_metrics
+
     _HAS_METRICS = True
 except ImportError:
     _HAS_METRICS = False
 
 from app.config import EmbeddingConfig
+from app.consumers import process_embedding_job_requests, process_extraction_requests
 from app.core.cors import setup_cors
-from shared.logging import ServiceLogger
-from app.consumers import (
-    process_embedding_job_requests,
-    process_embedding_requests,
-    process_extraction_requests,
-)
 from app.embedding.factories import EmbeddingModelFactory
 from app.extraction.factories import FileExtractorFactory
 from app.messaging.embedding_kafka import EmbeddingKafkaConsumer, EmbeddingKafkaProducer
-from app.messaging.threadsafe_rabbitmq import ThreadsafeRabbitMQPublisher
 from app.messaging.factories import MessageQueueFactory
+from app.messaging.threadsafe_rabbitmq import ThreadsafeRabbitMQPublisher
 from app.rest.v1.health import create_health_router
-from app.services.embedding_handler import EmbeddingHandler
+from app.services.embedding_handler import QueryEmbeddingHandler
 from app.services.embedding_job_service import EmbeddingJobService
 from app.services.embedding_job_tracing import EmbeddingLangSmithTracer
 from app.services.embedding_job_worker import EmbeddingJobConsumerWorker
 from app.services.extraction_handler import ExtractionHandler
+from shared.logging import ServiceLogger
 
-# ------------------------------------------------------------------
-# Module-level singletons — initialised inside lifespan, not at import time
-# ------------------------------------------------------------------
-_running: bool = False
-_config = None
-_logger = None
-_producer = None
-_consumer = None
-_extract_consumer = None
-_job_consumer = None
-_embedding_model = None
-_embedding_handler = None
-_extraction_handler = None
-_job_worker = None
-_rpc_consumer = None
-_rpc_producer = None
+
+@dataclass
+class EmbeddingRuntime:
+    """Clients and workers whose lifetime is owned by the FastAPI app."""
+
+    producer: Any
+    model: Any
+    rpc_consumer: Any
+    rpc_producer: Any
+    extract_consumer: Any
+    job_consumer: Any
+    stop_event: Event
+    threads: list[Thread]
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global _running, _config, _logger, _producer, _consumer, _extract_consumer
-    global _job_consumer, _embedding_model, _embedding_handler, _extraction_handler, _job_worker
-    global _rpc_consumer, _rpc_producer
-
-    # --- startup ---
-    _config = EmbeddingConfig()
-    _logger = ServiceLogger(_config.service_name)
-
-    _producer = MessageQueueFactory.create_producer(_config)
-    _rpc_producer = MessageQueueFactory.create_rabbitmq_producer(_config)
-    await _rpc_producer.connect()
+    config = EmbeddingConfig()
+    logger = ServiceLogger(config.service_name)
+    producer = MessageQueueFactory.create_producer(config)
+    rpc_producer = MessageQueueFactory.create_rabbitmq_producer(config)
+    await rpc_producer.connect()
     rpc_publisher = ThreadsafeRabbitMQPublisher(
-        _rpc_producer,
+        rpc_producer,
         asyncio.get_running_loop(),
     )
-    _consumer = MessageQueueFactory.create_consumer(_config, _config.request_topic)
-    _extract_consumer = MessageQueueFactory.create_consumer(_config, _config.extract_topic)
-    _job_consumer = EmbeddingKafkaConsumer(_config)
+    extract_consumer = MessageQueueFactory.create_consumer(config, config.extract_topic)
+    job_consumer = EmbeddingKafkaConsumer(config)
     job_producer = EmbeddingKafkaProducer(
-        producer=_producer,
-        upsert_topic=_config.vector_db_upsert_requested_topic,
-        completed_topic=_config.embedding_jobs_completed_topic,
+        producer=producer,
+        upsert_topic=config.vector_db_upsert_requested_topic,
+        completed_topic=config.embedding_jobs_completed_topic,
     )
 
-    _embedding_model = EmbeddingModelFactory.create(_config)
-    if _embedding_model is None:
-        _logger.log("main:startup", "No embedding model available", {}, hypothesis_id="W")
+    model = EmbeddingModelFactory.create(config)
+    if model is None:
+        logger.log("main:startup", "No embedding model available", {}, hypothesis_id="W")
 
     extractors = FileExtractorFactory.create_all()
     if not extractors:
-        _logger.log("main:startup", "No file extractors available", {}, hypothesis_id="W")
+        logger.log("main:startup", "No file extractors available", {}, hypothesis_id="W")
 
-    job_tracer = EmbeddingLangSmithTracer(
-        enabled=_config.langsmith_tracing,
-        api_key=_config.langsmith_api_key,
-        project=_config.langsmith_project,
+    tracer = EmbeddingLangSmithTracer(
+        enabled=config.langsmith_tracing,
+        api_key=config.langsmith_api_key,
+        project=config.langsmith_project,
     )
     job_service = EmbeddingJobService(
         producer=job_producer,
-        embedding_model=_embedding_model,
-        logger=_logger,
-        config=_config,
-        tracer=job_tracer,
+        embedding_model=model,
+        logger=logger,
+        config=config,
+        tracer=tracer,
     )
-    _job_worker = EmbeddingJobConsumerWorker(_job_consumer, job_service, _logger)
-    _embedding_handler = EmbeddingHandler(
-        _producer, _embedding_model, _logger,
-        _config.response_topic, _config.vector_db_topic, _config.files_topic, _config,
-    )
-    _extraction_handler = ExtractionHandler(
-        _producer, extractors, _logger,
-        _config.files_topic, "summary", "metadata", _config.request_topic, _config,
+    job_worker = EmbeddingJobConsumerWorker(job_consumer, job_service, logger)
+    query_handler = QueryEmbeddingHandler(model, logger, config)
+    extraction_handler = ExtractionHandler(
+        producer,
+        extractors,
+        logger,
+        config.files_topic,
+        config.summary_topic,
+        config.metadata_topic,
+        config,
         rpc_producer=rpc_publisher,
     )
 
-    _running = True
-    _logger.log("main:startup", "Embedding service starting up", {
-        "service_name": _config.service_name,
-        "port": _config.service_port,
-        "model_loaded": _embedding_model.is_loaded() if _embedding_model else False,
-        "extractors_count": len(extractors) if extractors else 0,
-    })
-
-    flag = lambda: _running  # noqa: E731
+    stop_event = Event()
     threads = [
-        Thread(target=partial(process_embedding_requests, _consumer, _embedding_handler, _logger, _config, flag), daemon=True, name="EmbeddingConsumer"),
-        Thread(target=partial(process_embedding_job_requests, _job_consumer, _job_worker, _logger, _config, flag), daemon=True, name="EmbeddingJobConsumer"),
-        Thread(target=partial(process_extraction_requests, _extract_consumer, _extraction_handler, _logger, _config, flag), daemon=True, name="ExtractionConsumer"),
+        Thread(
+            target=partial(
+                process_embedding_job_requests,
+                job_consumer,
+                job_worker,
+                logger,
+                config,
+                stop_event,
+            ),
+            daemon=True,
+            name="EmbeddingJobConsumer",
+        ),
+        Thread(
+            target=partial(
+                process_extraction_requests,
+                extract_consumer,
+                extraction_handler,
+                logger,
+                config,
+                stop_event,
+            ),
+            daemon=True,
+            name="ExtractionConsumer",
+        ),
     ]
-    for t in threads:
-        t.start()
-    _logger.log("main:startup", "Consumer threads started")
+    for thread in threads:
+        thread.start()
 
-    # RabbitMQ consumer for gateway RPC requests
-    _rpc_consumer = MessageQueueFactory.create_rabbitmq_consumer(_config)
+    rpc_consumer = MessageQueueFactory.create_rabbitmq_consumer(config)
 
-    async def _handle_rpc(body, reply_to, correlation_id):
-        import asyncio
-        body = dict(body)  # shallow copy
-        body.setdefault("reply_to", reply_to)
-        body.setdefault("correlation_id", correlation_id)
+    async def handle_rpc(body, reply_to, correlation_id):
         loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(None, copy_context().run, _embedding_handler.process_request_with_reply, body, reply_to, correlation_id)
+        context = copy_context()
+        return await loop.run_in_executor(
+            None,
+            context.run,
+            query_handler.process_request_with_reply,
+            body,
+            reply_to,
+            correlation_id,
+        )
 
-    await _rpc_consumer.start(_handle_rpc)
-    _logger.log("main:readiness", "RabbitMQ RPC consumer connected", {
-        "queue": _config.rabbitmq_queue,
-    })
-    if _embedding_model and _embedding_model.is_loaded() and _rpc_consumer.is_connected():
-        _logger.log("main:readiness", "Embedding readiness changed from false to true", {
-            "ready_for_rpc": True,
-        })
+    await rpc_consumer.start(handle_rpc)
+    runtime = EmbeddingRuntime(
+        producer=producer,
+        model=model,
+        rpc_consumer=rpc_consumer,
+        rpc_producer=rpc_producer,
+        extract_consumer=extract_consumer,
+        job_consumer=job_consumer,
+        stop_event=stop_event,
+        threads=threads,
+    )
+    app.state.embedding_runtime = runtime
+    logger.log(
+        "main:startup",
+        "Embedding service started",
+        {
+            "query_transport": "rabbitmq",
+            "passage_job_topic": config.embedding_jobs_requested_topic,
+            "extraction_topic": config.extract_topic,
+            "model_loaded": model.is_loaded() if model else False,
+            "extractors_count": len(extractors),
+        },
+    )
 
     try:
         yield
     finally:
-        # --- shutdown ---
-        _running = False
-        _logger.log("main:shutdown", "Embedding service shutting down gracefully", {})
-        await _rpc_consumer.stop()
-        await _rpc_producer.close()
-        for c in [_consumer, _extract_consumer, _job_consumer]:
+        logger.log("main:shutdown", "Embedding service shutting down", {})
+        stop_event.set()
+        await rpc_consumer.stop()
+        await rpc_producer.close()
+        for consumer in (extract_consumer, job_consumer):
             try:
-                c.close()
+                consumer.close()
             except Exception:
-                pass
-        for t in threads:
-            if t.is_alive():
-                t.join(timeout=10.0)
+                logger.log(
+                    "main:shutdown",
+                    "Consumer close failed",
+                    {"consumer": type(consumer).__name__},
+                    hypothesis_id="W",
+                )
+        for thread in threads:
+            if thread.is_alive():
+                thread.join(timeout=10.0)
         try:
-            _producer.flush()
+            producer.flush()
         except Exception:
-            pass
-        _logger.log("main:shutdown", "Embedding service shutdown complete", {})
+            logger.log(
+                "main:shutdown",
+                "Kafka producer flush failed",
+                {},
+                hypothesis_id="W",
+            )
+        app.state.embedding_runtime = None
+        logger.log("main:shutdown", "Embedding service shutdown complete", {})
 
 
 app = FastAPI(title="Embedding Service", lifespan=lifespan)
@@ -180,13 +205,22 @@ setup_cors(app)
 if _HAS_METRICS:
     setup_metrics(app, "embedding")
 
-app.include_router(create_health_router(
-    get_producer=lambda: _producer,
-    get_model=lambda: _embedding_model,
-    get_rpc_consumer=lambda: _rpc_consumer,
-))
+
+def _runtime_dependency(name: str):
+    runtime = getattr(app.state, "embedding_runtime", None)
+    return getattr(runtime, name, None)
+
+
+app.include_router(
+    create_health_router(
+        get_producer=lambda: _runtime_dependency("producer"),
+        get_model=lambda: _runtime_dependency("model"),
+        get_rpc_consumer=lambda: _runtime_dependency("rpc_consumer"),
+    )
+)
 
 if __name__ == "__main__":
     import uvicorn
+
     cfg = EmbeddingConfig()
     uvicorn.run(app, host=cfg.service_host, port=cfg.service_port)

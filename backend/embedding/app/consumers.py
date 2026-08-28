@@ -4,7 +4,7 @@ Each function is intended to run in a daemon thread started by the lifespan
 context manager in main.py. They loop until the module-level _running flag is
 cleared at shutdown.
 """
-import time
+from threading import Event
 from shared.auth import verify_internal_ticket_from_envelope
 from shared.context import bound_context
 
@@ -20,42 +20,7 @@ def _authenticated(message):
     return bound_context(**context)
 
 
-def process_embedding_requests(consumer, handler, logger, config, running_flag):
-    """Run the legacy embedding consumer loop until shutdown."""
-    logger.log("consumers:embedding", "Starting embedding request processing", {"topic": config.request_topic})
-    request_count = 0
-    while running_flag():
-        try:
-            for message in consumer.consume():
-                request_count += 1
-                logger.log(
-                    "consumers:embedding",
-                    "Processing embedding request",
-                    {"request_num": request_count},
-                )
-                with _authenticated(message):
-                    handler.process_request(message)
-                logger.log(
-                    "consumers:embedding",
-                    "Embedding request completed",
-                    {"request_num": request_count},
-                )
-        except RuntimeError as e:
-            logger.log("consumers:embedding", "Consumer not initialized, waiting...", {"error": str(e)})
-            time.sleep(2)
-        except StopIteration:
-            continue
-        except Exception as e:
-            logger.log(
-                "consumers:embedding",
-                "Consumer error, reinitializing",
-                {"error": str(e), "error_type": type(e).__name__},
-                hypothesis_id="E",
-            )
-            time.sleep(2)
-
-
-def process_embedding_job_requests(job_consumer, worker, logger, config, running_flag):
+def process_embedding_job_requests(job_consumer, worker, logger, config, stop_event: Event):
     """Run the typed embedding-job consumer loop until shutdown."""
     logger.log(
         "consumers:embedding_jobs",
@@ -63,7 +28,7 @@ def process_embedding_job_requests(job_consumer, worker, logger, config, running
         {"topic": config.embedding_jobs_requested_topic},
     )
     request_count = 0
-    while running_flag():
+    while not stop_event.is_set():
         try:
             for message in job_consumer.consume():
                 request_count += 1
@@ -97,7 +62,7 @@ def process_embedding_job_requests(job_consumer, worker, logger, config, running
                 "Embedding job consumer not initialized, waiting...",
                 {"error": str(e)},
             )
-            time.sleep(2)
+            stop_event.wait(2)
         except StopIteration:
             continue
         except Exception as e:
@@ -107,14 +72,14 @@ def process_embedding_job_requests(job_consumer, worker, logger, config, running
                 {"error": str(e), "error_type": type(e).__name__},
                 hypothesis_id="E",
             )
-            time.sleep(2)
+            stop_event.wait(2)
 
 
-def process_extraction_requests(extract_consumer, handler, logger, config, running_flag):
-    """Run the legacy extraction consumer loop until shutdown."""
+def process_extraction_requests(extract_consumer, handler, logger, config, stop_event: Event):
+    """Run the active Files extraction consumer loop until shutdown."""
     logger.log("consumers:extraction", "Starting extraction request processing", {"topic": config.extract_topic})
     request_count = 0
-    while running_flag():
+    while not stop_event.is_set():
         try:
             for message in extract_consumer.consume():
                 request_count += 1
@@ -132,7 +97,7 @@ def process_extraction_requests(extract_consumer, handler, logger, config, runni
                 )
         except RuntimeError as e:
             logger.log("consumers:extraction", "Extract consumer not initialized, waiting...", {"error": str(e)})
-            time.sleep(2)
+            stop_event.wait(2)
         except StopIteration:
             continue
         except Exception as e:
@@ -142,4 +107,4 @@ def process_extraction_requests(extract_consumer, handler, logger, config, runni
                 {"error": str(e), "error_type": type(e).__name__},
                 hypothesis_id="E",
             )
-            time.sleep(2)
+            stop_event.wait(2)

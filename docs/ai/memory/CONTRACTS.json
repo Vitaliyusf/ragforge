@@ -52,7 +52,7 @@
         "backend/embedding",
         "backend/vector_db"
       ],
-      "rule": "Critical flow targets at-least-once + idempotency."
+      "rule": "Files publishes typed passage work on embedding.jobs.requested; Embedding publishes typed vector work on vector_db.upsert.requested. The embedding.requests topic is extraction-only until document parsing moves out of Embedding. Critical flow targets at-least-once + idempotency."
     },
     {
       "id": "CON-005",
