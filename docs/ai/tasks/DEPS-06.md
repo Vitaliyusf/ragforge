@@ -1,5 +1,7 @@
 # DEPS-06 — Canonicalize Python test dependencies
 
+**Status:** completed / historical — retained as execution evidence. Runtime/tooling text here is superseded by `docs/ai/RUNTIME_CONTRACT.md`.
+
 **Branch:** `chore/python-test-dependencies`
 
 ## Goal
@@ -43,7 +45,7 @@ It must own the repository test-runner packages, including the currently support
 - pytest-asyncio
 - pytest-mock
 
-Use versions proven compatible with the current repository tests and Python 3.11.
+Use versions proven compatible with the current repository tests and the canonical Python in `docs/ai/RUNTIME_CONTRACT.md`.
 
 ### Runtime requirements
 - Remove pytest/test-only packages from Files and Memory production/runtime requirements unless runtime code actually imports them.
@@ -67,7 +69,7 @@ Do not create per-task scratch virtual environments as the normal workflow.
 ## Acceptance
 - One canonical pytest / pytest-asyncio version pair is used for repository testing.
 - Files and Memory runtime requirements no longer pin conflicting pytest packages unless technically required.
-- `python scripts/ai/check.py doctor` can load pytest normally in a correctly provisioned Python 3.11 dev environment.
+- `python scripts/ai/check.py doctor` can load pytest normally in a correctly provisioned dev environment matching `docs/ai/RUNTIME_CONTRACT.md`.
 - Files tests pass.
 - Memory tests pass.
 - RAG tests pass.

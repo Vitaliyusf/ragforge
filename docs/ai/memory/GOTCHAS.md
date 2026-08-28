@@ -16,7 +16,9 @@
 - **Capability ownership:** search capability records, symbols and callers before adding an implementation; one capability has one authoritative path.
 - **Configuration honesty:** accepted configuration must change real implemented behavior; fail unsupported updates explicitly.
 - **Compatibility:** migrate callers and delete legacy code; temporary dual paths require a removal condition and tracking task.
-- **Validation environment:** `doctor` is diagnostic, not universal; a broken `.venv` does not block direct isolated `uv` Python 3.12 validation.
+- **Validation environment:** `doctor` is diagnostic, not universal; a broken `.venv` does not block the isolated `uv` fallback in `docs/ai/RUNTIME_CONTRACT.md`.
+- **Runtime authority:** `docs/ai/RUNTIME_CONTRACT.md` + `.python-version` + CI config beat any runtime version named in an older task spec, handoff or benchmark record, unless the active task owns a runtime migration.
+- **Task-local caches:** put them under `.agent-private/tooling/<task-id>/`; root-level `.uv-cache-*` / `.uv-python-*` directories pollute repo-brain input and the working tree.
 - **CI parity:** extra non-CI dependencies make a local result `NON-AUTHORITATIVE / ENVIRONMENT-ADJUSTED`, never `PASS`; fix the canonical dependency owner or report `BLOCKED`.
 - **Environment retries:** use one workspace-local uv cache and at most one corrected retry per root cause; do not rotate environments to manufacture a green result.
 - **Static scopes:** when changed files intersect an authoritative mypy scope, run that exact scope once before completion; file-by-file mypy is not equivalent.

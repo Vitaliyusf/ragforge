@@ -166,10 +166,11 @@ python scripts/ai/check.py doctor
 
 Do not repair `.venv` unless environment repair is the task. A missing or broken
 `.venv` must not block task validation when an isolated run is available. An accepted
-fallback is direct isolated Python 3.12, with the task's required tools or requirements:
+fallback is the canonical isolated interpreter from `docs/ai/RUNTIME_CONTRACT.md`,
+with the task's required tools or requirements:
 
 ```bash
-uv run --isolated --python 3.12 ...
+uv run --isolated --python "$(cat .python-version)" ...
 ```
 
 When isolated uv is needed, choose one workspace-local `UV_CACHE_DIR` at task start.

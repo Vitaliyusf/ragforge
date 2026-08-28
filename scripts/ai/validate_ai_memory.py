@@ -4,11 +4,18 @@ from __future__ import annotations
 import json
 import re
 import subprocess
+import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from _brain_sources import forbidden_indexed_paths  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[2]
 PUBLIC = ROOT / "docs" / "ai" / "memory"
 PRIVATE = ROOT / ".agent-private"
+GENERATED = ROOT / "docs" / "ai" / "generated"
+RUNTIME_CONTRACT = ROOT / "docs" / "ai" / "RUNTIME_CONTRACT.md"
 
 ID_RE = re.compile(r"^(DEC|CAP|CON)-\d{3,}$")
 SECRET_PATTERNS = {
@@ -38,6 +45,41 @@ def scan_secrets(path: Path, errors: list[str]) -> None:
     for name, pattern in SECRET_PATTERNS.items():
         if pattern.search(text):
             errors.append(f"{path.relative_to(ROOT)}: possible {name}")
+
+def check_brain_index(generated: Path, errors: list[str]) -> None:
+    """Fail when the generated brain index contains cache/private/generated paths."""
+    file_index = generated / "FILE_INDEX.json"
+    if not file_index.exists():
+        return
+    try:
+        data = json.loads(file_index.read_text(encoding="utf-8"))
+    except Exception as exc:
+        errors.append(f"docs/ai/generated/FILE_INDEX.json: invalid JSON: {exc}")
+        return
+    rows = data.get("files", [])
+    if not isinstance(rows, list):
+        errors.append("docs/ai/generated/FILE_INDEX.json: `files` must be a list")
+        return
+    paths = [row.get("path") for row in rows if isinstance(row, dict) and isinstance(row.get("path"), str)]
+    for bad in forbidden_indexed_paths(paths)[:10]:
+        errors.append(f"forbidden indexed path: {bad}")
+
+
+def check_runtime_contract(contract: Path, python_version: Path, errors: list[str]) -> None:
+    """The canonical runtime contract must agree with `.python-version`."""
+    if not contract.exists():
+        errors.append("missing canonical runtime contract: docs/ai/RUNTIME_CONTRACT.md")
+        return
+    if not python_version.exists():
+        errors.append("missing .python-version")
+        return
+    declared = python_version.read_text(encoding="utf-8").strip()
+    text = contract.read_text(encoding="utf-8")
+    if f"Canonical Python: {declared}" not in text:
+        errors.append(
+            f"RUNTIME_CONTRACT.md does not declare `Canonical Python: {declared}` from .python-version"
+        )
+
 
 def main() -> int:
     errors: list[str] = []
@@ -96,9 +138,11 @@ def main() -> int:
     if PRIVATE.exists() and not git_ignored(".agent-private/"):
         errors.append(".agent-private/ exists but is NOT ignored by Git")
 
-    generated = ROOT / "docs" / "ai" / "generated"
-    if any(generated.glob("*.json")) and not git_ignored("docs/ai/generated/INDEX_META.json"):
+    if any(GENERATED.glob("*.json")) and not git_ignored("docs/ai/generated/INDEX_META.json"):
         errors.append("generated AI index JSON exists but docs/ai/generated/*.json is not ignored by Git")
+
+    check_brain_index(GENERATED, errors)
+    check_runtime_contract(RUNTIME_CONTRACT, ROOT / ".python-version", errors)
 
     if errors:
         print("AI memory/security validation FAILED")

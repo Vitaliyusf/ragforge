@@ -49,7 +49,8 @@ Only for quality/performance work.
 - No commit/push.
 - No generic doctor gate.
 - Do not repair `.venv`.
-- Use isolated uv Python 3.12 when local environment is unsuitable.
+- Use the canonical runtime/tooling from `docs/ai/RUNTIME_CONTRACT.md`
+  (isolated uv fallback) when the local environment is unsuitable.
 - Preserve the matching CI lane's canonical environment; extra dependencies make a
   result `NON-AUTHORITATIVE / ENVIRONMENT-ADJUSTED`, not `PASS`.
 - Use one workspace-local uv cache and at most one corrected retry per environment

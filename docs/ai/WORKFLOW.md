@@ -80,7 +80,11 @@ Report:
 `doctor` is opt-in per task, not a universal prerequisite.
 Do not repair `.venv` unless explicitly required.
 A missing or broken `.venv` must not by itself block task validation.
-When local Python is unsuitable, direct `uv run --isolated --python 3.12` is an accepted fallback.
+When local Python is unsuitable, the isolated uv fallback in
+`docs/ai/RUNTIME_CONTRACT.md` is accepted; that file is the canonical runtime/tooling
+authority and overrides runtime text in older task specs and historical docs.
+All workspace-local task/tool caches belong under `.agent-private/tooling/<task-id>/`;
+never create task-local cache directories at the repository root.
 Use one workspace-local `UV_CACHE_DIR` for isolated uv. Diagnose an environment root
 cause once and make at most one corrected retry; then report `BLOCKED` rather than
 changing interpreters, virtualenvs, cache layouts or injecting dependencies.

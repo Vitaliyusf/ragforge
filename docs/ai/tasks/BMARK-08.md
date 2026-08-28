@@ -1,5 +1,7 @@
 # BMARK-08 — Benchmark retrieval diagnostics
 
+**Status:** completed / historical — retained as execution evidence. Runtime/tooling text here is superseded by `docs/ai/RUNTIME_CONTRACT.md`.
+
 **Branch:** `feat/benchmark-retrieval-diagnostics`
 
 ## Goal

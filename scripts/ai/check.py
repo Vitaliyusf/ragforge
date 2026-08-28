@@ -32,7 +32,7 @@ SERVICE_DIRS = {
 # Default test path per service, relative to its directory above.
 SERVICE_TESTS = {
     "shared": ["shared/tests"],
-    "repo": ["tests/test_public_repo_guardrails.py"],
+    "repo": ["tests/test_public_repo_guardrails.py", "tests/test_repo_brain_tooling.py"],
 }
 DEFAULT_TESTS = ["app/tests"]
 
@@ -42,7 +42,7 @@ DEFAULT_TESTS = ["app/tests"]
 # normal feature work neither reads nor runs it.
 LANES = {
     "shared": ("shared", ["shared/tests"]),
-    "repo-contract": ("repo", ["tests/test_public_repo_guardrails.py"]),
+    "repo-contract": ("repo", ["tests/test_public_repo_guardrails.py", "tests/test_repo_brain_tooling.py"]),
     "gateway": ("gateway", ["app/tests"]),
     "gateway-auth": ("gateway", ["app/tests/auth"]),
     "gateway-routes": ("gateway", ["app/tests/routes"]),

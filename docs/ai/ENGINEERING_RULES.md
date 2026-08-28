@@ -1,7 +1,9 @@
 # Engineering Rules
 
 ## Python
-- Target Python 3.12 until explicitly upgraded.
+- The canonical runtime/tooling contract is `docs/ai/RUNTIME_CONTRACT.md`
+  (Python derived from `.python-version`). It overrides runtime text in older task
+  specs, handoffs and historical docs unless the active task owns a runtime migration.
 - Use modern typing (`dict[str, T]`, `X | None`) in newly touched code where project tooling supports it.
 - Pydantic models belong at transport/config boundaries.
 - Prefer `Protocol` for structural interfaces; use ABC inheritance only when behavior/lifecycle inheritance is meaningful.

@@ -10,7 +10,8 @@ Prefer an existing suitable project/dev environment:
 2. otherwise the currently active Python environment.
 
 Do not repair `.venv` unless environment repair is the task. A missing or broken `.venv`
-must not block validation: direct `uv run --isolated --python 3.12` is an accepted fallback.
+must not block validation: the isolated uv fallback in `docs/ai/RUNTIME_CONTRACT.md`
+is accepted.
 Avoid fresh dependency installation on every iteration; clean-environment authority remains CI.
 
 An authoritative local `PASS` must preserve the matching CI lane's dependency

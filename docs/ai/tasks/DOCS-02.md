@@ -82,7 +82,7 @@ Recommended first-line evidence badges:
 
 ```text
 CI
-Python 3.11
+Python (canonical version from .python-version)
 Tests
 License
 ```
@@ -90,7 +90,7 @@ License
 Example conceptual layout:
 
 ```text
-[ CI: passing ] [ Python: 3.11 ] [ Tests: N ] [ License: ... ]
+[ CI: passing ] [ Python: <.python-version> ] [ Tests: N ] [ License: ... ]
 ```
 
 Do not add a wall of technology badges such as:
@@ -126,11 +126,8 @@ The badge must derive from or remain consistent with the repository Python sourc
 .python-version
 ```
 
-Expected repository version:
-
-```text
-3.11
-```
+Expected repository version: the canonical Python in
+`docs/ai/RUNTIME_CONTRACT.md`, which is derived from `.python-version`.
 
 Avoid maintaining conflicting version literals.
 
@@ -313,7 +310,8 @@ Do not turn this task into a broad README rewrite.
 ### Stage A
 
 - README shows authoritative CI status.
-- README shows Python 3.11 consistently with `.python-version`.
+- README shows the Python version consistently with `.python-version` and
+  `docs/ai/RUNTIME_CONTRACT.md`.
 - Automated test count is generated from actual test collection rather than maintained by hand.
 - Test-count generation is deterministic and documented.
 - No technology-logo badge wall is added.
