@@ -48,6 +48,128 @@ def test_checkpoint_restore_resumes_from_after_generation_without_retrieval():
     assert emitter.events[-1]["type"] == "done"
 
 
+def _save_extended_checkpoint(store, request, stage: str, chunks: list[dict[str, Any]]) -> None:
+    state = build_initial_state(request)
+    state["retrieval_plan"] = {
+        "rewritten_query": f"rewrite:{request.user_message}",
+        "subqueries": ["subquery one"],
+        "pass_two_hints": ["fallback query"],
+    }
+    state["retrieved_chunks"] = chunks
+    store.save_checkpoint(
+        {
+            "conversation_id": request.conversation_id,
+            "turn_id": request.turn_id,
+            "request_id": request.request_id,
+            "trace_id": request.trace_id,
+            "node": "crashed_node",
+            "stage": stage,
+            "status": "ok",
+            "state": state,
+            "created_at": "2026-03-17T00:00:00Z",
+        }
+    )
+
+
+def test_extended_resume_after_pass_one_runs_pass_two_then_final_ranking():
+    service, backend, store = build_service()
+    request = service.build_request(
+        {"question": "Please do a second retrieval", "mode": "extended"}
+    )
+    _save_extended_checkpoint(
+        store,
+        request,
+        "after_pass_one",
+        [{"chunk_id": "c1", "text": "Pass one", "score": 0.31, "source": "one"}],
+    )
+
+    result = asyncio.run(
+        service.graph_runner.run(request, CollectingConversationEmitter(request), resume=True)
+    )
+
+    retrieval_calls = [call for call in backend.calls if call["type"] == "vector_db"]
+    assert [call["pass_name"] for call in retrieval_calls] == ["pass_two"]
+    assert [chunk["chunk_id"] for chunk in result["sources"]] == ["c2", "c1"]
+    assert any(item["stage"] == "after_final_ranking" for item in store.checkpoints)
+
+
+def test_extended_resume_after_pass_two_runs_final_ranking_exactly_once():
+    service, backend, store = build_service()
+    request = service.build_request({"question": "Resume after pass two", "mode": "extended"})
+    _save_extended_checkpoint(
+        store,
+        request,
+        "after_pass_two",
+        [
+            {"chunk_id": "c1", "text": "Pass one", "score": 0.31, "source": "one"},
+            {"chunk_id": "c2", "text": "Pass two", "score": 0.91, "source": "two"},
+        ],
+    )
+    original_ranking = service.graph_runner._rerank_and_merge
+    ranking_calls = 0
+
+    async def count_ranking(state, runtime):
+        nonlocal ranking_calls
+        ranking_calls += 1
+        return await original_ranking(state, runtime)
+
+    service.graph_runner._rerank_and_merge = count_ranking
+
+    result = asyncio.run(
+        service.graph_runner.run(request, CollectingConversationEmitter(request), resume=True)
+    )
+
+    assert ranking_calls == 1
+    assert not any(call["type"] == "vector_db" for call in backend.calls)
+    assert [chunk["chunk_id"] for chunk in result["sources"]] == ["c2", "c1"]
+
+
+def test_extended_resume_after_final_ranking_repeats_no_retrieval_work():
+    service, backend, store = build_service()
+    request = service.build_request({"question": "Resume after final ranking", "mode": "extended"})
+    _save_extended_checkpoint(
+        store,
+        request,
+        "after_final_ranking",
+        [
+            {"chunk_id": "c2", "text": "Pass two", "score": 0.91, "source": "two"},
+            {"chunk_id": "c1", "text": "Pass one", "score": 0.31, "source": "one"},
+        ],
+    )
+    ranking_calls = 0
+
+    async def count_ranking(state, runtime):
+        nonlocal ranking_calls
+        ranking_calls += 1
+        return {"retrieved_chunks": state["retrieved_chunks"]}
+
+    service.graph_runner._rerank_and_merge = count_ranking
+
+    result = asyncio.run(
+        service.graph_runner.run(request, CollectingConversationEmitter(request), resume=True)
+    )
+
+    assert ranking_calls == 0
+    assert not any(call["type"] == "vector_db" for call in backend.calls)
+    assert [chunk["chunk_id"] for chunk in result["sources"]] == ["c2", "c1"]
+
+
+def test_fresh_extended_run_persists_unambiguous_retrieval_milestones():
+    service, _, store = build_service()
+    request = service.build_request(
+        {"question": "Please do a second retrieval", "mode": "extended"}
+    )
+
+    asyncio.run(service.graph_runner.run(request, CollectingConversationEmitter(request)))
+
+    retrieval_stages = [
+        item["stage"]
+        for item in store.checkpoints
+        if item["stage"] in {"after_pass_one", "after_pass_two", "after_final_ranking"}
+    ]
+    assert retrieval_stages == ["after_pass_one", "after_pass_two", "after_final_ranking"]
+
+
 
 def test_async_persistence_is_non_blocking_and_concurrency_bounded():
     class DelayedStore(InMemoryConversationStore):
@@ -197,6 +319,5 @@ def test_checkpoint_restore_reuses_graph_run_id_and_owner_identity():
     assert resumed_request.graph_run_id == "graph-run-1"
     assert resumed_request.owner_id == TEST_IDENTITY.user_id
     assert resumed_request.owner_type == "user"
-
 
 

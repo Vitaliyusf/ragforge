@@ -37,6 +37,7 @@ from app.services.conversation_types import (
     build_initial_state,
     utc_now_iso,
 )
+from app.services.conversation_stages import EXECUTION_PATHS, remaining_nodes
 from app.services.retrieval_trace import (
     STAGE_BASE,
     STAGE_FINAL_CONTEXT,
@@ -428,57 +429,25 @@ class ConversationGraphRunner:
         for name, func in self._node_map().items():
             workflow.add_node(name, self._wrap_node(name, func, runtime))
 
-        workflow.set_entry_point("input_guardrails")
-        workflow.add_edge("input_guardrails", "load_short_term_context")
+        regular_path = EXECUTION_PATHS["regular"]
+        extended_path = EXECUTION_PATHS["extended"]
+        workflow.set_entry_point(regular_path[0])
+        workflow.add_edge(regular_path[0], regular_path[1])
         workflow.add_conditional_edges(
-            "load_short_term_context",
+            regular_path[1],
             self._select_mode,
-            {"regular": "load_memory_light", "extended": "load_memory_deep"},
+            {"regular": regular_path[2], "extended": extended_path[2]},
         )
-        workflow.add_edge("load_memory_light", "retrieve_chunks_once")
-        workflow.add_edge("retrieve_chunks_once", "generate_answer")
-        workflow.add_edge("generate_answer", "evaluate_answer_light")
-        workflow.add_edge("evaluate_answer_light", "output_guardrails")
-        workflow.add_edge("load_memory_deep", "rewrite_or_decompose_query")
-        workflow.add_edge("rewrite_or_decompose_query", "retrieve_pass_one")
-        workflow.add_edge("retrieve_pass_one", "retrieve_pass_two_if_needed")
-        workflow.add_edge("retrieve_pass_two_if_needed", "rerank_and_merge")
-        workflow.add_edge("rerank_and_merge", "generate_draft_answer")
-        workflow.add_edge("generate_draft_answer", "evaluate_answer_deep")
-        workflow.add_edge("evaluate_answer_deep", "revise_once_if_needed")
-        workflow.add_edge("revise_once_if_needed", "output_guardrails")
-        workflow.add_edge("output_guardrails", "persist_turn")
-        workflow.add_edge("persist_turn", "stream_done")
-        workflow.add_edge("stream_done", END)
+        for path in (regular_path, extended_path):
+            for current, following in zip(path[2:], path[3:]):
+                workflow.add_edge(current, following)
+            workflow.add_edge(path[-1], END)
         return workflow.compile()
 
     async def _run_fallback_graph(self, state: ConversationState, runtime: Dict[str, Any]) -> ConversationState:
-        state = await self._wrap_node("input_guardrails", self._input_guardrails, runtime)(state)
-        state = await self._wrap_node("load_short_term_context", self._load_short_term_context, runtime)(state)
-        if self._select_mode(state) == "regular":
-            names = [
-                "load_memory_light",
-                "retrieve_chunks_once",
-                "generate_answer",
-                "evaluate_answer_light",
-            ]
-        else:
-            names = [
-                "load_memory_deep",
-                "rewrite_or_decompose_query",
-                "retrieve_pass_one",
-                "retrieve_pass_two_if_needed",
-                "rerank_and_merge",
-                "generate_draft_answer",
-                "evaluate_answer_deep",
-                "revise_once_if_needed",
-            ]
         mapping = self._node_map()
-        for name in names:
+        for name in EXECUTION_PATHS[self._select_mode(state)]:
             state = await self._wrap_node(name, mapping[name], runtime)(state)
-        state = await self._wrap_node("output_guardrails", self._output_guardrails, runtime)(state)
-        state = await self._wrap_node("persist_turn", self._persist_turn, runtime)(state)
-        state = await self._wrap_node("stream_done", self._stream_done, runtime)(state)
         return state
 
     async def _resume_from_checkpoint(
@@ -487,103 +456,10 @@ class ConversationGraphRunner:
         runtime: Dict[str, Any],
         stage: str,
     ) -> ConversationState:
-        """Resume from the closest configured checkpoint stage."""
-        regular_remaining = {
-            "graph_start": [
-                "input_guardrails",
-                "load_short_term_context",
-                "load_memory_light",
-                "retrieve_chunks_once",
-                "generate_answer",
-                "evaluate_answer_light",
-                "output_guardrails",
-                "persist_turn",
-                "stream_done",
-            ],
-            "after_context_load": [
-                "load_memory_light",
-                "retrieve_chunks_once",
-                "generate_answer",
-                "evaluate_answer_light",
-                "output_guardrails",
-                "persist_turn",
-                "stream_done",
-            ],
-            "after_retrieval": [
-                "generate_answer",
-                "evaluate_answer_light",
-                "output_guardrails",
-                "persist_turn",
-                "stream_done",
-            ],
-            "after_generation": [
-                "evaluate_answer_light",
-                "output_guardrails",
-                "persist_turn",
-                "stream_done",
-            ],
-            "after_evaluation": [
-                "output_guardrails",
-                "persist_turn",
-                "stream_done",
-            ],
-            "after_persistence": ["stream_done"],
-        }
-        extended_remaining = {
-            "graph_start": [
-                "input_guardrails",
-                "load_short_term_context",
-                "load_memory_deep",
-                "rewrite_or_decompose_query",
-                "retrieve_pass_one",
-                "rerank_and_merge",
-                "retrieve_pass_two_if_needed",
-                "generate_draft_answer",
-                "evaluate_answer_deep",
-                "revise_once_if_needed",
-                "output_guardrails",
-                "persist_turn",
-                "stream_done",
-            ],
-            "after_context_load": [
-                "load_memory_deep",
-                "rewrite_or_decompose_query",
-                "retrieve_pass_one",
-                "rerank_and_merge",
-                "retrieve_pass_two_if_needed",
-                "generate_draft_answer",
-                "evaluate_answer_deep",
-                "revise_once_if_needed",
-                "output_guardrails",
-                "persist_turn",
-                "stream_done",
-            ],
-            "after_retrieval": [
-                "generate_draft_answer",
-                "evaluate_answer_deep",
-                "revise_once_if_needed",
-                "output_guardrails",
-                "persist_turn",
-                "stream_done",
-            ],
-            "after_generation": [
-                "evaluate_answer_deep",
-                "revise_once_if_needed",
-                "output_guardrails",
-                "persist_turn",
-                "stream_done",
-            ],
-            "after_evaluation": [
-                "revise_once_if_needed",
-                "output_guardrails",
-                "persist_turn",
-                "stream_done",
-            ],
-            "after_persistence": ["stream_done"],
-        }
+        """Resume after the exact durable checkpoint milestone."""
         mapping = self._node_map()
-        remaining = (regular_remaining if self._select_mode(state) == "regular" else extended_remaining).get(stage)
-        if not remaining:
+        remaining = remaining_nodes(self._select_mode(state), stage)
+        if remaining is None:
             return await self._run_fallback_graph(state, runtime)
         for name in remaining:
             state = await self._wrap_node(name, mapping[name], runtime)(state)
@@ -1338,7 +1214,7 @@ class ConversationGraphRunner:
             chunks.extend(normalized)
         snapshot = copy.deepcopy(state)
         snapshot["retrieved_chunks"] = chunks
-        await self._save_checkpoint(request, snapshot, "retrieve_pass_one", "after_retrieval", "ok")
+        await self._save_checkpoint(request, snapshot, "retrieve_pass_one", "after_pass_one", "ok")
         return {
             "retrieved_chunks": chunks,
             "_meta": {
@@ -1349,6 +1225,7 @@ class ConversationGraphRunner:
         }
 
     async def _rerank_and_merge(self, state: ConversationState, runtime: Dict[str, Any]) -> Dict[str, Any]:
+        request: ConversationRequest = runtime["request"]
         incoming = state.get("retrieved_chunks", [])
         previous_top = incoming[0].get("chunk_id") if incoming else None
         merged: Dict[str, Dict[str, Any]] = {}
@@ -1379,6 +1256,15 @@ class ConversationGraphRunner:
         # candidate stopped travelling, and a trace showing the pre-cap list
         # would attribute that loss to the wrong step.
         self._trace_stage(runtime, STAGE_MERGED, kept, returned_count=len(reranked))
+        snapshot = copy.deepcopy(state)
+        snapshot["retrieved_chunks"] = kept
+        await self._save_checkpoint(
+            request,
+            snapshot,
+            "rerank_and_merge",
+            "after_final_ranking",
+            "ok",
+        )
         return {
             "retrieved_chunks": kept,
             "_meta": {
@@ -1409,6 +1295,13 @@ class ConversationGraphRunner:
                     "chunk_threshold": self.config.pass_two_chunk_threshold,
                     "score_threshold": self.config.pass_two_score_threshold,
                 },
+            )
+            await self._save_checkpoint(
+                request,
+                copy.deepcopy(state),
+                "retrieve_pass_two_if_needed",
+                "after_pass_two",
+                "skipped",
             )
             return {
                 "_meta": {
@@ -1462,7 +1355,7 @@ class ConversationGraphRunner:
             request,
             snapshot,
             "retrieve_pass_two_if_needed",
-            "after_retrieval",
+            "after_pass_two",
             "ok",
         )
         return {
