@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 import os
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 from datetime import datetime
 from typing import Any, Dict, Optional
 
@@ -198,20 +198,12 @@ class BaseRepository:
                 yield None
                 return
 
+        stack = ExitStack()
         try:
-            with self.client.start_session() as session:
-                try:
-                    with session.start_transaction():
-                        self._transactions_supported = True
-                        yield session
-                except Exception as exc:
-                    if self._is_transaction_unsupported_error(exc):
-                        self._transactions_supported = False
-                        self._log_transaction_fallback(str(exc))
-                        yield None
-                        return
-                    raise
+            session = stack.enter_context(self.client.start_session())
+            stack.enter_context(session.start_transaction())
         except Exception as exc:
+            stack.close()
             if self._is_transaction_unsupported_error(exc):
                 self._transactions_supported = False
                 self._log_transaction_fallback(str(exc))
@@ -220,3 +212,7 @@ class BaseRepository:
             raise DatabaseException(
                 f"Failed to open MongoDB transaction: {exc}"
             ) from exc
+
+        self._transactions_supported = True
+        with stack:
+            yield session
