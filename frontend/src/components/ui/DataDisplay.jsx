@@ -5,12 +5,11 @@ import { cn } from '@/lib/utils'
 /**
  * Shared read-only data display primitives.
  *
- * These replace seven near-identical local components that had grown up
+ * These replace several near-identical local components that had grown up
  * independently across the features: DetailRow (FilesTab), MetaCard
- * (FileReviewDrawer), AuditMeta + AuditBlock (AuditTrailPanel), Stat
- * (TraceDebugPanel), Metric (AnswerReviewCard) and PreBlock
- * (MessageMetricsModal). MetaCard and AuditMeta were identical apart from
- * their border radius.
+ * (FileReviewDrawer), AuditMeta + AuditBlock (AuditTrailPanel) and the stat
+ * cells of the chat Developer Inspector. MetaCard and AuditMeta were identical
+ * apart from their border radius.
  */
 
 /** Inline `label: value`, for dense detail lists. */

@@ -12,7 +12,7 @@ import { setFiles } from '@/store/slices/filesSlice'
 import { ActivityProvider, EvalActivityProvider, FilesActivityBridge } from '@/features/activity'
 
 // Deliberately NOT `from '@/features/chat'`: that barrel also exports ChatTab,
-// which reaches TraceDebugPanel and react-markdown — pulling the whole chat
+// which reaches the Developer Inspector and react-markdown — pulling the whole chat
 // feature into the first load and defeating TabbedPageLayout's dynamic import
 // of ChatTab. Loading it dynamically also keeps it out of the pre-login bundle,
 // since nothing below the auth gate renders until a session exists.

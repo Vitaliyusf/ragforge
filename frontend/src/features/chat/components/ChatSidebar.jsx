@@ -3,7 +3,7 @@
 
 import { useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
-import { Plus, Trash2, MessageSquare, Loader2, AlertCircle, Search } from 'lucide-react'
+import { Plus, Pencil, Trash2, MessageSquare, Loader2, AlertCircle, Search } from 'lucide-react'
 import Button from '@/components/ui/Button'
 import { formatChatDate } from '@/lib/formatting/datetime'
 
@@ -17,6 +17,7 @@ export default function ChatSidebar({
   generatingTitleChatIds,
   onSetCurrentChatId,
   onCreateNewChat,
+  onRenameChat,
   onDeleteChat,
   onLoadChats,
 }) {
@@ -123,6 +124,7 @@ export default function ChatSidebar({
               onSelect={() => {
                 if (!deletingChatIds.has(chat.id)) onSetCurrentChatId(chat.id)
               }}
+              onRename={onRenameChat}
               onDelete={(event) => {
                 event.stopPropagation()
                 if (!deletingChatIds.has(chat.id)) onDeleteChat(chat.id)
@@ -135,7 +137,43 @@ export default function ChatSidebar({
   )
 }
 
-function ChatItem({ chat, isActive, isDeleting, isGeneratingTitle, onSelect, onDelete, index }) {
+function ChatItem({ chat, isActive, isDeleting, isGeneratingTitle, onSelect, onRename, onDelete, index }) {
+  const [draftTitle, setDraftTitle] = useState(null)
+  const isEditing = draftTitle != null
+
+  const commitRename = () => {
+    const next = (draftTitle || '').trim()
+    setDraftTitle(null)
+    if (next && next !== chat.title) onRename?.(chat.id, next)
+  }
+
+  if (isEditing) {
+    return (
+      <div className="mb-1 flex items-center gap-2 rounded-xl border px-2.5 py-2.5" style={{ borderColor: 'var(--border)' }}>
+        <input
+          autoFocus
+          dir="auto"
+          value={draftTitle}
+          aria-label={`Rename ${chat.title}`}
+          onChange={(event) => setDraftTitle(event.target.value)}
+          onBlur={commitRename}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') {
+              event.preventDefault()
+              commitRename()
+            }
+            if (event.key === 'Escape') {
+              event.preventDefault()
+              setDraftTitle(null)
+            }
+          }}
+          className="h-7 w-full rounded-lg border bg-transparent px-2 text-[13px] text-[var(--fg)] outline-hidden focus:border-[var(--border-focus)] focus:ring-2 focus:ring-[var(--ring)]"
+          style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}
+        />
+      </div>
+    )
+  }
+
   return (
     <motion.div
       layout
@@ -172,6 +210,7 @@ function ChatItem({ chat, isActive, isDeleting, isGeneratingTitle, onSelect, onD
 
       <div className="min-w-0 flex-1">
         <span
+          dir="auto"
           className="block truncate text-[13px] font-medium"
           style={{ color: isActive ? 'var(--fg)' : 'var(--fg-muted)' }}
         >
@@ -181,6 +220,20 @@ function ChatItem({ chat, isActive, isDeleting, isGeneratingTitle, onSelect, onD
           {formatChatDate(chat.updated_at)}
         </span>
       </div>
+
+      {onRename ? (
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation()
+            setDraftTitle(chat.title || '')
+          }}
+          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-[var(--fg-soft)] opacity-0 transition-all hover:bg-[var(--surface-hover)] hover:text-[var(--fg)] focus-visible:opacity-100 focus-visible:outline-hidden group-hover:opacity-100"
+          aria-label={`Rename ${chat.title}`}
+        >
+          <Pencil size={12} />
+        </button>
+      ) : null}
 
       <button
         type="button"

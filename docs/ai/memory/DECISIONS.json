@@ -131,6 +131,37 @@
         "frontend/src/components/layout/TabbedPageLayout.jsx",
         "frontend/src/components/layout/shellPersistence.test.jsx"
       ]
+    },
+    {
+      "id": "DEC-009",
+      "status": "accepted",
+      "title": "Chat has two surfaces: the answer, and the Developer Inspector",
+      "decision": "The default chat answer surface renders answer prose, document-level sources, a compact quality line and feedback - nothing else. Every identifier (review/turn/request/trace/conversation), model slug, raw timestamp, retrieval score, chunk internal, per-node timing, prompt and evaluator payload is rendered only inside DeveloperInspector, which is gated on isAdmin. Quality never prints a coerced 0%: an unmeasured review renders as absent and a no-evidence turn is described as an abstention in words.",
+      "reason": "The answer surface was an engineering readout - a large review card, a full-prompt toggle and trace metadata - that buried the answer for the knowledge user it exists for, while the details it exposed were unauthorized for non-admins. Splitting them keeps deep inspection without paying for it on every read, and stating abstention in words avoids reporting a skipped judge as a failing score.",
+      "do_not_do": [
+        "Do not add identifiers, prompts, model slugs, scores or trace fields to MessageBubble or its child components.",
+        "Do not render a percentage for a score the judge did not produce; unmeasured is absent or 'n/a', never 0%.",
+        "Do not show a chat activity label the backend did not emit as a status node, and do not animate progress the backend did not report.",
+        "Do not restore a permanently lit 'Live' chip; a healthy transport reports nothing.",
+        "Do not add virtualization to MessageList without a measurement that justifies it."
+      ],
+      "revisit_if": [
+        "The backend exposes per-turn token counts or TTFT that a reader (not an operator) can act on.",
+        "A non-admin role is introduced that legitimately needs retrieval scores.",
+        "A measured long thread regresses beyond the 200-message sanity check."
+      ],
+      "evidence": [
+        "frontend/src/features/chat/components/MessageBubble.jsx",
+        "frontend/src/features/chat/components/AnswerSources.jsx",
+        "frontend/src/features/chat/components/AnswerQualitySummary.jsx",
+        "frontend/src/features/chat/components/FeedbackControls.jsx",
+        "frontend/src/features/chat/components/inspector/DeveloperInspector.jsx",
+        "frontend/src/features/chat/utils/answerQuality.js",
+        "frontend/src/features/chat/utils/activityStages.js",
+        "frontend/src/features/chat/components/MessageList.answerSurface.test.jsx",
+        "frontend/src/features/chat/components/MessageList.authorization.test.jsx",
+        "frontend/src/features/chat/components/MessageList.performance.test.jsx"
+      ]
     }
   ]
 }

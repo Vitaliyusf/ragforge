@@ -1,98 +1,130 @@
 'use client'
 
 import { useState } from 'react'
-import { GitBranch, MessageSquareWarning, ThumbsDown, ThumbsUp } from 'lucide-react'
-import Button from '@/components/ui/Button'
+import { ThumbsDown, ThumbsUp } from 'lucide-react'
 
-function statusText(state, defaultLabel) {
-  if (!state || state.status === 'idle') return defaultLabel
-  if (state.status === 'sending') return 'Sending...'
-  if (state.status === 'sent') return 'Sent'
-  return state.error || 'Failed'
-}
+/**
+ * Answer feedback, compact enough to live under every answer.
+ *
+ * The previous version was a bordered panel with two feedback categories and a
+ * free-text note, which dominated the answer it was rating. Flow feedback moved
+ * to the Developer Inspector, where judging the pipeline belongs.
+ *
+ * One rating is one stored event. The backend persists every `answer_feedback`
+ * independently and those events feed the memory threshold, so a single click
+ * must never produce two negative signals.
+ *
+ * A positive rating is therefore sent on click. A negative one opens the
+ * optional detail box first — the one case where the reason is not already
+ * obvious — and the event is sent exactly once, when the reader either sends a
+ * note (carried in the `comment` field the backend already reads) or skips it.
+ */
 
-export default function FeedbackControls({
-  turnId,
-  feedback,
-  onAnswerFeedback,
-  onFlowFeedback,
-}) {
-  const [comment, setComment] = useState('')
+const ANSWER_RATINGS = [
+  { key: 'helpful', icon: ThumbsUp, label: 'Helpful', rating: 'positive' },
+  { key: 'not_helpful', icon: ThumbsDown, label: 'Not helpful', rating: 'negative' },
+]
+
+export default function FeedbackControls({ turnId, feedback, onAnswerFeedback }) {
+  const [detailOpen, setDetailOpen] = useState(false)
+  const [detail, setDetail] = useState('')
+  const [detailSent, setDetailSent] = useState(false)
+
+  if (!turnId || !onAnswerFeedback) return null
+
+  const state = feedback?.answer
+  const chosen = state?.status === 'sent' ? state.payload?.label : null
+  const disabled = state?.status === 'sending'
+
+  const rate = ({ key, rating }) => {
+    // A negative rating waits for the reader's Send or Skip, so the turn
+    // produces one feedback event rather than two.
+    if (key === 'not_helpful') {
+      setDetailOpen(true)
+      return
+    }
+    onAnswerFeedback(turnId, { label: key, rating })
+    setDetailOpen(false)
+    setDetailSent(false)
+  }
+
+  const sendNegative = (comment) => {
+    onAnswerFeedback(turnId, {
+      label: 'not_helpful',
+      rating: 'negative',
+      ...(comment ? { comment } : {}),
+    })
+    setDetailSent(Boolean(comment))
+    setDetailOpen(false)
+    setDetail('')
+  }
+
+  const submitDetail = (event) => {
+    event.preventDefault()
+    sendNegative(detail.trim())
+  }
 
   return (
-    <div className="mt-2 w-full rounded-2xl border border-border p-3">
-      <div className="grid gap-3 md:grid-cols-2">
-        <div>
-          <div className="mb-2 flex items-center gap-2 text-[13px] font-semibold uppercase tracking-wide text-text-muted">
-            <ThumbsUp size={12} />
-            Answer Feedback
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => onAnswerFeedback(turnId, { label: 'helpful', rating: 'positive', comment })}
-              disabled={feedback?.answer?.status === 'sending'}
-              leftIcon={<ThumbsUp size={14} />}
+    <>
+      <div className="flex items-center gap-0.5">
+        {ANSWER_RATINGS.map((option) => {
+          const Icon = option.icon
+          const isChosen = chosen === option.key
+          return (
+            <button
+              key={option.key}
+              type="button"
+              aria-label={option.label}
+              title={option.label}
+              aria-pressed={option.key === 'not_helpful' ? isChosen || detailOpen : isChosen}
+              disabled={disabled}
+              onClick={() => rate(option)}
+              className="rounded-lg p-1.5 text-[var(--fg-soft)] opacity-80 transition-colors hover:bg-[var(--surface-hover)] hover:text-[var(--fg)] hover:opacity-100 disabled:opacity-50 focus-visible:outline-hidden focus-visible:ring-2"
+              style={isChosen ? { color: 'var(--primary)', opacity: 1 } : undefined}
             >
-              Helpful
-            </Button>
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => onAnswerFeedback(turnId, { label: 'not_helpful', rating: 'negative', comment })}
-              disabled={feedback?.answer?.status === 'sending'}
-              leftIcon={<ThumbsDown size={14} />}
-            >
-              Needs work
-            </Button>
-          </div>
-          <div className="mt-2 text-xs text-text-muted">
-            {statusText(feedback?.answer, 'Send answer feedback')}
-          </div>
-        </div>
-
-        <div>
-          <div className="mb-2 flex items-center gap-2 text-[13px] font-semibold uppercase tracking-wide text-text-muted">
-            <GitBranch size={12} />
-            Flow Feedback
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => onFlowFeedback(turnId, { category: 'flow_clear', label: 'clear', comment })}
-              disabled={feedback?.flow?.status === 'sending'}
-              leftIcon={<GitBranch size={14} />}
-            >
-              Clear flow
-            </Button>
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => onFlowFeedback(turnId, { category: 'flow_confusing', label: 'confusing', comment })}
-              disabled={feedback?.flow?.status === 'sending'}
-              leftIcon={<MessageSquareWarning size={14} />}
-            >
-              Confusing flow
-            </Button>
-          </div>
-          <div className="mt-2 text-xs text-text-muted">
-            {statusText(feedback?.flow, 'Send flow feedback')}
-          </div>
-        </div>
+              <Icon size={14} />
+            </button>
+          )
+        })}
+        {state?.status === 'error' ? (
+          <span className="ms-1 text-xs text-[var(--danger)]">{state.error || 'Feedback failed'}</span>
+        ) : null}
+        {state?.status === 'sent' && !detailOpen ? (
+          <span className="ms-1 text-xs text-[var(--fg-soft)]">
+            {detailSent ? 'Thanks — noted' : 'Thanks for the feedback'}
+          </span>
+        ) : null}
       </div>
 
-      <label className="mt-3 block">
-        <span className="mb-1 block text-xs font-medium text-text-muted">Optional note</span>
-        <textarea
-          value={comment}
-          onChange={(event) => setComment(event.target.value)}
-          placeholder="Add a short note for this answer or flow..."
-          className="h-20 w-full resize-none rounded-xl border border-border bg-bg-elevated px-3 py-2 text-[15px] text-text-primary outline-hidden transition focus:border-accent focus:ring-2"
-        />
-      </label>
-    </div>
+      {detailOpen ? (
+        <form onSubmit={submitDetail} className="order-last flex w-full items-center gap-2 pt-1.5">
+          <input
+            type="text"
+            dir="auto"
+            value={detail}
+            onChange={(event) => setDetail(event.target.value)}
+            aria-label="What was wrong with this answer? (optional)"
+            placeholder="What was wrong? (optional)"
+            className="min-w-0 flex-1 rounded-lg border px-2.5 py-1.5 text-[13px] text-[var(--fg)] outline-hidden focus-visible:ring-2"
+            style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}
+          />
+          <button
+            type="submit"
+            disabled={!detail.trim() || disabled}
+            className="rounded-lg px-2.5 py-1.5 text-xs font-medium text-[var(--fg-muted)] transition-colors hover:bg-[var(--surface-hover)] hover:text-[var(--fg)] disabled:opacity-40"
+          >
+            Send
+          </button>
+          <button
+            type="button"
+            onClick={() => sendNegative('')}
+            disabled={disabled}
+            className="rounded-lg px-2 py-1.5 text-xs text-[var(--fg-soft)] transition-colors hover:text-[var(--fg)] disabled:opacity-40"
+          >
+            Skip
+          </button>
+        </form>
+      ) : null}
+    </>
   )
 }
-

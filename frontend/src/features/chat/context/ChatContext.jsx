@@ -265,6 +265,24 @@ export function ChatProvider({ children }) {
     )))
   }, [])
 
+  // Manual rename. The sidebar shows the new title immediately and restores the
+  // previous one if the gateway rejects it, so a failed rename never leaves the
+  // list disagreeing with the server.
+  const renameChat = useCallback(async (chatId, title) => {
+    const nextTitle = title?.trim()
+    if (!chatId || !nextTitle) return
+    const previousTitle = chatsRef.current.find((chat) => chat.id === chatId)?.title
+    setChats((prev) => prev.map((chat) => (chat.id === chatId ? { ...chat, title: nextTitle } : chat)))
+    try {
+      await chatService.updateChatTitle(chatId, nextTitle)
+    } catch (error) {
+      console.error('Rename chat error:', error)
+      if (previousTitle != null) {
+        setChats((prev) => prev.map((chat) => (chat.id === chatId ? { ...chat, title: previousTitle } : chat)))
+      }
+    }
+  }, [])
+
   // Trigger A — name a still-untitled chat from its transcript once it is
   // substantial enough. The backend is idempotent; the local guards just avoid
   // redundant calls on chats that are already named or in flight.
@@ -559,9 +577,11 @@ export function ChatProvider({ children }) {
   const activeTurn = activeConversation.activeTurnId
     ? activeConversation.turnsById[activeConversation.activeTurnId]
     : null
-  // A plain property read: memoising it bought a cache slot and a dependency
-  // check per render and nothing else.
-  const extendedProgress = activeTurn?.mode === 'extended' ? activeTurn.latestStatus : null
+  // The RAG graph emits a `status` event with the real node name for every
+  // mode, so the live stage is shown for quick answers too — not only for deep
+  // research. A plain property read: memoising it bought a cache slot and a
+  // dependency check per render and nothing else.
+  const activityStatus = activeTurn ? activeTurn.latestStatus : null
 
   const value = useMemo(() => ({
     messages: activeConversation.messages,
@@ -581,7 +601,7 @@ export function ChatProvider({ children }) {
     sendingMessage: activeConversation.chatState === 'connecting' || activeConversation.chatState === 'streaming',
     deletingChatIds,
     generatingTitleChatIds,
-    extendedProgress,
+    activityStatus,
     selectChat,
     setSelectedModel,
     setAnswerMode,
@@ -589,6 +609,7 @@ export function ChatProvider({ children }) {
     sendMessage,
     sendAnswerFeedback,
     sendFlowFeedback,
+    renameChat,
     deleteChat,
     loadChats,
   }), [
@@ -608,13 +629,14 @@ export function ChatProvider({ children }) {
     answerMode,
     deletingChatIds,
     generatingTitleChatIds,
-    extendedProgress,
+    activityStatus,
     selectChat,
     setAnswerMode,
     createNewChat,
     sendMessage,
     sendAnswerFeedback,
     sendFlowFeedback,
+    renameChat,
     deleteChat,
     loadChats,
   ])
