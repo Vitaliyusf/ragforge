@@ -203,7 +203,7 @@
         "loadFiles",
         "uploadFiles",
         "deleteFile",
-        "rerunIngestion"
+        "notifyFilesChanged"
       ],
       "notes": "Avoid second file-state/polling implementation."
     },

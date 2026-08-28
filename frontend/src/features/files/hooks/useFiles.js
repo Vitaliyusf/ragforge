@@ -1,7 +1,7 @@
 'use client'
 
 /**
- * Gateway-backed file state hook for upload, review, summary, and re-ingestion UI.
+ * Gateway-backed file state hook for upload, review, and delete actions.
  *
  * Local reducer state tracks optimistic UI transitions. On every successful fetch
  * the file list is also written into Redux (filesSlice) so the Files tab can render
@@ -89,14 +89,24 @@ export function useFiles() {
     }
   }, [reduxDispatch, loadFiles])
 
-  const deleteFile = useCallback(async (fileId) => {
+  /**
+   * Delete one document.
+   *
+   * `refresh: false` is for a caller orchestrating a batch: the reducer still
+   * drops the row optimistically, but the list refetch and the global
+   * `filesChanged` signal are left to the caller to emit once after the whole
+   * batch settles, instead of N times inside the loop.
+   */
+  const deleteFile = useCallback(async (fileId, { refresh = true } = {}) => {
     if (state.deletingFileIds.has(fileId)) return
 
     dispatchState({ type: 'DELETE_START', fileId })
     try {
       await fileService.deleteFile(fileId)
-      reduxDispatch(filesChanged())
-      await loadFiles()
+      if (refresh) {
+        reduxDispatch(filesChanged())
+        await loadFiles()
+      }
     } catch (error) {
       console.error('Error deleting file:', error)
       throw error
@@ -105,43 +115,10 @@ export function useFiles() {
     }
   }, [reduxDispatch, loadFiles, state.deletingFileIds])
 
-  const rerunIngestion = useCallback(async (fileId) => {
-    if (state.reingestingFileIds.has(fileId)) return
-
-    dispatchState({ type: 'REINGEST_START', fileId })
-    try {
-      await fileService.rerunStage(fileId, 'ingestion')
-      await loadFiles()
-    } catch (error) {
-      console.error('Error re-running ingestion:', error)
-      throw error
-    } finally {
-      dispatchState({ type: 'REINGEST_COMPLETE', fileId })
-    }
-  }, [loadFiles, state.reingestingFileIds])
-
-  const openSummary = useCallback(async (fileId) => {
-    // If already cached, just open it
-    if (state.summaryByFileId[fileId]) {
-      dispatchState({ type: 'OPEN_SUMMARY', fileId })
-      return
-    }
-
-    dispatchState({ type: 'SUMMARY_LOADING_START', fileId })
-    try {
-      const data = await fileService.getFileSummary(fileId)
-      dispatchState({ type: 'SUMMARY_SUCCESS', fileId, summary: data })
-    } catch (error) {
-      console.error('Error loading summary:', error)
-      throw error
-    } finally {
-      dispatchState({ type: 'SUMMARY_LOADING_DONE', fileId })
-    }
-  }, [state.summaryByFileId])
-
-  const closeSummary = useCallback(() => {
-    dispatchState({ type: 'CLOSE_SUMMARY' })
-  }, [])
+  /** The one refresh a batch of suppressed operations owes the rest of the app. */
+  const notifyFilesChanged = useCallback(() => {
+    reduxDispatch(filesChanged())
+  }, [reduxDispatch])
 
   const openReview = useCallback(async (fileId) => {
     dispatchState({ type: 'OPEN_REVIEW', fileId })
@@ -190,21 +167,14 @@ export function useFiles() {
     loading: state.loading,
     uploading: state.uploading,
     deletingFileIds: state.deletingFileIds,
-    reingestingFileIds: state.reingestingFileIds,
-    recentUploads: state.recentUploads,
     reviewStatesByFileId: state.reviewStatesByFileId,
     reviewCasesByFileId: state.reviewCasesByFileId,
     reviewErrorsByFileId: state.reviewErrorsByFileId,
-    summaryByFileId: state.summaryByFileId,
-    summaryLoadingFileIds: state.summaryLoadingFileIds,
-    activeSummaryFileId: state.activeSummaryFileId,
     activeReviewFileId: state.activeReviewFileId,
     loadFiles,
     uploadFiles,
     deleteFile,
-    rerunIngestion,
-    openSummary,
-    closeSummary,
+    notifyFilesChanged,
     openReview,
     closeReview,
     submitReviewDecision,

@@ -87,3 +87,36 @@ export function formatDuration(ms) {
   if (ms < 1000) return `${Math.round(ms)} ms`
   return `${(ms / 1000).toFixed(1)} s`
 }
+
+const RELATIVE_UNITS = [
+  { limit: 60_000, divisor: 1000, suffix: 's' },
+  { limit: 3_600_000, divisor: 60_000, suffix: 'm' },
+  { limit: 86_400_000, divisor: 3_600_000, suffix: 'h' },
+  { limit: 2_592_000_000, divisor: 86_400_000, suffix: 'd' },
+]
+
+/**
+ * Format a timestamp as a compact age ("20s ago", "4m ago", "3d ago").
+ *
+ * Built for a dense table column, where an absolute date would cost more
+ * width than it earns. Anything older than a month falls back to a date, and
+ * an unparseable value returns `null` rather than a guess.
+ *
+ * @param {string|number|Date|null} value
+ * @param {Date} [now] injectable clock, so tests do not race the wall clock
+ * @returns {string|null}
+ */
+export function formatRelativeTime(value, now = new Date()) {
+  if (value == null || value === '') return null
+  const date = new Date(value)
+  if (isNaN(date.getTime())) return null
+
+  const elapsed = now.getTime() - date.getTime()
+  if (elapsed < 0) return 'just now'
+  if (elapsed < 5000) return 'just now'
+
+  for (const { limit, divisor, suffix } of RELATIVE_UNITS) {
+    if (elapsed < limit) return `${Math.floor(elapsed / divisor)}${suffix} ago`
+  }
+  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+}

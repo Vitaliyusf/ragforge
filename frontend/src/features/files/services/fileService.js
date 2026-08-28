@@ -20,10 +20,6 @@ class FileService {
     return await upload('/v1/files/upload', formData)
   }
 
-  async getFileSummary(fileId) {
-    return await get(`/v1/files/${fileId}/summary`)
-  }
-
   async getReviewCase(fileId) {
     return await get(`/v1/files/${fileId}/review-case`)
   }
@@ -42,10 +38,6 @@ class FileService {
 
   async deleteFile(fileId) {
     return await del(`/v1/files/${fileId}`)
-  }
-
-  async rerunStage(fileId, stage) {
-    return await post(`/v1/files/${fileId}/rerun?stage=${encodeURIComponent(stage)}`)
   }
 }
 

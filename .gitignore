@@ -87,3 +87,8 @@ htmlcov/
 /backend/CLAUDE.md
 /backend/rag/CLAUDE.md
 /frontend/CLAUDE.md
+
+# Shared Claude enforcement hooks
+!/.claude/settings.json
+!/.claude/hooks/
+!/.claude/hooks/**

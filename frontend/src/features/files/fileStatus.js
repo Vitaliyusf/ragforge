@@ -52,38 +52,17 @@ export function computeEffectiveStatus(file) {
   return topLevel
 }
 
-const STATUS_LABELS = {
-  complete: 'Complete',
-  processing: 'Processing',
-  awaiting_review: 'Awaiting Review',
-  rejected: 'Rejected',
-  error: 'Error',
-  unknown: 'Unknown',
-}
-
-function labelFor(normalized) {
-  return STATUS_LABELS[normalized] ?? normalized.replace(/_/g, ' ')
-}
-
-export function getFileStatusLabel(status) {
-  return labelFor(normalizeFileStatus(status))
-}
-
-export function getEffectiveStatusLabel(file) {
-  return labelFor(computeEffectiveStatus(file))
-}
-
 /**
  * Map a file status onto a shared status tone.
  *
- * This reproduces the badge colours the Files tab already shipped, one for
- * one. `processing` is arguably the `live` tone rather than `warning`, but
- * changing it would repaint the Files list, and that call belongs to
- * FILES-LIST-01 rather than to a foundation refactor.
+ * The Documents table owns its own richer status vocabulary in
+ * `documentModel.js`; this mapping remains for the uploader surface, which
+ * shows the raw lifecycle status of a file it has just handed over.
  */
 const STATUS_TONE_BY_STATE = {
   complete: STATUS_TONES.SUCCESS,
-  processing: STATUS_TONES.WARNING,
+  // Something really is moving, so this is the one tone allowed motion.
+  processing: STATUS_TONES.LIVE,
   awaiting_review: STATUS_TONES.WARNING,
   rejected: STATUS_TONES.DANGER,
   error: STATUS_TONES.DANGER,
@@ -91,10 +70,6 @@ const STATUS_TONE_BY_STATE = {
 
 export function getFileStatusTone(status) {
   return STATUS_TONE_BY_STATE[normalizeFileStatus(status)] ?? STATUS_TONES.NEUTRAL
-}
-
-export function getEffectiveStatusTone(file) {
-  return STATUS_TONE_BY_STATE[computeEffectiveStatus(file)] ?? STATUS_TONES.NEUTRAL
 }
 
 export function hasReviewPending(file) {

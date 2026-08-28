@@ -1,8 +1,8 @@
 /**
  * Local reducer backing the Files tab.
  *
- * Holds the optimistic UI transitions — pending deletes, in-flight re-ingests,
- * open review/summary panels — separately from the fetched file list.
+ * Holds the optimistic UI transitions — pending deletes, the open review
+ * panel — separately from the fetched file list.
  */
 
 import { normalizeFileStatus } from '@/features/files/fileStatus'
@@ -45,20 +45,51 @@ function upsertFile(files, nextFile) {
   return copy
 }
 
+/** Shallow value equality, one level deep into plain objects and arrays. */
+function isEquivalent(a, b) {
+  if (a === b) return true
+  if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) return false
+  if (Array.isArray(a) || Array.isArray(b)) {
+    return Array.isArray(a) && Array.isArray(b)
+      && a.length === b.length
+      && a.every((item, index) => item === b[index])
+  }
+  const keys = Object.keys(a)
+  if (keys.length !== Object.keys(b).length) return false
+  return keys.every((key) => a[key] === b[key])
+}
+
+/**
+ * Replace the list, keeping the object identity of every unchanged record.
+ *
+ * The list is refetched every five seconds. Without this, each poll hands
+ * every row a brand-new object, every memoised row re-renders, and the one
+ * document whose stage actually moved is indistinguishable from the 999 that
+ * did not. Reusing the previous object is what lets `memo` do its job.
+ */
+function mergePreservingIdentity(previousFiles, nextFiles) {
+  const previousById = new Map(previousFiles.map((file) => [file.file_id, file]))
+  return nextFiles.map((file) => {
+    const normalized = normalizeFileRecord(file)
+    const previous = previousById.get(normalized.file_id)
+    if (!previous) return normalized
+
+    const keys = Object.keys(normalized)
+    const unchanged = keys.length === Object.keys(previous).length
+      && keys.every((key) => isEquivalent(previous[key], normalized[key]))
+    return unchanged ? previous : normalized
+  })
+}
+
 export function buildInitialState(cachedFiles) {
   return {
     files: cachedFiles.map(normalizeFileRecord),
     loading: false,
     uploading: false,
     deletingFileIds: new Set(),
-    reingestingFileIds: new Set(),
-    recentUploads: [],
     reviewStatesByFileId: {},
     reviewCasesByFileId: {},
     reviewErrorsByFileId: {},
-    summaryByFileId: {},
-    summaryLoadingFileIds: new Set(),
-    activeSummaryFileId: null,
     activeReviewFileId: null,
   }
 }
@@ -70,7 +101,7 @@ export function filesReducer(state, action) {
 
     case 'LOAD_SUCCESS': {
       const nextReviewStates = { ...state.reviewStatesByFileId }
-      const normalizedFiles = action.files.map(normalizeFileRecord)
+      const normalizedFiles = mergePreservingIdentity(state.files, action.files)
 
       normalizedFiles.forEach((file) => {
         nextReviewStates[file.file_id] = deriveReviewState(file, nextReviewStates[file.file_id])
@@ -107,13 +138,6 @@ export function filesReducer(state, action) {
       return {
         ...state,
         files: upsertFile(state.files, optimisticFile),
-        recentUploads: [
-          {
-            ...optimisticFile,
-            uploadedAt: new Date().toISOString(),
-          },
-          ...state.recentUploads,
-        ].slice(0, 6),
         reviewStatesByFileId: {
           ...state.reviewStatesByFileId,
           [optimisticFile.file_id]: deriveReviewState(optimisticFile),
@@ -138,18 +162,6 @@ export function filesReducer(state, action) {
         deletingFileIds: nextDeleting,
         files: state.files.filter((file) => file.file_id !== action.fileId),
       }
-    }
-
-    case 'REINGEST_START': {
-      const next = new Set(state.reingestingFileIds)
-      next.add(action.fileId)
-      return { ...state, reingestingFileIds: next }
-    }
-
-    case 'REINGEST_COMPLETE': {
-      const next = new Set(state.reingestingFileIds)
-      next.delete(action.fileId)
-      return { ...state, reingestingFileIds: next }
     }
 
     case 'OPEN_REVIEW':
@@ -209,34 +221,6 @@ export function filesReducer(state, action) {
           [action.fileId]: action.nextState,
         },
       }
-
-    case 'SUMMARY_LOADING_START': {
-      const next = new Set(state.summaryLoadingFileIds)
-      next.add(action.fileId)
-      return { ...state, summaryLoadingFileIds: next }
-    }
-
-    case 'SUMMARY_LOADING_DONE': {
-      const next = new Set(state.summaryLoadingFileIds)
-      next.delete(action.fileId)
-      return { ...state, summaryLoadingFileIds: next }
-    }
-
-    case 'SUMMARY_SUCCESS':
-      return {
-        ...state,
-        summaryByFileId: {
-          ...state.summaryByFileId,
-          [action.fileId]: action.summary,
-        },
-        activeSummaryFileId: action.fileId,
-      }
-
-    case 'OPEN_SUMMARY':
-      return { ...state, activeSummaryFileId: action.fileId }
-
-    case 'CLOSE_SUMMARY':
-      return { ...state, activeSummaryFileId: null }
 
     default:
       return state
