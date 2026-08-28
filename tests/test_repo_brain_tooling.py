@@ -73,8 +73,9 @@ def sample_repo(tmp_path):
     tasks = tmp_path / "docs" / "ai" / "tasks"
     tasks.mkdir(parents=True)
     (tasks / "OLD-01.md").write_text("# OLD-01\n", encoding="utf-8")
-    # Agent docs are Git-ignored in the real repository; the brain must still see them.
-    (tmp_path / ".gitignore").write_text("/docs/ai\n", encoding="utf-8")
+    # Only generated indexes are ignored: `docs/ai` itself is repository source,
+    # so Git enumeration alone must surface the task specs.
+    (tmp_path / ".gitignore").write_text("/docs/ai/generated/*.json\n", encoding="utf-8")
     return tmp_path
 
 
@@ -96,9 +97,30 @@ def test_enumeration_excludes_caches_and_generated_output(sample_repo, use_git):
     assert "docs/ai/generated/FILE_INDEX.json" not in found
 
 
-def test_enumeration_force_includes_git_ignored_agent_docs(sample_repo):
-    found = brain_sources.enumerate_sources(sample_repo)
+@pytest.mark.parametrize("use_git", [True, False])
+def test_enumeration_returns_public_agent_docs_without_force_include(sample_repo, use_git):
+    """Git enumeration alone must yield the public AI docs — no force-include list."""
+    assert not hasattr(brain_sources, "FORCE_INCLUDE_DIRS")
+    found = brain_sources.enumerate_sources(sample_repo, use_git=use_git)
     assert "docs/ai/tasks/OLD-01.md" in found
+
+
+def test_repository_public_ai_docs_are_git_visible():
+    """`docs/ai` must be repository source, not local shadow state."""
+    for path in ("docs/ai", "docs/ai/tasks", "docs/ai/RUNTIME_CONTRACT.md"):
+        result = subprocess.run(["git", "check-ignore", "-q", path], cwd=REPO_ROOT)
+        assert result.returncode != 0, f"{path} is Git-ignored but must be repository source"
+    result = subprocess.run(
+        ["git", "check-ignore", "-q", "docs/ai/generated/FILE_INDEX.json"], cwd=REPO_ROOT
+    )
+    assert result.returncode == 0, "generated brain indexes must stay Git-ignored"
+
+
+def test_repository_enumeration_indexes_runtime_contract():
+    """The live repository, enumerated through Git, contains the canonical contract."""
+    found = brain_sources.enumerate_sources(REPO_ROOT)
+    assert "docs/ai/RUNTIME_CONTRACT.md" in found
+    assert brain_sources.forbidden_indexed_paths(found) == []
 
 
 def test_enumeration_excludes_deleted_files(sample_repo):

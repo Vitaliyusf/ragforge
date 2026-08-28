@@ -61,11 +61,6 @@ EXCLUDED_PATH_PREFIXES = (
     "docs/ai/generated/",
 )
 
-# Agent documentation is deliberately Git-ignored in this repository, so plain
-# `git ls-files --others --exclude-standard` would drop the task specs and the
-# public memory the brain exists to index. Walk these explicitly.
-FORCE_INCLUDE_DIRS = ("docs/ai",)
-
 AUTHORITATIVE_PATHS = (
     "AGENTS.md",
     ".python-version",
@@ -145,13 +140,12 @@ def _git_candidates(root: Path) -> list[str] | None:
     return [entry for entry in raw.split("\0") if entry]
 
 
-def _walk_candidates(root: Path, start: Path | None = None) -> list[str]:
+def _walk_candidates(root: Path) -> list[str]:
     """Filesystem fallback that prunes never-source directories while walking."""
-    base = start or root
-    if not base.exists():
+    if not root.exists():
         return []
     found: list[str] = []
-    for dirpath, dirnames, filenames in os.walk(base):
+    for dirpath, dirnames, filenames in os.walk(root):
         dirnames[:] = sorted(name for name in dirnames if not excluded_dir(name))
         current = Path(dirpath)
         rel_dir = current.relative_to(root).as_posix()
@@ -171,12 +165,15 @@ def enumerate_sources(root: Path, use_git: bool = True) -> list[str]:
     never traverses node_modules or virtualenvs. Deleted files are dropped by the
     existence check, and untracked production source is kept so the brain can
     represent an uncommitted task worktree.
+
+    There is no force-include list: what Git reports as repository source is what
+    the brain indexes, so `.gitignore` and the index can never disagree about a
+    tree such as `docs/ai`. The filesystem walk stays as a fallback for
+    environments where Git enumeration is unavailable.
     """
     candidates = _git_candidates(root) if use_git else None
     if candidates is None:
         candidates = _walk_candidates(root)
-    for extra in FORCE_INCLUDE_DIRS:
-        candidates.extend(_walk_candidates(root, root / extra))
 
     seen: set[str] = set()
     for rel in candidates:

@@ -70,9 +70,10 @@ htmlcov/
 # Claude / agent tooling
 .claude/
 CLAUDE.md
-# AI Brain local/generated/private state
-/docs/ai
-/docs/ai/tasks
+# AI Brain generated/private state. `docs/ai` itself is repository source:
+# the canonical runtime contract and the public task specs must be reproducible
+# from Git, not local shadow state. Only generated indexes and private agent
+# memory stay out.
 /docs/ai/generated/*.json
 /.agent-private/
 *.zip
