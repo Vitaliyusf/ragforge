@@ -229,13 +229,19 @@ describe('ChatTab', () => {
     await user.click(await screen.findByRole('button', { name: /Reveal Structured output candidates/i }))
     expect(screen.getByText(/"selected_payload_index": 1/i)).toBeInTheDocument()
 
+    // A negative rating asks for an optional note first and reaches the
+    // transport once, when the reader sends or skips it.
     await user.click(screen.getByRole('button', { name: /Not helpful/i }))
+    expect(socketService.sendFeedback).not.toHaveBeenCalled()
+
+    await user.click(screen.getByRole('button', { name: /^Skip$/ }))
     await waitFor(() => {
       expect(socketService.sendFeedback).toHaveBeenCalledWith(
         'answer_feedback',
         expect.objectContaining({ label: 'not_helpful', rating: 'negative' })
       )
     })
+    expect(socketService.sendFeedback).toHaveBeenCalledTimes(1)
   })
 
   it('sends extended mode requests', async () => {

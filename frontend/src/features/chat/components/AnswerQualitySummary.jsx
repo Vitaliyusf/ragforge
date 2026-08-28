@@ -4,8 +4,9 @@
  * The compact quality state that sits under every answer by default.
  *
  * It carries no identifiers, no model slugs and no raw evaluator payload —
- * those live in the Developer Inspector. An abstention is stated in words
- * rather than as a row of zero percentages.
+ * those live in the Developer Inspector. A turn with nothing behind it states
+ * its answerability in words rather than as a row of zero percentages, and
+ * stops there: no decision is claimed that the backend did not report.
  */
 
 const TONE_COLOR = {
@@ -18,14 +19,11 @@ const TONE_COLOR = {
 export default function AnswerQualitySummary({ quality }) {
   if (!quality) return null
 
-  if (quality.kind === 'abstention') {
+  if (quality.kind === 'unsupported') {
     return (
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[var(--fg-soft)]">
         <span>
           Answerability: <span className="font-medium text-[var(--fg-muted)]">{quality.answerability}</span>
-        </span>
-        <span>
-          Decision: <span className="font-medium text-[var(--fg-muted)]">{quality.decision}</span>
         </span>
       </div>
     )

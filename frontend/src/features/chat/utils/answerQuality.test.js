@@ -15,7 +15,7 @@ describe('answer quality', () => {
         completeness_score: 0.84,
         safety_score: 0.98,
       },
-      sources: [{}, {}, {}],
+      sources: [{ source_name: 'a.pdf' }, { source_name: 'b.pdf' }, { source_name: 'c.pdf' }],
     })
 
     expect(quality.kind).toBe('summary')
@@ -23,32 +23,42 @@ describe('answer quality', () => {
     expect(quality.tone).toBe('success')
   })
 
-  it('prefers the server chunk count over the source array length', () => {
+  it('counts a user-facing source as a document, not as a chunk', () => {
     const quality = buildAnswerQuality({
       review: { verdict: 'pass', groundedness_score: 0.8 },
-      sources: [{}],
-      retrievalSummary: { chunk_count: 5 },
+      sources: [
+        { source_name: 'Handbook.pdf', page: 1 },
+        { source_name: 'Handbook.pdf', page: 2 },
+        { source_name: 'Notes.md' },
+      ],
+      retrievalSummary: { chunk_count: 3 },
     })
 
-    expect(quality.parts).toContain('5 sources')
+    // Three chunks from two documents: the reader is told two sources, and the
+    // chunk count is carried separately for the Developer Inspector.
+    expect(quality.parts).toContain('2 sources')
+    expect(quality.sourceCount).toBe(2)
+    expect(quality.chunkCount).toBe(3)
   })
 
-  it('states answerability instead of zero percentages when nothing was retrieved', () => {
+  it('states answerability without claiming a decision when nothing was retrieved', () => {
     const quality = buildAnswerQuality({
       // The shape a skipped judge produces: floats coerced to zero.
       review: { groundedness_score: 0, completeness_score: 0, safety_score: 0 },
       sources: [],
     })
 
-    expect(quality.kind).toBe('abstention')
+    expect(quality.kind).toBe('unsupported')
     expect(quality.answerability).toBe('No supporting evidence')
-    expect(quality.decision).toBe('Correctly abstained')
+    // No backend field reports an abstention decision, so none is inferred.
+    expect(quality.decision).toBeUndefined()
+    expect(JSON.stringify(quality)).not.toMatch(/abstain/i)
   })
 
-  it('does not claim an abstention when passages were retrieved', () => {
+  it('does not read as unsupported when passages were retrieved', () => {
     const quality = buildAnswerQuality({
       review: { groundedness_score: 0, completeness_score: 0, safety_score: 0 },
-      sources: [{}, {}],
+      sources: [{ source_name: 'a.pdf' }, { source_name: 'b.pdf' }],
     })
 
     expect(quality.kind).toBe('summary')
@@ -58,7 +68,7 @@ describe('answer quality', () => {
   it('flags a failed review', () => {
     const quality = buildAnswerQuality({
       review: { verdict: 'fail', groundedness_score: 0.2 },
-      sources: [{}],
+      sources: [{ source_name: 'a.pdf' }],
     })
 
     expect(quality.tone).toBe('error')

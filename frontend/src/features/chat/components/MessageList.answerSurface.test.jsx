@@ -61,17 +61,28 @@ describe('answer surface', () => {
   it('summarises quality compactly instead of showing evaluator internals', () => {
     renderAnswer()
 
-    expect(screen.getByText('Grounded · 3 sources · Review passed')).toBeInTheDocument()
+    // Three chunks, two documents: the default line speaks of documents.
+    expect(screen.getByText('Grounded · 2 sources · Review passed')).toBeInTheDocument()
     expect(screen.queryByText(/groundedness_score/i)).not.toBeInTheDocument()
     expect(screen.queryByText('chunk-abc')).not.toBeInTheDocument()
   })
 
-  it('states abstention in words rather than as zero percentages', () => {
+  it('states answerability in words without claiming an abstention decision', () => {
     renderAnswer({ sources: [], review: { verdict: null, groundedness_score: 0 } })
 
     expect(screen.getByText('No supporting evidence')).toBeInTheDocument()
-    expect(screen.getByText('Correctly abstained')).toBeInTheDocument()
+    expect(screen.queryByText(/abstain/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Decision:/)).not.toBeInTheDocument()
     expect(screen.queryByText('0%')).not.toBeInTheDocument()
+  })
+
+  it('agrees with the source chips on how many sources there are', () => {
+    renderAnswer()
+
+    // One count, one meaning: several chunks from one document are one source.
+    const counts = screen.getAllByText('2 sources', { exact: false })
+    expect(counts.length).toBeGreaterThan(0)
+    expect(screen.queryByText('3 sources', { exact: false })).not.toBeInTheDocument()
   })
 
   it('names sources by document and counts them', () => {
@@ -100,20 +111,42 @@ describe('answer surface', () => {
     expect(screen.getByText('Onboarding notes.md')).toBeInTheDocument()
   })
 
-  it('sends a rating immediately and asks for detail only on a negative one', () => {
+  it('sends a positive rating immediately and exactly once', () => {
     const onAnswerFeedback = vi.fn()
     renderAnswer({ onAnswerFeedback })
 
     fireEvent.click(screen.getByRole('button', { name: 'Helpful' }))
+
+    expect(onAnswerFeedback).toHaveBeenCalledTimes(1)
     expect(onAnswerFeedback).toHaveBeenCalledWith('turn-1', { label: 'helpful', rating: 'positive' })
     expect(screen.queryByLabelText(/What was wrong/i)).not.toBeInTheDocument()
+  })
+
+  it('stores nothing on the negative click alone', () => {
+    const onAnswerFeedback = vi.fn()
+    renderAnswer({ onAnswerFeedback })
 
     fireEvent.click(screen.getByRole('button', { name: 'Not helpful' }))
-    expect(onAnswerFeedback).toHaveBeenCalledWith('turn-1', { label: 'not_helpful', rating: 'negative' })
+
+    // Every answer_feedback event is persisted and feeds the memory threshold,
+    // so the negative signal waits for Send or Skip.
+    expect(onAnswerFeedback).not.toHaveBeenCalled()
     expect(screen.getByLabelText(/What was wrong/i)).toBeInTheDocument()
   })
 
-  it('sends optional detail over the same feedback transport', () => {
+  it('sends one negative event when the detail is skipped', () => {
+    const onAnswerFeedback = vi.fn()
+    renderAnswer({ onAnswerFeedback })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Not helpful' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Skip' }))
+
+    expect(onAnswerFeedback).toHaveBeenCalledTimes(1)
+    expect(onAnswerFeedback).toHaveBeenCalledWith('turn-1', { label: 'not_helpful', rating: 'negative' })
+    expect(screen.queryByLabelText(/What was wrong/i)).not.toBeInTheDocument()
+  })
+
+  it('sends one negative event carrying the optional detail', () => {
     const onAnswerFeedback = vi.fn()
     renderAnswer({ onAnswerFeedback })
 
@@ -122,7 +155,8 @@ describe('answer surface', () => {
     fireEvent.change(input, { target: { value: 'It missed the pricing table' } })
     fireEvent.click(screen.getByRole('button', { name: 'Send' }))
 
-    expect(onAnswerFeedback).toHaveBeenLastCalledWith('turn-1', {
+    expect(onAnswerFeedback).toHaveBeenCalledTimes(1)
+    expect(onAnswerFeedback).toHaveBeenCalledWith('turn-1', {
       label: 'not_helpful',
       rating: 'negative',
       comment: 'It missed the pricing table',

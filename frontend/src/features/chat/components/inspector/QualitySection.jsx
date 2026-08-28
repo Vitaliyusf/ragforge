@@ -15,7 +15,7 @@ const VERDICT_COLOR = {
  *
  * When the judge did not run, its scores arrive as zeros; showing them as
  * `0%` would read as a damning evaluation of an answer nobody evaluated, so an
- * unmeasured review states the answerability decision instead.
+ * unmeasured review states answerability instead.
  */
 export default function QualitySection({ review, sources, retrievalSummary, debugPayloads = {} }) {
   const safetyBlocks = [
@@ -75,8 +75,8 @@ export default function QualitySection({ review, sources, retrievalSummary, debu
         </div>
       ) : (
         <div className="rounded-lg border border-border bg-bg-tertiary px-3 py-2 text-[13px] text-text-muted">
-          {quality.kind === 'abstention'
-            ? `Answerability: ${quality.answerability} · Decision: ${quality.decision}`
+          {quality.kind === 'unsupported'
+            ? `Answerability: ${quality.answerability}`
             : 'The judge did not score this turn.'}
         </div>
       )}

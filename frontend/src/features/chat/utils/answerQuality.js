@@ -8,11 +8,19 @@
  *      so a missing measurement and a genuinely terrible answer look identical
  *      in the payload. Rendering `0%` for the first case is a lie, so an
  *      all-zero review with nothing retrieved is treated as *unmeasured*.
- *   2. A turn that retrieved nothing and declined to answer is not a low-scoring
- *      answer — it is a correct abstention, and it is described that way.
+ *   2. Nothing retrieved plus nothing measured says only that the answer has no
+ *      supporting evidence. Whether the model *decided* to abstain is a
+ *      judgement the backend does not currently report, so it is not inferred
+ *      here — answerability is stated, and the decision is left unclaimed.
+ *
+ * User-facing counts speak of documents; chunk counts stay in the inspector.
+ * See `./answerSources` for that grouping, which this module shares with the
+ * source chips so the two can never disagree.
  *
  * Every function is pure so the presentation can be tested without a DOM.
  */
+
+import { countChunks, countDocumentSources } from './answerSources'
 
 export const REVIEW_SCORE_KEYS = ['groundedness_score', 'completeness_score', 'safety_score']
 
@@ -47,12 +55,6 @@ export function hasMeasuredScores(review) {
   return values.length > 0 && values.some((value) => value > 0)
 }
 
-/** How many passages backed this answer, preferring the server's own count. */
-export function countSources(sources, retrievalSummary) {
-  if (Number.isFinite(retrievalSummary?.chunk_count)) return retrievalSummary.chunk_count
-  return Array.isArray(sources) ? sources.length : 0
-}
-
 function groundingLabel(score) {
   if (!Number.isFinite(score) || score <= 0) return null
   if (score >= 0.75) return 'Grounded'
@@ -77,24 +79,28 @@ function summaryTone(verdict, groundedness) {
 /**
  * The compact quality state shown under an answer by default.
  *
- * Returns either an `abstention` shape — which states answerability and the
- * decision in words — or a `summary` shape whose `parts` are joined with
- * middots, e.g. `Grounded · 3 sources · Review passed`. `parts` is empty when
- * nothing was measured, and the caller renders nothing at all in that case.
+ * Returns either an `unsupported` shape — which states answerability in words
+ * and claims nothing about intent — or a `summary` shape whose `parts` are
+ * joined with middots, e.g. `Grounded · 2 sources · Review passed`. `parts` is
+ * empty when nothing was measured, and the caller renders nothing at all in
+ * that case. `sourceCount` counts documents; `chunkCount` counts passages.
  *
  * @param {{review?: object|null, sources?: Array|null, retrievalSummary?: object|null}} input
  */
 export function buildAnswerQuality({ review, sources, retrievalSummary } = {}) {
-  const sourceCount = countSources(sources, retrievalSummary)
+  const sourceCount = countDocumentSources(sources)
+  const chunkCount = countChunks(sources, retrievalSummary)
   const measured = hasMeasuredScores(review)
 
-  if (sourceCount === 0 && !measured) {
+  if (sourceCount === 0 && chunkCount === 0 && !measured) {
     return {
-      kind: 'abstention',
+      kind: 'unsupported',
       tone: 'neutral',
       sourceCount: 0,
+      chunkCount: 0,
+      measured: false,
       answerability: 'No supporting evidence',
-      decision: 'Correctly abstained',
+      parts: [],
     }
   }
 
@@ -112,6 +118,7 @@ export function buildAnswerQuality({ review, sources, retrievalSummary } = {}) {
     kind: 'summary',
     tone: summaryTone(verdict, groundedness),
     sourceCount,
+    chunkCount,
     verdict,
     groundedness,
     measured,

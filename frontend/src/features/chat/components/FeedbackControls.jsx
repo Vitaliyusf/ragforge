@@ -10,11 +10,14 @@ import { ThumbsDown, ThumbsUp } from 'lucide-react'
  * free-text note, which dominated the answer it was rating. Flow feedback moved
  * to the Developer Inspector, where judging the pipeline belongs.
  *
- * A rating is sent the moment it is clicked, so the signal is never lost while
- * someone decides whether to explain. The detail box appears only after a
- * negative rating — the one case where the reason is not already obvious — and
- * sending it emits a second `answer_feedback` over the same transport, with the
- * note in the `comment` field the backend already reads.
+ * One rating is one stored event. The backend persists every `answer_feedback`
+ * independently and those events feed the memory threshold, so a single click
+ * must never produce two negative signals.
+ *
+ * A positive rating is therefore sent on click. A negative one opens the
+ * optional detail box first — the one case where the reason is not already
+ * obvious — and the event is sent exactly once, when the reader either sends a
+ * note (carried in the `comment` field the backend already reads) or skips it.
  */
 
 const ANSWER_RATINGS = [
@@ -34,19 +37,31 @@ export default function FeedbackControls({ turnId, feedback, onAnswerFeedback })
   const disabled = state?.status === 'sending'
 
   const rate = ({ key, rating }) => {
+    // A negative rating waits for the reader's Send or Skip, so the turn
+    // produces one feedback event rather than two.
+    if (key === 'not_helpful') {
+      setDetailOpen(true)
+      return
+    }
     onAnswerFeedback(turnId, { label: key, rating })
-    setDetailOpen(key === 'not_helpful')
-    if (key !== 'not_helpful') setDetailSent(false)
+    setDetailOpen(false)
+    setDetailSent(false)
   }
 
-  const sendDetail = (event) => {
-    event.preventDefault()
-    const comment = detail.trim()
-    if (!comment) return
-    onAnswerFeedback(turnId, { label: 'not_helpful', rating: 'negative', comment })
-    setDetailSent(true)
+  const sendNegative = (comment) => {
+    onAnswerFeedback(turnId, {
+      label: 'not_helpful',
+      rating: 'negative',
+      ...(comment ? { comment } : {}),
+    })
+    setDetailSent(Boolean(comment))
     setDetailOpen(false)
     setDetail('')
+  }
+
+  const submitDetail = (event) => {
+    event.preventDefault()
+    sendNegative(detail.trim())
   }
 
   return (
@@ -61,7 +76,7 @@ export default function FeedbackControls({ turnId, feedback, onAnswerFeedback })
               type="button"
               aria-label={option.label}
               title={option.label}
-              aria-pressed={isChosen}
+              aria-pressed={option.key === 'not_helpful' ? isChosen || detailOpen : isChosen}
               disabled={disabled}
               onClick={() => rate(option)}
               className="rounded-lg p-1.5 text-[var(--fg-soft)] opacity-80 transition-colors hover:bg-[var(--surface-hover)] hover:text-[var(--fg)] hover:opacity-100 disabled:opacity-50 focus-visible:outline-hidden focus-visible:ring-2"
@@ -82,7 +97,7 @@ export default function FeedbackControls({ turnId, feedback, onAnswerFeedback })
       </div>
 
       {detailOpen ? (
-        <form onSubmit={sendDetail} className="order-last flex w-full items-center gap-2 pt-1.5">
+        <form onSubmit={submitDetail} className="order-last flex w-full items-center gap-2 pt-1.5">
           <input
             type="text"
             dir="auto"
@@ -95,15 +110,16 @@ export default function FeedbackControls({ turnId, feedback, onAnswerFeedback })
           />
           <button
             type="submit"
-            disabled={!detail.trim()}
+            disabled={!detail.trim() || disabled}
             className="rounded-lg px-2.5 py-1.5 text-xs font-medium text-[var(--fg-muted)] transition-colors hover:bg-[var(--surface-hover)] hover:text-[var(--fg)] disabled:opacity-40"
           >
             Send
           </button>
           <button
             type="button"
-            onClick={() => { setDetailOpen(false); setDetail('') }}
-            className="rounded-lg px-2 py-1.5 text-xs text-[var(--fg-soft)] transition-colors hover:text-[var(--fg)]"
+            onClick={() => sendNegative('')}
+            disabled={disabled}
+            className="rounded-lg px-2 py-1.5 text-xs text-[var(--fg-soft)] transition-colors hover:text-[var(--fg)] disabled:opacity-40"
           >
             Skip
           </button>

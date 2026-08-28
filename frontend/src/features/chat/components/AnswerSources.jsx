@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { FileText } from 'lucide-react'
 import { AnimatePresence, motion } from 'framer-motion'
+import { groupSourcesByDocument } from '@/features/chat/utils/answerSources'
 
 /**
  * The documents an answer was built from, as compact chips.
@@ -13,39 +14,12 @@ import { AnimatePresence, motion } from 'framer-motion'
  * and chunk IDs stay in the Developer Inspector where they belong. A chip with
  * nothing readable behind it is not clickable at all, so the affordance never
  * promises detail the turn does not carry.
+ *
+ * The grouping itself lives in `utils/answerSources`, shared with the quality
+ * line above so both surfaces count the same thing.
  */
 
 const MAX_VISIBLE = 4
-
-function sourceName(source, index) {
-  return source?.source_name || source?.source || source?.filename || source?.title || `Source ${index + 1}`
-}
-
-function excerptOf(source) {
-  const text = source?.text_preview || source?.text
-  return typeof text === 'string' && text.trim() ? text.trim() : null
-}
-
-/** Group retrieved passages by the document they came from, preserving order. */
-function groupSources(sources) {
-  const groups = []
-  const byName = new Map()
-
-  for (const [index, source] of sources.entries()) {
-    const name = sourceName(source, index)
-    let group = byName.get(name)
-    if (!group) {
-      group = { name, passages: [] }
-      byName.set(name, group)
-      groups.push(group)
-    }
-    const excerpt = excerptOf(source)
-    const page = source?.page ?? null
-    if (excerpt || page != null) group.passages.push({ page, excerpt })
-  }
-
-  return groups
-}
 
 export default function AnswerSources({ sources }) {
   const [openName, setOpenName] = useState(null)
@@ -53,7 +27,7 @@ export default function AnswerSources({ sources }) {
 
   if (!Array.isArray(sources) || sources.length === 0) return null
 
-  const groups = groupSources(sources)
+  const groups = groupSourcesByDocument(sources)
   const visible = showAll ? groups : groups.slice(0, MAX_VISIBLE)
   const overflow = groups.length - visible.length
   const open = groups.find((group) => group.name === openName && group.passages.length) || null

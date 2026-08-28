@@ -32,14 +32,15 @@ export default function OverviewSection({
     mode ? { label: 'Mode', value: mode === 'extended' ? 'Deep research' : 'Quick answer' } : null,
     answeredAt ? { label: 'Answered', value: answeredAt } : null,
     { label: 'Sources', value: quality.sourceCount },
+    { label: 'Chunks', value: quality.chunkCount },
     Number.isFinite(answerLength) ? { label: 'Answer length', value: `${answerLength} chars` } : null,
   ].filter(Boolean)
 
   return (
     <div className="space-y-3">
       <div className="rounded-lg border border-border bg-bg-tertiary px-3 py-2.5 text-[13px] text-text-secondary">
-        {quality.kind === 'abstention'
-          ? `Answerability: ${quality.answerability} · Decision: ${quality.decision}`
+        {quality.kind === 'unsupported'
+          ? `Answerability: ${quality.answerability}`
           : (quality.parts.join(' · ') || 'No quality signal was recorded for this turn.')}
       </div>
 
