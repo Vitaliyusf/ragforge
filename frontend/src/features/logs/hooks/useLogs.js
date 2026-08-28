@@ -1,7 +1,7 @@
 /** Custom hook for log viewing */
 'use client'
 
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import { useState, useEffect, useEffectEvent, useCallback, useMemo } from 'react'
 import logService from '@/features/logs/services/logService'
 import { detectLogSeverity } from '@/lib/formatting/logs'
 
@@ -15,25 +15,17 @@ export function useLogs(
   const services = ['gateway', 'files', 'embedding', 'llm_agent', 'memory', 'rag', 'reranker', 'vector_db']
   const [logs, setLogs] = useState({})
   const [loading, setLoading] = useState(false)
-  const isMountedRef = useRef(true)
-
-  useEffect(() => {
-    isMountedRef.current = true
-    return () => { isMountedRef.current = false }
-  }, [])
 
   const fetchLogs = useCallback(async (service = null) => {
     setLoading(true)
     try {
       const serviceToFetch = service || selectedServices[0]
       const data = await logService.getLogs(serviceToFetch, lines)
-      if (!isMountedRef.current) return
       setLogs(prev => ({
         ...prev,
         [serviceToFetch]: data
       }))
     } catch (error) {
-      if (!isMountedRef.current) return
       console.error('Error fetching logs:', error)
       setLogs(prev => ({
         ...prev,
@@ -44,7 +36,7 @@ export function useLogs(
         }
       }))
     } finally {
-      if (isMountedRef.current) setLoading(false)
+      setLoading(false)
     }
   }, [selectedServices, lines])
 
@@ -59,17 +51,15 @@ export function useLogs(
         }))
       )
       const results = await Promise.all(promises)
-      if (!isMountedRef.current) return
       const newLogs = {}
       results.forEach((data, index) => {
         newLogs[selectedServices[index]] = data
       })
       setLogs(prev => ({ ...prev, ...newLogs }))
     } catch (error) {
-      if (!isMountedRef.current) return
       console.error('Error fetching logs:', error)
     } finally {
-      if (isMountedRef.current) setLoading(false)
+      setLoading(false)
     }
   }, [selectedServices, lines])
 
@@ -77,13 +67,11 @@ export function useLogs(
     setLoading(true)
     try {
       const data = await logService.getAllLogs(lines)
-      if (!isMountedRef.current) return
       setLogs(data)
     } catch (error) {
-      if (!isMountedRef.current) return
       console.error('Error fetching all logs:', error)
     } finally {
-      if (isMountedRef.current) setLoading(false)
+      setLoading(false)
     }
   }, [lines])
 
@@ -91,16 +79,23 @@ export function useLogs(
     if (selectedServices && selectedServices.length > 0) {
       fetchSelectedServicesLogs()
     }
-  }, [selectedServices, lines, fetchSelectedServicesLogs])
+    // `fetchSelectedServicesLogs` already closes over `selectedServices` and
+    // `lines`; listing them again only duplicated the trigger.
+  }, [fetchSelectedServicesLogs, selectedServices])
+
+  // The poll always calls the newest fetcher, but is not *reactive* to it: the
+  // 2s timer now belongs to `autoRefresh` alone, so changing the service
+  // selection or the line count no longer tears the interval down and starts a
+  // fresh one (which reset the phase and could double-fetch on the seam).
+  const pollLogs = useEffectEvent(() => {
+    fetchSelectedServicesLogs()
+  })
 
   useEffect(() => {
-    if (autoRefresh) {
-      const interval = setInterval(() => {
-        fetchSelectedServicesLogs()
-      }, 2000)
-      return () => clearInterval(interval)
-    }
-  }, [autoRefresh, selectedServices, lines, fetchSelectedServicesLogs])
+    if (!autoRefresh) return undefined
+    const interval = setInterval(() => pollLogs(), 2000)
+    return () => clearInterval(interval)
+  }, [autoRefresh])
 
   const filteredLogs = useMemo(() => {
     const result = []
