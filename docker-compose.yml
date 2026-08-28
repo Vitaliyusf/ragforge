@@ -1,6 +1,31 @@
 name: ${COMPOSE_PROJECT_NAME:-ragforge}
 
+x-runtime-security: &runtime-security
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+
 services:
+  volume_permissions:
+    image: alpine:3.23
+    # Migration-only root exception: existing named volumes may contain files
+    # created by the former root application images. This one-shot service has
+    # only CAP_CHOWN and gives the fixed application UID ownership in place.
+    user: "0:0"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+    command: ["chown", "-R", "10001:10001", "/volumes/logs", "/volumes/uploads"]
+    volumes:
+      - logs_data:/volumes/logs
+      - uploads_data:/volumes/uploads
+    network_mode: none
+    restart: "no"
+
   mongodb:
     image: ${MONGODB_IMAGE:-mongo:7}
     environment:
@@ -53,6 +78,7 @@ services:
     networks: [messaging]
 
   qdrant:
+    <<: *runtime-security
     image: ${QDRANT_IMAGE:-qdrant/qdrant:v1.18.2-unprivileged}
     environment:
       QDRANT__SERVICE__API_KEY: ${QDRANT_API_KEY:?Set QDRANT_API_KEY}
@@ -68,7 +94,12 @@ services:
     networks: [data]
 
   vllm:
+    <<: *runtime-security
     image: ${VLLM_IMAGE:-vllm/vllm-openai:v0.27.1}
+    # Root is retained only for the upstream GPU runtime and its /root cache
+    # contract. All Linux capabilities are still dropped and privilege
+    # escalation is disabled.
+    user: "0:0"
     volumes:
       - hf_cache:/root/.cache/huggingface
     environment:
@@ -150,6 +181,7 @@ services:
     networks: [messaging]
 
   llm_agent:
+    <<: *runtime-security
     build:
       context: .
       dockerfile: backend/llm_agent/Dockerfile
@@ -182,6 +214,8 @@ services:
       LOG_DIR: /app/logs
       CONFIG_FILE: /app/config.json
     depends_on:
+      volume_permissions:
+        condition: service_completed_successfully
       rabbitmq:
         condition: service_healthy
       vllm:
@@ -198,6 +232,7 @@ services:
     networks: [messaging, ai]
 
   memory:
+    <<: *runtime-security
     build:
       context: .
       dockerfile: backend/memory/Dockerfile
@@ -216,6 +251,8 @@ services:
     volumes:
       - logs_data:/app/logs
     depends_on:
+      volume_permissions:
+        condition: service_completed_successfully
       rabbitmq:
         condition: service_healthy
       mongodb:
@@ -234,6 +271,7 @@ services:
     networks: [messaging, data, ai]
 
   files:
+    <<: *runtime-security
     build:
       context: .
       dockerfile: backend/files/Dockerfile
@@ -256,6 +294,8 @@ services:
       - uploads_data:/app/uploads
       - logs_data:/app/logs
     depends_on:
+      volume_permissions:
+        condition: service_completed_successfully
       rabbitmq:
         condition: service_healthy
       kafka:
@@ -272,6 +312,7 @@ services:
     networks: [messaging, data]
 
   embedding:
+    <<: *runtime-security
     build:
       context: .
       dockerfile: backend/embedding/Dockerfile
@@ -304,6 +345,8 @@ services:
       retries: 30
       start_period: 20s
     depends_on:
+      volume_permissions:
+        condition: service_completed_successfully
       rabbitmq:
         condition: service_healthy
       kafka:
@@ -314,6 +357,7 @@ services:
     networks: [messaging, embedding_egress]
 
   vector_db:
+    <<: *runtime-security
     build:
       context: .
       dockerfile: backend/vector_db/Dockerfile
@@ -335,6 +379,8 @@ services:
     volumes:
       - logs_data:/app/logs
     depends_on:
+      volume_permissions:
+        condition: service_completed_successfully
       rabbitmq:
         condition: service_healthy
       kafka:
@@ -351,6 +397,7 @@ services:
     networks: [messaging, data]
 
   rag:
+    <<: *runtime-security
     image: ${RAGFORGE_IMAGE_TAG:-ragforge-rag:local}
     build:
       context: .
@@ -417,6 +464,8 @@ services:
       GENERATION_REQUEST_TIMEOUT: ${RAG_GENERATION_REQUEST_TIMEOUT:-120}
       EVALUATION_REQUEST_TIMEOUT: ${RAG_EVALUATION_REQUEST_TIMEOUT:-75}
     depends_on:
+      volume_permissions:
+        condition: service_completed_successfully
       rabbitmq:
         condition: service_healthy
       embedding:
@@ -441,6 +490,7 @@ services:
     networks: [edge, messaging, data]
 
   gateway:
+    <<: *runtime-security
     build:
       context: .
       dockerfile: backend/gateway/Dockerfile
@@ -469,6 +519,8 @@ services:
       SHORT_TIMEOUT: ${GATEWAY_SHORT_TIMEOUT:-30}
       PROMETHEUS_URL: ${PROMETHEUS_URL:-http://prometheus:9090}
     depends_on:
+      volume_permissions:
+        condition: service_completed_successfully
       rabbitmq:
         condition: service_healthy
       llm_agent:
@@ -511,6 +563,7 @@ services:
     networks: [messaging, ai]
 
   frontend:
+    <<: *runtime-security
     build:
       context: .
       dockerfile: frontend/Dockerfile

@@ -26,6 +26,15 @@ services:
 
   caddy:
     image: caddy:2.11.4-alpine
+    # Root is retained for ports 80/443 and the official /data and /config
+    # volume contract. NET_BIND_SERVICE is its only Linux capability.
+    user: "0:0"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
     environment:
       APP_DOMAIN: ${APP_DOMAIN:?Set APP_DOMAIN}
     ports:

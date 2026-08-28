@@ -12,10 +12,17 @@ COPY backend/llm_agent/requirements.txt /tmp/requirements.txt
 RUN uv pip install --system --no-cache -r /tmp/requirements-base.txt \
     && uv pip install --system --no-cache -r /tmp/requirements.txt
 
-COPY backend/shared /app/shared
-COPY backend/llm_agent /app
+RUN groupadd --gid 10001 app \
+    && useradd --no-log-init --uid 10001 --gid app --create-home app
 
-RUN chmod +x /app/entrypoint.sh 2>/dev/null || true
+COPY --chown=app:app backend/shared /app/shared
+COPY --chown=app:app backend/llm_agent /app
+
+RUN chmod +x /app/entrypoint.sh \
+    && mkdir -p /app/logs \
+    && chown -R app:app /app/logs
+
+USER app:app
 
 EXPOSE 8001
 
