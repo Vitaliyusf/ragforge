@@ -6,6 +6,7 @@ from datetime import datetime
 
 from app.db.interfaces import IChatRepository, IMessageRepository
 from app.config import MemoryConfig
+from app.core.errors import raise_database_failure
 
 
 class SQLiteChatRepository(IChatRepository):
@@ -67,8 +68,8 @@ class SQLiteChatRepository(IChatRepository):
             conn.commit()
             conn.close()
             return True
-        except Exception:
-            return False
+        except Exception as exc:
+            raise_database_failure("create_chat", exc)
     
     def get_all(self) -> List[Dict[str, Any]]:
         """Get all chats."""
@@ -86,8 +87,8 @@ class SQLiteChatRepository(IChatRepository):
                 })
             conn.close()
             return chats
-        except Exception:
-            return []
+        except Exception as exc:
+            raise_database_failure("get_all_chats", exc)
     
     def delete(self, chat_id: str) -> bool:
         """Delete a chat."""
@@ -97,9 +98,9 @@ class SQLiteChatRepository(IChatRepository):
             cursor.execute("DELETE FROM chats WHERE id = ?", (chat_id,))
             conn.commit()
             conn.close()
-            return True
-        except Exception:
-            return False
+            return cursor.rowcount > 0
+        except Exception as exc:
+            raise_database_failure("delete_chat", exc)
     
     def update_timestamp(self, chat_id: str, timestamp: str) -> bool:
         """Update chat's updated_at timestamp."""
@@ -112,9 +113,24 @@ class SQLiteChatRepository(IChatRepository):
             )
             conn.commit()
             conn.close()
-            return True
-        except Exception:
-            return False
+            return cursor.rowcount > 0
+        except Exception as exc:
+            raise_database_failure("update_chat_timestamp", exc)
+
+    def update_title(self, chat_id: str, title: str) -> bool:
+        """Update a chat title, returning false when the chat is absent."""
+        try:
+            conn = self._get_connection()
+            cursor = conn.cursor()
+            cursor.execute(
+                "UPDATE chats SET title = ?, updated_at = ? WHERE id = ?",
+                (title, datetime.now().isoformat(), chat_id),
+            )
+            conn.commit()
+            conn.close()
+            return cursor.rowcount > 0
+        except Exception as exc:
+            raise_database_failure("update_chat_title", exc)
 
 
 class SQLiteMessageRepository(IMessageRepository):
@@ -140,8 +156,8 @@ class SQLiteMessageRepository(IMessageRepository):
             conn.commit()
             conn.close()
             return True
-        except Exception:
-            return False
+        except Exception as exc:
+            raise_database_failure("create_message", exc)
     
     def get_by_chat_id(self, chat_id: str) -> List[Dict[str, Any]]:
         """Get all messages for a chat."""
@@ -162,8 +178,8 @@ class SQLiteMessageRepository(IMessageRepository):
                 })
             conn.close()
             return messages
-        except Exception:
-            return []
+        except Exception as exc:
+            raise_database_failure("get_messages", exc)
     
     def delete_by_chat_id(self, chat_id: str) -> bool:
         """Delete all messages for a chat."""
@@ -173,6 +189,6 @@ class SQLiteMessageRepository(IMessageRepository):
             cursor.execute("DELETE FROM messages WHERE chat_id = ?", (chat_id,))
             conn.commit()
             conn.close()
-            return True
-        except Exception:
-            return False
+            return cursor.rowcount > 0
+        except Exception as exc:
+            raise_database_failure("delete_messages", exc)

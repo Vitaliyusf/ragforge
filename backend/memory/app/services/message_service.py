@@ -3,7 +3,7 @@ from typing import List, Dict, Any
 from datetime import datetime
 from pymongo.collection import Collection
 
-from app.core.errors import DatabaseError
+from app.core.errors import ChatNotFoundError, raise_database_failure
 from app.core.logging_config import ServiceLogger
 from app.db.session import get_messages_collection
 from app.services.chat_service import ChatService
@@ -34,8 +34,7 @@ class MessageService:
             # Ensure chat exists
             try:
                 self.chat_service.get_chat(chat_id)
-            except Exception:
-                # Create chat if it doesn't exist
+            except ChatNotFoundError:
                 self.chat_service.create_chat(chat_id, "New Chat")
             
             collection = self._get_collection()
@@ -56,9 +55,9 @@ class MessageService:
             
             self.logger.log("message_service:add", "Message added", {"message_id": message_id, "chat_id": chat_id})
             return message_doc
-        except Exception as e:
-            self.logger.log("message_service:add", "Error adding message", {"message_id": message_id, "error": str(e)}, "E")
-            raise DatabaseError(f"Failed to add message: {e}")
+        except Exception as exc:
+            self.logger.log("message_service:add", "Error adding message", {"message_id": message_id, "error": str(exc)}, "E")
+            raise_database_failure("add_message", exc)
     
     def get_messages(self, chat_id: str) -> List[Dict[str, Any]]:
         """Get all messages for a chat."""
@@ -71,9 +70,9 @@ class MessageService:
             
             self.logger.log("message_service:get", "Retrieved messages", {"chat_id": chat_id, "count": len(messages)})
             return messages
-        except Exception as e:
-            self.logger.log("message_service:get", "Error retrieving messages", {"chat_id": chat_id, "error": str(e)}, "E")
-            raise DatabaseError(f"Failed to retrieve messages: {e}")
+        except Exception as exc:
+            self.logger.log("message_service:get", "Error retrieving messages", {"chat_id": chat_id, "error": str(exc)}, "E")
+            raise_database_failure("get_messages", exc)
     
     def delete_messages_by_chat(self, chat_id: str) -> bool:
         """Delete all messages for a chat."""
@@ -83,6 +82,6 @@ class MessageService:
             
             self.logger.log("message_service:delete", "Messages deleted", {"chat_id": chat_id, "count": result.deleted_count})
             return result.deleted_count > 0
-        except Exception as e:
-            self.logger.log("message_service:delete", "Error deleting messages", {"chat_id": chat_id, "error": str(e)}, "E")
-            raise DatabaseError(f"Failed to delete messages: {e}")
+        except Exception as exc:
+            self.logger.log("message_service:delete", "Error deleting messages", {"chat_id": chat_id, "error": str(exc)}, "E")
+            raise_database_failure("delete_messages", exc)

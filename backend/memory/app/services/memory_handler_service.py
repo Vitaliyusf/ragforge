@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
 from app.core.config import settings
-from app.core.errors import ChatNotFoundError, ServiceException
+from app.core.errors import ChatNotFoundError, ServiceException, public_service_error
 from app.core.logging_config import ServiceLogger
 from app.services.chat_exit_service import ChatExitService
 from app.services.chat_service import ChatService
@@ -215,8 +215,9 @@ class MemoryHandlerService:
         )
         return message
 
-    def _send_error(self, request: Dict[str, Any], error_message: str) -> Optional[Dict[str, Any]]:
+    def _send_error(self, request: Dict[str, Any], error: str | Exception) -> Optional[Dict[str, Any]]:
         """Build and return a canonical error reply envelope."""
+        error_payload = public_service_error(error)
         message = {
             "message_id": str(uuid.uuid4()),
             "message_type": "reply",
@@ -229,7 +230,7 @@ class MemoryHandlerService:
             "timestamp": self._now_iso(),
             "success": False,
             "payload": {},
-            "error": {"message": error_message},
+            "error": error_payload,
         }
         self.logger.log(
             "handler:send_error",
@@ -238,7 +239,7 @@ class MemoryHandlerService:
                 "correlation_id": request.get("correlation_id"),
                 "trace_id": request.get("trace_id"),
                 "action": request.get("action"),
-                "error": error_message,
+                "error": error_payload["message"],
             },
         )
         return message
@@ -349,7 +350,7 @@ class MemoryHandlerService:
                 },
                 "E",
             )
-            return self._send_error(error_request, str(exc))
+            return self._send_error(error_request, exc)
 
     def process_write_requested(self, request: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Process write_memory commands. Returns reply dict."""
@@ -395,7 +396,7 @@ class MemoryHandlerService:
                 "qdrant_indexed": None,
             }
             self._publish_write_completed(error_request, failure)
-            return self._send_error(error_request, str(exc))
+            return self._send_error(error_request, exc)
 
     def _handle_write_memory(self, request: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Handle write_memory action."""
