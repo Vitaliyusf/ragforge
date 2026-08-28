@@ -20,7 +20,7 @@ except ImportError:
 
 from app.core.config import settings
 from app.core.exception_handlers import register_exception_handlers
-from app.core.logging_config import ServiceLogger
+from shared.logging import ServiceLogger
 from app.consumers import run as run_pipeline_updates
 from app.db.repository import FileRepository
 from app.db.session import (

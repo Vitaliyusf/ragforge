@@ -15,7 +15,7 @@ from app.core.constants import (
     VectorEventType,
 )
 from app.core.errors import InvalidVectorError
-from app.core.logging_config import ServiceLogger
+from shared.logging import ServiceLogger
 from app.db.interfaces import IVectorStore
 from app.messaging.interfaces import IProducer
 from app.schemas.vector import KafkaReplyEnvelope

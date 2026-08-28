@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.core.errors import DatabaseException, ErrorCode
+from shared.errors import DatabaseException, ErrorCode
 from app.db import session as db_session
 from app.db.repository import FileRepository
 from shared.context import bound_context

@@ -10,7 +10,7 @@ from pydantic import ValidationError
 from app.messaging.base_handler import BaseRabbitMQHandler
 from app.messaging.interfaces import IProducer
 from app.core.config import Settings
-from app.core.logging_config import ServiceLogger
+from shared.logging import ServiceLogger
 from app.core.safety import sanitize_debug_text
 from app.schemas.llm import (
     ErrorEntry,

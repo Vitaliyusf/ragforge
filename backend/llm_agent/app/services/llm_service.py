@@ -13,7 +13,7 @@ from app.core.errors import (
     StreamingNotSupportedException,
     TimeoutException,
 )
-from app.core.logging_config import ServiceLogger
+from shared.logging import ServiceLogger
 from app.core.safety import redact_secrets, sanitize_debug_text
 from app.core.tracing import ExecutionTracer
 from app.llm.interfaces import (

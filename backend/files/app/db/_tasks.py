@@ -9,7 +9,7 @@ from typing import Any, Dict, Optional
 
 from pymongo import DESCENDING
 
-from app.core.errors import DatabaseException
+from shared.errors import DatabaseException
 from app.db._base import serialize
 from app.utils.common import utcnow
 

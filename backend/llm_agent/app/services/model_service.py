@@ -5,7 +5,7 @@ from typing import Dict, Any
 
 from app.llm.interfaces import ILLMClient
 from app.cache.interfaces import IModelCache
-from app.core.logging_config import ServiceLogger
+from shared.logging import ServiceLogger
 from app.core.config import Settings
 from app.core.constants import LLMImplementation
 from app.core.errors import ServiceException, NotFoundException, ValidationException

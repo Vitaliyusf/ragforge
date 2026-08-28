@@ -7,7 +7,7 @@ from app.main import app, runtime
 from app.rest.dependencies import service_container
 from app.services.chat_service import ChatService
 from app.services.message_service import MessageService
-from app.core.logging_config import ServiceLogger
+from shared.logging import ServiceLogger
 from shared.auth import AuthIdentity, sign_auth_ticket
 
 

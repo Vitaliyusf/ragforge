@@ -9,8 +9,9 @@ from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
 from app.core.config import settings
-from app.core.errors import ChatNotFoundError, ServiceException, public_service_error
-from app.core.logging_config import ServiceLogger
+from app.core.errors import ChatNotFoundError, public_service_error
+from shared.errors import ServiceException
+from shared.logging import ServiceLogger
 from app.services.chat_exit_service import ChatExitService
 from app.services.chat_service import ChatService
 from app.services.memory_service import LongTermMemoryService

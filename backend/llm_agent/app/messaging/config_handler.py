@@ -5,7 +5,7 @@ from app.messaging.base_handler import BaseRabbitMQHandler
 from app.messaging.interfaces import IProducer
 from app.core.config import Settings
 from app.core.constants import ConfigAction
-from app.core.logging_config import ServiceLogger
+from shared.logging import ServiceLogger
 from app.services.config_service import ConfigService
 
 try:

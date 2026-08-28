@@ -5,7 +5,8 @@ from typing import Dict, Any, Optional
 from uuid import uuid4
 
 from app.core.constants import FileAction
-from app.core.errors import ValidationException, ExceptionHandler
+from app.core.error_handling import ExceptionHandler
+from shared.errors import ValidationError as ValidationException
 from app.core.config import Settings
 from app.db.repository import FileRepository
 from app.messaging.interfaces import IProducer

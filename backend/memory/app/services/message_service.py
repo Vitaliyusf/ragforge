@@ -4,7 +4,7 @@ from datetime import datetime
 from pymongo.collection import Collection
 
 from app.core.errors import ChatNotFoundError, raise_database_failure
-from app.core.logging_config import ServiceLogger
+from shared.logging import ServiceLogger
 from app.db.session import get_messages_collection
 from app.services.chat_service import ChatService
 from app.services.tenant_scope import ownership_fields, scope_filter

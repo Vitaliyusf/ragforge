@@ -6,7 +6,7 @@ import asyncio
 import pytest
 
 from app.core.config import RAGConfig
-from app.core.errors import ServiceException
+from shared.errors import ServiceException
 from app.messaging.rag_rpc_handler import build_reply_envelope, extract_request_payload
 from app.services.conversation_backend_client import ConversationBackendClient
 from app.services.websocket_service import WebSocketService
@@ -159,4 +159,3 @@ def test_http_query_route_maps_unexpected_exception_to_500():
 
     assert response.status_code == 500
     assert response.json() == {"detail": "An unexpected error occurred"}
-

@@ -1,16 +1,22 @@
-"""Memory error compatibility layer backed by shared structured errors."""
-import sys
-from pathlib import Path
+"""Memory-owned errors and HTTP mappings built on shared contracts."""
 from typing import NoReturn, Union
 
 from fastapi import HTTPException
 
-_BACKEND_ROOT = Path(__file__).resolve().parents[3]
-if str(_BACKEND_ROOT) not in sys.path:
-    sys.path.append(str(_BACKEND_ROOT))
+from shared.errors import (
+    AppError,
+    DatabaseException,
+    ErrorCode,
+    NotFoundError,
+    coerce_error,
+)
 
-from shared.errors import *  # noqa: F401,F403
-from shared.errors import AppError, DatabaseError, ErrorCode, coerce_error
+
+DatabaseError = DatabaseException
+
+
+class ChatNotFoundError(NotFoundError):
+    """Raised when a Memory chat does not exist."""
 
 
 _PUBLIC_INTERNAL_MESSAGE = "Internal service error"

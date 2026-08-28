@@ -5,7 +5,8 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from app.core.config import Settings
-from app.core.errors import ExceptionHandler, ValidationException
+from app.core.error_handling import ExceptionHandler
+from shared.errors import ValidationError as ValidationException
 from app.db.repository import FileRepository
 from app.messaging.interfaces import IProducer
 from app.services.file_ingestion_graph import FileIngestionGraph, OutboundMessage

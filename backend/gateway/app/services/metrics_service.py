@@ -30,7 +30,7 @@ from app.core.constants import (
     VectorDbAction,
 )
 from app.core.errors import GatewayError, NotFoundError, ValidationError
-from app.core.logging_config import ServiceLogger
+from shared.logging import ServiceLogger
 from app.core.config import GatewayConfig
 from app.core.rabbitmq_client import RabbitMQClient
 from app.services import promql

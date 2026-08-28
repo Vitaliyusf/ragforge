@@ -21,7 +21,7 @@ except ImportError:
 
 from app.config import EmbeddingConfig
 from app.core.cors import setup_cors
-from app.core.logging_config import ServiceLogger
+from shared.logging import ServiceLogger
 from app.consumers import (
     process_embedding_job_requests,
     process_embedding_requests,

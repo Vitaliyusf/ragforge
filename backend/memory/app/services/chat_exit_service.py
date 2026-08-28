@@ -9,7 +9,7 @@ import httpx
 from app.agent.memory_agent import MemoryAgent
 from app.core.config import settings
 from app.core.errors import DatabaseError
-from app.core.logging_config import ServiceLogger
+from shared.logging import ServiceLogger
 from app.services.chat_service import ChatService
 from app.services.memory_service import LongTermMemoryService
 from app.services.message_service import MessageService

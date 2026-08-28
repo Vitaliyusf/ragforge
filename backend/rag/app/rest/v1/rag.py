@@ -4,7 +4,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.core.deps import get_rag_service
-from app.core.errors import ServiceException
+from shared.errors import ServiceException
 from app.schemas.rag import RAGRequest, RAGResponse
 from app.services.rag_service import RAGService
 from shared.http_auth import require_internal_identity

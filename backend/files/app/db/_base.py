@@ -14,7 +14,7 @@ from typing import Any, Dict, Optional
 
 from pymongo.collection import Collection
 
-from app.core.errors import DatabaseException
+from shared.errors import DatabaseException
 from shared.auth import AuthIdentity, ROLE_ADMIN, ROLE_SERVICE, ROLE_USER, identity_from_context
 
 

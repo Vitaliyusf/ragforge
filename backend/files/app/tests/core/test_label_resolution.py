@@ -6,7 +6,7 @@ from unittest.mock import Mock
 import pytest
 
 from app.core.constants import FileAction
-from app.core.errors import ValidationException
+from shared.errors import ValidationError as ValidationException
 from app.services.file_handlers import FileHandlers
 from app.services.file_service import FileService
 from shared.context import bound_context
