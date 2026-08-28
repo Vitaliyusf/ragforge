@@ -60,22 +60,6 @@ class FakeConfigService:
         self.calls.append(("get_config",))
         return {"llm_implementation": "vllm"}
 
-    def update_config(self, updates):
-        self.calls.append(("update_config", updates))
-        return {"status": "updated", "updates": updates}
-
-    def get_generation_params(self):
-        self.calls.append(("get_generation_params",))
-        return {"vllm": {"temperature": 0.7}}
-
-    def get_model_configs(self):
-        self.calls.append(("get_model_configs",))
-        return {"default_model": "demo"}
-
-    def update_model_configs(self, model_configs):
-        self.calls.append(("update_model_configs", model_configs))
-        return {"status": "updated", "updated_models": list(model_configs.keys())}
-
 
 def _settings():
     return Settings(
@@ -145,7 +129,7 @@ class ManagementHandlerCompatibilityTests(unittest.TestCase):
         self.assertEqual(reply["error"]["status_code"], 404)
         self.assertEqual(reply["error"]["code"], "not_found")
 
-    def test_config_management_handler_publishes_typed_switch_ack(self):
+    def test_config_management_handler_rejects_retired_runtime_switch(self):
         producer = FakeProducer()
         service = FakeConfigService()
         handler = ConfigManagementHandler(producer, service, FakeLogger(), _settings())
@@ -155,9 +139,11 @@ class ManagementHandlerCompatibilityTests(unittest.TestCase):
         topic, reply = producer.messages[-1]
         self.assertEqual(topic, "gateway.replies")
         self.assertEqual(reply["message_type"], "reply")
-        self.assertTrue(reply["success"])
-        self.assertEqual(reply["payload"]["implementation"], "ollama")
-        self.assertEqual(reply["payload"]["status"], "switch_requested")
+        self.assertFalse(reply["success"])
+        self.assertEqual(reply["error"]["code"], "invalid_request")
+        self.assertEqual(reply["error"]["status_code"], 400)
+        self.assertIn("get_config", reply["error"]["message"])
+        self.assertEqual(service.calls, [])
 
     def test_model_management_handler_returns_legacy_shape_through_rpc_capture(self):
         producer = FakeProducer()

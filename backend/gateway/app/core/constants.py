@@ -216,12 +216,6 @@ class VectorDbAction(str, Enum):
 class ConfigManagementAction(str, Enum):
     """Action strings routed to the config management service."""
     GET_CONFIG = "get_config"
-    UPDATE_CONFIG = "update_config"
-    GET_GENERATION_PARAMS = "get_generation_params"
-    UPDATE_GENERATION_PARAMS = "update_generation_params"
-    SWITCH_IMPLEMENTATION = "switch_implementation"
-    GET_MODEL_CONFIGS = "get_model_configs"
-    UPDATE_MODEL_CONFIGS = "update_model_configs"
 
 
 class ModelManagementAction(str, Enum):

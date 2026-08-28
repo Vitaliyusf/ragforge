@@ -1,9 +1,6 @@
 """Configuration management using Pydantic BaseSettings."""
 import logging
-import os
-import json
 from typing import ClassVar, Dict, Literal, Optional
-from pathlib import Path
 
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -93,7 +90,7 @@ class Settings(BaseSettings):
     answer_generation_max_tokens: int = Field(default=128, ge=1, le=131072)
     answer_evaluation_max_tokens: int = Field(default=512, ge=1, le=131072)
     answer_evaluation_structured_output_transport: Literal["legacy", "json_schema"] = Field(
-        default="legacy",
+        default="json_schema",
         description="Provider transport used only for answer_evaluation structured output",
     )
     content_risk_scan_max_tokens: int = Field(default=128, ge=1, le=131072)
@@ -143,65 +140,18 @@ class Settings(BaseSettings):
     mongodb_database: str = Field(default="llm_agent", description="MongoDB database name")
     
     def __init__(self, **kwargs):
-        """Initialize settings with config file support."""
-        # Load config from file first (if exists)
-        config_file = Path(os.getenv("CONFIG_FILE", "/app/config.json"))
-        file_config = {}
-        if config_file.exists():
-            try:
-                with open(config_file, 'r') as f:
-                    file_config = json.load(f)
-            except Exception as e:
-                logger.warning("Failed to load config from %s: %s", config_file, e)
-        else:
-            # Try to load from logs
-            try:
-                log_dir = os.getenv("LOG_DIR", os.path.join(Path(__file__).parent.parent.parent, "logs"))
-                log_path = os.path.join(log_dir, "llm_agent_service.log")
-                
-                if os.path.exists(log_path):
-                    with open(log_path, "r", encoding="utf-8") as f:
-                        lines = f.readlines()
-                    
-                    for line in reversed(lines):
-                        try:
-                            log_entry = json.loads(line.strip())
-                            if (log_entry.get("location") == "handler:config_management" and 
-                                "Configuration saved to file and logged" in log_entry.get("message", "")):
-                                full_config = log_entry.get("data", {}).get("full_config_state")
-                                if full_config:
-                                    file_config = full_config
-                                    break
-                        except (json.JSONDecodeError, KeyError):
-                            continue
-            except Exception as e:
-                logger.warning("Failed to load config from logs: %s", e)
-        
-        # Merge: env vars > file config > defaults
-        # First, get defaults from Pydantic
-        merged = {}
-        
-        # Apply file config
-        for key, value in file_config.items():
-            # Convert to field name (snake_case)
-            field_name = key
-            merged[field_name] = value
-        
-        # Apply kwargs (env vars take precedence via Pydantic)
-        merged.update(kwargs)
-        
-        # Validate summary_model
-        summary_model_val = merged.get("summary_model", file_config.get("summary_model", "RedHatAI/Qwen3.5-4B-quantized.w4a16"))
-        if self._is_mbart_model(summary_model_val):
-            logger.error("Model %s is a translation model (mbart), not suitable for summarization. Correcting to: RedHatAI/Qwen3.5-4B-quantized.w4a16", summary_model_val)
-            merged["summary_model"] = "RedHatAI/Qwen3.5-4B-quantized.w4a16"
-            summary_model_val = "RedHatAI/Qwen3.5-4B-quantized.w4a16"
-        
-        # Set default_model if not provided
-        if not merged.get("default_model") and not file_config.get("default_model"):
-            merged["default_model"] = merged.get("rag_chat_model", file_config.get("rag_chat_model", "RedHatAI/Qwen3.5-4B-quantized.w4a16"))
-        
-        super().__init__(**merged)
+        """Initialize exclusively from constructor arguments and deployment settings."""
+        super().__init__(**kwargs)
+        if self._is_mbart_model(self.summary_model):
+            fallback = "RedHatAI/Qwen3.5-4B-quantized.w4a16"
+            logger.error(
+                "Model %s is a translation model, correcting summary_model to %s",
+                self.summary_model,
+                fallback,
+            )
+            self.summary_model = fallback
+        if not self.default_model:
+            self.default_model = self.rag_chat_model
     
     @staticmethod
     def _is_mbart_model(model_name: str) -> bool:

@@ -18,7 +18,6 @@ vi.mock('@/features/auth', () => ({
 vi.mock('@/features/config', () => ({
   configService: {
     getConfig: vi.fn().mockResolvedValue({}),
-    switchImplementation: vi.fn(),
   },
 }))
 vi.mock('@/features/models', () => ({
