@@ -105,20 +105,23 @@
       "path": "backend/embedding",
       "entrypoint": "backend/embedding/app/main.py",
       "responsibilities": [
-        "query/document embedding",
-        "document extraction/embedding jobs"
+        "query embedding over RabbitMQ",
+        "typed passage embedding jobs",
+        "temporary document extraction bridge for Files"
       ],
       "owns": [
         "embedding model execution",
         "extractor implementations"
       ],
       "calls": [
-        "vector_db",
-        "files metadata paths where currently required"
+        "vector_db typed upserts",
+        "files ingestion completion",
+        "llm_agent summary and metadata queues"
       ],
       "transports": [
-        "Kafka jobs",
-        "RabbitMQ request/reply"
+        "RabbitMQ query request/reply",
+        "Kafka embedding.jobs.requested passage jobs",
+        "Kafka embedding.requests extraction commands"
       ],
       "look_first": [
         "backend/embedding/app/services/embedding_job_service.py",
@@ -126,7 +129,7 @@
         "backend/embedding/app/embedding",
         "backend/embedding/app/extraction"
       ],
-      "avoid_duplicate": "Do not load embedding models independently inside unrelated services when existing embedding service paths fit."
+      "avoid_duplicate": "Queries use the RabbitMQ query handler; passages use typed embedding jobs. Do not add another Kafka embedding request path or load embedding models in unrelated services."
     },
     {
       "id": "vector_db",

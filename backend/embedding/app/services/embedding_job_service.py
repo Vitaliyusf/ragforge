@@ -4,9 +4,6 @@ Validates strict embedding.jobs.requested envelopes, batches eligible chunks
 through the embedding model, delegates envelope construction and publishing to
 EmbeddingJobPublisher, and uses shared retry + DLQ helpers for failure handling.
 """
-import importlib.util
-import sys
-from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from pydantic import ValidationError
@@ -20,60 +17,11 @@ from app.schemas.embedding_job import (
 )
 from app.services.embedding_job_publisher import EmbeddingJobPublisher
 from app.services.embedding_job_tracing import EmbeddingLangSmithTracer
+from shared.dlq import DeadLetterQueue
 from shared.logging import ServiceLogger
+from shared.retry import RetryExhausted, RetryPolicy
 from app.messaging.embedding_kafka import EmbeddingKafkaProducer
-# Imported normally rather than through `_load_shared_symbol` below: the service
-# already imports `shared.metrics` in main.py, and loading the module a second
-# time would re-register every collector in the default Prometheus registry.
 from shared.metrics import METRICS
-
-
-SERVICE_ROOT = Path(__file__).resolve().parents[2]
-if str(SERVICE_ROOT) not in sys.path:
-    sys.path.append(str(SERVICE_ROOT))
-
-_SHARED_MODULES: Dict[str, Any] = {}
-
-
-def _resolve_shared_module_path(module_name: str) -> Path:
-    """Resolve a shared helper module relative to the embedding service root."""
-    candidates = [
-        SERVICE_ROOT / "shared" / f"{module_name}.py",
-        SERVICE_ROOT.parent / "shared" / f"{module_name}.py",
-    ]
-    for candidate in candidates:
-        if candidate.is_file():
-            return candidate
-    return candidates[0]
-
-
-def _load_shared_module(module_name: str):
-    """Load a shared module without importing shared.__init__."""
-    if module_name in _SHARED_MODULES:
-        return _SHARED_MODULES[module_name]
-
-    module_path = _resolve_shared_module_path(module_name)
-    if not module_path.is_file():
-        raise ImportError(
-            f"Unable to load shared module '{module_name}' from '{module_path}'"
-        )
-    spec = importlib.util.spec_from_file_location(f"embedding_shared_{module_name}", module_path)
-    if spec is None or spec.loader is None:
-        raise ImportError(f"Unable to load shared module: {module_name}")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    _SHARED_MODULES[module_name] = module
-    return module
-
-
-def _load_shared_symbol(module_name: str, symbol_name: str):
-    """Load a symbol from a shared module without importing shared.__init__."""
-    return getattr(_load_shared_module(module_name), symbol_name)
-
-
-DeadLetterQueue = _load_shared_symbol("dlq", "DeadLetterQueue")
-RetryPolicy = _load_shared_symbol("retry", "RetryPolicy")
-RetryExhausted = _load_shared_symbol("retry", "RetryExhausted")
 
 
 class RetryableEmbeddingJobError(Exception):
