@@ -45,24 +45,34 @@ class RecordingLogger:
 class SupportedTransaction:
     """Transaction context that succeeds."""
 
+    def __init__(self, client):
+        self.client = client
+
     def __enter__(self):
+        self.client.transaction_enters += 1
         return self
 
     def __exit__(self, exc_type, exc, tb):
+        self.client.transaction_exits += 1
         return False
 
 
 class SupportedSession:
     """Session double that supports transactions."""
 
+    def __init__(self, client):
+        self.client = client
+
     def __enter__(self):
+        self.client.session_enters += 1
         return self
 
     def __exit__(self, exc_type, exc, tb):
+        self.client.session_exits += 1
         return False
 
     def start_transaction(self):
-        return SupportedTransaction()
+        return SupportedTransaction(self.client)
 
 
 class SupportedClient:
@@ -70,6 +80,10 @@ class SupportedClient:
 
     def __init__(self):
         self.start_session_calls = 0
+        self.session_enters = 0
+        self.session_exits = 0
+        self.transaction_enters = 0
+        self.transaction_exits = 0
         self.admin = SimpleNamespace(command=self.command)
 
     def command(self, name):
@@ -78,7 +92,7 @@ class SupportedClient:
 
     def start_session(self):
         self.start_session_calls += 1
-        return SupportedSession()
+        return SupportedSession(self)
 
 
 class StandaloneClient:
@@ -188,11 +202,18 @@ def test_get_client_uses_keyword_error_code_for_connection_failures(monkeypatch)
 def test_transaction_uses_session_when_transactions_supported():
     client = SupportedClient()
     repo = FileRepository(MinimalCollection(client), client=client)
+    caller_body_calls = 0
 
     with repo.transaction() as session:
+        caller_body_calls += 1
         assert session is not None
 
+    assert caller_body_calls == 1
     assert client.start_session_calls == 1
+    assert client.session_enters == 1
+    assert client.session_exits == 1
+    assert client.transaction_enters == 1
+    assert client.transaction_exits == 1
     assert repo._transactions_supported is True
 
 
@@ -200,10 +221,13 @@ def test_transaction_falls_back_to_none_for_standalone_topology():
     client = StandaloneClient()
     logger = RecordingLogger()
     repo = FileRepository(MinimalCollection(client), client=client, logger=logger)
+    caller_body_calls = 0
 
     with repo.transaction() as session:
+        caller_body_calls += 1
         assert session is None
 
+    assert caller_body_calls == 1
     assert client.start_session_calls == 0
     assert repo._transactions_supported is False
     assert logger.entries[0]["location"] == "db:transaction"
@@ -225,17 +249,51 @@ def test_transaction_capability_is_cached_after_standalone_detection():
     assert len(logger.entries) == 1
 
 
-def test_transaction_open_failure_falls_back_to_none_once():
+def test_unsupported_transaction_open_selects_fallback_before_caller_body():
     client = FailingTransactionClient()
     logger = RecordingLogger()
     repo = FileRepository(MinimalCollection(client), client=client, logger=logger)
+    caller_body_calls = 0
 
     with repo.transaction() as session:
-        assert session is None
-    with repo.transaction() as session:
+        caller_body_calls += 1
         assert session is None
 
+    assert caller_body_calls == 1
     assert client.start_session_calls == 1
     assert repo._transactions_supported is False
     assert len(logger.entries) == 1
     assert "replica set member or mongos" in logger.entries[0]["data"]["reason"]
+
+
+def test_database_failure_after_caller_body_starts_is_not_replayed():
+    client = SupportedClient()
+    logger = RecordingLogger()
+    repo = FileRepository(MinimalCollection(client), client=client, logger=logger)
+    caller_body_calls = 0
+
+    with pytest.raises(RuntimeError, match="database write failed"):
+        with repo.transaction():
+            caller_body_calls += 1
+            raise RuntimeError("database write failed")
+
+    assert caller_body_calls == 1
+    assert repo._transactions_supported is True
+    assert logger.entries == []
+
+
+def test_unsupported_error_after_caller_body_starts_is_not_fallback_or_replay():
+    client = SupportedClient()
+    logger = RecordingLogger()
+    repo = FileRepository(MinimalCollection(client), client=client, logger=logger)
+    caller_body_calls = 0
+    message = "Transaction numbers are only allowed on a replica set member or mongos"
+
+    with pytest.raises(RuntimeError, match="replica set member or mongos"):
+        with repo.transaction():
+            caller_body_calls += 1
+            raise RuntimeError(message)
+
+    assert caller_body_calls == 1
+    assert repo._transactions_supported is True
+    assert logger.entries == []
