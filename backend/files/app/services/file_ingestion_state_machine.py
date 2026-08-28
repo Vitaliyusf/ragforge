@@ -1,22 +1,16 @@
-"""Graph-style orchestration for extraction review, chunking, and handoff."""
+"""Deterministic state-machine orchestration for file ingestion."""
 from __future__ import annotations
 
 import os
 import time
 from typing import Any, Dict, Iterable, List, Optional
 
-try:
-    from langgraph.graph import END, START, StateGraph
-except Exception:  # pragma: no cover - optional dependency fallback
-    END = "__end__"
-    START = "__start__"
-    StateGraph = None
-
 from app.core.config import Settings
 from app.core.errors import NotFoundException, ValidationException
 from app.db.repository import FileRepository
 from app.messaging.interfaces import IProducer
-from app.services.graph_types import FilesLangSmithTracer, OutboundMessage
+from app.services.graph_types import FilesIngestionTracer, OutboundMessage
+from app.services.ingestion_state import IngestionTaskTransitions
 from app.services.issue_detector import IssueDetector
 from app.utils.common import (
     apply_patch_map,
@@ -37,10 +31,10 @@ from shared.auth import identity_from_context
 from shared.metrics import METRICS
 
 
-class FileIngestionGraph:
+class FileIngestionStateMachine:
     """Coordinate extraction completion, review pause/resume, and chunk handoff.
 
-    The graph persists state through Mongo-backed task documents, emits audit
+    The workflow persists state through Mongo-backed task documents, emits audit
     events around each major transition, and publishes downstream events only
     after the surrounding transaction completes.
     """
@@ -51,34 +45,8 @@ class FileIngestionGraph:
         self.logger = logger
         self.config = config
         self.detector = IssueDetector(config)
-        self.tracer = FilesLangSmithTracer(config)
-        self._graph = self._build_graph()
-
-    def _build_graph(self):
-        if StateGraph is None:  # pragma: no cover - optional dependency fallback
-            return None
-        graph = StateGraph(dict)
-        for node_name in (
-            "load_extraction_result",
-            "detect_issues",
-            "create_review_case",
-            "await_human_review",
-            "apply_decision",
-            "chunk_text",
-            "request_embeddings",
-            "finalize",
-        ):
-            graph.add_node(node_name, lambda state, _node=node_name: {"current_node": _node})
-        graph.add_edge(START, "load_extraction_result")
-        graph.add_edge("load_extraction_result", "detect_issues")
-        graph.add_edge("detect_issues", "chunk_text")
-        graph.add_edge("create_review_case", "await_human_review")
-        graph.add_edge("apply_decision", "chunk_text")
-        graph.add_edge("chunk_text", "request_embeddings")
-        graph.add_edge("request_embeddings", "finalize")
-        graph.add_edge("await_human_review", END)
-        graph.add_edge("finalize", END)
-        return graph.compile()
+        self.tracer = FilesIngestionTracer(config)
+        self.transitions = IngestionTaskTransitions(repository)
 
     def handle_extraction_completion(
         self,
@@ -90,7 +58,7 @@ class FileIngestionGraph:
         actor: Optional[Dict[str, Any]] = None,
         request_context: Optional[Dict[str, Any]] = None,
     ) -> List[OutboundMessage]:
-        """Run the graph from extraction completion to pause or finalize.
+        """Run ingestion from extraction completion to pause or finalize.
 
         Args:
             file_doc: Current serialized file record.
@@ -153,22 +121,14 @@ class FileIngestionGraph:
                     stage="extraction",
                     outcome="ok",
                 ).inc()
-                self.repository.update_task(
-                    current_task["task_id"],
-                    {
-                        "status": "running",
-                        "current_node": "detect_issues",
-                        "graph_state": state,
-                    },
-                    session=session,
-                )
+                self.transitions.begin_issue_detection(session, current_task, state)
                 self._write_audit_event(
                     session=session,
                     file_doc=current_file,
                     task_doc=current_task,
                     event_type="extraction_completed",
                     actor=actor,
-                    reason="Text extraction completed and graph processing started.",
+                    reason="Text extraction completed and ingestion processing started.",
                     details={"diagnostics": diagnostics or {}},
                     from_status="started",
                     to_status="processing",
@@ -198,15 +158,7 @@ class FileIngestionGraph:
                 },
                 session=session,
             )
-            self.repository.update_task(
-                current_task["task_id"],
-                {
-                    "status": "running",
-                    "current_node": "chunk_text",
-                    "graph_state": state,
-                },
-                session=session,
-            )
+            self.transitions.begin_chunking(session, current_task, state)
             return self._complete_chunking_flow(
                 session=session,
                 file_doc=current_file,
@@ -229,7 +181,7 @@ class FileIngestionGraph:
         actor: Dict[str, Any],
         request_context: Optional[Dict[str, Any]] = None,
     ) -> List[OutboundMessage]:
-        """Resume the graph from a submitted human review decision.
+        """Resume ingestion from a submitted human review decision.
 
         Args:
             file_doc: Current serialized file record.
@@ -300,18 +252,7 @@ class FileIngestionGraph:
                 },
                 session=session,
             )
-            self.repository.update_task(
-                current_task["task_id"],
-                {
-                    "status": "resuming",
-                    "current_node": "apply_decision",
-                    "checkpoint_id": None,
-                    "resume_token_hash": None,
-                    "resume_token_expires_at": None,
-                    "graph_state": state,
-                },
-                session=session,
-            )
+            self.transitions.resume_review(session, current_task, state)
             self._write_audit_event(
                 session=session,
                 file_doc=current_file,
@@ -426,17 +367,12 @@ class FileIngestionGraph:
             },
             session=session,
         )
-        self.repository.update_task(
-            task_doc["task_id"],
-            {
-                "status": "waiting_for_review",
-                "current_node": "await_human_review",
-                "checkpoint_id": checkpoint_id,
-                "resume_token_hash": resume_token["token_hash"],
-                "resume_token_expires_at": resume_token["expires_at"],
-                "graph_state": state,
-            },
-            session=session,
+        self.transitions.pause_for_review(
+            session,
+            task_doc,
+            state,
+            checkpoint_id=checkpoint_id,
+            resume_token=resume_token,
         )
         self._write_audit_event(
             session=session,
@@ -553,16 +489,7 @@ class FileIngestionGraph:
                 stage=stage,
                 outcome=outcome,
             ).inc()
-        self.repository.update_task(
-            task_doc["task_id"],
-            {
-                "status": "rejected",
-                "current_node": "finalize",
-                "completed_at": utcnow(),
-                "graph_state": state,
-            },
-            session=session,
-        )
+        self.transitions.finalize_rejected(session, task_doc, state)
         self._write_audit_event(
             session=session,
             file_doc=file_doc,
@@ -666,6 +593,7 @@ class FileIngestionGraph:
             from_status="awaiting_review",
             to_status="processing",
         )
+        self.transitions.begin_chunking(session, task_doc, state)
         return self._complete_chunking_flow(
             session=session,
             file_doc=file_doc,
@@ -715,6 +643,7 @@ class FileIngestionGraph:
             from_status="awaiting_review",
             to_status="processing",
         )
+        self.transitions.begin_chunking(session, task_doc, state)
         return self._complete_chunking_flow(
             session=session,
             file_doc=file_doc,
@@ -781,16 +710,8 @@ class FileIngestionGraph:
                 stage=stage,
                 outcome="ok",
             ).inc()
-        self.repository.update_task(
-            task_doc["task_id"],
-            {
-                "status": "completed",
-                "current_node": "finalize",
-                "completed_at": utcnow(),
-                "graph_state": state,
-            },
-            session=session,
-        )
+        self.transitions.request_embeddings(session, task_doc, state)
+        self.transitions.finalize(session, task_doc, state)
         self._write_audit_event(
             session=session,
             file_doc=file_doc,
@@ -819,7 +740,7 @@ class FileIngestionGraph:
             task_doc=task_doc,
             event_type="ingestion_completed",
             actor=actor,
-            reason="The file ingestion graph completed and handed off downstream processing.",
+            reason="File ingestion completed and handed off downstream processing.",
             details={"task_status": "completed"},
             review_case_id=review_case_id,
             decision_id=decision_id,

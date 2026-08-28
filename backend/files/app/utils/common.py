@@ -8,6 +8,8 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 
+from app.core.constants import IngestionState
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from shared.auth import attach_internal_auth_context
@@ -119,7 +121,7 @@ def create_file_task_document(
         "graph_run_id": graph_run_id,
         "task_type": "file_ingestion",
         "status": "queued",
-        "current_node": "load_extraction_result",
+        "current_node": IngestionState.LOAD_EXTRACTION_RESULT.value,
         "attempt": 1,
         "checkpoint_id": None,
         "resume_token_hash": None,

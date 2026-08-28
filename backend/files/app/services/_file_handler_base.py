@@ -8,7 +8,8 @@ from app.core.config import Settings
 from app.core.errors import ExceptionHandler, ValidationException
 from app.db.repository import FileRepository
 from app.messaging.interfaces import IProducer
-from app.services.file_ingestion_graph import FileIngestionGraph, OutboundMessage
+from app.services.file_ingestion_state_machine import FileIngestionStateMachine
+from app.services.graph_types import OutboundMessage
 from app.utils.common import (
     build_message_envelope,
     generate_event_id,
@@ -32,7 +33,7 @@ class FileHandlerBase:
         self.repository = repository
         self.logger = logger
         self.config = config
-        self.graph = FileIngestionGraph(repository, producer, logger, config)
+        self.state_machine = FileIngestionStateMachine(repository, producer, logger, config)
 
     # ------------------------------------------------------------------
     # Status helpers
@@ -228,7 +229,7 @@ class FileHandlerBase:
             if file_doc.get(key) is not None
         }
 
-    def _write_graph_failure_event(
+    def _write_ingestion_failure_event(
         self,
         file_doc: Dict[str, Any],
         task_doc: Dict[str, Any],
@@ -237,7 +238,7 @@ class FileHandlerBase:
         *,
         review_case_id: Optional[str] = None,
     ) -> None:
-        """Best-effort graph failure audit logging."""
+        """Best-effort ingestion failure audit logging."""
         try:
             with self.repository.transaction() as session:
                 event = self._audit_event(
@@ -245,7 +246,7 @@ class FileHandlerBase:
                     task_id=task_doc.get("task_id"),
                     event_type="graph_failed",
                     actor=actor,
-                    reason="The file ingestion graph failed.",
+                    reason="The file ingestion workflow failed.",
                     details={"error": str(exc), "error_type": type(exc).__name__},
                 )
                 event["review_case_id"] = review_case_id

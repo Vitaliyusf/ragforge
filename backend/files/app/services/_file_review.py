@@ -39,7 +39,7 @@ class FileReviewMixin:
         )
 
     def handle_submit_review_decision(self, correlation_id: str, request: Dict[str, Any]) -> Dict[str, Any]:
-        """Apply a human review decision and resume graph processing."""
+        """Apply a human review decision and resume ingestion."""
         payload = self._payload(request)
         file_id = payload.get("file_id")
         review_case_id = payload.get("review_case_id")
@@ -62,7 +62,7 @@ class FileReviewMixin:
             return self._send_error(correlation_id, "File task not found", request=request, reply_topic=request.get("reply_to"))
 
         try:
-            outbound = self.graph.handle_review_decision(
+            outbound = self.state_machine.handle_review_decision(
                 file_doc=file_doc,
                 review_case_doc=review_case,
                 task_doc=task_doc,
@@ -71,7 +71,13 @@ class FileReviewMixin:
                 request_context=self._request_context(request),
             )
         except Exception as exc:
-            self._write_graph_failure_event(file_doc, task_doc, self._actor(request), exc, review_case_id=review_case_id)
+            self._write_ingestion_failure_event(
+                file_doc,
+                task_doc,
+                self._actor(request),
+                exc,
+                review_case_id=review_case_id,
+            )
             raise
         self._publish_messages(outbound)
         refreshed_file = self.repository.get_by_id(file_id) or file_doc
