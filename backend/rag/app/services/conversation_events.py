@@ -74,8 +74,9 @@ class BaseConversationEmitter:
 
     async def emit(self, event_type: str, data: Dict[str, Any]) -> Dict[str, Any]:
         """Emit a standardized event."""
-        # Time to first token, measured before the admin-only filtering below so
-        # that regular users' turns are counted too.
+        # Generation tokens are held behind output approval. TTFT therefore
+        # measures time to the first approved, user-visible token; blocked
+        # turns correctly leave it unmeasured.
         if event_type == "token" and not self._ttft_recorded:
             self.ttft_seconds = time.monotonic() - self._started
             METRICS.rag_ttft_seconds.labels(

@@ -69,6 +69,7 @@ class RAGConfig(BaseSettings):
     stream_poll_interval_seconds: float = 0.1
     stream_idle_timeout_seconds: float = 5.0
     stream_drain_timeout_seconds: float = 1.0
+    approved_stream_emit_timeout_seconds: float = 5.0
 
     # Legacy fields retained for compatibility with the current codebase/tests.
     vector_store_type: str = "in_memory"

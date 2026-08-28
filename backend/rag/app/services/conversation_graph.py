@@ -52,6 +52,7 @@ from app.services.metrics_facts import (
     confidence_level,
     create_metrics_fact_store,
 )
+from app.services.output_approval import OutputApprovalBuffer
 from shared.metrics import METRICS
 
 
@@ -165,6 +166,10 @@ class ConversationGraphRunner:
         runtime = {
             "request": request,
             "emitter": emitter,
+            "output_approval": OutputApprovalBuffer(
+                emitter,
+                self.config.approved_stream_emit_timeout_seconds,
+            ),
             "current_node": "graph_start",
             "retrieval_trace": retrieval_trace,
             # Bounded per-call LLM evidence for this turn, in call order. No
@@ -1396,14 +1401,12 @@ class ConversationGraphRunner:
         is_revision: bool = False,
     ) -> Dict[str, Any]:
         request: ConversationRequest = runtime["request"]
-        emitter: BaseConversationEmitter = runtime["emitter"]
+        output_approval: OutputApprovalBuffer = runtime["output_approval"]
         prompt = self._build_prompt(state, request, mode, review_issues=review_issues)
+        output_approval.start_candidate(source)
 
         async def on_token(text_delta: str, token_index: int) -> None:
-            await emitter.emit(
-                "token",
-                {"text_delta": text_delta, "token_index": token_index, "source": source},
-            )
+            await output_approval.buffer_token(text_delta, token_index)
 
         response = await self.backend_client.generate_answer(
             request,
@@ -1524,12 +1527,14 @@ class ConversationGraphRunner:
 
     async def _output_guardrails(self, state: ConversationState, runtime: Dict[str, Any]) -> Dict[str, Any]:
         request: ConversationRequest = runtime["request"]
+        output_approval: OutputApprovalBuffer = runtime["output_approval"]
         answer_text = state.get("draft_answer", {}).get("text", "")
         response = await self.backend_client.risk_scan(request, answer_text, stage="output")
         self._record_llm_evidence(runtime, response)
         runtime["guardrail_blocked"] = bool(response.get("blocked"))
         draft_answer = dict(state.get("draft_answer", {}))
         if response.get("blocked"):
+            output_approval.reject()
             self.logger.info(
                 "conversation guardrail blocked",
                 data={
@@ -1541,6 +1546,8 @@ class ConversationGraphRunner:
                 },
             )
             draft_answer["text"] = response.get("safe_output") or "I can't help with that request."
+        else:
+            await output_approval.approve(answer_text)
         debug_payloads = self._append_debug(
             state,
             output_safety_flags=response,
