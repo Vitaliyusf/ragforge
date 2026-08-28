@@ -25,7 +25,6 @@ export default function FilesToolbar({
   totalCount,
   selectedCount,
   onClearSelection,
-  onBulkReindex,
   onBulkDelete,
   bulkBusy,
   onRefresh,
@@ -121,19 +120,10 @@ export default function FilesToolbar({
       </div>
 
       {/* Bulk bar — present only while a selection exists, and offering only
-          the two operations the files API actually supports per document. */}
+          delete, the one bulk-safe operation the files API supports. */}
       {selectedCount > 0 ? (
         <div className="flex flex-wrap items-center gap-2 border-t border-border bg-primary-soft px-4 py-2 md:px-5">
           <span className="text-[13px] font-medium text-fg">{selectedCount} selected</span>
-          <button
-            type="button"
-            onClick={onBulkReindex}
-            disabled={bulkBusy}
-            className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-border bg-bg-elevated px-2.5 text-[13px] text-fg-muted transition-colors hover:text-fg disabled:opacity-50"
-          >
-            <RefreshCw size={12} aria-hidden="true" />
-            Re-index
-          </button>
           <button
             type="button"
             onClick={onBulkDelete}

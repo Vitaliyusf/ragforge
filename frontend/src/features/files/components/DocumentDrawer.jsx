@@ -1,6 +1,6 @@
 'use client'
 
-import { AlertTriangle, Loader2, RefreshCw, ShieldAlert, Trash2 } from 'lucide-react'
+import { AlertTriangle, Loader2, ShieldAlert, Trash2 } from 'lucide-react'
 import Modal from '@/components/ui/Modal'
 import Button from '@/components/ui/Button'
 import { DataRow } from '@/components/ui/DataDisplay'
@@ -59,10 +59,8 @@ export default function DocumentDrawer({
   activity,
   onLoadMoreActivity,
   onDelete,
-  onReindex,
   onReview,
   isDeleting,
-  isReingesting,
   requiresReview,
 }) {
   if (!file) return null
@@ -95,17 +93,14 @@ export default function DocumentDrawer({
                   {failure.reason || 'No failure detail was recorded for this document.'}
                 </p>
                 <p className="text-[13px] text-fg-muted">{failure.impact}</p>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    onClick={() => onReindex(file.file_id)}
-                    loading={isReingesting}
-                    leftIcon={<RefreshCw size={13} />}
-                  >
-                    Retry ingestion
-                  </Button>
-                </div>
+                {/* No retry button: the files service exposes no operation
+                    that restarts a finished ingestion run, so the only honest
+                    next steps are the ones below. */}
+                <ul className="mt-3 space-y-1 text-[13px] text-fg-muted">
+                  <li>Review the Activity section for failure details.</li>
+                  <li>Retry is not currently available for this ingestion run.</li>
+                  <li>Upload the document again after correcting the issue.</li>
+                </ul>
               </div>
             </div>
           </div>
@@ -257,15 +252,6 @@ export default function DocumentDrawer({
             ) : null}
             <Button
               size="sm"
-              variant="secondary"
-              onClick={() => onReindex(file.file_id)}
-              loading={isReingesting}
-              leftIcon={<RefreshCw size={13} />}
-            >
-              Re-index
-            </Button>
-            <Button
-              size="sm"
               variant="danger"
               onClick={() => onDelete(file)}
               loading={isDeleting}
@@ -275,7 +261,8 @@ export default function DocumentDrawer({
             </Button>
           </div>
           <p className="mt-2 text-xs text-fg-soft">
-            Re-indexing restarts extraction and every stage after it.
+            Re-ingesting an existing document is not an operation the files service supports;
+            upload the document again to run the pipeline afresh.
           </p>
         </Section>
       </div>

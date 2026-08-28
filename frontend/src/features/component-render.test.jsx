@@ -34,8 +34,8 @@ const cases = [
   ['MiniSparkline', <MiniSparkline data={[1, 2, 3, 4]} />],
   ['DocumentRow', <table><tbody><DocumentRow
     file={{ file_id: 'f1', filename: 'a.txt', size: 10, content_type: 'text/plain', status: 'complete' }}
-    selected={false} isActive={false} isDeleting={false} isReingesting={false} requiresReview={false}
-    onOpen={noop} onSelectChange={noop} onDelete={noop} onReindex={noop} onReview={noop} /></tbody></table>],
+    selected={false} isActive={false} isDeleting={false} requiresReview={false}
+    onOpen={noop} onSelectChange={noop} onDelete={noop} onReview={noop} /></tbody></table>],
 ]
 
 describe('Part 3 split components render', () => {

@@ -42,11 +42,9 @@ export default function DocumentTable({
   onSelectAll,
   activeFileId,
   deletingFileIds,
-  reingestingFileIds,
   reviewPendingIds,
   onOpen,
   onDelete,
-  onReindex,
   onReview,
 }) {
   const allSelected = documents.length > 0 && documents.every((file) => selectedIds.has(file.file_id))
@@ -107,12 +105,10 @@ export default function DocumentTable({
               selected={selectedIds.has(file.file_id)}
               isActive={activeFileId === file.file_id}
               isDeleting={deletingFileIds.has(file.file_id)}
-              isReingesting={reingestingFileIds.has(file.file_id)}
               requiresReview={reviewPendingIds.has(file.file_id)}
               onOpen={onOpen}
               onSelectChange={onSelectChange}
               onDelete={onDelete}
-              onReindex={onReindex}
               onReview={onReview}
             />
           ))}

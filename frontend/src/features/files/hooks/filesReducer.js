@@ -1,8 +1,8 @@
 /**
  * Local reducer backing the Files tab.
  *
- * Holds the optimistic UI transitions — pending deletes, in-flight
- * re-indexes, the open review panel — separately from the fetched file list.
+ * Holds the optimistic UI transitions — pending deletes, the open review
+ * panel — separately from the fetched file list.
  */
 
 import { normalizeFileStatus } from '@/features/files/fileStatus'
@@ -87,7 +87,6 @@ export function buildInitialState(cachedFiles) {
     loading: false,
     uploading: false,
     deletingFileIds: new Set(),
-    reingestingFileIds: new Set(),
     reviewStatesByFileId: {},
     reviewCasesByFileId: {},
     reviewErrorsByFileId: {},
@@ -163,18 +162,6 @@ export function filesReducer(state, action) {
         deletingFileIds: nextDeleting,
         files: state.files.filter((file) => file.file_id !== action.fileId),
       }
-    }
-
-    case 'REINGEST_START': {
-      const next = new Set(state.reingestingFileIds)
-      next.add(action.fileId)
-      return { ...state, reingestingFileIds: next }
-    }
-
-    case 'REINGEST_COMPLETE': {
-      const next = new Set(state.reingestingFileIds)
-      next.delete(action.fileId)
-      return { ...state, reingestingFileIds: next }
     }
 
     case 'OPEN_REVIEW':

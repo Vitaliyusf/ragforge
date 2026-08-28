@@ -1,7 +1,7 @@
 'use client'
 
 import { memo } from 'react'
-import { File, FileSpreadsheet, FileText, Image, Loader2, RefreshCw, ShieldAlert, Trash2 } from 'lucide-react'
+import { File, FileSpreadsheet, FileText, Image, Loader2, ShieldAlert, Trash2 } from 'lucide-react'
 import { formatFileSize } from '@/lib/formatting/bytes'
 import { formatAbsoluteDateTime, formatRelativeTime } from '@/lib/formatting/datetime'
 import { DOCUMENT_STATUSES, getDocumentStatus, getDocumentType } from '../documentModel'
@@ -32,12 +32,10 @@ function DocumentRow({
   selected,
   isActive,
   isDeleting,
-  isReingesting,
   requiresReview,
   onOpen,
   onSelectChange,
   onDelete,
-  onReindex,
   onReview,
 }) {
   const Icon = getFileTypeIcon(file.content_type, file.filename)
@@ -115,15 +113,6 @@ function DocumentRow({
               <ShieldAlert size={14} />
             </button>
           ) : null}
-          <button
-            type="button"
-            onClick={() => onReindex(file.file_id)}
-            disabled={isReingesting}
-            aria-label={`Re-index ${file.filename || 'document'}`}
-            className={ACTION_BUTTON}
-          >
-            {isReingesting ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
-          </button>
           <button
             type="button"
             onClick={() => onDelete(file)}

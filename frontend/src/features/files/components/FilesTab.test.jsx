@@ -1,6 +1,6 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { http, HttpResponse } from 'msw'
+import { delay, http, HttpResponse } from 'msw'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { renderWithProviders } from '@/test/render'
 import { server } from '@/test/server'
@@ -77,14 +77,19 @@ describe('FilesTab documents table', () => {
   let files
   let deletedIds
   let rerunRequests
+  let listRequests
 
   beforeEach(() => {
     files = libraryFixture()
     deletedIds = []
     rerunRequests = []
+    listRequests = 0
 
     server.use(
-      http.get(`${API_BASE_URL}/v1/files`, () => HttpResponse.json({ files })),
+      http.get(`${API_BASE_URL}/v1/files`, () => {
+        listRequests += 1
+        return HttpResponse.json({ files })
+      }),
       http.get(`${API_BASE_URL}/v1/files/:fileId/audit-trail`, ({ params }) => {
         if (params.fileId !== 'file-3') return HttpResponse.json({ events: [], next_cursor: null })
         return HttpResponse.json({
@@ -104,6 +109,8 @@ describe('FilesTab documents table', () => {
           next_cursor: null,
         })
       }),
+      // A tripwire, not a supported operation: the rerun endpoint does not
+      // reset the ingestion task state machine, so nothing in the UI may call it.
       http.post(`${API_BASE_URL}/v1/files/:fileId/rerun`, ({ params, request }) => {
         const url = new URL(request.url)
         rerunRequests.push({ fileId: params.fileId, stage: url.searchParams.get('stage') })
@@ -221,7 +228,7 @@ describe('FilesTab documents table', () => {
     )
   })
 
-  it('opens a drawer that explains the failure and offers a retry', async () => {
+  it('opens a drawer that explains the failure without offering an unsupported retry', async () => {
     const user = userEvent.setup()
     renderWithProviders(<FilesTab />)
     await waitFor(() => expect(rows()).toHaveLength(3))
@@ -242,10 +249,12 @@ describe('FilesTab documents table', () => {
     expect(within(drawer).getByText('Chunks created:')).toBeInTheDocument()
     expect(within(drawer).getByText('42')).toBeInTheDocument()
 
-    await user.click(within(drawer).getByRole('button', { name: /Retry ingestion/i }))
-    await waitFor(() =>
-      expect(rerunRequests).toEqual([{ fileId: 'file-3', stage: 'extraction' }])
-    )
+    // Truthful and actionable, using only operations the backend supports.
+    expect(within(drawer).queryByRole('button', { name: /Retry ingestion/i })).not.toBeInTheDocument()
+    expect(within(drawer).getByText('Retry is not currently available for this ingestion run.')).toBeInTheDocument()
+    expect(within(drawer).getByText('Upload the document again after correcting the issue.')).toBeInTheDocument()
+    expect(within(drawer).getByRole('button', { name: /Delete/i })).toBeInTheDocument()
+    expect(rerunRequests).toEqual([])
   })
 
   it('omits a Retrieval section, which the files API has no data for', async () => {
@@ -260,16 +269,24 @@ describe('FilesTab documents table', () => {
     expect(within(drawer).queryByText('Retrieval')).not.toBeInTheDocument()
   })
 
-  it('re-indexes a single row through the extraction stage the backend supports', async () => {
+  it('exposes no re-index affordance anywhere, and never calls the rerun endpoint', async () => {
     const user = userEvent.setup()
     renderWithProviders(<FilesTab />)
     await waitFor(() => expect(rows()).toHaveLength(3))
 
-    await user.click(screen.getByRole('button', { name: 'Re-index architecture.pdf' }))
+    expect(screen.queryByRole('button', { name: /Re-index/i })).not.toBeInTheDocument()
 
-    await waitFor(() =>
-      expect(rerunRequests).toEqual([{ fileId: 'file-1', stage: 'extraction' }])
-    )
+    // Not on a row, not in the drawer, and not on a selection.
+    await user.click(screen.getByText('architecture.pdf'))
+    const drawer = await screen.findByRole('dialog')
+    expect(within(drawer).queryByRole('button', { name: /Re-index/i })).not.toBeInTheDocument()
+    await user.keyboard('{Escape}')
+
+    await user.click(screen.getByLabelText('Select all documents on this page'))
+    expect(await screen.findByText('3 selected')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Re-index/i })).not.toBeInTheDocument()
+
+    expect(rerunRequests).toEqual([])
   })
 
   it('requires confirmation before deleting, and says what is removed', async () => {
@@ -285,8 +302,13 @@ describe('FilesTab documents table', () => {
     ).toBeInTheDocument()
     expect(deletedIds).toEqual([])
 
+    const listsBefore = listRequests
     await user.click(screen.getByRole('button', { name: /^Delete$/ }))
     await waitFor(() => expect(deletedIds).toEqual(['file-3']))
+
+    // One delete, one refresh — unchanged from the single-row behaviour.
+    await waitFor(() => expect(listRequests).toBe(listsBefore + 1))
+    expect(screen.queryByText('manual.docx')).not.toBeInTheDocument()
   })
 
   it('runs a bulk delete over the selected rows after one confirmation', async () => {
@@ -300,8 +322,13 @@ describe('FilesTab documents table', () => {
     await user.click(screen.getByRole('button', { name: /^Delete$/ }))
     expect(await screen.findByText('Delete 3 documents?')).toBeInTheDocument()
 
+    const listsBefore = listRequests
     await user.click(screen.getByRole('button', { name: /Delete 3$/ }))
     await waitFor(() => expect(deletedIds.sort()).toEqual(['file-1', 'file-2', 'file-3']))
+
+    // Three deletes, one refresh — not one refresh per delete.
+    await waitFor(() => expect(screen.queryAllByTestId('document-row')).toHaveLength(0))
+    expect(listRequests).toBe(listsBefore + 1)
   })
 
   it('shows an uploaded document as a row in its real ingestion state', async () => {
@@ -391,4 +418,70 @@ describe('FilesTab at scale', () => {
     await user.click(screen.getByRole('button', { name: 'Document' }))
     await waitFor(() => expect(rowNames()[0]).toBe('document-0998.pdf'))
   }, 60000)
+})
+
+describe('FilesTab bulk delete', () => {
+  const BULK_SIZE = 10
+  let files
+  let deletedIds
+  let listRequests
+  let inFlight
+  let maxInFlight
+
+  beforeEach(() => {
+    files = Array.from({ length: BULK_SIZE }, (_, index) =>
+      createFile({
+        file_id: `file-${index}`,
+        document_id: `file-${index}`,
+        filename: `document-${index}.pdf`,
+      })
+    )
+    deletedIds = []
+    listRequests = 0
+    inFlight = 0
+    maxInFlight = 0
+
+    server.use(
+      http.get(`${API_BASE_URL}/v1/files`, () => {
+        listRequests += 1
+        return HttpResponse.json({ files })
+      }),
+      http.delete(`${API_BASE_URL}/v1/files/:fileId`, async ({ params }) => {
+        inFlight += 1
+        maxInFlight = Math.max(maxInFlight, inFlight)
+        // Held open so overlapping requests are observable at all.
+        await delay(15)
+        inFlight -= 1
+        deletedIds.push(params.fileId)
+        files = files.filter((file) => file.file_id !== params.fileId)
+        return HttpResponse.json({ status: 'success' })
+      })
+    )
+  })
+
+  it('issues one DELETE per document, four at a time, and refreshes the list once', async () => {
+    const user = userEvent.setup()
+    renderWithProviders(<FilesTab />)
+    await waitFor(() => expect(rows()).toHaveLength(BULK_SIZE))
+
+    await user.click(screen.getByLabelText('Select all documents on this page'))
+    expect(await screen.findByText(`${BULK_SIZE} selected`)).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: /^Delete$/ }))
+    expect(await screen.findByText(`Delete ${BULK_SIZE} documents?`)).toBeInTheDocument()
+
+    const listsBefore = listRequests
+    await user.click(screen.getByRole('button', { name: new RegExp(`Delete ${BULK_SIZE}$`) }))
+
+    await waitFor(() => expect(deletedIds).toHaveLength(BULK_SIZE), { timeout: 10000 })
+    expect(new Set(deletedIds).size).toBe(BULK_SIZE)
+
+    // The N+1 the batch used to pay: one list reload per delete. Now one, total.
+    await waitFor(() => expect(listRequests).toBe(listsBefore + 1))
+    expect(listRequests).toBe(listsBefore + 1)
+
+    // Bounded concurrency, and genuinely concurrent.
+    expect(maxInFlight).toBeLessThanOrEqual(4)
+    expect(maxInFlight).toBeGreaterThan(1)
+  }, 20000)
 })

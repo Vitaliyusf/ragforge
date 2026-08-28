@@ -39,10 +39,6 @@ class FileService {
   async deleteFile(fileId) {
     return await del(`/v1/files/${fileId}`)
   }
-
-  async rerunStage(fileId, stage) {
-    return await post(`/v1/files/${fileId}/rerun?stage=${encodeURIComponent(stage)}`)
-  }
 }
 
 export default new FileService()

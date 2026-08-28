@@ -69,7 +69,6 @@ export default function FilesTab() {
     loading,
     uploading,
     deletingFileIds,
-    reingestingFileIds,
     reviewCasesByFileId,
     reviewStatesByFileId,
     reviewErrorsByFileId,
@@ -77,7 +76,7 @@ export default function FilesTab() {
     loadFiles,
     uploadFiles,
     deleteFile,
-    reindexFile,
+    notifyFilesChanged,
     openReview,
     closeReview,
     submitReviewDecision,
@@ -192,15 +191,6 @@ export default function FilesTab() {
 
   const clearSelection = useCallback(() => setSelectedIds(new Set()), [])
 
-  const handleReindex = useCallback(async (fileId) => {
-    try {
-      await reindexFile(fileId)
-      toast.success('Re-indexing started', { description: 'Extraction has been re-queued.' })
-    } catch (error) {
-      toast.error('Re-index failed', { description: error?.message || 'Please try again.' })
-    }
-  }, [reindexFile])
-
   const handleOpenReview = useCallback(async (fileId) => {
     try {
       await openReview(fileId)
@@ -231,7 +221,15 @@ export default function FilesTab() {
     if (targets.length === 0) return
     setBulkBusy(true)
     try {
-      const { succeeded, failed } = await runBulk(targets.map((file) => file.file_id), deleteFile)
+      // Every delete suppresses its own refresh: N deletes used to mean N list
+      // reloads and N global change signals. The batch pays for one of each,
+      // after it settles.
+      const { succeeded, failed } = await runBulk(
+        targets.map((file) => file.file_id),
+        (fileId) => deleteFile(fileId, { refresh: false })
+      )
+      if (succeeded > 0) notifyFilesChanged()
+      await loadFiles()
       if (targets.some((file) => file.file_id === activeFileId)) handleCloseDocument()
       setSelectedIds(new Set())
       if (failed > 0) {
@@ -245,26 +243,7 @@ export default function FilesTab() {
       setBulkBusy(false)
       setPendingDelete(null)
     }
-  }, [pendingDelete, deleteFile, activeFileId, handleCloseDocument])
-
-  const handleBulkReindex = useCallback(async () => {
-    const ids = [...selectedIds]
-    if (ids.length === 0) return
-    setBulkBusy(true)
-    try {
-      const { succeeded, failed } = await runBulk(ids, reindexFile)
-      setSelectedIds(new Set())
-      if (failed > 0) {
-        toast.error('Some documents were not re-indexed', {
-          description: `${succeeded} re-queued, ${failed} failed.`,
-        })
-      } else {
-        toast.success(`${succeeded} document(s) re-queued for ingestion`)
-      }
-    } finally {
-      setBulkBusy(false)
-    }
-  }, [selectedIds, reindexFile])
+  }, [pendingDelete, deleteFile, notifyFilesChanged, loadFiles, activeFileId, handleCloseDocument])
 
   const deleteCount = pendingDelete?.files?.length || 0
 
@@ -306,7 +285,6 @@ export default function FilesTab() {
           totalCount={files.length}
           selectedCount={selectedIds.size}
           onClearSelection={clearSelection}
-          onBulkReindex={handleBulkReindex}
           onBulkDelete={requestBulkDelete}
           bulkBusy={bulkBusy}
           onRefresh={loadFiles}
@@ -360,11 +338,9 @@ export default function FilesTab() {
               onSelectAll={handleSelectAll}
               activeFileId={activeFileId}
               deletingFileIds={deletingFileIds}
-              reingestingFileIds={reingestingFileIds}
               reviewPendingIds={reviewPendingIds}
               onOpen={handleOpenDocument}
               onDelete={requestDelete}
-              onReindex={handleReindex}
               onReview={handleOpenReview}
             />
           ) : null}
@@ -412,10 +388,8 @@ export default function FilesTab() {
         activity={activity}
         onLoadMoreActivity={loadMoreActivity}
         onDelete={requestDelete}
-        onReindex={handleReindex}
         onReview={handleOpenReview}
         isDeleting={activeFile ? deletingFileIds.has(activeFile.file_id) : false}
-        isReingesting={activeFile ? reingestingFileIds.has(activeFile.file_id) : false}
         requiresReview={activeFile ? reviewPendingIds.has(activeFile.file_id) : false}
       />
 
