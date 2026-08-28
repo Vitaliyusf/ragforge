@@ -89,6 +89,14 @@ Local agent validation is not a duplicate CI pipeline.
 The repository CI already owns clean-environment, repo-wide validation.
 Agents should optimize for fast, relevant feedback while preserving correctness.
 
+A local `PASS` is authoritative only when the command preserves the corresponding
+CI lane's canonical environment assumptions: dependency/requirements layers,
+Python version, import roots, pytest plugins, configuration and required feature
+flags/environment. Never add an ad-hoc dependency such as `uv run --with
+<missing-package>` to turn a canonical-lane failure into `PASS`. Fix the canonical
+dependency owner or report `BLOCKED`; if an adjusted run is still useful, label it
+`NON-AUTHORITATIVE / ENVIRONMENT-ADJUSTED`.
+
 ### 5.1 First validation action
 
 At the first need to run Python tests/checks in a task:
@@ -101,6 +109,11 @@ Run this once per task.
 
 If it reports `BLOCKED`, do not spend many commands probing Python/uv/pytest/plugin combinations.
 Report the environment problem unless environment repair is the task.
+
+When isolated uv is required, establish one workspace-local `UV_CACHE_DIR` for the
+task. Diagnose an environment/tooling root cause once and make at most one corrected
+retry for that root cause. If canonical validation still cannot run, report `BLOCKED`;
+do not cycle through interpreters, virtualenvs, cache layouts or dependency injections.
 
 ### 5.2 During implementation — focused only
 
@@ -132,6 +145,16 @@ Run it only when:
 
 If run, use the intended scope once and rerun the same scope after fixes.
 Do not shrink the scope repeatedly just to obtain a green command.
+
+If changed files intersect an authoritative static-analysis scope, run that exact
+scope once before completion. In this repository, changes under `backend/shared` or
+`backend/gateway/app` require:
+
+```bash
+mypy backend/shared backend/gateway/app --config-file mypy.ini
+```
+
+File-by-file mypy is not equivalent to that authoritative scope.
 
 ### 5.3a Test lanes
 
@@ -344,6 +367,10 @@ implementation
 ```
 
 Do not rebuild/validate the brain multiple times while code is still changing.
+Do not run `record_handoff.py`, `rebuild_repo_brain.py` or
+`validate_ai_memory.py` until implementation, validation and the final diff audit
+are complete and no more source/test edits are expected. Record the handoff once,
+then rebuild once and validate once. Any later code edit makes that handoff premature.
 
 Prefer `scripts/ai/record_handoff.py` over manually reading/rewriting full handoff/history.
 

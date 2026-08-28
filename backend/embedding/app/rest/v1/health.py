@@ -20,15 +20,10 @@ def create_health_router(
     router = APIRouter()
 
     @router.get("/health")
-    async def health():
-        """Report service-local health state."""
-        producer = get_producer()
-        model = get_model()
-        return {
-            "status": "ok",
-            "model_loaded": model.is_loaded() if model else False,
-            "kafka": "connected" if (producer and producer.is_connected()) else "disconnected",
-        }
+    @router.get("/live")
+    async def live():
+        """Report process liveness without gating on downstream services."""
+        return {"status": "live", "service": "embedding"}
 
     @router.get("/ready")
     async def ready():
@@ -36,16 +31,24 @@ def create_health_router(
         producer = get_producer()
         model = get_model()
         rpc_consumer = get_rpc_consumer()
-        model_loaded = bool(model and model.is_loaded())
-        rabbitmq_connected = bool(rpc_consumer and rpc_consumer.is_connected())
+        model_loaded = _safe_state(model, "is_loaded")
+        rabbitmq_connected = _safe_state(rpc_consumer, "is_connected")
         ready_for_rpc = model_loaded and rabbitmq_connected
         payload = {
-            "status": "ready" if ready_for_rpc else "starting",
+            "status": "ready" if ready_for_rpc else "not_ready",
+            "service": "embedding",
             "model_loaded": model_loaded,
             "rabbitmq": "connected" if rabbitmq_connected else "disconnected",
-            "kafka": "connected" if (producer and producer.is_connected()) else "disconnected",
+            "kafka": "connected" if _safe_state(producer, "is_connected") else "disconnected",
             "ready_for_rpc": ready_for_rpc,
         }
         return JSONResponse(payload, status_code=200 if ready_for_rpc else 503)
 
     return router
+
+
+def _safe_state(dependency, method_name: str) -> bool:
+    try:
+        return bool(dependency and getattr(dependency, method_name)())
+    except Exception:
+        return False

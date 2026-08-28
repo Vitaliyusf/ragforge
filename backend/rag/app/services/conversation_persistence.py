@@ -77,6 +77,10 @@ class BaseConversationStore:
         """Ensure backend indexes are ready."""
         return None
 
+    def is_available(self) -> bool:
+        """Return whether the configured store can serve persistence calls."""
+        return True
+
     def load_context(self, conversation_id: str, recent_limit: int) -> Dict[str, Any]:
         raise NotImplementedError
 
@@ -284,6 +288,14 @@ class MongoConversationStore(BaseConversationStore):
                 last_error = exc
                 time.sleep(self.config.mongodb_retry_delay)
         raise RuntimeError(f"Failed to initialize MongoDB: {last_error}")
+
+    def is_available(self) -> bool:
+        """Probe MongoDB so readiness follows dependency failure and recovery."""
+        try:
+            self._init_db()
+            return bool(self._client.admin.command("ping").get("ok"))
+        except Exception:
+            return False
 
     def _collection(self, name: str) -> Collection:
         self._init_db()

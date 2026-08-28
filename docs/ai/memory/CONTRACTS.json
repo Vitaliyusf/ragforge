@@ -79,6 +79,21 @@
         "backend/rag/app/services/eval_store.py"
       ],
       "rule": "Benchmark extensions reuse current eval dataset/run store."
+    },
+    {
+      "id": "CON-007",
+      "name": "Service liveness and readiness",
+      "owner": "backend/shared",
+      "caller": "Compose/Gateway health UI",
+      "callee": "gateway/rag/files/embedding/vector_db/llm_agent/memory",
+      "transport": "HTTP",
+      "canonical_locations": [
+        "backend/*/app/rest/v1/health.py",
+        "backend/memory/app/bootstrap/runtime.py",
+        "docker-compose.yml",
+        "frontend/src/features/health"
+      ],
+      "rule": "/live is process-only and normally returns 200; /ready returns 503 whenever a dependency required for the service's primary workload is unavailable, while optional degraded dependencies do not gate readiness."
     }
   ]
 }

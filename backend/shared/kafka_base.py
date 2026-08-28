@@ -118,8 +118,8 @@ class BaseKafkaProducer:
             self._producer.flush()
 
     def is_connected(self) -> bool:
-        """Return whether the underlying producer has been initialized."""
-        return self._producer is not None
+        """Return whether the producer currently has a live broker connection."""
+        return bool(self._producer and self._producer.bootstrap_connected())
 
 
 class BaseKafkaConsumer:
@@ -243,5 +243,5 @@ class BaseKafkaConsumer:
             self._consumer = None
 
     def is_connected(self) -> bool:
-        """Return whether the underlying consumer has been initialized."""
-        return self._consumer is not None
+        """Return whether the consumer currently has a live broker connection."""
+        return bool(self._consumer and self._consumer.bootstrap_connected())

@@ -72,6 +72,7 @@ benchmark_runner = create_benchmark_runner(config, eval_store, eval_runner, logg
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    app.state.rpc_consumer = None
     logger.log("main:startup", "RAG service starting up")
     conversation_store.ensure_indexes()
     rag_service.graph_runner.metrics_facts.ensure_indexes()
@@ -85,6 +86,7 @@ async def lifespan(app: FastAPI):
     await rpc_client.connect()
 
     _consumer = MessageQueueFactory.create_consumer(config)
+    app.state.rpc_consumer = _consumer
 
     async def _handle(body: dict, reply_to: str, correlation_id: str) -> Optional[dict]:
         from app.services.conversation_events import CollectingConversationEmitter
@@ -119,6 +121,7 @@ async def lifespan(app: FastAPI):
         yield
     finally:
         await _consumer.stop()
+        app.state.rpc_consumer = None
         await rpc_client.close()
         logger.log("main:shutdown", "RAG service shutdown complete", {})
 
@@ -128,6 +131,7 @@ async def lifespan(app: FastAPI):
 # ---------------------------------------------------------------------------
 
 fastapi_app = FastAPI(title="RAG Service", lifespan=lifespan)
+fastapi_app.state.rpc_consumer = None
 setup_cors(fastapi_app)
 register_exception_handlers(fastapi_app)
 if _HAS_METRICS:

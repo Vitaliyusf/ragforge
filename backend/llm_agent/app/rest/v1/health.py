@@ -3,6 +3,7 @@ import time
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends
+from fastapi.responses import JSONResponse
 
 from app.core.config import get_settings
 from app.core.deps import get_consumers, get_llm_client
@@ -12,25 +13,43 @@ router = APIRouter()
 
 
 @router.get("/health")
-async def health_check(
-    llm_client: Optional[ILLMClient] = Depends(get_llm_client),
-    consumers: List = Depends(get_consumers),
-) -> Dict[str, Any]:
-    """Return full runtime health for the llm_agent service.
-
-    Checks:
-    - ``rabbitmq_consumers``: how many RabbitMQ consumers are active.
-    - ``llm_client``:         whether the active LLM backend reports as available.
-    """
+@router.get("/live")
+async def live() -> Dict[str, Any]:
+    """Return process liveness without invoking downstream dependencies."""
     settings = get_settings()
-    connected = [c for c in consumers if c.is_connected()]
     return {
-        "status": "ok",
+        "status": "live",
         "service": settings.service_name,
         "llm_implementation": settings.llm_implementation,
         "timestamp": int(time.time()),
-        "checks": {
-            "rabbitmq_consumers": f"{len(connected)}/{len(consumers)} connected",
-            "llm_client": "ok" if (llm_client and llm_client.is_available()) else "unavailable",
-        },
     }
+
+
+@router.get("/ready")
+async def ready(
+    llm_client: Optional[ILLMClient] = Depends(get_llm_client),
+    consumers: List = Depends(get_consumers),
+) -> JSONResponse:
+    """Require the model backend and every serving queue consumer."""
+    settings = get_settings()
+    try:
+        llm_ready = bool(llm_client and llm_client.is_available())
+    except Exception:
+        llm_ready = False
+    try:
+        connected = sum(1 for consumer in consumers if consumer.is_connected())
+        rabbitmq_ready = bool(consumers) and connected == len(consumers)
+    except Exception:
+        rabbitmq_ready = False
+    is_ready = llm_ready and rabbitmq_ready
+    return JSONResponse(
+        {
+            "status": "ready" if is_ready else "not_ready",
+            "service": settings.service_name,
+            "checks": {
+                "rabbitmq": rabbitmq_ready,
+                "llm_backend": llm_ready,
+            },
+        },
+        status_code=200 if is_ready else 503,
+    )

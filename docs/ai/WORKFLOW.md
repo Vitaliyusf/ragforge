@@ -8,7 +8,7 @@
 5. Agent verifies the task is not already satisfied.
 6. Agent checks Git state and creates/uses the task branch.
 7. Agent implements only that task.
-8. Agent runs focused tests, then broader affected checks.
+8. Agent runs focused tests, required authoritative static scopes, then broader affected checks.
 9. Agent reports concise results and a recommended commit message.
 10. Agent does not commit or push.
 11. User reviews, then manually commits/merges.
@@ -81,3 +81,15 @@ Report:
 Do not repair `.venv` unless explicitly required.
 A missing or broken `.venv` must not by itself block task validation.
 When local Python is unsuitable, direct `uv run --isolated --python 3.11` is an accepted fallback.
+Use one workspace-local `UV_CACHE_DIR` for isolated uv. Diagnose an environment root
+cause once and make at most one corrected retry; then report `BLOCKED` rather than
+changing interpreters, virtualenvs, cache layouts or injecting dependencies.
+
+Local `PASS` requires parity with the matching CI lane's canonical dependencies,
+runtime, import roots, plugins, configuration and required environment. An adjusted
+run with extra non-CI dependencies is `NON-AUTHORITATIVE / ENVIRONMENT-ADJUSTED`.
+
+After implementation and all validation, perform the final diff audit and make no
+more source/test edits. Only then record handoff once, rebuild the brain once and
+validate memory once. If code changes afterward, repeat validation and replace the
+premature handoff at the end.

@@ -64,9 +64,29 @@ def test_model_and_rpc_ready_even_when_kafka_is_disconnected() -> None:
     assert response.status_code == 200
     assert response.json() == {
         "status": "ready",
+        "service": "embedding",
         "model_loaded": True,
         "rabbitmq": "connected",
         "kafka": "disconnected",
         "ready_for_rpc": True,
     }
     assert "secret" not in response.text.lower()
+
+
+def test_dependency_failure_and_recovery_do_not_change_liveness() -> None:
+    rpc = ConnectionState(True)
+    app = FastAPI()
+    app.include_router(create_health_router(
+        get_producer=lambda: ConnectionState(False),
+        get_model=lambda: ModelState(True),
+        get_rpc_consumer=lambda: rpc,
+    ))
+    client = TestClient(app)
+
+    assert client.get("/ready").status_code == 200
+    rpc.connected = False
+    assert client.get("/ready").status_code == 503
+    assert client.get("/live").status_code == 200
+    assert client.get("/live").json()["status"] == "live"
+    rpc.connected = True
+    assert client.get("/ready").status_code == 200
