@@ -56,7 +56,7 @@ const iconButtonClass = [
   'relative flex h-9 w-9 shrink-0 items-center justify-center rounded-xl',
   'text-[var(--fg-muted)] transition-colors duration-150',
   'hover:bg-[var(--surface-hover)] hover:text-[var(--fg)]',
-  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
+  'focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
 ].join(' ')
 
 const ACTIVITY_TABS = new Set(Object.values(ACTIVITY_FEATURES))
@@ -127,7 +127,7 @@ export default function Header({ activeTab, setActiveTab }) {
         <button
           type="button"
           onClick={() => setActiveTab('chat')}
-          className="group flex shrink-0 items-center gap-2.5 rounded-xl pr-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+          className="group flex shrink-0 items-center gap-2.5 rounded-xl pr-1 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
           aria-label="Go to chat"
         >
           <span className="relative flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-primary">
@@ -173,7 +173,7 @@ export default function Header({ activeTab, setActiveTab }) {
                   aria-current={active ? 'page' : undefined}
                   className={cn(
                     'relative flex h-9 shrink-0 items-center justify-center gap-2 rounded-lg px-3 text-[13px] font-medium',
-                    'transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
+                    'transition-colors duration-150 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
                     active ? 'text-[var(--fg)]' : 'text-[var(--fg-soft)] hover:text-[var(--fg)]'
                   )}
                 >
@@ -259,7 +259,7 @@ export default function Header({ activeTab, setActiveTab }) {
               aria-expanded={showSettings}
               className={cn(
                 'flex h-9 items-center gap-1.5 rounded-xl px-2 text-[13px] font-medium transition-colors duration-150',
-                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
+                'focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
                 showSettings || settingsActive
                   ? 'bg-[var(--primary-soft)] text-[var(--primary)]'
                   : 'text-[var(--fg-muted)] hover:bg-[var(--surface-hover)] hover:text-[var(--fg)]'

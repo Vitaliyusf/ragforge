@@ -50,7 +50,7 @@ function MemoryCard({ memory, isDeleting, onEdit, onDelete }) {
               onChange={e => setContent(e.target.value)}
               maxLength={MAX_CHARS}
               rows={3}
-              className="w-full rounded-lg px-3 py-2.5 text-[15px] resize-none outline-none"
+              className="w-full rounded-lg px-3 py-2.5 text-[15px] resize-none outline-hidden"
               style={{
                 background:  'var(--surface-hover)',
                 border:      '1px solid var(--border-focus)',
@@ -96,7 +96,7 @@ function MemoryCard({ memory, isDeleting, onEdit, onDelete }) {
                 <button
                   onClick={() => setEditing(true)}
                   disabled={isDeleting}
-                  className="p-1.5 rounded-md transition-colors outline-none"
+                  className="p-1.5 rounded-md transition-colors outline-hidden"
                   style={{ color: 'var(--fg-soft)' }}
                   onMouseEnter={e => { e.currentTarget.style.background = 'var(--surface-hover)'; e.currentTarget.style.color = 'var(--fg)' }}
                   onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--fg-soft)' }}
@@ -107,7 +107,7 @@ function MemoryCard({ memory, isDeleting, onEdit, onDelete }) {
                 <button
                   onClick={() => onDelete(memory)}
                   disabled={isDeleting}
-                  className="p-1.5 rounded-md transition-colors outline-none"
+                  className="p-1.5 rounded-md transition-colors outline-hidden"
                   style={{ color: 'var(--fg-soft)' }}
                   onMouseEnter={e => { e.currentTarget.style.background = 'var(--danger-soft)'; e.currentTarget.style.color = 'var(--danger)' }}
                   onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--fg-soft)' }}

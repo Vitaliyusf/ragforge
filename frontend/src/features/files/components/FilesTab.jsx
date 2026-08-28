@@ -294,7 +294,7 @@ export default function FilesTab() {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.12 }}
-              className="pointer-events-none absolute inset-2 z-20 flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-primary bg-primary-soft backdrop-blur-sm"
+              className="pointer-events-none absolute inset-2 z-20 flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-primary bg-primary-soft backdrop-blur-xs"
             >
               <Upload size={26} className="text-primary" />
               <p className="mt-2 text-[15px] font-medium text-primary">Drop to upload</p>
@@ -316,7 +316,7 @@ export default function FilesTab() {
           </div>
           {/* Refresh indicator — visible only when refetching with existing data */}
           {loading && files.length > 0 ? (
-            <div className="flex items-center gap-1.5 rounded-lg border border-border bg-bg-tertiary/60 px-2.5 py-1 text-xs text-text-secondary">
+            <div className="flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1 text-xs text-text-secondary">
               <Loader2 size={11} className="animate-spin" />
               Refreshing
             </div>
@@ -375,7 +375,7 @@ export default function FilesTab() {
 
           {/* Empty state — only after we know there truly are no files */}
           {!loading && files.length === 0 ? (
-            <div className="rounded-2xl border border-border bg-bg-tertiary/20">
+            <div className="rounded-2xl border border-border">
               <EmptyState
                 icon={Upload}
                 title="No files uploaded yet"
@@ -385,7 +385,7 @@ export default function FilesTab() {
           ) : null}
 
           {!loading && files.length > 0 && visibleFiles.length === 0 ? (
-            <div className="rounded-2xl border border-dashed border-border bg-bg-tertiary/20">
+            <div className="rounded-2xl border border-dashed border-border">
               <EmptyState
                 icon={Search}
                 size="sm"
@@ -484,7 +484,7 @@ export default function FilesTab() {
               {recentUploads.map((upload) => (
                 <div
                   key={`${upload.file_id}-${upload.uploadedAt}`}
-                  className="rounded-xl border border-border bg-bg-tertiary/40 px-3 py-2.5"
+                  className="rounded-xl border border-border px-3 py-2.5"
                 >
                   <div className="truncate text-[13px] font-semibold text-text-primary">{upload.filename}</div>
                   {/* The id returned by the upload call — the handle to quote

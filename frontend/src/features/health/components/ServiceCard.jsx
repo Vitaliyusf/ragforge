@@ -42,7 +42,7 @@ function ServiceCard({ name, info, index = 0 }) {
         </div>
       </div>
 
-      <div className="mt-3 flex items-center justify-between border-t border-border/70 pt-2.5">
+      <div className="mt-3 flex items-center justify-between border-t border-border pt-2.5">
         <span className="flex items-center gap-1.5 text-xs text-text-muted">
           <Icon size={11} style={{ color: cfg.iconColor }} /> Live / ready checks
         </span>

@@ -184,7 +184,7 @@ function DatasetActions({ disabled, onDelete }) {
               setOpen(false)
               onDelete()
             }}
-            className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-[13px] font-medium transition-colors hover:bg-[var(--danger-soft)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+            className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-[13px] font-medium transition-colors hover:bg-[var(--danger-soft)] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
             style={{ color: 'var(--danger)' }}
           >
             <Trash2 size={13} />

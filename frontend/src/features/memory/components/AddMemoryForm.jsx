@@ -58,7 +58,7 @@ function AddMemoryForm({ onAdd, onCancel }) {
               placeholder="Enter memory content…"
               maxLength={MAX_CHARS}
               rows={3}
-              className="w-full rounded-lg px-3 py-2.5 text-[15px] resize-none outline-none transition-all duration-150"
+              className="w-full rounded-lg px-3 py-2.5 text-[15px] resize-none outline-hidden transition-all duration-150"
               style={{
                 background:  'var(--surface)',
                 border:      `1px solid ${content.length > MAX_CHARS * 0.9 ? 'var(--warning)' : 'var(--border)'}`,
@@ -84,7 +84,7 @@ function AddMemoryForm({ onAdd, onCancel }) {
                 <button
                   key={opt.value}
                   onClick={() => setCategory(opt.value)}
-                  className="px-2.5 py-1 rounded-md text-[13px] font-medium transition-all duration-150 outline-none"
+                  className="px-2.5 py-1 rounded-md text-[13px] font-medium transition-all duration-150 outline-hidden"
                   style={{
                     background:  category === opt.value ? 'var(--primary-soft)' : 'var(--surface-hover)',
                     color:       category === opt.value ? 'var(--primary)' : 'var(--fg-muted)',

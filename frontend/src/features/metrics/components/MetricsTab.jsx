@@ -124,7 +124,7 @@ export default function MetricsTab({ section: requestedSection, onNavigate }) {
                   className={cn(
                     'flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[14px] font-medium',
                     'transition-colors duration-150',
-                    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]'
+                    'focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[var(--ring)]'
                   )}
                   style={{
                     background: active ? 'var(--surface-hover)' : 'transparent',

@@ -156,7 +156,7 @@ export default function GoldenSetImporter({ open, onOpenChange, onSubmit, busy =
                 setFormat(event.target.value)
                 invalidate()
               }}
-              className="h-9 rounded-lg border px-3 text-[15px] outline-none focus:ring-2 focus:ring-[var(--ring)]"
+              className="h-9 rounded-lg border px-3 text-[15px] outline-hidden focus:ring-2 focus:ring-[var(--ring)]"
               style={{ background: 'var(--surface)', borderColor: 'var(--border)', color: 'var(--fg)' }}
             >
               <option value="json">JSON</option>

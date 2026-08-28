@@ -113,7 +113,7 @@ const MessageBubble = React.memo(function MessageBubble({
       {!isUser ? (
         <div
           className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border"
-          style={{ background: 'var(--gradient-subtle)', borderColor: 'var(--border)' }}
+          style={{ borderColor: 'var(--border)' }}
         >
           <Sparkles size={16} className="text-primary" />
         </div>
@@ -131,7 +131,7 @@ const MessageBubble = React.memo(function MessageBubble({
               type="button"
               aria-label="View trace and debug details"
               onClick={() => onOpenDebug(message)}
-              className="rounded-lg p-1.5 text-text-muted transition-colors hover:bg-bg-tertiary hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+              className="rounded-lg p-1.5 text-text-muted transition-colors hover:bg-bg-tertiary hover:text-primary focus-visible:outline-hidden focus-visible:ring-2"
             >
               <Info size={14} />
             </button>
@@ -141,7 +141,7 @@ const MessageBubble = React.memo(function MessageBubble({
               type="button"
               aria-label="Copy answer"
               onClick={() => onCopy(answer)}
-              className="rounded-lg p-1.5 text-text-muted transition-colors hover:bg-bg-tertiary hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+              className="rounded-lg p-1.5 text-text-muted transition-colors hover:bg-bg-tertiary hover:text-primary focus-visible:outline-hidden focus-visible:ring-2"
             >
               <Copy size={14} />
             </button>
@@ -176,7 +176,7 @@ const MessageBubble = React.memo(function MessageBubble({
           <button
             type="button"
             onClick={() => setExpanded((v) => !v)}
-            className="mt-1.5 flex items-center gap-1 text-xs text-text-muted transition-colors hover:text-accent focus-visible:outline-none"
+            className="mt-1.5 flex items-center gap-1 text-xs text-text-muted transition-colors hover:text-accent focus-visible:outline-hidden"
           >
             {expanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
             {expanded ? 'Hide full prompt' : 'Show full prompt'}
@@ -287,7 +287,7 @@ function ChatWelcome({ suggestedPrompts, onSuggestedPrompt }) {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.08 * index }}
             onClick={() => onSuggestedPrompt(prompt)}
-            className="group flex min-h-14 items-center justify-between gap-3 rounded-2xl border border-border bg-bg-elevated px-4 py-3 text-left text-[15px] font-medium text-text-secondary shadow-sm transition-all duration-200 hover:border-border-hover hover:text-text-primary hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+            className="group flex min-h-14 items-center justify-between gap-3 rounded-2xl border border-border bg-bg-elevated px-4 py-3 text-left text-[15px] font-medium text-text-secondary shadow-sm transition-all duration-200 hover:border-border-hover hover:text-text-primary hover:shadow-md focus-visible:outline-hidden focus-visible:ring-2"
           >
             <span>{prompt}</span>
             <ArrowUpRight size={15} className="shrink-0 text-text-muted transition-transform group-group-hover:translate-x-0.5 group-hover:text-primary" />

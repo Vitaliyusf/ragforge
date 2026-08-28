@@ -122,7 +122,7 @@ export default function ChatTab() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="fixed inset-0 z-[70] bg-black/40 backdrop-blur-sm xl:hidden"
+              className="fixed inset-0 z-[70] bg-black/40 backdrop-blur-xs xl:hidden"
               onClick={() => setSidebarOpen(false)}
             />
             <motion.aside
@@ -177,7 +177,7 @@ export default function ChatTab() {
 
           <div
             className="hidden h-9 w-9 shrink-0 items-center justify-center rounded-xl sm:flex"
-            style={{ background: 'var(--gradient-subtle)', color: 'var(--primary)' }}
+            style={{ color: 'var(--primary)' }}
           >
             <Sparkles size={16} />
           </div>

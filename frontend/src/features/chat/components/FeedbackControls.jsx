@@ -20,7 +20,7 @@ export default function FeedbackControls({
   const [comment, setComment] = useState('')
 
   return (
-    <div className="mt-2 w-full rounded-2xl border border-border bg-bg-tertiary/60 p-3">
+    <div className="mt-2 w-full rounded-2xl border border-border p-3">
       <div className="grid gap-3 md:grid-cols-2">
         <div>
           <div className="mb-2 flex items-center gap-2 text-[13px] font-semibold uppercase tracking-wide text-text-muted">
@@ -89,7 +89,7 @@ export default function FeedbackControls({
           value={comment}
           onChange={(event) => setComment(event.target.value)}
           placeholder="Add a short note for this answer or flow..."
-          className="h-20 w-full resize-none rounded-xl border border-border bg-bg-elevated px-3 py-2 text-[15px] text-text-primary outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/20"
+          className="h-20 w-full resize-none rounded-xl border border-border bg-bg-elevated px-3 py-2 text-[15px] text-text-primary outline-hidden transition focus:border-accent focus:ring-2"
         />
       </label>
     </div>

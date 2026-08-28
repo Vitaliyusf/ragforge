@@ -241,7 +241,7 @@ export default function ModelManagementTab() {
                   key={implementation.name}
                   whileTap={{ scale: 0.985 }}
                   onClick={() => handleImplementationChange(implementation.name)}
-                  className="flex w-full items-center gap-3 rounded-xl border p-3 text-left outline-none transition-all duration-200 focus-visible:ring-2 focus-visible:ring-primary/40"
+                  className="flex w-full items-center gap-3 rounded-xl border p-3 text-left outline-hidden transition-all duration-200 focus-visible:ring-2"
                   style={{
                     background: isActive ? 'var(--primary-soft)' : 'var(--surface-hover)',
                     borderColor: isActive ? 'var(--border-focus)' : 'var(--border)',
@@ -343,7 +343,7 @@ export default function ModelManagementTab() {
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ delay: Math.min(index, 8) * 0.025 }}
                         onClick={() => handleModelSelect(model)}
-                        className="flex w-full items-center gap-3 rounded-xl border p-3 text-left outline-none transition-all duration-200 hover:border-border-hover hover:bg-bg-tertiary focus-visible:ring-2 focus-visible:ring-primary/40"
+                        className="flex w-full items-center gap-3 rounded-xl border p-3 text-left outline-hidden transition-all duration-200 hover:border-border-hover hover:bg-bg-tertiary focus-visible:ring-2"
                         style={{
                           background: isSelected ? 'var(--primary-soft)' : 'var(--surface-hover)',
                           borderColor: isSelected ? 'var(--border-focus)' : 'var(--border)',
@@ -371,7 +371,7 @@ export default function ModelManagementTab() {
               )}
             </div>
 
-            <div className="border-t border-border bg-bg-tertiary/30 p-4 xl:border-l xl:border-t-0">
+            <div className="border-t border-border p-4 xl:border-l xl:border-t-0">
               {selectedModel ? (
                 <AnimatePresence mode="wait">
                   <motion.div
@@ -393,7 +393,7 @@ export default function ModelManagementTab() {
                         ['Status', safeRender(modelInfo?.status || selectedModel?.status || 'available')],
                         modelInfo?.downloaded !== undefined ? ['Local', modelInfo.downloaded ? 'Yes' : 'No'] : null,
                       ].filter(Boolean).map(([label, value]) => (
-                        <div key={label} className="flex items-center justify-between gap-3 border-b border-border/70 pb-2 text-[13px] last:border-0">
+                        <div key={label} className="flex items-center justify-between gap-3 border-b border-border pb-2 text-[13px] last:border-0">
                           <span className="text-text-muted">{label}</span>
                           <span className="max-w-[65%] truncate font-medium text-text-primary">{value}</span>
                         </div>

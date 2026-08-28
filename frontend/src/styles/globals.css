@@ -1,23 +1,292 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+
+/* Automatic source detection roots at this file's own directory, and this
+   file lives in src/styles/ — which contains no components. Without these
+   three roots Tailwind compiles the theme and preflight and not a single
+   utility, and the build still succeeds, so the sources are named
+   explicitly. Verified by asserting emitted utilities in globals.test.js. */
+@source "../../app";
+@source "../../src";
+@source "../../components";
+
+/* Tests are not shipped, and their assertions mention class names the product
+   does not use — including regexes describing classes we deliberately removed.
+   Scanning them would compile those back into production CSS. */
+@source not "../../app/**/*.test.{js,jsx}";
+@source not "../../src/**/*.test.{js,jsx}";
+
+/* Themes are driven by a `.dark` class on <html> (next-themes), not by the
+   OS preference, so the dark variant has to be told what to look for. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ─── LIGHT THEME (default :root) ─────────────────────────────
+   Runtime semantic values. These are ordinary CSS variables rather than
+   @theme entries because they change between themes; @theme below only
+   points Tailwind's utility namespaces at them. One value, one home. */
+:root {
+  --bg:               #F4F6FB;
+  --bg-subtle:        #ECEFF6;
+  --surface:          #FFFFFF;
+  --surface-elevated: #FFFFFF;
+  --surface-hover:    #F0F2F8;
+  --surface-active:   #E7EAF3;
+
+  --border:           #DDE2EC;
+  --border-strong:    #C7CEDD;
+  --border-focus:     #7767F6;
+
+  --fg:               #182033;
+  --fg-muted:         #586478;
+  /* 4.61:1 against every light surface token. The old #8490A3 was 3.23:1
+     on white and worse elsewhere, and it carries real copy in ~17 files,
+     so the fix belongs here rather than at 112 call sites. */
+  --fg-soft:          #606977;
+
+  --primary:          #6D5DF6;
+  --primary-hover:    #5D4DE5;
+  --primary-fg:       #FFFFFF;
+  --primary-rgb:      109 93 246;
+  --primary-soft:     rgba(109, 93, 246, 0.10);
+
+  --secondary:        #ECEEF5;
+  --secondary-hover:  #E1E5EF;
+
+  --accent:           #0FAF9F;
+  --accent-soft:      rgba(15, 175, 159, 0.10);
+
+  --success:          #16A34A;
+  --success-soft:     rgba(22, 163, 74, 0.10);
+  --warning:          #D97706;
+  --warning-soft:     rgba(217, 119, 6, 0.10);
+  --danger:           #DC2626;
+  --danger-soft:      rgba(220, 38, 38, 0.10);
+  --info:             #0284C7;
+  --info-soft:        rgba(2, 132, 199, 0.10);
+
+  --ring:             rgba(109, 93, 246, 0.24);
+
+  --gradient-primary: linear-gradient(135deg, #7667F6 0%, #5D7FEF 58%, #33A6D8 100%);
+  --glass:            rgba(255, 255, 255, 0.82);
+
+  --scrollbar-thumb:  #C7CEDD;
+  --scrollbar-track:  transparent;
+
+  /* Tight and neutral. Elevation reads as a plane above the page,
+     never as a coloured halo. */
+  --shadow-sm:        0 1px 2px rgba(24,32,51,0.06);
+  --shadow-md:        0 2px 8px rgba(24,32,51,0.08);
+  --shadow-lg:        0 8px 24px rgba(24,32,51,0.10);
+  --shadow-xl:        0 16px 48px rgba(24,32,51,0.14);
+}
+
+/* ─── DARK THEME ─────────────────────────────────────────── */
+.dark {
+  --bg:               #0B0D13;
+  --bg-subtle:        #11141D;
+  --surface:          #151923;
+  --surface-elevated: #191E2A;
+  --surface-hover:    #202635;
+  --surface-active:   #292F3F;
+
+  --border:           #293142;
+  --border-strong:    #3A455B;
+  --border-focus:     #9A8BFF;
+
+  --fg:               #F3F5FA;
+  --fg-muted:         #A7B0C1;
+  /* 4.65:1 against every dark surface token; the old #747F93 was 4.13:1. */
+  --fg-soft:          #8F99AB;
+
+  --primary:          #9A8BFF;
+  --primary-hover:    #AA9EFF;
+  --primary-fg:       #10101B;
+  --primary-rgb:      154 139 255;
+  --primary-soft:     rgba(154, 139, 255, 0.13);
+
+  --secondary:        #222836;
+  --secondary-hover:  #2B3344;
+
+  --accent:           #43D6C4;
+  --accent-soft:      rgba(67, 214, 196, 0.12);
+
+  --success:          #22C55E;
+  --success-soft:     rgba(34, 197, 94, 0.12);
+  --warning:          #F59E0B;
+  --warning-soft:     rgba(245, 158, 11, 0.12);
+  --danger:           #EF4444;
+  --danger-soft:      rgba(239, 68, 68, 0.12);
+  --info:             #38BDF8;
+  --info-soft:        rgba(56, 189, 248, 0.12);
+
+  --ring:             rgba(154, 139, 255, 0.30);
+
+  --gradient-primary: linear-gradient(135deg, #9A8BFF 0%, #7B8FF8 55%, #4DB9E8 100%);
+  --glass:            rgba(21, 25, 35, 0.82);
+
+  --scrollbar-thumb:  #3A455B;
+  --scrollbar-track:  transparent;
+
+  --shadow-sm:        0 1px 2px rgba(0,0,0,0.35);
+  --shadow-md:        0 2px 8px rgba(0,0,0,0.45);
+  --shadow-lg:        0 8px 24px rgba(0,0,0,0.55);
+  --shadow-xl:        0 16px 48px rgba(0,0,0,0.65);
+}
+
+/* ─── Non-colour semantic tokens ───────────────────────────────────────
+   Radius and motion do not change between themes, so they are declared once
+   rather than restated in every theme block. Themes override colour only.
+   These live in @theme (not :root) because Tailwind owns their namespaces:
+   --radius-* backs rounded-*, --duration-* backs duration-*, --ease-* backs
+   ease-*. Declaring them here makes the utility and the raw var() the same
+   value by construction. */
+@theme {
+  /* Controls (buttons, inputs, badges) versus surfaces (cards, panels, sheets). */
+  --radius-control: 0.625rem; /* 10px — matches the existing rounded-xl controls */
+  --radius-surface: 0.75rem;  /* 12px — matches the existing rounded-2xl panels  */
+
+  /* Calmer than Tailwind's defaults. The app leans on rounded-lg/xl/2xl
+     everywhere, so tightening these three reshapes every surface at once. */
+  --radius-lg:  0.5rem;   /* 8px  */
+  --radius-xl:  0.625rem; /* 10px */
+  --radius-2xl: 0.75rem;  /* 12px */
+  --radius-3xl: 1rem;     /* 16px */
+
+  /* One motion scale. `fast` is hover/focus/colour, `normal` is a small
+     enter/exit, `slow` is a panel or drawer moving across the viewport. */
+  --duration-fast:   150ms;
+  --duration-normal: 200ms;
+  /* No consumer yet: it is the third step of the scale, reserved for a
+     transition that crosses the viewport. Nothing today is that large. */
+  --duration-slow:   320ms;
+  --ease-emphasized: cubic-bezier(0.16, 1, 0.3, 1);
+
+  --font-sans: var(--font-geist-sans), system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+}
+
+/* The animations below predate the Tailwind namespaces and are referenced by
+   name from plain CSS, so they keep their original spelling. */
+:root {
+  --motion-fast:   var(--duration-fast);
+  --motion-normal: var(--duration-normal);
+  --motion-easing: var(--ease-emphasized);
+
+  /* `live` is the tone for work happening right now — streaming, running,
+     processing. statusTone.js reads it as a raw var(), not as a utility, so
+     it needs this spelling alongside the --color-status-live theme key. */
+  --status-live: var(--accent);
+}
+
+/* ─── Tailwind-facing theme ────────────────────────────────────────────
+   `inline` matters twice here. It stops Tailwind re-emitting these keys into
+   :root — which is what lets --shadow-* keep the single per-theme definition
+   above instead of gaining a second, theme-frozen copy under the same name —
+   and it makes the utilities resolve the var() at use time, so one `.dark`
+   class repaints every utility without regenerating any CSS. */
+@theme inline {
+  --color-bg:               var(--bg);
+  --color-bg-subtle:        var(--bg-subtle);
+  --color-surface:          var(--surface);
+  --color-surface-elevated: var(--surface-elevated);
+  --color-surface-hover:    var(--surface-hover);
+  --color-surface-active:   var(--surface-active);
+
+  --color-border:        var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-border-focus:  var(--border-focus);
+
+  --color-fg:       var(--fg);
+  --color-fg-muted: var(--fg-muted);
+  --color-fg-soft:  var(--fg-soft);
+
+  --color-primary:       var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-fg:    var(--primary-fg);
+  --color-primary-soft:  var(--primary-soft);
+
+  --color-secondary:       var(--secondary);
+  --color-secondary-hover: var(--secondary-hover);
+
+  --color-accent:      var(--accent);
+  --color-accent-soft: var(--accent-soft);
+
+  --color-success:      var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-warning:      var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-danger:       var(--danger);
+  --color-danger-soft:  var(--danger-soft);
+  --color-info:         var(--info);
+  --color-info-soft:    var(--info-soft);
+
+  /* Work happening right now. The only status allowed to animate. */
+  --color-status-live: var(--accent);
+
+  /* ── Backward-compat aliases ──
+     Older call sites spell the surface ramp bg-primary/secondary/tertiary and
+     the text ramp text-primary/secondary/muted. They are aliases of the tokens
+     above, not separate values. */
+  --color-bg-primary:     var(--bg);
+  --color-bg-secondary:   var(--bg-subtle);
+  --color-bg-tertiary:    var(--surface);
+  --color-bg-elevated:    var(--surface-elevated);
+  --color-bg-muted:       var(--surface-hover);
+  --color-text-primary:   var(--fg);
+  --color-text-secondary: var(--fg-muted);
+  --color-text-muted:     var(--fg-soft);
+  --color-border-hover:   var(--border-strong);
+  --color-error:          var(--danger);
+
+  --shadow-sm:   var(--shadow-sm);
+  --shadow-md:   var(--shadow-md);
+  --shadow-lg:   var(--shadow-lg);
+  --shadow-xl:   var(--shadow-xl);
+  --shadow-2xl:  var(--shadow-xl);
+}
 
 @layer base {
+  /* v3 preflight painted every element's border with gray-200 and v4 paints it
+     with currentColor. RagForge has ~170 bare `border`/`border-t`/`border-b`
+     utilities that inherited that default, so the default is restated here as
+     the semantic token. This is one rule instead of ~170 mechanical class
+     edits, and it is strictly better than what v3 did: the default border now
+     follows the theme instead of being a fixed light gray in dark mode.
+     Explicit `border-<color>` utilities still win — they are in the utilities
+     layer, which cascades after base. */
+  *,
+  ::before,
+  ::after,
+  ::backdrop {
+    border-color: var(--border);
+  }
+
+  /* v4's default ring colour is currentColor; v3's was configurable and this
+     app set it to the semantic focus ring. Every ring here is an explicit
+     width (`ring-1`/`ring-2`) with no colour, so without this the focus
+     indicator would silently become the text colour. */
   * {
-    @apply box-border m-0 p-0;
+    --tw-ring-color: var(--ring);
+  }
+
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
   }
 
   html {
-    @apply transition-colors duration-200;
+    transition: color var(--duration-normal), background-color var(--duration-normal);
   }
 
   html,
   body {
-    @apply max-w-full overflow-x-hidden;
+    max-width: 100%;
+    overflow-x: hidden;
   }
 
   body {
-    @apply antialiased;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
     font-feature-settings: 'rlig' 1, 'calt' 1;
     min-height: 100vh;
     background: var(--bg);
@@ -25,117 +294,8 @@
   }
 
   a {
-    @apply text-inherit no-underline;
-  }
-
-  /* ─── LIGHT THEME (default :root) ───────────────────────── */
-  :root {
-    --bg:               #F4F6FB;
-    --bg-subtle:        #ECEFF6;
-    --surface:          #FFFFFF;
-    --surface-elevated: #FFFFFF;
-    --surface-hover:    #F0F2F8;
-    --surface-active:   #E7EAF3;
-
-    --border:           #DDE2EC;
-    --border-strong:    #C7CEDD;
-    --border-focus:     #7767F6;
-
-    --fg:               #182033;
-    --fg-muted:         #586478;
-    /* 4.61:1 against every light surface token. The old #8490A3 was 3.23:1
-       on white and worse elsewhere, and it carries real copy in ~17 files,
-       so the fix belongs here rather than at 112 call sites. */
-    --fg-soft:          #606977;
-
-    --primary:          #6D5DF6;
-    --primary-hover:    #5D4DE5;
-    --primary-fg:       #FFFFFF;
-    --primary-rgb:      109 93 246;
-    --primary-soft:     rgba(109, 93, 246, 0.10);
-
-    --secondary:        #ECEEF5;
-    --secondary-hover:  #E1E5EF;
-
-    --accent:           #0FAF9F;
-    --accent-soft:      rgba(15, 175, 159, 0.10);
-
-    --success:          #16A34A;
-    --success-soft:     rgba(22, 163, 74, 0.10);
-    --warning:          #D97706;
-    --warning-soft:     rgba(217, 119, 6, 0.10);
-    --danger:           #DC2626;
-    --danger-soft:      rgba(220, 38, 38, 0.10);
-    --info:             #0284C7;
-    --info-soft:        rgba(2, 132, 199, 0.10);
-
-    --ring:             rgba(109, 93, 246, 0.24);
-
-    --gradient-primary: linear-gradient(135deg, #7667F6 0%, #5D7FEF 58%, #33A6D8 100%);
-    --glass:            rgba(255, 255, 255, 0.82);
-
-    --scrollbar-thumb:  #C7CEDD;
-    --scrollbar-track:  transparent;
-
-    /* Tight and neutral. Elevation reads as a plane above the page,
-       never as a coloured halo. */
-    --shadow-sm:        0 1px 2px rgba(24,32,51,0.06);
-    --shadow-md:        0 2px 8px rgba(24,32,51,0.08);
-    --shadow-lg:        0 8px 24px rgba(24,32,51,0.10);
-    --shadow-xl:        0 16px 48px rgba(24,32,51,0.14);
-  }
-
-  /* ─── DARK THEME ─────────────────────────────────────────── */
-  .dark {
-    --bg:               #0B0D13;
-    --bg-subtle:        #11141D;
-    --surface:          #151923;
-    --surface-elevated: #191E2A;
-    --surface-hover:    #202635;
-    --surface-active:   #292F3F;
-
-    --border:           #293142;
-    --border-strong:    #3A455B;
-    --border-focus:     #9A8BFF;
-
-    --fg:               #F3F5FA;
-    --fg-muted:         #A7B0C1;
-    /* 4.65:1 against every dark surface token; the old #747F93 was 4.13:1. */
-    --fg-soft:          #8F99AB;
-
-    --primary:          #9A8BFF;
-    --primary-hover:    #AA9EFF;
-    --primary-fg:       #10101B;
-    --primary-rgb:      154 139 255;
-    --primary-soft:     rgba(154, 139, 255, 0.13);
-
-    --secondary:        #222836;
-    --secondary-hover:  #2B3344;
-
-    --accent:           #43D6C4;
-    --accent-soft:      rgba(67, 214, 196, 0.12);
-
-    --success:          #22C55E;
-    --success-soft:     rgba(34, 197, 94, 0.12);
-    --warning:          #F59E0B;
-    --warning-soft:     rgba(245, 158, 11, 0.12);
-    --danger:           #EF4444;
-    --danger-soft:      rgba(239, 68, 68, 0.12);
-    --info:             #38BDF8;
-    --info-soft:        rgba(56, 189, 248, 0.12);
-
-    --ring:             rgba(154, 139, 255, 0.30);
-
-    --gradient-primary: linear-gradient(135deg, #9A8BFF 0%, #7B8FF8 55%, #4DB9E8 100%);
-    --glass:            rgba(21, 25, 35, 0.82);
-
-    --scrollbar-thumb:  #3A455B;
-    --scrollbar-track:  transparent;
-
-    --shadow-sm:        0 1px 2px rgba(0,0,0,0.35);
-    --shadow-md:        0 2px 8px rgba(0,0,0,0.45);
-    --shadow-lg:        0 8px 24px rgba(0,0,0,0.55);
-    --shadow-xl:        0 16px 48px rgba(0,0,0,0.65);
+    color: inherit;
+    text-decoration: none;
   }
 
   /* ─── Custom scrollbars ─────────────────────────────────── */
@@ -160,28 +320,6 @@
   }
 }
 
-/* ─── Non-colour semantic tokens ───────────────────────────────────────
-   Radius and motion do not change between themes, so they are declared once
-   rather than restated in every theme block. Themes override colour only. */
-:root {
-  /* Controls (buttons, inputs, badges) versus surfaces (cards, panels, sheets). */
-  --radius-control: 0.625rem; /* 10px — matches the existing rounded-xl controls */
-  --radius-surface: 0.75rem;  /* 12px — matches the existing rounded-2xl panels  */
-
-  /* One motion scale. `fast` is hover/focus/colour, `normal` is a small
-     enter/exit, `slow` is a panel or drawer moving across the viewport. */
-  --motion-fast:   150ms;
-  --motion-normal: 200ms;
-  /* No consumer yet: it is the third step of the scale, reserved for a
-     transition that crosses the viewport. Nothing today is that large. */
-  --motion-slow:   320ms;
-  --motion-easing: cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-/* `live` is the tone for work that is happening right now — streaming,
-   running, processing. It is the only status allowed to animate continuously. */
-:root { --status-live: var(--accent); }
-
 ::selection {
   background: var(--primary-soft);
   color: var(--fg);
@@ -202,24 +340,24 @@
 @keyframes drawer-in   { from { opacity: 0; transform: translateX(48px) } to { opacity: 1; transform: none } }
 @keyframes drawer-out  { from { opacity: 1; transform: none } to { opacity: 0; transform: translateX(48px) } }
 
-.modal-overlay[data-state='open']  { animation: overlay-in  var(--motion-fast) ease-out }
-.modal-overlay[data-state='closed'] { animation: overlay-out var(--motion-fast) ease-in }
-.modal-content[data-state='open']  { animation: dialog-in  var(--motion-normal) var(--motion-easing) }
-.modal-content[data-state='closed'] { animation: dialog-out var(--motion-fast) ease-in }
-.drawer-content[data-state='open']  { animation: drawer-in  var(--motion-normal) var(--motion-easing) }
-.drawer-content[data-state='closed'] { animation: drawer-out var(--motion-fast) ease-in }
+.modal-overlay[data-state='open']  { animation: overlay-in  var(--duration-fast) ease-out }
+.modal-overlay[data-state='closed'] { animation: overlay-out var(--duration-fast) ease-in }
+.modal-content[data-state='open']  { animation: dialog-in  var(--duration-normal) var(--ease-emphasized) }
+.modal-content[data-state='closed'] { animation: dialog-out var(--duration-fast) ease-in }
+.drawer-content[data-state='open']  { animation: drawer-in  var(--duration-normal) var(--ease-emphasized) }
+.drawer-content[data-state='closed'] { animation: drawer-out var(--duration-fast) ease-in }
 
 @keyframes icon-swap {
   from { opacity: 0; transform: rotate(-20deg) scale(0.8) }
   to   { opacity: 1; transform: none }
 }
-.animate-icon-swap { animation: icon-swap var(--motion-fast) ease-out }
+.animate-icon-swap { animation: icon-swap var(--duration-fast) ease-out }
 
 @keyframes dropdown-in {
   from { opacity: 0; transform: translateY(-6px) scale(0.98) }
   to   { opacity: 1; transform: none }
 }
-.animate-dropdown-in { animation: dropdown-in var(--motion-fast) ease-out }
+.animate-dropdown-in { animation: dropdown-in var(--duration-fast) ease-out }
 
 /* ─── Navigation activity ─────────────────────────────────────────────
    One place for every activity animation the shell uses. Timings live here
@@ -331,76 +469,67 @@
   background: linear-gradient(to bottom, transparent 0%, var(--surface) 34%, var(--surface) 100%);
 }
 
-@layer utilities {
-  /* ─── Animations ─────────────────────────────────────────── */
-  /* ─── Gradient helpers ───────────────────────────────────── */
+@utility bg-gradient-primary {
   /* Retained for the few remaining hero surfaces. Controls use flat fills. */
-  .bg-gradient-primary {
-    background: var(--gradient-primary);
-  }
-  .bg-gradient-accent {
-    background: var(--gradient-primary);
-  }
+  background: var(--gradient-primary);
+}
 
-  /* ─── Blink ──────────────────────────────────────────────── */
-  @keyframes blink {
-    0%, 100% { opacity: 1; }
-    50%       { opacity: 0; }
-  }
-  .animate-blink {
-    animation: blink 1s step-end infinite;
-  }
+@utility animate-blink {
+  animation: blink 1s step-end infinite;
+}
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0; }
+}
 
-  /* ─── Fade-in ─────────────────────────────────────────────── */
-  @keyframes fade-in {
-    from { opacity: 0; transform: translateY(4px); }
-    to   { opacity: 1; transform: translateY(0); }
-  }
-  .animate-fade-in {
-    animation: fade-in 0.25s ease-out both;
-  }
+@utility animate-fade-in {
+  animation: fade-in 0.25s ease-out both;
+}
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
 
-  /* ─── Shimmer ────────────────────────────────────────────── */
-  @keyframes shimmer {
-    from { background-position: -200% 0; }
-    to   { background-position:  200% 0; }
-  }
-  .animate-shimmer {
-    background: linear-gradient(
-      90deg,
-      var(--surface)       25%,
-      var(--surface-hover) 50%,
-      var(--surface)       75%
-    );
-    background-size: 200% 100%;
-    animation: shimmer 1.5s infinite;
-  }
+@utility animate-shimmer {
+  background: linear-gradient(
+    90deg,
+    var(--surface)       25%,
+    var(--surface-hover) 50%,
+    var(--surface)       75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+@keyframes shimmer {
+  from { background-position: -200% 0; }
+  to   { background-position:  200% 0; }
+}
 
-  /* ─── Scrollbar utilities ────────────────────────────────── */
-  .scrollbar-thin {
-    scrollbar-width: thin;
-  }
-  .scrollbar-none {
-    scrollbar-width: none;
-  }
-  .scrollbar-none::-webkit-scrollbar {
-    display: none;
-  }
-  .scrollbar-thumb-border::-webkit-scrollbar-thumb {
+/* Tailwind 4 ships scrollbar-width natively (scheme/thin/none), but not the
+   WebKit pseudo-elements, so only the parts it does not own stay here. */
+@utility scrollbar-thumb-border {
+  &::-webkit-scrollbar-thumb {
     background: var(--border);
   }
-  .scrollbar-track-transparent::-webkit-scrollbar-track {
+}
+@utility scrollbar-track-transparent {
+  &::-webkit-scrollbar-track {
     background: transparent;
   }
-
-  /* ─── Label utility ──────────────────────────────────────── */
-  .label-xs {
-    font-size: 11px;
-    font-weight: 600;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-    color: var(--fg-soft);
+}
+@utility scrollbar-none {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
   }
+}
+
+@utility label-xs {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--fg-soft);
 }
 
 @media (prefers-reduced-motion: reduce) {

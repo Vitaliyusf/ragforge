@@ -52,7 +52,7 @@ export default function AuditTrailPanel({
       {events.length > 0 ? (
         <div className="space-y-3">
           {events.map((event, index) => (
-            <div key={event.event_id || `${event.event_type || 'event'}-${event.created_at || index}`} className="rounded-2xl border border-border bg-bg-tertiary/70 p-4">
+            <div key={event.event_id || `${event.event_type || 'event'}-${event.created_at || index}`} className="rounded-2xl border border-border p-4">
               <div className="flex flex-wrap items-center gap-2 text-[15px] font-semibold text-text-primary">
                 <History size={15} className="text-accent" />
                 <span>{event.event_type}</span>

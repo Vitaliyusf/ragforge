@@ -77,7 +77,7 @@ export default function ChatInput({
             rows={1}
             aria-label="Chat message"
             disabled={inputDisabled}
-            className="min-h-7 min-w-0 flex-1 resize-none overflow-y-auto bg-transparent py-1 text-[15px] leading-relaxed text-[var(--fg)] outline-none placeholder:text-[var(--fg-soft)] disabled:opacity-60 scrollbar-none"
+            className="min-h-7 min-w-0 flex-1 resize-none overflow-y-auto bg-transparent py-1 text-[15px] leading-relaxed text-[var(--fg)] outline-hidden placeholder:text-[var(--fg-soft)] disabled:opacity-60 scrollbar-none"
             style={{ maxHeight: MAX_TEXTAREA_HEIGHT }}
           />
 
@@ -86,7 +86,7 @@ export default function ChatInput({
             onClick={onSend}
             disabled={!canSend}
             aria-label="Send message"
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-white outline-none transition-all duration-200 enabled:hover:brightness-110 disabled:cursor-not-allowed focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-white outline-hidden transition-all duration-200 enabled:hover:brightness-110 disabled:cursor-not-allowed focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
             style={{
               background: canSend ? 'var(--gradient-primary)' : 'var(--surface-active)',
               color: canSend ? 'white' : 'var(--fg-soft)',

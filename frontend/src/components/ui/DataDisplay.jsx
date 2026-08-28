@@ -16,7 +16,7 @@ import { cn } from '@/lib/utils'
 /** Inline `label: value`, for dense detail lists. */
 export function DataRow({ label, value, mono = false, className = '' }) {
   return (
-    <div className={cn('flex items-start gap-2 rounded-xl bg-bg-tertiary/60 px-3 py-2 text-[13px]', className)}>
+    <div className={cn('flex items-start gap-2 rounded-xl px-3 py-2 text-[13px]', className)}>
       <span className="shrink-0 font-medium text-text-secondary">{label}:</span>
       <span className={cn('min-w-0 break-all text-text-secondary', mono && 'font-mono')}>{value}</span>
     </div>

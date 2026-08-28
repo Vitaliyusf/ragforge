@@ -45,7 +45,7 @@ export default function Modal({
     <Dialog.Close asChild>
       <button
         className={cn(
-          'rounded-lg p-2 transition-colors outline-none',
+          'rounded-lg p-2 transition-colors outline-hidden',
           'focus-visible:ring-2 focus-visible:ring-[var(--ring)]'
         )}
         style={{ color: 'var(--fg-soft)' }}
@@ -62,7 +62,7 @@ export default function Modal({
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal container={container ?? undefined}>
         <Dialog.Overlay
-          className="modal-overlay fixed inset-0 backdrop-blur-sm"
+          className="modal-overlay fixed inset-0 backdrop-blur-xs"
           style={{ background: 'rgba(0,0,0,0.6)', zIndex: MODAL_Z }}
         />
 
@@ -149,7 +149,7 @@ export function ConfirmModal({
           <Dialog.Close asChild>
             <button
               disabled={loading}
-              className="px-4 py-2 rounded-lg text-[15px] font-medium transition-colors outline-none"
+              className="px-4 py-2 rounded-lg text-[15px] font-medium transition-colors outline-hidden"
               style={{ background: 'var(--surface-hover)', color: 'var(--fg-muted)' }}
               onMouseEnter={e => e.currentTarget.style.background = 'var(--surface-active)'}
               onMouseLeave={e => e.currentTarget.style.background = 'var(--surface-hover)'}
@@ -160,7 +160,7 @@ export function ConfirmModal({
           <button
             onClick={handleConfirm}
             disabled={loading}
-            className="px-4 py-2 rounded-lg text-[15px] font-medium text-white transition-all outline-none disabled:opacity-60"
+            className="px-4 py-2 rounded-lg text-[15px] font-medium text-white transition-all outline-hidden disabled:opacity-60"
             style={{
               background: variant === 'danger' ? 'var(--danger)' : 'var(--gradient-primary)',
             }}
