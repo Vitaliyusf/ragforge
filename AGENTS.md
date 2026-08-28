@@ -38,6 +38,9 @@ python scripts/ai/brain.py sync
 - Use the Repo Brain first; avoid broad repository exploration when targeted retrieval is sufficient.
 - Use at most 2 Brain query refinements before targeted file inspection.
 - Do not repeat inventory, searches, benchmarks, or evidence already available for the active task.
+- Never print/read an entire source file over ~250 lines unless the whole file is genuinely required; inspect symbols or bounded line ranges first.
+- After Brain retrieval, inspect no more than ~8 initial implementation/test files before deciding whether more context is actually needed.
+- Do not perform a feature-wide file inventory unless the active task explicitly requires an inventory.
 - During implementation, run only the smallest focused tests that cover the change.
 - Run affected/domain validation once near completion and the full relevant suite at most once.
 - Do not rerun a passing validation unless relevant source changed afterward.

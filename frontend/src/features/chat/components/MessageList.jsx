@@ -45,7 +45,7 @@ export default function MessageList({
       {messages.length === 0 ? (
         <ChatWelcome suggestedPrompts={suggestedPrompts} onSuggestedPrompt={onSuggestedPrompt} />
       ) : (
-        <div className="mx-auto max-w-3xl space-y-6">
+        <div className="mx-auto max-w-[46rem] space-y-7">
           {messages.map((message) => (
             <MessageBubble
               key={message.id}

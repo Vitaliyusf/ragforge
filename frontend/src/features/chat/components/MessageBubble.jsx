@@ -19,10 +19,28 @@ function extractAnswer(text) {
   return clean.replace(/^Answer:\s*/i, '').trim()
 }
 
+/** A quiet icon button for the answer footer. */
+function IconAction({ label, icon: Icon, onClick }) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      onClick={onClick}
+      className="rounded-lg p-1.5 text-[var(--fg-soft)] opacity-80 transition-colors hover:bg-[var(--surface-hover)] hover:text-[var(--fg)] hover:opacity-100 focus-visible:outline-hidden focus-visible:ring-2"
+    >
+      <Icon size={14} />
+    </button>
+  )
+}
+
 /**
  * One message.
  *
- * The default surface is answer → sources → feedback → compact quality state.
+ * The answer is the page: assistant prose sits directly on the surface at
+ * reading size, with no bubble competing for attention, while the reader's own
+ * message stays a small tinted card. Everything the answer is *about* —
+ * sources, quality, feedback, the actions — is one quiet footer beneath it.
  * Identifiers, prompts, model slugs and evaluator payloads are deliberately
  * absent; they belong to the Developer Inspector behind the info control.
  */
@@ -53,66 +71,67 @@ const MessageBubble = React.memo(function MessageBubble({
   )
 
   const bidi = bidiTextProps(answer)
+  const time = message.timestamp ? formatMessageTime(message.timestamp) : null
+
+  if (isUser) {
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: 6 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.2 }}
+        className="flex flex-col items-end"
+      >
+        <div
+          dir={bidi.dir}
+          className={`max-w-[76%] whitespace-pre-wrap break-words rounded-2xl rounded-tr-md px-3.5 py-2.5 text-[14.5px] leading-relaxed ${bidi.className}`}
+          style={{
+            background: 'var(--primary-soft)',
+            border: '1px solid var(--border)',
+            color: 'var(--fg)',
+            unicodeBidi: 'plaintext',
+          }}
+        >
+          {answer}
+        </div>
+        <div className="mt-1 flex items-center gap-1.5 pe-1 text-xs text-[var(--fg-soft)]">
+          <span>You</span>
+          {time ? <span>{time}</span> : null}
+          {canInspect ? (
+            <IconAction label="Open developer inspector" icon={Info} onClick={() => onOpenInspector(message)} />
+          ) : null}
+        </div>
+      </motion.div>
+    )
+  }
 
   return (
     <motion.div
       initial={{ opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.2 }}
-      className={`flex gap-3.5 ${isUser ? 'flex-row-reverse' : ''}`}
+      className="flex gap-3.5"
     >
-      {!isUser ? (
-        <div
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border"
-          style={{ borderColor: 'var(--border)' }}
-        >
-          <Sparkles size={16} className="text-primary" />
-        </div>
-      ) : null}
+      <div
+        className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border"
+        style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}
+      >
+        <Sparkles size={15} className="text-primary" />
+      </div>
 
-      <div className={`flex flex-col ${isUser ? 'max-w-[78%] items-end' : 'max-w-[88%] items-start'}`}>
-        {/* Header row */}
-        <div className={`mb-1 flex items-center gap-1.5 ${isUser ? 'flex-row-reverse' : ''}`}>
-          <span className="text-xs font-semibold text-primary">{isUser ? 'You' : message.sender}</span>
-          {message.timestamp ? (
-            <span className="text-xs text-text-muted">{formatMessageTime(message.timestamp)}</span>
-          ) : null}
-          {canInspect ? (
-            <button
-              type="button"
-              aria-label="Open developer inspector"
-              onClick={() => onOpenInspector(message)}
-              className="rounded-lg p-1.5 text-text-muted transition-colors hover:bg-bg-tertiary hover:text-primary focus-visible:outline-hidden focus-visible:ring-2"
-            >
-              <Info size={14} />
-            </button>
-          ) : null}
-          {!isUser && answer ? (
-            <button
-              type="button"
-              aria-label="Copy answer"
-              onClick={() => onCopy(answer)}
-              className="rounded-lg p-1.5 text-text-muted transition-colors hover:bg-bg-tertiary hover:text-primary focus-visible:outline-hidden focus-visible:ring-2"
-            >
-              <Copy size={14} />
-            </button>
-          ) : null}
+      <div className="min-w-0 flex-1">
+        <div className="mb-1.5 flex items-center gap-2 text-xs text-[var(--fg-soft)]">
+          <span className="font-semibold text-[var(--fg-muted)]">{message.sender}</span>
+          {time ? <span>{time}</span> : null}
         </div>
 
-        {/* Answer bubble — direction follows the message's own text. */}
+        {/* The answer itself: no card, no border — direction follows its text. */}
         <div
           dir={bidi.dir}
-          className={`break-words px-4 py-3 text-[15px] leading-relaxed ${bidi.className} ${
-            isUser
-              ? 'rounded-2xl rounded-tr-md bg-primary text-[var(--primary-fg)] shadow-sm whitespace-pre-wrap'
-              : 'rounded-2xl rounded-tl-md border border-border bg-bg-elevated text-text-secondary shadow-sm'
-          }`}
+          className={`max-w-[68ch] break-words text-[15.5px] leading-[1.72] text-[var(--fg)] ${bidi.className}`}
           style={{ unicodeBidi: 'plaintext' }}
         >
           {!answer && isStreaming ? (
             <TypingDots />
-          ) : isUser ? (
-            answer
           ) : (
             <MarkdownContent content={answer || (isStreaming ? '...' : '')} />
           )}
@@ -121,15 +140,29 @@ const MessageBubble = React.memo(function MessageBubble({
           ) : null}
         </div>
 
-        {!isUser && !isStreaming ? (
+        {!isStreaming ? (
           <>
             <AnswerSources sources={sources} />
-            <FeedbackControls
-              turnId={turnId}
-              feedback={feedback}
-              onAnswerFeedback={onAnswerFeedback}
-            />
-            <AnswerQualitySummary quality={quality} />
+
+            {/* One footer line: what the answer is worth, and what to do about it. */}
+            <div
+              className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-1 border-t pt-2"
+              style={{ borderColor: 'var(--border)' }}
+            >
+              <AnswerQualitySummary quality={quality} />
+              <span className="flex-1" aria-hidden="true" />
+              <FeedbackControls
+                turnId={turnId}
+                feedback={feedback}
+                onAnswerFeedback={onAnswerFeedback}
+              />
+              <div className="flex items-center gap-0.5">
+                {answer ? <IconAction label="Copy answer" icon={Copy} onClick={() => onCopy(answer)} /> : null}
+                {canInspect ? (
+                  <IconAction label="Open developer inspector" icon={Info} onClick={() => onOpenInspector(message)} />
+                ) : null}
+              </div>
+            </div>
           </>
         ) : null}
       </div>

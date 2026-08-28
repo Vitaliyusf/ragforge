@@ -20,7 +20,7 @@ export default function AnswerQualitySummary({ quality }) {
 
   if (quality.kind === 'abstention') {
     return (
-      <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[var(--fg-soft)]">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[var(--fg-soft)]">
         <span>
           Answerability: <span className="font-medium text-[var(--fg-muted)]">{quality.answerability}</span>
         </span>
@@ -34,7 +34,7 @@ export default function AnswerQualitySummary({ quality }) {
   if (!quality.parts.length) return null
 
   return (
-    <div className="mt-1.5 flex items-center gap-1.5 text-xs text-[var(--fg-soft)]">
+    <div className="flex items-center gap-1.5 text-xs text-[var(--fg-soft)]">
       <span
         className="h-1.5 w-1.5 shrink-0 rounded-full"
         style={{ background: TONE_COLOR[quality.tone] || TONE_COLOR.neutral }}

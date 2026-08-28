@@ -20,7 +20,7 @@ export default function ActivityIndicator({ status }) {
       initial={{ opacity: 0, y: 4 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.18 }}
-      className="mx-auto mt-3 flex max-w-3xl items-center gap-2.5 px-1"
+      className="mx-auto mt-3 flex max-w-[46rem] items-center gap-2.5 px-1"
       role="status"
       aria-live="polite"
     >
