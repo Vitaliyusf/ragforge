@@ -7,8 +7,8 @@ import { cn } from '@/lib/utils'
  *
  * These replace several near-identical local components that had grown up
  * independently across the features: DetailRow (FilesTab), MetaCard
- * (FileReviewDrawer), AuditMeta + AuditBlock (AuditTrailPanel) and the stat
- * cells of the chat Developer Inspector. MetaCard and AuditMeta were identical
+ * (FileReviewDrawer), the audit-trail meta cells and the stat cells of the
+ * chat Developer Inspector. MetaCard and the audit meta cell were identical
  * apart from their border radius.
  */
 

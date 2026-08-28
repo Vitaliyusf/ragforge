@@ -20,10 +20,6 @@ class FileService {
     return await upload('/v1/files/upload', formData)
   }
 
-  async getFileSummary(fileId) {
-    return await get(`/v1/files/${fileId}/summary`)
-  }
-
   async getReviewCase(fileId) {
     return await get(`/v1/files/${fileId}/review-case`)
   }

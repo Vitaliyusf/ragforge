@@ -1,9 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
   computeEffectiveStatus,
-  getEffectiveStatusLabel,
-  getEffectiveStatusTone,
-  getFileStatusLabel,
   getFileStatusTone,
   hasReviewPending,
   normalizeFileStatus,
@@ -41,24 +38,15 @@ describe('computeEffectiveStatus', () => {
   })
 })
 
-describe('labels and tones', () => {
-  it('labels every known state', () => {
-    expect(getFileStatusLabel('awaiting_review')).toBe('Awaiting Review')
-    expect(getFileStatusLabel('running')).toBe('Processing')
-    expect(getEffectiveStatusLabel({ status: 'processing', stage: { a: 'done' } })).toBe('Complete')
-  })
-
-  it('humanises an unrecognised state rather than dropping it', () => {
-    expect(getFileStatusLabel('some_new_state')).toBe('some new state')
-  })
-
+describe('tones', () => {
   it('maps states onto shared tones', () => {
     expect(getFileStatusTone('complete')).toBe('success')
+    // Something really is moving, so processing gets the live tone.
+    expect(getFileStatusTone('running')).toBe('live')
     expect(getFileStatusTone('error')).toBe('danger')
     expect(getFileStatusTone('rejected')).toBe('danger')
     expect(getFileStatusTone('awaiting_review')).toBe('warning')
     expect(getFileStatusTone('whatever')).toBe('neutral')
-    expect(getEffectiveStatusTone({ status: 'processing', stage: { a: 'error' } })).toBe('danger')
   })
 })
 

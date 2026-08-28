@@ -16,9 +16,7 @@ import ServiceCard from '@/features/health/components/ServiceCard'
 import CircuitBreakerPanel from '@/features/health/components/CircuitBreakerPanel'
 import RateLimiterPanel from '@/features/health/components/RateLimiterPanel'
 import MiniSparkline from '@/features/health/components/MiniSparkline'
-import PipelineBar from '@/features/files/components/PipelineBar'
-import SummaryModal from '@/features/files/components/SummaryModal'
-import FileCard from '@/features/files/components/FileCard'
+import DocumentRow from '@/features/files/components/DocumentRow'
 
 const noop = () => {}
 
@@ -34,13 +32,10 @@ const cases = [
   ['RateLimiterPanel', <RateLimiterPanel metrics={{ total_allowed: 10, total_rejected: 2, active_ip_buckets: 3 }} />],
   ['RateLimiterPanel(empty)', <RateLimiterPanel metrics={{}} />],
   ['MiniSparkline', <MiniSparkline data={[1, 2, 3, 4]} />],
-  ['PipelineBar', <PipelineBar stage={{ extraction: 'done', review: 'running', chunking: 'error' }} />],
-  ['SummaryModal', <SummaryModal open={false} onClose={noop} file={null} summary={null} />],
-  ['FileCard', <FileCard
+  ['DocumentRow', <table><tbody><DocumentRow
     file={{ file_id: 'f1', filename: 'a.txt', size: 10, content_type: 'text/plain', status: 'complete' }}
-    reviewState="no review" isDeleting={false} isReingesting={false} isSummaryLoading={false}
-    requiresReview={false} onDeleteClick={noop} onOpenReview={noop} onOpenSummary={noop}
-    onRerunIngestion={noop} onOpenAudit={noop} />],
+    selected={false} isActive={false} isDeleting={false} isReingesting={false} requiresReview={false}
+    onOpen={noop} onSelectChange={noop} onDelete={noop} onReindex={noop} onReview={noop} /></tbody></table>],
 ]
 
 describe('Part 3 split components render', () => {

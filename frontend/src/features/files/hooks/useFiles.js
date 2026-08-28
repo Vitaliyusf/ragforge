@@ -1,7 +1,7 @@
 'use client'
 
 /**
- * Gateway-backed file state hook for upload, review, summary, and re-ingestion UI.
+ * Gateway-backed file state hook for upload, review, and re-index actions.
  *
  * Local reducer state tracks optimistic UI transitions. On every successful fetch
  * the file list is also written into Redux (filesSlice) so the Files tab can render
@@ -105,43 +105,23 @@ export function useFiles() {
     }
   }, [reduxDispatch, loadFiles, state.deletingFileIds])
 
-  const rerunIngestion = useCallback(async (fileId) => {
+  const reindexFile = useCallback(async (fileId) => {
     if (state.reingestingFileIds.has(fileId)) return
 
     dispatchState({ type: 'REINGEST_START', fileId })
     try {
-      await fileService.rerunStage(fileId, 'ingestion')
+      // `extraction` is the only stage the files service re-publishes work
+      // for; every later stage is driven by the one that precedes it, so
+      // resetting extraction is what actually re-runs the pipeline.
+      await fileService.rerunStage(fileId, 'extraction')
       await loadFiles()
     } catch (error) {
-      console.error('Error re-running ingestion:', error)
+      console.error('Error re-indexing file:', error)
       throw error
     } finally {
       dispatchState({ type: 'REINGEST_COMPLETE', fileId })
     }
   }, [loadFiles, state.reingestingFileIds])
-
-  const openSummary = useCallback(async (fileId) => {
-    // If already cached, just open it
-    if (state.summaryByFileId[fileId]) {
-      dispatchState({ type: 'OPEN_SUMMARY', fileId })
-      return
-    }
-
-    dispatchState({ type: 'SUMMARY_LOADING_START', fileId })
-    try {
-      const data = await fileService.getFileSummary(fileId)
-      dispatchState({ type: 'SUMMARY_SUCCESS', fileId, summary: data })
-    } catch (error) {
-      console.error('Error loading summary:', error)
-      throw error
-    } finally {
-      dispatchState({ type: 'SUMMARY_LOADING_DONE', fileId })
-    }
-  }, [state.summaryByFileId])
-
-  const closeSummary = useCallback(() => {
-    dispatchState({ type: 'CLOSE_SUMMARY' })
-  }, [])
 
   const openReview = useCallback(async (fileId) => {
     dispatchState({ type: 'OPEN_REVIEW', fileId })
@@ -191,20 +171,14 @@ export function useFiles() {
     uploading: state.uploading,
     deletingFileIds: state.deletingFileIds,
     reingestingFileIds: state.reingestingFileIds,
-    recentUploads: state.recentUploads,
     reviewStatesByFileId: state.reviewStatesByFileId,
     reviewCasesByFileId: state.reviewCasesByFileId,
     reviewErrorsByFileId: state.reviewErrorsByFileId,
-    summaryByFileId: state.summaryByFileId,
-    summaryLoadingFileIds: state.summaryLoadingFileIds,
-    activeSummaryFileId: state.activeSummaryFileId,
     activeReviewFileId: state.activeReviewFileId,
     loadFiles,
     uploadFiles,
     deleteFile,
-    rerunIngestion,
-    openSummary,
-    closeSummary,
+    reindexFile,
     openReview,
     closeReview,
     submitReviewDecision,

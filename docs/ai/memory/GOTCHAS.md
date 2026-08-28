@@ -26,3 +26,4 @@
 - **kafka-python readiness:** `bootstrap_connected()` is False on a healthy client from kafka-python 2.2 onward — the bootstrap connection closes once broker metadata lands. Readiness must look at the brokers the client is connected to.
 - **qdrant-client 1.19:** `QdrantClient.search()` is gone; `query_points(...).points` replaces it. Adapter tests that mock the client will not catch this.
 - **Test count:** raw test count is not a quality target; select focused/domain tests and keep supported historical behavior in a compatibility lane.
+- **Files re-run stage:** `POST /v1/files/{id}/rerun?stage=` only re-publishes work for `extraction`; every other value just resets that `stage.*` key and nothing runs. A UI "re-index" action must send `extraction`.

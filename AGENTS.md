@@ -35,6 +35,7 @@ python scripts/ai/brain.py sync
 
 ## Execution efficiency
 
+- Before inspecting implementation files, running `find`/`grep`, or reading recent commits, you MUST run at least one Repo Brain query unless the task is a trivial one-file edit with an explicit path.
 - Use the Repo Brain first; avoid broad repository exploration when targeted retrieval is sufficient.
 - Use at most 2 Brain query refinements before targeted file inspection.
 - Do not repeat inventory, searches, benchmarks, or evidence already available for the active task.
