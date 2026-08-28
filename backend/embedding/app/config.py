@@ -60,7 +60,7 @@ class EmbeddingConfig:
             "EMBEDDING_MODEL", 
             "intfloat/multilingual-e5-small"
         )
-        self.model_type: str = os.getenv("EMBEDDING_MODEL_TYPE", "auto")  # auto, sentence_transformers, langchain
+        self.model_type: str = os.getenv("EMBEDDING_MODEL_TYPE", "auto")  # auto, sentence_transformers
         self.embedding_batch_size: int = int(os.getenv("EMBEDDING_BATCH_SIZE", "32"))
         self.embedding_max_batch_size: int = int(
             os.getenv("EMBEDDING_MAX_BATCH_SIZE", str(self.embedding_batch_size))

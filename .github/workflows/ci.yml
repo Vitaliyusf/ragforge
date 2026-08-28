@@ -15,10 +15,10 @@ permissions:
   contents: read
 
 # The Python interpreter is not pinned here: every job reads the root
-# `.python-version` (3.11, matching python:3.11-slim in every service image) so
+# `.python-version` (3.12, matching python:3.12-slim in every service image) so
 # CI and local tooling share one source of truth.
 env:
-  NODE_VERSION: '20'       # matches node:20-alpine in the frontend image
+  NODE_VERSION: '24'       # matches node:24-alpine in the frontend image
 
 jobs:
   lint:
@@ -74,11 +74,13 @@ jobs:
           python-version-file: .python-version
           cache: pip
       - name: Install CPU-only torch
-        # llm_agent pins torch, whose default wheel carries the full CUDA
-        # runtime (~2 GB). The CPU build satisfies `torch==2.0.0` and is a
-        # fraction of the size; nothing under test needs a GPU.
-        if: matrix.service == 'llm_agent'
-        run: pip install torch==2.0.0 --index-url https://download.pytorch.org/whl/cpu
+        # llm_agent pins torch and embedding pulls it through
+        # sentence-transformers. The default wheel carries the full CUDA
+        # runtime (~2 GB); the CPU build satisfies `torch==2.13.0` and is a
+        # fraction of the size. Nothing under test needs a GPU, and installing
+        # it first means the service layer resolves against it.
+        if: matrix.service == 'llm_agent' || matrix.service == 'embedding'
+        run: pip install torch==2.13.0 --index-url https://download.pytorch.org/whl/cpu
       - name: Install dependencies
         # Three deterministic layers: base runtime, service runtime, canonical
         # test toolchain. No service pins a test runner any more, so the test

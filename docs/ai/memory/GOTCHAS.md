@@ -16,9 +16,11 @@
 - **Capability ownership:** search capability records, symbols and callers before adding an implementation; one capability has one authoritative path.
 - **Configuration honesty:** accepted configuration must change real implemented behavior; fail unsupported updates explicitly.
 - **Compatibility:** migrate callers and delete legacy code; temporary dual paths require a removal condition and tracking task.
-- **Validation environment:** `doctor` is diagnostic, not universal; a broken `.venv` does not block direct isolated `uv` Python 3.11 validation.
+- **Validation environment:** `doctor` is diagnostic, not universal; a broken `.venv` does not block direct isolated `uv` Python 3.12 validation.
 - **CI parity:** extra non-CI dependencies make a local result `NON-AUTHORITATIVE / ENVIRONMENT-ADJUSTED`, never `PASS`; fix the canonical dependency owner or report `BLOCKED`.
 - **Environment retries:** use one workspace-local uv cache and at most one corrected retry per root cause; do not rotate environments to manufacture a green result.
 - **Static scopes:** when changed files intersect an authoritative mypy scope, run that exact scope once before completion; file-by-file mypy is not equivalent.
 - **Memory timing:** record handoff only after final validation and diff audit, then rebuild once and validate once; later code edits mean the handoff was premature.
+- **kafka-python readiness:** `bootstrap_connected()` is False on a healthy client from kafka-python 2.2 onward — the bootstrap connection closes once broker metadata lands. Readiness must look at the brokers the client is connected to.
+- **qdrant-client 1.19:** `QdrantClient.search()` is gone; `query_points(...).points` replaces it. Adapter tests that mock the client will not catch this.
 - **Test count:** raw test count is not a quality target; select focused/domain tests and keep supported historical behavior in a compatibility lane.

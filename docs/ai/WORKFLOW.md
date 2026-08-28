@@ -80,7 +80,7 @@ Report:
 `doctor` is opt-in per task, not a universal prerequisite.
 Do not repair `.venv` unless explicitly required.
 A missing or broken `.venv` must not by itself block task validation.
-When local Python is unsuitable, direct `uv run --isolated --python 3.11` is an accepted fallback.
+When local Python is unsuitable, direct `uv run --isolated --python 3.12` is an accepted fallback.
 Use one workspace-local `UV_CACHE_DIR` for isolated uv. Diagnose an environment root
 cause once and make at most one corrected retry; then report `BLOCKED` rather than
 changing interpreters, virtualenvs, cache layouts or injecting dependencies.

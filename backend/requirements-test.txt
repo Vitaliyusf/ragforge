@@ -8,10 +8,11 @@
 # pytest and pytest-asyncio must move together: pytest-asyncio < 0.23 imports
 # `FixtureDef` from `pytest`, which pytest 8 no longer exports, and mixing the
 # two halves is what produced `ImportError: cannot import name 'FixtureDef'`.
-pytest==8.2.2
-pytest-asyncio==0.23.7
-pytest-mock==3.14.0
+pytest==9.1.1
+pytest-asyncio==1.4.0
+pytest-mock==3.15.1
 
-# Test-only HTTP client: gateway and memory tests build httpx errors/responses
-# directly. Same pin as the services that use httpx at runtime.
+# Test-only HTTP client. docker/requirements-base.txt owns the runtime pin and
+# every service job installs it, but the guardrails job installs this file
+# alone, so the pin is repeated here deliberately and must match the base file.
 httpx==0.28.1

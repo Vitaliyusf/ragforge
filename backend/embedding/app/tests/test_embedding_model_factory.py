@@ -55,10 +55,17 @@ def test_persistent_load_failure_still_returns_none_after_bounded_retries(
             raise RuntimeError("Failed to load: gateway timeout")
 
     monkeypatch.setattr(factories, "SentenceTransformerModel", AlwaysFailingModel)
-    monkeypatch.setattr(factories, "LangChainEmbeddingModel", AlwaysFailingModel)
     monkeypatch.setattr(factories.time, "sleep", lambda _seconds: None)
 
     model = EmbeddingModelFactory.create(config)
 
     assert model is None
-    assert 1 < len(attempts) <= factories.MODEL_LOAD_MAX_ATTEMPTS
+    assert len(attempts) == factories.MODEL_LOAD_MAX_ATTEMPTS
+
+
+def test_unsupported_model_type_returns_none(config, monkeypatch):
+    """sentence-transformers is the only implementation; anything else is a no."""
+
+    monkeypatch.setenv("EMBEDDING_MODEL_TYPE", "langchain")
+
+    assert EmbeddingModelFactory.create(EmbeddingConfig()) is None

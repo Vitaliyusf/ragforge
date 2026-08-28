@@ -99,9 +99,9 @@ def test_count_falls_back_to_collection_info_when_count_endpoint_fails(mock_qdra
 def test_search_chunks_enforces_internal_safety_filter(mock_qdrant_client):
     """Search must always enforce retrieval_allowed=true and review_status!=removed."""
     store = QdrantVectorStore(vector_size=3)
-    mock_qdrant_client.search.return_value = [
-        SimpleNamespace(id="chunk-1", score=0.91, payload={"chunk_id": "chunk-1"})
-    ]
+    mock_qdrant_client.query_points.return_value = SimpleNamespace(
+        points=[SimpleNamespace(id="chunk-1", score=0.91, payload={"chunk_id": "chunk-1"})]
+    )
 
     results = store.search_chunks(
         query_vector=np.array([0.1, 0.2, 0.3], dtype=np.float32),
@@ -114,7 +114,7 @@ def test_search_chunks_enforces_internal_safety_filter(mock_qdrant_client):
         include_vector=False,
     )
 
-    query_filter = mock_qdrant_client.search.call_args.kwargs["query_filter"]
+    query_filter = mock_qdrant_client.query_points.call_args.kwargs["query_filter"]
     filter_dump = query_filter.model_dump(exclude_none=True)
     must_conditions = filter_dump["must"]
     must_not_conditions = filter_dump["must_not"]

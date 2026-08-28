@@ -1,10 +1,20 @@
-fastapi==0.115.12
-uvicorn==0.34.0
-aio-pika>=9.4,<10.0
-kafka-python==2.0.2
-pymongo==4.10.1
-pydantic==2.12.5
-pydantic-settings==2.7.1
-prometheus-client==0.21.1
-prometheus-fastapi-instrumentator==7.1.0
-langsmith==0.3.13
+# Authoritative version owner for shared runtime dependencies.
+#
+# Every service image installs this file first and its own requirements.txt
+# second, so a package pinned here must not be repeated in a service manifest.
+# A service repeats a package only to deliberately override this file, and then
+# it carries a comment saying why.
+fastapi==0.141.1
+uvicorn==0.52.4
+httpx==0.28.1
+aio-pika==9.6.2
+kafka-python==2.3.2
+pymongo==4.17.0
+pydantic==2.13.4
+pydantic-settings==2.15.0
+prometheus-client==0.26.0
+prometheus-fastapi-instrumentator==8.1.0
+# 0.3.x carries PYSEC-2026-2582/2583 and GHSA-f4xh-w4cj-qxq8; 0.11 is the
+# first line clear of all three. The tracing wrappers use run_helpers.trace
+# and run_trees.RunTree, which are unchanged.
+langsmith==0.11.2

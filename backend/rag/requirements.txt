@@ -1,13 +1,10 @@
-fastapi==0.115.12
-uvicorn==0.34.0
-numpy==1.24.3
-aio-pika>=9.4,<10.0
-python-socketio[asyncio]==5.10.0
-aiohttp==3.9.1
-pydantic-settings==2.7.1
-pydantic==2.12.5
-pymongo==4.10.1
-langgraph==0.2.74
-langsmith==0.3.13
-prometheus-client==0.21.1
-prometheus-fastapi-instrumentator==7.1.0
+# Shared runtime pins live in docker/requirements-base.txt.
+#
+# numpy is pinned in the three services that use it — embedding, rag and
+# vector_db — rather than in the base file: putting it there added ~60 MB to
+# every other image for nothing. The three pins move together.
+numpy==1.26.4
+python-socketio[asyncio]==5.16.4
+aiohttp==3.14.3
+# See backend/files/requirements.txt for why langgraph is not in the base file.
+langgraph==1.2.11

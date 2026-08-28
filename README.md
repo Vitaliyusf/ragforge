@@ -69,8 +69,8 @@ RabbitMQ's exclusive auto-delete reply queues handle the RPC pattern directly. K
 
 | Layer | Technologies |
 |-------|-------------|
-| Frontend | Next.js 14, React 18, Redux Toolkit, Tailwind CSS, Socket.IO, Framer Motion |
-| Backend | Python 3.11, FastAPI, Pydantic, pydantic-settings |
+| Frontend | Next.js 16, React 19, Redux Toolkit, Tailwind CSS, Socket.IO, Framer Motion |
+| Backend | Python 3.12, FastAPI, Pydantic, pydantic-settings |
 | Messaging | RabbitMQ 3.13 (aio-pika, native RPC) · Apache Kafka (embedding pipeline) |
 | Data | MongoDB 7, Qdrant (vector store) |
 | AI/ML | vLLM (GPU inference), sentence-transformers (embeddings), dense-vector retrieval |
@@ -180,7 +180,7 @@ backend/
   shared/       Cross-cutting: metrics, retry, circuit breaker, prompt guard, rate limiter
 docker/
   requirements-base.txt   Shared Python dependency layer
-frontend/                 Next.js 14 app — chat, files, logs, models, config, health, memory
+frontend/                 Next.js 16 app — chat, files, logs, models, config, health, memory
 scripts/                  Operator tooling (see Development)
 deploy/Caddyfile          TLS terminating reverse proxy for the production overlay
 tests/                    Repo guardrails plus chat and ingestion smoke fixtures
@@ -232,7 +232,7 @@ pytest tests/test_public_repo_guardrails.py -q
 
 Each service needs its own `requirements.txt` installed for its tests to
 import; [the CI workflow](.github/workflows/ci.yml) does this per service and is
-the authoritative reference for a working setup. Install into one Python 3.11
+the authoritative reference for a working setup. Install into one Python 3.12
 environment in this order, and never add a second pytest on top:
 
 ```bash
