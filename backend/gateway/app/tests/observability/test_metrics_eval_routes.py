@@ -9,20 +9,19 @@ than truncated into a dataset that produces confident, wrong recall numbers.
 from __future__ import annotations
 
 import json
-from types import SimpleNamespace
-from typing import Any, Dict, List, Optional, cast
+from typing import Any, Dict, List, Optional
 
 import pytest
-from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from app.core.auth import get_current_user
-from app.core.deps import get_metrics_service
-from app.rest.v1 import metrics as metrics_routes
 from app.services.metrics_service import MetricsService
-from shared.auth import AuthIdentity
-
-TENANT = "tenant-a"
+from app.tests._metrics_harness import (
+    TENANT,
+    build_app,
+    last_payload,
+    rpc_calls,
+)
+from app.tests._metrics_harness import build_service as build_metrics_service
 
 SHA = "a" * 64
 
@@ -102,60 +101,9 @@ class DummyRPCClient:
         }.get(action, {})
 
 
-class DummyPrometheus:
-    """Never consulted by the eval routes; present so the service can be built."""
-
-    async def query(self, expr: str):
-        return []
-
-    async def query_range(self, expr, start, end, step):
-        return []
-
-    async def is_available(self) -> bool:
-        return True
-
-
-class DummyLogger:
-    def log(self, *args, **kwargs) -> None:
-        return None
-
-
 def build_service(override: Optional[Dict[str, Any]] = None) -> MetricsService:
-    config = SimpleNamespace(
-        request_topics={"rag": "rag", "files": "files"},
-        short_timeout=5.0,
-        default_timeout=30.0,
-    )
-    # Structural doubles, not subclasses: the constructor's nominal types have
-    # to be cast away. The service under test is still the real one.
-    return MetricsService(
-        cast(Any, DummyRPCClient(override)),
-        cast(Any, DummyLogger()),
-        cast(Any, config),
-        cast(Any, DummyPrometheus()),
-    )
-
-
-def rpc_calls(service: MetricsService) -> List[Any]:
-    """Calls recorded by the RPC double behind the service."""
-    return cast(List[Any], cast(Any, service.rpc_client).calls)
-
-
-def build_app(service, *, role: str = "admin") -> FastAPI:
-    app = FastAPI()
-    app.include_router(metrics_routes.router, prefix="/v1")
-    app.dependency_overrides[get_metrics_service] = lambda: service
-    app.dependency_overrides[get_current_user] = lambda: AuthIdentity(
-        tenant_id=TENANT,
-        user_id="admin-a" if role == "admin" else "user-a",
-        role=role,
-        admin_id="admin-a",
-    )
-    return app
-
-
-def last_payload(service) -> Dict[str, Any]:
-    return cast(Dict[str, Any], rpc_calls(service)[-1]["payload"])
+    """The real MetricsService over an eval-action RPC double."""
+    return build_metrics_service(DummyRPCClient(override))
 
 
 # ── The seven routes ──────────────────────────────────────────────────────

@@ -21,16 +21,70 @@ SERVICE_DIRS = {
     "vector_db": ROOT / "backend" / "vector_db",
     "memory": ROOT / "backend" / "memory",
     "llm_agent": ROOT / "backend" / "llm_agent",
+    # `shared` is vendored into every service image rather than being a service
+    # of its own. CI runs it from backend/, never from backend/shared/, because
+    # that directory holds a logging.py which would shadow the standard library.
+    "shared": ROOT / "backend",
+    # Repository-level contract tests (public-repo guardrails).
+    "repo": ROOT,
 }
 
-# Selectable RAG test lanes. Each lane is a directory under the service's test
-# tree, so the mapping stays obvious to a human and needs no generated index.
+# Default test path per service, relative to its directory above.
+SERVICE_TESTS = {
+    "shared": ["shared/tests"],
+    "repo": ["tests/test_public_repo_guardrails.py"],
+}
+DEFAULT_TESTS = ["app/tests"]
+
+# Selectable backend test lanes. Each lane is a directory under the service's
+# test tree, so the mapping stays obvious to a human and needs no generated
+# index. A `*-compat` lane holds behavior kept alive for older artifacts/APIs;
+# normal feature work neither reads nor runs it.
 LANES = {
+    "shared": ("shared", ["shared/tests"]),
+    "repo-contract": ("repo", ["tests/test_public_repo_guardrails.py"]),
+    "gateway": ("gateway", ["app/tests"]),
+    "gateway-auth": ("gateway", ["app/tests/auth"]),
+    "gateway-routes": ("gateway", ["app/tests/routes"]),
+    "gateway-observability": ("gateway", ["app/tests/observability"]),
+    "gateway-compat": ("gateway", ["app/tests/compat"]),
     "rag-core": ("rag", ["app/tests/core", "app/tests/contracts"]),
     "rag-eval": ("rag", ["app/tests/eval"]),
     "rag-benchmark": ("rag", ["app/tests/benchmark"]),
     "rag-metrics": ("rag", ["app/tests/metrics"]),
     "rag-compat": ("rag", ["app/tests/compat"]),
+    "files-core": ("files", ["app/tests/core"]),
+    "files-review": ("files", ["app/tests/review"]),
+    "embedding": ("embedding", ["app/tests"]),
+    "vector": ("vector_db", ["app/tests"]),
+    "vector-qdrant": ("vector_db", ["app/tests/qdrant"]),
+    "vector-compat": ("vector_db", ["app/tests/compat"]),
+    "llm-core": ("llm_agent", ["app/tests/core", "app/tests/contracts"]),
+    "llm-provider": ("llm_agent", ["app/tests/provider"]),
+    "llm-compat": ("llm_agent", ["app/tests/compat"]),
+    "memory-core": ("memory", ["app/tests/core"]),
+    "memory-agent": ("memory", ["app/tests/agent"]),
+    "memory-compat": ("memory", ["app/tests/compat"]),
+}
+
+# Selectable frontend feature lanes. Vitest takes a path filter, so one feature
+# runs without loading unrelated test modules.
+FRONTEND_LANES = {
+    "frontend-chat": ["src/features/chat"],
+    "frontend-files": ["src/features/files"],
+    "frontend-eval": ["src/features/eval"],
+    "frontend-metrics": ["src/features/metrics"],
+    "frontend-activity": ["src/features/activity", "src/components/layout"],
+    "frontend-websocket": ["src/features/websocket"],
+    # Everything not owned by a feature lane: the error boundary, the HTTP
+    # client, store slices and the two cross-feature render smoke tests.
+    "frontend-shared-ui": [
+        "src/components/ErrorBoundary.test.jsx",
+        "src/lib",
+        "src/store",
+        "src/features/tab-render.test.jsx",
+        "src/features/component-render.test.jsx",
+    ],
 }
 
 def _candidate_pythons() -> list[Path]:
@@ -61,6 +115,8 @@ def _probe_python(path: Path) -> tuple[bool, str]:
             [str(path), "-c", "import sys; print(sys.version.split()[0])"],
             cwd=str(ROOT),
             text=True,
+            encoding="utf-8",
+            errors="replace",
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             timeout=PROBE_TIMEOUT_SECONDS,
@@ -93,6 +149,8 @@ def _probe_pytest(path: Path) -> bool:
             [str(path), "-m", "pytest", "--version"],
             cwd=str(ROOT),
             text=True,
+            encoding="utf-8",
+            errors="replace",
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             timeout=PROBE_TIMEOUT_SECONDS,
@@ -135,6 +193,8 @@ def run_check(
             cwd=str(cwd or ROOT),
             env=env,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
         )
@@ -198,6 +258,8 @@ def doctor() -> int:
                 cmd,
                 cwd=str(ROOT),
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 timeout=PROBE_TIMEOUT_SECONDS,
@@ -339,9 +401,11 @@ def affected(args: argparse.Namespace) -> int:
         return summary(results)
 
     service_rel = str(SERVICE_DIRS[args.service].relative_to(ROOT))
+    tests = SERVICE_TESTS.get(args.service, DEFAULT_TESTS)
+    lint_target = service_rel if args.service not in SERVICE_TESTS else tests[0]
     results = [
-        run_ruff([service_rel]),
-        run_pytest(args.service, ["app/tests"], f"Pytest {args.service}"),
+        run_ruff([lint_target]),
+        run_pytest(args.service, tests, f"Pytest {args.service}"),
     ]
     if args.mypy and args.files:
         py_files = [f for f in args.files if f.endswith(".py")]
@@ -358,7 +422,9 @@ def full(args: argparse.Namespace) -> int:
         return summary(results)
 
     for service in SERVICE_DIRS:
-        result = run_pytest(service, ["app/tests"], f"Pytest {service}")
+        result = run_pytest(
+            service, SERVICE_TESTS.get(service, DEFAULT_TESTS), f"Pytest {service}"
+        )
         results.append(result)
         if args.fail_fast and not result[0]:
             return summary(results)
@@ -371,6 +437,8 @@ def full(args: argparse.Namespace) -> int:
 
 def lane(args) -> int:
     """Run one named test lane. Success stays a single PASS line."""
+    if args.lane in FRONTEND_LANES:
+        return summary([run_frontend_tests(FRONTEND_LANES[args.lane])])
     service, paths = LANES[args.lane]
     return summary([run_pytest(service, paths, f"Pytest {args.lane}")])
 
@@ -385,7 +453,7 @@ def inventory(args) -> int:
             pytest_python(),
             "-m",
             "pytest",
-            "app/tests",
+            *SERVICE_TESTS.get(args.service, DEFAULT_TESTS),
             "-q",
             "--collect-only",
             "--durations=50",
@@ -395,6 +463,8 @@ def inventory(args) -> int:
         cwd=str(service_dir),
         env=service_env(service_dir),
         text=True,
+        encoding="utf-8",
+        errors="replace",
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
     )
@@ -427,7 +497,7 @@ def main() -> int:
     p_affected.add_argument("--build", action="store_true")
 
     p_lane = sub.add_parser("lane")
-    p_lane.add_argument("lane", choices=[*LANES])
+    p_lane.add_argument("lane", choices=[*LANES, *FRONTEND_LANES])
 
     p_inventory = sub.add_parser("inventory")
     p_inventory.add_argument("service", choices=[*SERVICE_DIRS])

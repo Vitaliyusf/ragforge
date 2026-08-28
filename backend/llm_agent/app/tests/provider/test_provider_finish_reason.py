@@ -14,12 +14,12 @@ from unittest.mock import patch
 
 from app.llm.interfaces import LLMUsage
 from app.services.llm_service import LLMService, provider_finish_reason
-from app.tests.test_llm_service import (
+from app.tests._service_harness import (
     FakeLLMClient,
     FakeLogger,
     RecordingMetrics,
-    _request_message,
-    _settings,
+    request_message,
+    settings,
 )
 
 
@@ -38,11 +38,11 @@ UNVALIDATABLE_REWRITE = '{"rewritten_query": {"not": "a string"}}'
 
 
 def _rewrite_request():
-    return _request_message("query_rewrite", {"query": "best cpu for embeddings"})
+    return request_message("query_rewrite", {"query": "best cpu for embeddings"})
 
 
 def _evaluation_request():
-    return _request_message(
+    return request_message(
         "answer_evaluation",
         {
             "question": "What is the answer?",
@@ -67,7 +67,7 @@ def _execute(
             finish_reason=finish_reason,
         ),
         FakeLogger(),
-        _settings(),
+        settings(),
     )
     request = (
         _evaluation_request()
@@ -132,7 +132,7 @@ class ProviderFinishReasonTests(unittest.TestCase):
         service = LLMService(
             FakeLLMClient(exception=ConnectionError("vllm unreachable")),
             FakeLogger(),
-            _settings(),
+            settings(),
         )
 
         with patch("app.services.llm_service.METRICS", metrics):
@@ -153,7 +153,7 @@ class ProviderFinishReasonTests(unittest.TestCase):
         service = LLMService(
             FakeLLMClient(exception=TimeoutError("provider timed out")),
             FakeLogger(),
-            _settings(),
+            settings(),
         )
 
         reply = service.execute(_evaluation_request())

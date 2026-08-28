@@ -11,7 +11,7 @@ from app.llm.interfaces import LLMGenerationResult, LLMUsage
 from app.services.llm_service import LLMService
 from shared.context import bound_context
 
-from app.tests.test_llm_service import FakeLLMClient, FakeLogger
+from app.tests._service_harness import FakeLLMClient, FakeLogger
 
 
 class FakeRabbitMQProducer:
