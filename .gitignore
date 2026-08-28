@@ -68,8 +68,6 @@ htmlcov/
 *.pid
 
 # Claude / agent tooling
-.claude/
-CLAUDE.md
 # AI Brain generated/private state. `docs/ai` itself is repository source:
 # the canonical runtime contract and the public task specs must be reproducible
 # from Git, not local shadow state. Only generated indexes and private agent
@@ -77,3 +75,15 @@ CLAUDE.md
 /docs/ai/generated/*.json
 /.agent-private/
 *.zip
+
+# RAGForge agent brain
+
+# Shared Claude project context: track root adapter + path-scoped rules
+/.claude/*
+!/.claude/rules/
+!/.claude/rules/**
+/CLAUDE.local.md
+# Legacy nested Claude adapters are intentionally retired; .claude/rules owns path scoping.
+/backend/CLAUDE.md
+/backend/rag/CLAUDE.md
+/frontend/CLAUDE.md

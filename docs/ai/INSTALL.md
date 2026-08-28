@@ -1,77 +1,65 @@
-# Secure One-Time Installation
+# RAGForge Agent Context — Installation
 
-## 1. Copy the pack into the RAGForge repository root
-Preserve paths:
-- `AGENTS.md`
-- `CLAUDE.md`
-- `.claude/`
-- `backend/AGENTS.md`, `backend/CLAUDE.md`
-- `backend/rag/AGENTS.md`, `backend/rag/CLAUDE.md`
-- `frontend/AGENTS.md`, `frontend/CLAUDE.md`
-- `docs/ai/`
-- `scripts/ai/`
+The tracked repository contains the shared agent instructions. Generated operational state stays private and gitignored.
 
-Review diffs before overwriting an existing setup.
+## Tracked files
 
-## 2. Update `.gitignore`
-Add:
+- `AGENTS.md` — canonical Codex/shared entry point.
+- `CLAUDE.md` — small Claude Code adapter importing `AGENTS.md`.
+- `.claude/rules/*.md` — path-scoped Claude rules loaded only for matching files.
+- `docs/ai/` — durable project/task/memory documentation.
+- `scripts/ai/` — validation, handoff, and Repo Brain tooling.
+
+Do **not** create nested `CLAUDE.md` copies merely to repeat root instructions. Use path-scoped `.claude/rules/` or an existing nested `AGENTS.md` only when a subtree genuinely needs additional constraints.
+
+## One-time local setup
+
+Ensure `.gitignore` contains:
 
 ```gitignore
 /docs/ai/generated/*.json
 /.agent-private/
+CLAUDE.local.md
 ```
 
-Keep `docs/ai/generated/README.md` tracked.
-
-## 3. Initialize private operational memory
+Initialize private operational memory if needed:
 
 ```bash
 python scripts/ai/init_private_brain.py
 ```
 
-It refuses to create `.agent-private/` unless Git ignores it.
+Build the local Brain v4 database:
 
-## 4. Generate local repository indexes
+```bash
+python scripts/ai/brain.py sync --full
+```
+
+Validate it:
+
+```bash
+python scripts/ai/brain.py doctor
+python scripts/ai/validate_agent_context.py
+python scripts/ai/validate_ai_memory.py
+```
+
+The existing generated JSON indexes remain supported during migration and can still be rebuilt when required by the memory protocol:
 
 ```bash
 python scripts/ai/rebuild_repo_brain.py
 ```
 
-Generated JSON is local-only; do NOT commit it.
+## Claude Code
 
-## 5. Validate security/memory
+Claude Code reads `CLAUDE.md`, which imports `AGENTS.md`. Path-specific rules under `.claude/rules/` load when relevant files are opened.
 
-```bash
-python scripts/ai/validate_ai_memory.py
-```
+After cloning or changing the instruction setup, start Claude Code and run `/context` to confirm `CLAUDE.md` is listed under memory files.
 
-## 6. Review Git state
-
-```bash
-git status --short
-git diff --check
-```
-
-`.agent-private/` and `docs/ai/generated/*.json` must NOT appear as tracked/staged files.
-
-## Claude
-Default `.claude/settings.json` is conservative:
-- file/shell actions prompt normally;
-- only narrow read-only Git commands are auto-allowed;
-- destructive Git commands are denied.
-
-Optional `.claude/settings.fast.example.json` auto-accepts edits while preserving the same command restrictions. Review it manually before copying over `settings.json`.
+Local personal instructions belong in gitignored `CLAUDE.local.md`, not tracked project files.
 
 ## Codex
-Codex uses root/nested `AGENTS.md`.
+
+Codex uses root/nested `AGENTS.md`. The root file is intentionally a compact map; load detailed docs only when the task requires them.
 
 ## Public repository rule
-Tracked AI memory must remain public-safe. Unresolved bugs, security findings, technical debt, handoff and detailed work history belong in `.agent-private/`.
 
-For cross-machine/cloud continuity, use a separate private repo/storage source for `.agent-private/`.
-
-## Suggested one-time commit
-
-```text
-chore(ai): add secure shared agent brain and task registry
-```
+Tracked AI memory must remain public-safe. Handoff/history, unresolved bugs, technical debt, failed approaches and operational details belong in `.agent-private/`.

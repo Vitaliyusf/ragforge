@@ -30,9 +30,15 @@ Write only to gitignored `.agent-private/`:
 ## Read policy
 Do not load all memory on every task.
 
-Read only when relevant:
+Prefer targeted Repo Brain retrieval:
+
+```bash
+python scripts/ai/brain.py query "<task or symptom>" --top 12
+```
+
+Read private files directly only when the task needs their complete state:
 - continuation → `.agent-private/HANDOFF.md`;
-- architecture decision → `DECISIONS.json`;
+- architecture decision → matching `DECISIONS.json` entry;
 - known bug/debt → matching private registry;
 - failed approach → matching private registry.
 
@@ -51,15 +57,13 @@ code complete
 → final diff review
 → no more source/test edits
 → record handoff once
-→ rebuild brain once
-→ validate memory once
+→ sync Repo Brain v4 once
+→ rebuild legacy JSON indexes once when required
+→ validate memory/context once
 → final response
 ```
 
-Do not run `record_handoff.py`, `rebuild_repo_brain.py` or
-`validate_ai_memory.py` before this point. If code changes after handoff creation,
-the handoff was premature: validate the code first, then replace the memory state
-once at the end. Do not perform duplicate handoff/rebuild cycles.
+If code changes after handoff creation, the handoff was premature: validate the code first, then replace the final memory state once.
 
 ## Handoff/history
 Prefer:
@@ -68,24 +72,17 @@ Prefer:
 python scripts/ai/record_handoff.py ...
 ```
 
-Do not manually read and rewrite full handoff/history unless the helper cannot represent the required state.
-
-Keep summary short and technical.
+Keep summaries short and technical. Do not manually rewrite complete history unless the helper cannot represent the state.
 
 ## Public registry updates
-Update `CAPABILITIES.json`, `SERVICES.json`, `CONTRACTS.json`, `DECISIONS.json` only when the task creates/changes durable canonical behavior.
+Update `CAPABILITIES.json`, `SERVICES.json`, `CONTRACTS.json`, `DECISIONS.json` only when a task changes durable canonical behavior.
 
-Do not touch public memory merely because files changed.
+Do not touch public memory merely because files changed. Search existing capability/symbol/contract ownership first and update the authoritative record instead of creating a parallel owner.
 
-Before recording a new capability, search the capability registry, symbols and direct
-callers. Update the authoritative capability record instead of creating a parallel owner.
-Configuration records describe implemented effective behavior only. Temporary compatibility
-records must include a concrete removal condition and tracking task and must be deleted when
-the supported production path is retired.
+Temporary compatibility records require a concrete removal condition and tracking task and must be deleted when the supported production path is retired.
 
 ## Security vulnerability rule
-Unfixed vulnerability details are private by default.
-Never commit exploit details, vulnerable endpoints, credentials, customer impact or reproduction payloads to the public repository.
+Unfixed vulnerability details are private by default. Never commit exploit details, vulnerable endpoints, credentials, customer impact or reproduction payloads to the public repository.
 
 ## Evidence
 Use safe evidence:
@@ -98,8 +95,11 @@ Use safe evidence:
 ## Final validation
 
 ```bash
+python scripts/ai/brain.py sync
+python scripts/ai/brain.py doctor
 python scripts/ai/rebuild_repo_brain.py
 python scripts/ai/validate_ai_memory.py
+python scripts/ai/validate_agent_context.py
 ```
 
-Run this final pair once after memory is stable.
+Run this final sequence once after code and memory are stable. The legacy JSON rebuild remains during migration because existing tooling/tests still consume it; Brain v4 is the preferred interactive query path.

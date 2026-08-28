@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import os
 import shutil
+import stat
 import subprocess
 import sys
 from pathlib import Path
@@ -228,11 +229,20 @@ def service_env(service_dir: Path) -> dict[str, str]:
     env["PYTHONPATH"] = os.pathsep.join(entries)
     return env
 
+def _rmtree_remove_readonly(func, path: str, excinfo) -> None:
+    """Allow pytest temp cleanup to remove read-only Git fixture files on Windows."""
+    try:
+        os.chmod(path, stat.S_IWRITE | stat.S_IREAD)
+    except OSError:
+        pass
+    func(path)
+
+
 def _service_basetemp(service: str) -> Path:
     path = PRIVATE_TMP / service
     PRIVATE_TMP.mkdir(parents=True, exist_ok=True)
     if path.exists():
-        shutil.rmtree(path)
+        shutil.rmtree(path, onexc=_rmtree_remove_readonly)
     path.mkdir(parents=True, exist_ok=True)
     return path
 
