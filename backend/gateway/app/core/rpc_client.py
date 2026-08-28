@@ -48,6 +48,10 @@ class GatewayRPCClient:
             await self._connection.close()
             self._connection = None
 
+    def is_connected(self) -> bool:
+        """Return whether the robust RabbitMQ connection is currently usable."""
+        return self._connection is not None and not self._connection.is_closed
+
     async def request(
         self,
         routing_key: str,

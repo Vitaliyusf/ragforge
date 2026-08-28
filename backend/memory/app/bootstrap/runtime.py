@@ -12,7 +12,7 @@ from app.services.chat_service import ChatService
 from app.services.memory_handler_service import MemoryHandlerService
 from app.services.memory_service import LongTermMemoryService
 from app.services.message_service import MessageService
-from app.db.session import ensure_tenant_indexes
+from app.db.session import ensure_tenant_indexes, get_client
 
 
 class MemoryApplicationRuntime:
@@ -67,12 +67,34 @@ class MemoryApplicationRuntime:
         await self.consumer.stop()
         self.logger.log("main:shutdown", "Memory service shutdown complete")
 
-    def health_payload(self) -> dict:
+    def live_payload(self) -> dict:
         return {
-            "status": "ok",
+            "status": "live",
             "service": settings.service_name,
             "timestamp": int(time.time()),
-            "checks": {
-                "consumer": "ok" if self.consumer.is_connected() else "not_connected",
-            },
         }
+
+    def readiness_payload(self) -> tuple[dict, bool]:
+        """Return core dependency state; optional Qdrant/vLLM remain degraded."""
+        try:
+            mongodb_ready = bool(get_client().admin.command("ping").get("ok"))
+        except Exception:
+            mongodb_ready = False
+        try:
+            rabbitmq_ready = bool(self.consumer.is_connected())
+        except Exception:
+            rabbitmq_ready = False
+        is_ready = mongodb_ready and rabbitmq_ready
+        return (
+            {
+                "status": "ready" if is_ready else "not_ready",
+                "service": settings.service_name,
+                "checks": {"mongodb": mongodb_ready, "rabbitmq": rabbitmq_ready},
+                "degraded": {"qdrant": "optional", "vllm": "optional"},
+            },
+            is_ready,
+        )
+
+    def health_payload(self) -> dict:
+        """Preserve the legacy method name as a liveness alias."""
+        return self.live_payload()

@@ -2,6 +2,7 @@
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.responses import JSONResponse
 
 try:
     from shared.metrics import setup_metrics
@@ -34,8 +35,15 @@ app.include_router(api_router, prefix="/api")
 
 
 @app.get("/health")
-def health() -> dict:
-    return runtime.health_payload()
+@app.get("/live")
+def live() -> dict:
+    return runtime.live_payload()
+
+
+@app.get("/ready")
+def ready() -> JSONResponse:
+    payload, is_ready = runtime.readiness_payload()
+    return JSONResponse(payload, status_code=200 if is_ready else 503)
 
 
 if __name__ == "__main__":

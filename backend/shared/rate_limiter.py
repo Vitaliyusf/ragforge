@@ -226,7 +226,7 @@ class RateLimiterMiddleware(BaseHTTPMiddleware):
     Whitelists /health and /docs endpoints.
     """
 
-    EXEMPT_PATHS = {"/health", "/docs", "/openapi.json", "/redoc"}
+    EXEMPT_PATHS = {"/health", "/live", "/ready", "/docs", "/openapi.json", "/redoc"}
 
     def __init__(
         self,

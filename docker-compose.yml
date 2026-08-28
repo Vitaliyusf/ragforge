@@ -58,6 +58,12 @@ services:
       QDRANT__SERVICE__API_KEY: ${QDRANT_API_KEY:?Set QDRANT_API_KEY}
     volumes:
       - qdrant_data:/qdrant/storage
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/6333'"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
     restart: unless-stopped
     networks: [data]
 
@@ -180,6 +186,12 @@ services:
         condition: service_healthy
       vllm:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/api/v1/ready', timeout=4)"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
     restart: unless-stopped
     volumes:
       - logs_data:/app/logs
@@ -211,7 +223,13 @@ services:
       qdrant:
         condition: service_started
       vllm:
-        condition: service_healthy
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8007/ready', timeout=4)"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
     restart: unless-stopped
     networks: [messaging, data, ai]
 
@@ -244,6 +262,12 @@ services:
         condition: service_healthy
       mongodb:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8005/v1/ready', timeout=4)"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
     restart: unless-stopped
     networks: [messaging, data]
 
@@ -316,7 +340,13 @@ services:
       kafka:
         condition: service_healthy
       qdrant:
-        condition: service_started
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8006/api/v1/ready', timeout=4)"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
     restart: unless-stopped
     networks: [messaging, data]
 
@@ -392,13 +422,19 @@ services:
       embedding:
         condition: service_healthy
       vector_db:
-        condition: service_started
+        condition: service_healthy
       llm_agent:
-        condition: service_started
+        condition: service_healthy
       memory:
-        condition: service_started
+        condition: service_healthy
       mongodb:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8004/ready', timeout=4)"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
     volumes:
       - logs_data:/app/logs
     restart: unless-stopped
@@ -436,15 +472,21 @@ services:
       rabbitmq:
         condition: service_healthy
       llm_agent:
-        condition: service_started
+        condition: service_healthy
       memory:
-        condition: service_started
+        condition: service_healthy
       files:
-        condition: service_started
+        condition: service_healthy
       rag:
-        condition: service_started
+        condition: service_healthy
       mongodb:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/ready', timeout=4)"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
     volumes:
       - logs_data:/app/logs
     restart: unless-stopped
@@ -488,8 +530,10 @@ services:
       NEXT_PUBLIC_VLLM_BASE_URL: ${NEXT_PUBLIC_VLLM_BASE_URL:-http://localhost:8008}
       NEXT_PUBLIC_ENABLE_TRAINING_TAB: ${NEXT_PUBLIC_ENABLE_TRAINING_TAB:-false}
     depends_on:
-      - gateway
-      - rag
+      gateway:
+        condition: service_healthy
+      rag:
+        condition: service_healthy
     restart: unless-stopped
     networks: [edge]
 

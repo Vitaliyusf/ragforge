@@ -524,7 +524,7 @@ def setup_metrics(app: Any, service_name: str, enable_tracing: bool = True) -> N
     instrumentator = Instrumentator(
         should_group_status_codes=True,
         should_ignore_untemplated=True,
-        excluded_handlers=["/health", "/metrics"],
+        excluded_handlers=["/health", "/live", "/ready", "/metrics"],
     )
     instrumentator.instrument(app)
     instrumentator.expose(app, endpoint="/metrics", tags=["monitoring"])

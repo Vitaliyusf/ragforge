@@ -35,12 +35,16 @@ function ServiceCard({ name, info, index = 0 }) {
           <p className="mt-1 truncate text-xs text-text-muted">
             {info.message || (info.status === 'healthy' ? 'Responding normally' : 'Service requires attention')}
           </p>
+          <div className="mt-2 flex items-center gap-2 text-xs text-text-muted">
+            <span>Live: <strong className="text-text-primary">{info.live ? 'yes' : 'no'}</strong></span>
+            <span>Ready: <strong className="text-text-primary">{info.ready ? 'yes' : 'no'}</strong></span>
+          </div>
         </div>
       </div>
 
       <div className="mt-3 flex items-center justify-between border-t border-border/70 pt-2.5">
         <span className="flex items-center gap-1.5 text-xs text-text-muted">
-          <Icon size={11} style={{ color: cfg.iconColor }} /> Health check
+          <Icon size={11} style={{ color: cfg.iconColor }} /> Live / ready checks
         </span>
         {info.port && (
           <span className="rounded-md bg-bg-tertiary px-1.5 py-0.5 font-mono text-xs text-text-muted">:{info.port}</span>

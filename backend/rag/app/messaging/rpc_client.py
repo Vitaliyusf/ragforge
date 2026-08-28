@@ -41,6 +41,10 @@ class RabbitMQRPCClient:
             await self._connection.close()
         self._connection = None
 
+    def is_connected(self) -> bool:
+        """Return whether downstream RPC publishing can currently proceed."""
+        return self._connection is not None and not self._connection.is_closed
+
     async def request(
         self,
         routing_key: str,
