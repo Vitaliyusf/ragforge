@@ -38,6 +38,23 @@ from .metrics import observe_kafka_consumer_lag
 logger = logging.getLogger(__name__)
 
 
+def _broker_connected(client: Any) -> bool:
+    """Return whether ``client`` holds a live connection to at least one broker.
+
+    ``bootstrap_connected()`` alone stopped being a readiness signal in
+    kafka-python 2.2: the client now closes the bootstrap connection as soon as
+    it has real broker metadata, so a perfectly healthy producer or consumer
+    reports False from its first poll onwards. The brokers the client is
+    actually talking to are what readiness means.
+    """
+    if client is None:
+        return False
+    try:
+        return any(client.connected(broker.nodeId) for broker in client.cluster.brokers())
+    except Exception:
+        return False
+
+
 class _KafkaConfigProtocol:
     """Structural interface required by both base classes.
 
@@ -119,7 +136,13 @@ class BaseKafkaProducer:
 
     def is_connected(self) -> bool:
         """Return whether the producer currently has a live broker connection."""
-        return bool(self._producer and self._producer.bootstrap_connected())
+        producer = self._producer
+        if producer is None:
+            return False
+        if producer.bootstrap_connected():
+            return True
+        sender = getattr(producer, "_sender", None)
+        return _broker_connected(getattr(sender, "_client", None))
 
 
 class BaseKafkaConsumer:
@@ -244,4 +267,9 @@ class BaseKafkaConsumer:
 
     def is_connected(self) -> bool:
         """Return whether the consumer currently has a live broker connection."""
-        return bool(self._consumer and self._consumer.bootstrap_connected())
+        consumer = self._consumer
+        if consumer is None:
+            return False
+        if consumer.bootstrap_connected():
+            return True
+        return _broker_connected(getattr(consumer, "_client", None))

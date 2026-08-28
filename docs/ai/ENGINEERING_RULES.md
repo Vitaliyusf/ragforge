@@ -1,7 +1,7 @@
 # Engineering Rules
 
 ## Python
-- Target Python 3.11 until explicitly upgraded.
+- Target Python 3.12 until explicitly upgraded.
 - Use modern typing (`dict[str, T]`, `X | None`) in newly touched code where project tooling supports it.
 - Pydantic models belong at transport/config boundaries.
 - Prefer `Protocol` for structural interfaces; use ABC inheritance only when behavior/lifecycle inheritance is meaningful.

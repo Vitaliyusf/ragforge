@@ -5,7 +5,6 @@ from typing import Callable, Optional
 
 from app.embedding.interfaces import IEmbeddingModel
 from app.embedding.implementations.sentence_transformers import SentenceTransformerModel
-from app.embedding.implementations.langchain import LangChainEmbeddingModel
 from app.config import EmbeddingConfig
 
 logger = logging.getLogger(__name__)
@@ -57,20 +56,10 @@ class EmbeddingModelFactory:
         model_type = config.model_type.lower()
         model_name = config.model_name
 
-        # Try sentence-transformers first if auto or explicitly requested
-        if model_type in ("auto", "sentence_transformers"):
-            model = _load_with_retry(
-                lambda: SentenceTransformerModel(model_name), "sentence-transformers"
-            )
-            if model is not None:
-                return model
-            if model_type == "sentence_transformers":
-                return None  # Explicitly requested, don't fallback
+        if model_type not in ("auto", "sentence_transformers"):
+            logger.error("Unsupported embedding model type: %s", model_type)
+            return None
 
-        # Fallback to LangChain if auto or explicitly requested
-        if model_type in ("auto", "langchain"):
-            return _load_with_retry(
-                lambda: LangChainEmbeddingModel(model_name), "LangChain"
-            )
-
-        return None
+        return _load_with_retry(
+            lambda: SentenceTransformerModel(model_name), "sentence-transformers"
+        )

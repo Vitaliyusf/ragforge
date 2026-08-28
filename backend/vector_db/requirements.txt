@@ -1,10 +1,7 @@
-fastapi==0.115.12
-uvicorn==0.34.0
-aio-pika>=9.4,<10.0
-kafka-python==2.0.2
+# Shared runtime pins live in docker/requirements-base.txt.
+#
+# numpy is pinned in the three services that use it — embedding, rag and
+# vector_db — rather than in the base file: putting it there added ~60 MB to
+# every other image for nothing. The three pins move together.
 numpy==1.26.4
-qdrant-client==1.12.1
-pydantic==2.12.5
-pydantic-settings==2.7.1
-prometheus-client==0.21.1
-prometheus-fastapi-instrumentator==7.1.0
+qdrant-client==1.19.0

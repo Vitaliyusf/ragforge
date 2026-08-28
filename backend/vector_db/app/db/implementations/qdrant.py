@@ -103,14 +103,16 @@ class QdrantVectorStore(IVectorStore):
                 f"Query vector size mismatch: expected {self._vector_size}, got {len(query_list)}"
             )
 
-        search_results = self.client.search(
+        # `client.search` was removed in qdrant-client 1.19; `query_points` is
+        # the replacement and returns the hits under `.points`.
+        search_results = self.client.query_points(
             collection_name=self._collection_name,
-            query_vector=query_list,
+            query=query_list,
             limit=top_k,
             query_filter=self._build_search_filter(filters),
             with_payload=include_payload,
             with_vectors=include_vector,
-        )
+        ).points
 
         formatted: List[Dict[str, Any]] = []
         for result in search_results:

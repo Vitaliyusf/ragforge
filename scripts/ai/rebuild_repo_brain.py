@@ -15,7 +15,7 @@ OUT = ROOT / "docs" / "ai" / "generated"
 SKIP_DIRS = {
     ".git", ".next", "node_modules", "__pycache__", ".pytest_cache", ".mypy_cache",
     ".ruff_cache", ".venv", "venv", "coverage", "dist", "build", "logs",
-    "qdrant_storage", "uploads", ".agent-private",
+    "qdrant_storage", "uploads", ".agent-private", ".uv-cache",
 }
 TEXT_EXTS = {".py", ".js", ".jsx", ".ts", ".tsx", ".json", ".yml", ".yaml", ".toml", ".md"}
 FRONTEND_EXTS = {".js", ".jsx", ".ts", ".tsx"}

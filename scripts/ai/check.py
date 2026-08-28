@@ -165,14 +165,14 @@ def pytest_python() -> str:
 
     A repository .venv whose interpreter starts but whose pytest is broken is
     skipped rather than repaired or reported as BLOCKED, so an isolated
-    `uv --python 3.11` environment is a first-class fallback.
+    `uv --python 3.12` environment is a first-class fallback.
     """
     for candidate in _candidate_pythons():
         if _probe_pytest(candidate):
             return str(candidate)
     raise RuntimeError(
         "No interpreter with a working pytest. Create one with: "
-        "uv venv --python 3.11 .agent-private/rag-venv"
+        "uv venv --python 3.12 .agent-private/rag-venv"
     )
 
 def _tail(text: str, limit: int = MAX_FAILURE_LINES) -> list[str]:

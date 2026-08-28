@@ -192,8 +192,15 @@ async def test_rpc_auth_failure_returns_safe_signed_reply(
 @pytest.mark.asyncio
 async def test_invalid_signature_rpc_returns_auth_invalid_reply() -> None:
     body = signed_message({"action": "test"})
-    replacement = "x" if body["auth_context"][-1] != "x" else "y"
-    body["auth_context"] = f"{body['auth_context'][:-1]}{replacement}"
+    encoded, signature = body["auth_context"].split(".", 1)
+    # Corrupt the first character of the signature, never the last. A 32-byte
+    # HMAC encodes to 43 unpadded base64url characters, and the final one only
+    # carries four significant bits, so four different characters decode to the
+    # same signature bytes. Substituting the last character therefore leaves the
+    # ticket valid whenever the substitute lands in that group, which made this
+    # test pass or fail on the randomness of the ticket's `jti`.
+    replacement = "A" if signature[0] != "A" else "B"
+    body["auth_context"] = f"{encoded}.{replacement}{signature[1:]}"
     consumer = BaseRabbitMQConsumer(FakeConfig())
     mock_channel = AsyncMock()
     mock_channel.default_exchange = AsyncMock()
