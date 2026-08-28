@@ -8,7 +8,7 @@ from typing import Any, Dict, Optional
 
 from shared.errors import NotFoundError as NotFoundException
 from shared.errors import ValidationError as ValidationException
-from app.services.file_ingestion_graph import OutboundMessage
+from app.services.graph_types import OutboundMessage
 from app.utils.common import (
     build_message_envelope,
     create_file_document,
