@@ -12,6 +12,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useEffectEvent,
   useMemo,
   useReducer,
   useRef,
@@ -50,8 +51,6 @@ export function ChatProvider({ children }) {
   const router = useRouter()
   const dispatch = useDispatch()
   const [runtimeState, dispatchRuntime] = useReducer(chatRuntimeReducer, initialRuntimeState)
-  const messagesRef = useRef(initialConversationState.messages)
-  const conversationsRef = useRef(runtimeState.conversations)
   const skipNextMessageLoadRef = useRef(null)
   const chatsRef = useRef([])
   const generatingTitleRef = useRef(new Set())
@@ -61,7 +60,6 @@ export function ChatProvider({ children }) {
   const previousChatIdRef = useRef(null)
 
   const [chats, setChats] = useState([])
-  const [currentChatId, setCurrentChatId] = useState(null)
   const [loading, setLoading] = useState(false)
   const [chatsLoading, setChatsLoading] = useState(true)
   const [chatsError, setChatsError] = useState(null)
@@ -73,17 +71,14 @@ export function ChatProvider({ children }) {
   const [deletingChatIds, setDeletingChatIds] = useState(new Set())
   const [generatingTitleChatIds, setGeneratingTitleChatIds] = useState(new Set())
 
+  // The URL is the single source of truth for which chat is open. Deriving it
+  // during render, rather than mirroring it into state from an Effect, means a
+  // navigation paints the new chat in one pass instead of two.
+  const currentChatId = pathname?.match(/\/chat\/([^/]+)/)?.[1] || null
+
   // The visible chat is whichever conversation the URL points at. Everything the
   // UI reads (messages, turns, chatState) is derived from that one bucket.
   const activeConversation = runtimeState.conversations[currentChatId] || initialConversationState
-
-  useEffect(() => {
-    messagesRef.current = activeConversation.messages
-  }, [activeConversation.messages])
-
-  useEffect(() => {
-    conversationsRef.current = runtimeState.conversations
-  }, [runtimeState.conversations])
 
   useEffect(() => {
     chatsRef.current = chats
@@ -185,10 +180,15 @@ export function ChatProvider({ children }) {
     loadChats()
   }, [loadChats])
 
-  useEffect(() => {
-    const chatIdFromPath = pathname?.match(/\/chat\/([^/]+)/)?.[1]
-    setCurrentChatId(chatIdFromPath || null)
-  }, [pathname])
+  // Reads the *current* conversation buckets without making them a dependency of
+  // the Effect below, which must fire on navigation only — never when a
+  // streaming turn mutates the bucket it is already displaying.
+  const loadMessagesIfUnseen = useEffectEvent((chatId) => {
+    // A conversation already has a bucket once it has been loaded or has streamed
+    // this session — reusing it preserves an in-flight answer and skips a refetch.
+    if (runtimeState.conversations[chatId]) return
+    loadMessages(chatId)
+  })
 
   useEffect(() => {
     if (!currentChatId) return
@@ -198,12 +198,8 @@ export function ChatProvider({ children }) {
       return
     }
 
-    // A conversation already has a bucket once it has been loaded or has streamed
-    // this session — reusing it preserves an in-flight answer and skips a refetch.
-    if (conversationsRef.current[currentChatId]) return
-
-    loadMessages(currentChatId)
-  }, [currentChatId, loadMessages])
+    loadMessagesIfUnseen(currentChatId)
+  }, [currentChatId])
 
   const loadModels = useCallback(async () => {
     try {
@@ -211,17 +207,20 @@ export function ChatProvider({ children }) {
       const modelList = data.models || data.data?.models || []
       if (Array.isArray(modelList) && modelList.length > 0) {
         setModels(modelList)
-        if (!selectedModel && modelList[0]) {
-          const name = typeof modelList[0] === 'object' ? modelList[0].name : modelList[0]
-          setSelectedModel(name)
-        }
+        // Seed the default through a functional update rather than reading
+        // `selectedModel`. Depending on it made this callback — and therefore
+        // the Effect below — re-run, refetching /models every time the user
+        // picked a different model.
+        const first = modelList[0]
+        const name = typeof first === 'object' ? first?.name : first
+        if (name) setSelectedModel((current) => current || name)
         return
       }
       setModels([])
     } catch (_) {
       setModels([])
     }
-  }, [selectedModel])
+  }, [])
 
   useEffect(() => {
     loadModels()
@@ -345,7 +344,7 @@ export function ChatProvider({ children }) {
       chatId = createdChatId
     }
 
-    const existingMessages = messagesRef.current
+    const existingMessages = activeConversation.messages
     // Runtime messages are tagged "You"; history reloaded from the server uses
     // "User" — count both so a reopened chat still titles on the 3rd message.
     const userMessageCount = existingMessages.filter(
@@ -475,7 +474,7 @@ export function ChatProvider({ children }) {
         })
       }
     }
-  }, [answerMode, createNewChat, currentChatId, defaultModel, maybeAutoTitle, persistTurn, selectedModel])
+  }, [activeConversation.messages, answerMode, createNewChat, currentChatId, defaultModel, maybeAutoTitle, persistTurn, selectedModel])
 
   const sendFeedback = useCallback(async (turnId, feedbackType, payload = {}) => {
     const turn = activeConversation.turnsById[turnId]
@@ -560,10 +559,9 @@ export function ChatProvider({ children }) {
   const activeTurn = activeConversation.activeTurnId
     ? activeConversation.turnsById[activeConversation.activeTurnId]
     : null
-  const extendedProgress = useMemo(() => {
-    if (!activeTurn || activeTurn.mode !== 'extended') return null
-    return activeTurn.latestStatus
-  }, [activeTurn])
+  // A plain property read: memoising it bought a cache slot and a dependency
+  // check per render and nothing else.
+  const extendedProgress = activeTurn?.mode === 'extended' ? activeTurn.latestStatus : null
 
   const value = useMemo(() => ({
     messages: activeConversation.messages,

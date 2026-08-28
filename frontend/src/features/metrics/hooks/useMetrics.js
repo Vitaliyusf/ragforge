@@ -1,5 +1,5 @@
 /** Hook for polling one admin metrics section. */
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useEffectEvent, useRef, useState } from 'react'
 import metricsService from '../services/metricsService'
 
 // 30s, not the 5s useHealth uses: these are aggregation queries over a
@@ -85,26 +85,33 @@ export function useMetrics(section, { window: windowRange, tenantId } = {}) {
     [section, windowRange, tenantId]
   )
 
+  // Visible-only refresh, always running the newest fetcher but never itself a
+  // reason to resubscribe.
+  const refreshIfVisible = useEffectEvent(() => {
+    if (!document.hidden) fetchSection({ silent: true })
+  })
+
+  // Changing the section, window or tenant is a *reload*, so this Effect
+  // re-runs and abandons the in-flight request.
   useEffect(() => {
     fetchSection()
+    return () => controllerRef.current?.abort()
+  }, [fetchSection])
 
-    // A dashboard left open in a background tab must not keep hitting the
-    // gateway, so the tick skips while hidden and catches up on return.
-    const interval = setInterval(() => {
-      if (!document.hidden) fetchSection({ silent: true })
-    }, POLL_INTERVAL)
-
-    const handleVisibility = () => {
-      if (!document.hidden) fetchSection({ silent: true })
-    }
-    document.addEventListener('visibilitychange', handleVisibility)
-
+  // The poll and the visibility listener are a *lifecycle*, so they are mounted
+  // once. Previously they were rebuilt on every window/tenant change, which
+  // detached and reattached the document listener and reset the 30s phase.
+  // A dashboard left open in a background tab must not keep hitting the
+  // gateway, so the tick skips while hidden and catches up on return.
+  useEffect(() => {
+    const onTick = () => refreshIfVisible()
+    const interval = setInterval(onTick, POLL_INTERVAL)
+    document.addEventListener('visibilitychange', onTick)
     return () => {
       clearInterval(interval)
-      document.removeEventListener('visibilitychange', handleVisibility)
-      controllerRef.current?.abort()
+      document.removeEventListener('visibilitychange', onTick)
     }
-  }, [fetchSection])
+  }, [])
 
   const refresh = useCallback(() => fetchSection(), [fetchSection])
 

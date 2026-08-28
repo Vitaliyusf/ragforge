@@ -1,7 +1,7 @@
 /** Calm workspace header with focused primary navigation. */
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import {
   MessageSquare,
   Files,
@@ -61,6 +61,22 @@ const iconButtonClass = [
 
 const ACTIVITY_TABS = new Set(Object.values(ACTIVITY_FEATURES))
 
+// Connectivity is external browser state, so React subscribes to it directly
+// instead of copying it into component state from an Effect. The server
+// snapshot is `true` so SSR and the first client render agree; a genuinely
+// offline client corrects itself on the store's first notification.
+function subscribeToOnline(onStoreChange) {
+  window.addEventListener('online', onStoreChange)
+  window.addEventListener('offline', onStoreChange)
+  return () => {
+    window.removeEventListener('online', onStoreChange)
+    window.removeEventListener('offline', onStoreChange)
+  }
+}
+
+const getOnlineSnapshot = () => navigator.onLine
+const getOnlineServerSnapshot = () => true
+
 export default function Header({ activeTab, setActiveTab }) {
   const { resolvedTheme, toggleTheme } = useTheme()
   const { activities } = useActivity()
@@ -68,8 +84,10 @@ export default function Header({ activeTab, setActiveTab }) {
   const navigationTabs = isAdmin ? ADMIN_TABS : USER_TABS
   const [showSettings, setShowSettings] = useState(false)
   const [currentImplementation, setCurrentImplementation] = useState(null)
-  const [isOnline, setIsOnline] = useState(
-    typeof navigator !== 'undefined' ? navigator.onLine : true
+  const isOnline = useSyncExternalStore(
+    subscribeToOnline,
+    getOnlineSnapshot,
+    getOnlineServerSnapshot
   )
   const settingsRef = useRef(null)
 
@@ -88,18 +106,12 @@ export default function Header({ activeTab, setActiveTab }) {
     load()
   }, [isAdmin])
 
+  // Dismissal listeners exist only while the menu is open — previously two
+  // document-level listeners stayed attached for the whole session to serve a
+  // popover that is closed almost all of the time.
   useEffect(() => {
-    const on = () => setIsOnline(true)
-    const off = () => setIsOnline(false)
-    window.addEventListener('online', on)
-    window.addEventListener('offline', off)
-    return () => {
-      window.removeEventListener('online', on)
-      window.removeEventListener('offline', off)
-    }
-  }, [])
+    if (!showSettings) return undefined
 
-  useEffect(() => {
     const outsideHandler = (event) => {
       if (settingsRef.current && !settingsRef.current.contains(event.target)) {
         setShowSettings(false)
@@ -114,7 +126,7 @@ export default function Header({ activeTab, setActiveTab }) {
       document.removeEventListener('mousedown', outsideHandler)
       document.removeEventListener('keydown', keyHandler)
     }
-  }, [])
+  }, [showSettings])
 
   const settingsActive = activeTab === 'config' || activeTab === 'memory'
 
