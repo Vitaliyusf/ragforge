@@ -48,13 +48,13 @@ from app.services.retrieval_trace import (
     STAGE_PASS_TWO,
     RetrievalTrace,
 )
-from app.tests.test_benchmark_runner import (
+from app.tests.benchmark._harness import (
     build as build_benchmark,
     fetch as fetch_benchmark,
     phases_by_name,
     run_benchmark,
 )
-from app.tests.test_eval_runner import FakeBackend, build, execute, fetch
+from app.tests.eval._harness import FakeBackend, build, execute, fetch
 
 
 def chunk(chunk_id: str, *, file_id: str = "f1", score: float = 0.8) -> Dict[str, Any]:

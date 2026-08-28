@@ -131,6 +131,7 @@ def test_a_finished_phase_reports_the_runner_s_own_metrics():
     }
 
 
+@pytest.mark.compat
 def test_historical_results_without_guardrail_counter_remain_readable():
     summary = summarize_phase(phase(results={"items_evaluated": 1, "items_failed": 0}))
 
@@ -410,6 +411,7 @@ def test_pooled_axes_do_not_double_count_guardrail_blocks():
     assert totals["items"]["reached"] == 90
 
 
+@pytest.mark.compat
 def test_legacy_results_do_not_infer_execution_outcomes():
     summary = summarize_phase(
         phase(results={"items_evaluated": 24, "items_skipped": 6, "items_failed": 2})

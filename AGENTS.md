@@ -133,6 +133,60 @@ Run it only when:
 If run, use the intended scope once and rerun the same scope after fixes.
 Do not shrink the scope repeatedly just to obtain a green command.
 
+### 5.3a RAG test lanes
+
+RAG tests are grouped by behavior ownership under `backend/rag/app/tests/`:
+
+```text
+core/       regular+extended flow, retrieval, checkpoint/resume, context assembly
+contracts/  typed llm_agent contracts, RPC/internal auth, transport and HTTP routes
+eval/       eval runner lifecycle, retrieval scoring, import, pipeline, validation, store
+benchmark/  planning/profiles, execution/recovery, manifest, summary, export, comparison
+metrics/    turn facts, citation metrics, graph instrumentation, metrics query
+compat/     legacy/pre-versioning behavior still supported in production
+```
+
+Select a lane instead of the whole service:
+
+```bash
+python scripts/ai/check.py lane rag-core        # core + contracts
+python scripts/ai/check.py lane rag-eval
+python scripts/ai/check.py lane rag-benchmark
+python scripts/ai/check.py lane rag-metrics
+python scripts/ai/check.py lane rag-compat
+```
+
+Which lane to run:
+
+- implementation iteration → the exact changed test files;
+- RAG orchestration change → `rag-core` plus the relevant domain lane;
+- eval change → `rag-eval`;
+- benchmark change → `rag-benchmark`;
+- metrics change → `rag-metrics`;
+- compatibility change → `rag-compat`;
+- full RAG → CI, and once locally only for cross-cutting/high-risk completion.
+
+`compat/` holds behavior kept alive for older artifacts/APIs. Normal feature
+tasks neither read nor run it. Compatibility cases that cannot be separated
+from their own module's builders stay in place and carry the registered
+`compat` marker instead, so the whole compatibility surface is selectable
+either way:
+
+```bash
+python scripts/ai/check.py lane rag-compat   # the compat/ directory
+pytest app/tests -m compat                   # every compat case, wherever it lives
+pytest app/tests -m "not compat"             # feature work
+```
+
+When a compatibility path is retired, delete the production code and its
+compat tests together — never the test alone.
+
+Full collection/duration inventory goes to a private file, not the transcript:
+
+```bash
+python scripts/ai/check.py inventory rag
+```
+
 ### 5.4 Before finishing — affected service suite only when justified
 
 Run a service-wide suite once only when the change is cross-cutting/high-risk inside that service.

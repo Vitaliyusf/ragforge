@@ -165,6 +165,7 @@ def test_known_token_budget_difference_is_incompatible():
     assert result["compatibility_status"] == "incompatible"
 
 
+@pytest.mark.compat
 def test_missing_historical_token_budgets_make_compatibility_unknown():
     baseline = benchmark("base", created_at="2026-01-01")
     candidate = benchmark("candidate", created_at="2026-01-02")
@@ -246,6 +247,7 @@ def test_noncritical_unknown_does_not_block_compatibility():
     )
 
 
+@pytest.mark.compat
 def test_historical_manifest_schema_remains_readable_but_unknown():
     baseline = benchmark("base", created_at="2026-01-01")
     candidate = benchmark("candidate", created_at="2026-01-02")
@@ -412,6 +414,7 @@ def test_answer_evaluation_transport_change_is_incompatible():
     assert result["compatibility_status"] == "incompatible"
 
 
+@pytest.mark.compat
 def test_historical_manifest_without_transport_remains_readable_as_unknown():
     legacy = manifest()
     legacy["llm"].pop("structured_output_transport")
@@ -528,6 +531,7 @@ def test_incompatible_judge_contracts_still_report_their_metrics():
     "missing",
     ["output_schema_sha256", "prompt_version"],
 )
+@pytest.mark.compat
 def test_historical_manifest_without_judge_contract_is_unknown_not_same(missing):
     """Readable, but it cannot prove the judge contract either way."""
     legacy = manifest()

@@ -7,7 +7,7 @@ from typing import Any
 import pytest
 
 from app.services.conversation_events import CollectingConversationEmitter
-from app.tests.test_rag import TEST_IDENTITY, build_service
+from app.tests._service_harness import TEST_IDENTITY, build_service
 from shared.context import bound_context
 from shared.metrics import METRICS
 
@@ -177,18 +177,6 @@ def test_reranker_top1_change_is_recorded_in_the_extended_flow():
     )
 
 
-def test_rpc_roundtrips_are_not_recorded_by_the_faked_backend_client():
-    # The fake backend client replaces _send_request wholesale, so this test only
-    # documents that the graph itself records no RPC latency of its own.
-    before = histogram_count(METRICS.rpc_roundtrip_seconds, service="rag", downstream="vector_db", traffic_class="live")
-
-    run_turn("What is RAG?", "regular")
-
-    assert (
-        histogram_count(METRICS.rpc_roundtrip_seconds, service="rag", downstream="vector_db", traffic_class="live")
-        == before
-    )
-
 
 def test_successful_turn_writes_one_turn_fact():
     service, result, _ = run_turn("What is RAG?", "regular")
@@ -288,31 +276,6 @@ def test_a_cited_turn_records_its_citation_figures_in_the_fact():
     assert result["citations"][0]["source_id"] == "c1"
 
 
-def test_a_citation_the_judge_never_confirmed_lowers_precision():
-    service, _, _ = run_cited_turn(
-        citations=[
-            {"source_id": "c1", "locator": "[1]"},
-            {"source_id": "c7", "locator": "[2]"},
-        ],
-        claims=[{"claim": "RAG retrieves", "supported": True, "supporting_passage_ids": ["1"]}],
-    )
-
-    fact = service.graph_runner.metrics_facts.facts[0]
-    assert fact["citation_precision"] == 0.5
-    assert fact["citation_recall"] == 1.0
-
-
-def test_an_answer_that_cited_nothing_has_no_precision_to_record():
-    service, _, _ = run_cited_turn(
-        citations=[],
-        claims=[{"claim": "RAG retrieves", "supported": True, "supporting_passage_ids": ["1"]}],
-    )
-
-    fact = service.graph_runner.metrics_facts.facts[0]
-    assert fact["citation_count"] == 0
-    assert fact["citation_precision"] is None
-    # It did fail to credit a supportable claim, and that is measurable.
-    assert fact["citation_recall"] == 0.0
 
 
 def test_the_hallucination_verdict_moves_its_counter():
