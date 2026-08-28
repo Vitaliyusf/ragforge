@@ -110,6 +110,73 @@ def test_default_compose_references_expected_dockerfiles():
         )
 
 
+def test_application_images_use_non_root_runtime_users():
+    backend_dockerfiles = (
+        "backend/gateway/Dockerfile",
+        "backend/llm_agent/Dockerfile",
+        "backend/embedding/Dockerfile",
+        "backend/rag/Dockerfile",
+        "backend/files/Dockerfile",
+        "backend/vector_db/Dockerfile",
+        "backend/memory/Dockerfile",
+    )
+    for dockerfile in backend_dockerfiles:
+        text = (REPO_ROOT / dockerfile).read_text(encoding="utf-8")
+        assert "USER app:app" in text, f"{dockerfile} must run as app:app"
+        assert "--uid 10001 --gid app" in text, (
+            f"{dockerfile} must use the shared runtime UID/GID"
+        )
+
+    frontend = (REPO_ROOT / "frontend/Dockerfile").read_text(encoding="utf-8")
+    assert "USER node" in frontend
+    assert "COPY --chown=node:node" in frontend
+
+
+def test_compose_applies_runtime_privilege_restrictions():
+    compose_text = (REPO_ROOT / "docker-compose.yml").read_text(encoding="utf-8")
+    assert "no-new-privileges:true" in compose_text
+    assert re.search(r"(?ms)^x-runtime-security:.*?^  cap_drop:\n    - ALL$", compose_text)
+
+    for service in (
+        "qdrant",
+        "vllm",
+        "llm_agent",
+        "memory",
+        "files",
+        "embedding",
+        "vector_db",
+        "rag",
+        "gateway",
+        "frontend",
+    ):
+        block = _compose_service_block(compose_text, service)
+        assert "<<: *runtime-security" in block, (
+            f"{service} must inherit the runtime security restrictions"
+        )
+
+    vllm = _compose_service_block(compose_text, "vllm")
+    assert 'user: "0:0"' in vllm
+    assert "Root is retained only for the upstream GPU runtime" in vllm
+
+    volume_permissions = _compose_service_block(compose_text, "volume_permissions")
+    assert 'user: "0:0"' in volume_permissions
+    assert "no-new-privileges:true" in volume_permissions
+    assert re.search(r"(?m)^      - CHOWN$", volume_permissions)
+    assert "10001:10001" in volume_permissions
+    assert "network_mode: none" in volume_permissions
+    assert "Migration-only root exception" in volume_permissions
+
+
+def test_production_edge_has_a_minimal_documented_root_exception():
+    compose_text = (REPO_ROOT / "docker-compose.prod.yml").read_text(encoding="utf-8")
+    caddy = _compose_service_block(compose_text, "caddy")
+    assert 'user: "0:0"' in caddy
+    assert "no-new-privileges:true" in caddy
+    assert re.search(r"(?m)^      - ALL$", caddy)
+    assert re.search(r"(?m)^      - NET_BIND_SERVICE$", caddy)
+    assert "Root is retained for ports 80/443" in caddy
+
+
 def test_compose_does_not_use_reload():
     compose_text = (REPO_ROOT / "docker-compose.yml").read_text(encoding="utf-8")
     assert "--reload" not in compose_text, "Compose should not use --reload in production"

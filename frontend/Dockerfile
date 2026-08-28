@@ -32,8 +32,10 @@ ENV NODE_ENV=production \
     HOSTNAME=0.0.0.0 \
     PORT=3000
 
-COPY --from=deps /app/node_modules ./node_modules
-COPY --from=builder /app ./
+COPY --chown=node:node --from=deps /app/node_modules ./node_modules
+COPY --chown=node:node --from=builder /app ./
+
+USER node
 
 EXPOSE 3000
 

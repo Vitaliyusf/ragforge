@@ -25,10 +25,17 @@ RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTr
 
 ENV EMBEDDING_MODEL=${EMBEDDING_MODEL}
 
-COPY backend/shared /app/shared
-COPY backend/embedding /app
+RUN groupadd --gid 10001 app \
+    && useradd --no-log-init --uid 10001 --gid app --create-home app
 
-RUN chmod +x /app/entrypoint.sh 2>/dev/null || true
+COPY --chown=app:app backend/shared /app/shared
+COPY --chown=app:app backend/embedding /app
+
+RUN chmod +x /app/entrypoint.sh \
+    && mkdir -p /app/logs /app/uploads \
+    && chown -R app:app /app/logs /app/uploads /opt/hf
+
+USER app:app
 
 EXPOSE 8002
 
