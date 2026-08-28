@@ -30,6 +30,7 @@ from app.services.citation_metrics import (
     resolve_claim_passage_ids,
     supporting_passage_ids,
 )
+from app.services.context_assembler import assemble_context, estimate_tokens
 from app.services.conversation_types import (
     ConversationRequest,
     ConversationState,
@@ -613,12 +614,18 @@ class ConversationGraphRunner:
         async def node(state: ConversationState) -> ConversationState:
             runtime["current_node"] = name
             if name in GENERATION_NODES:
+                request: ConversationRequest = runtime["request"]
+                mode = "regular" if name == "generate_answer" else "extended"
+                state = copy.deepcopy(state)
+                state["retrieved_chunks"] = self._assemble_generation_context(
+                    state, request, mode
+                )
                 # Before the node runs: the context entering generation is
                 # the context generation uses, and it must survive the node
                 # failing.
                 self._commit_final_context(runtime, state)
             emitter: BaseConversationEmitter = runtime["emitter"]
-            request: ConversationRequest = runtime["request"]
+            request = runtime["request"]
             started = time.monotonic()
             span_name = {
                 "load_memory_light": "load_memory",
@@ -934,6 +941,39 @@ class ConversationGraphRunner:
             "revision_attempted": bool(review_issues),
         }
 
+    def _assemble_generation_context(
+        self,
+        state: ConversationState,
+        request: ConversationRequest,
+        mode: str,
+    ) -> List[Dict[str, Any]]:
+        """Budget the final evidence while reserving non-context prompt space."""
+        prompt_without_context = copy.deepcopy(state)
+        prompt_without_context["retrieved_chunks"] = []
+        instructions = self._build_prompt(prompt_without_context, request, mode)["instructions"]
+        history_text = "\n".join(
+            str(message.get("content") or message.get("message") or message.get("text") or "")
+            for message in state.get("recent_messages", [])
+            if isinstance(message, dict)
+        )
+        reserved = (
+            self.config.generation_system_prompt_reserve_tokens
+            + estimate_tokens(request.user_message)
+            + estimate_tokens(instructions)
+            + estimate_tokens(history_text)
+        )
+        available = max(0, self.config.generation_input_token_budget - reserved)
+        # The existing typed request carries evidence in two places: the
+        # human-readable instructions and ``retrieved_context``. Budget both
+        # representations until that transport contract is changed upstream.
+        context_budget = min(self.config.context_token_budget, available // 2)
+        return assemble_context(
+            state.get("retrieved_chunks", []),
+            token_budget=context_budget,
+            max_passages=self.config.top_k_documents,
+            diversity_score_tolerance=self.config.context_diversity_score_tolerance,
+        )
+
     def _prompt_passages(self, state: ConversationState) -> List[Dict[str, Any]]:
         """Return the citable passages for this turn, in citation order.
 
@@ -942,9 +982,7 @@ class ConversationGraphRunner:
         numbers and the answer's citation markers would name different chunks
         and every citation metric computed from them would be noise.
         """
-        return chunk_passages(
-            state.get("retrieved_chunks", [])[: self.config.top_k_documents]
-        )
+        return chunk_passages(state.get("retrieved_chunks", []))
 
     def _build_review(
         self,
@@ -1530,7 +1568,7 @@ class ConversationGraphRunner:
         emitter: BaseConversationEmitter = runtime["emitter"]
         # The same slice the answer was generated from: citation markers and
         # the judge's passage numbers must index the same list.
-        chunks = state.get("retrieved_chunks", [])[: self.config.top_k_documents]
+        chunks = list(state.get("retrieved_chunks", []))
         response = await self.backend_client.evaluate_answer(
             request,
             state.get("draft_answer", {}).get("text", ""),

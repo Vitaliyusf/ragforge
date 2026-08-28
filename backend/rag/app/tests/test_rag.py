@@ -15,9 +15,11 @@ from app.core.errors import ServiceException
 from app.rest.v1.rag import get_rag_service, require_internal_identity, router as rag_router
 from app.services.conversation_events import CollectingConversationEmitter
 from app.services.conversation_backend_client import ConversationBackendClient
+from app.services.context_assembler import context_token_count
 from app.services.conversation_messages import (
     DownstreamRPCError,
     build_message_envelope,
+    chunk_passages,
     extract_reply_payload,
     extract_stream_event,
     normalize_llm_agent_response,
@@ -29,7 +31,7 @@ from app.services.conversation_persistence import (
 from app.services.conversation_tracing import ConversationTracer
 from app.services.conversation_types import build_initial_state
 from app.services.rag_service import RAGService
-from app.services.retrieval_trace import RetrievalTrace
+from app.services.retrieval_trace import STAGE_MERGED, RetrievalTrace
 from app.services.websocket_service import WebSocketService
 from app.messaging.rag_rpc_handler import build_reply_envelope, extract_request_payload
 from shared.auth import AuthError, AuthIdentity
@@ -133,7 +135,14 @@ class FakeBackendClient:
         }
 
     async def evaluate_answer(self, request, answer, retrieved_chunks, mode):
-        self.calls.append({"type": "llm_agent", "request_type": "answer_evaluation", "mode": mode})
+        self.calls.append(
+            {
+                "type": "llm_agent",
+                "request_type": "answer_evaluation",
+                "mode": mode,
+                "retrieved_chunks": list(retrieved_chunks),
+            }
+        )
         if mode == "extended" and "Draft answer" in answer:
             return {
                 "review_id": f"review-{request.turn_id}",
@@ -157,7 +166,14 @@ class FakeBackendClient:
         }
 
     async def generate_answer(self, request, prompt, stream_request_id, token_callback):
-        self.calls.append({"type": "llm_agent", "request_type": "answer_generation", "prompt": prompt["instructions"]})
+        self.calls.append(
+            {
+                "type": "llm_agent",
+                "request_type": "answer_generation",
+                "prompt": prompt["instructions"],
+                "retrieved_context": list(prompt["retrieved_context"]),
+            }
+        )
         if self.fail_generation:
             raise RuntimeError("generation failed")
         if "Fix these issues" in prompt["instructions"]:
@@ -375,6 +391,102 @@ def test_extended_flow_runs_second_retrieval_and_revises_once():
     assert emitter.events[-1]["type"] == "done"
 
 
+def test_regular_generation_and_evaluation_share_assembled_passage_order():
+    service, backend, _ = build_service()
+
+    async def search_chunks(request, query, retrieval_plan=None, pass_name="pass_one"):
+        return {
+            "chunks": [
+                {"chunk_id": "a1", "text": "highest", "score": 0.90, "source": "a.md"},
+                {"chunk_id": "a2", "text": "same source", "score": 0.87, "source": "a.md"},
+                {"chunk_id": "b1", "text": "diverse source", "score": 0.85, "source": "b.md"},
+            ]
+        }
+
+    backend.search_chunks = search_chunks
+    request = service.build_request({"question": "assemble regular context", "mode": "regular"})
+
+    result = asyncio.run(
+        service.graph_runner.run(request, CollectingConversationEmitter(request))
+    )
+
+    generation = next(call for call in backend.calls if call.get("request_type") == "answer_generation")
+    evaluation = next(call for call in backend.calls if call.get("request_type") == "answer_evaluation")
+    expected_ids = ["a1", "b1", "a2"]
+    assert [item["chunk_id"] for item in result["sources"]] == expected_ids
+    assert [item["source_id"] for item in generation["retrieved_context"]] == expected_ids
+    assert generation["retrieved_context"] == chunk_passages(evaluation["retrieved_chunks"])
+
+
+def test_context_budget_preserves_question_and_system_prompt_space():
+    service, _, _ = build_service()
+    service.graph_runner.config.generation_input_token_budget = 50
+    service.graph_runner.config.generation_system_prompt_reserve_tokens = 40
+    service.graph_runner.config.context_token_budget = 100
+    request = service.build_request({"question": "a deliberately long user question"})
+    state = build_initial_state(request)
+    state["retrieved_chunks"] = [
+        {"chunk_id": "c1", "text": "evidence", "score": 0.9, "source": "a.md"}
+    ]
+
+    selected = service.graph_runner._assemble_generation_context(
+        state, request, "regular"
+    )
+
+    assert selected == []
+
+
+def test_input_budget_accounts_for_both_context_prompt_representations():
+    service, _, _ = build_service()
+    service.graph_runner.config.generation_input_token_budget = 120
+    service.graph_runner.config.generation_system_prompt_reserve_tokens = 0
+    service.graph_runner.config.context_token_budget = 120
+    request = service.build_request({"question": "budget context"})
+    state = build_initial_state(request)
+    state["retrieved_chunks"] = [
+        {"chunk_id": "c1", "text": "evidence " * 100, "score": 0.9, "source": "a.md"}
+    ]
+
+    selected = service.graph_runner._assemble_generation_context(
+        state, request, "regular"
+    )
+
+    assert selected
+    assert 2 * context_token_count(selected) <= 120
+
+
+def test_extended_generation_revision_and_evaluation_reuse_one_assembled_context():
+    service, backend, _ = build_service()
+
+    async def rewrite(request, context):
+        return {"rewritten_query": "extended", "subqueries": [], "pass_two_hints": []}
+
+    async def search_chunks(request, query, retrieval_plan=None, pass_name="pass_one"):
+        assert pass_name == "pass_one"
+        return {
+            "chunks": [
+                {"chunk_id": "a1", "text": "highest", "score": 0.90, "source": "a.md"},
+                {"chunk_id": "a2", "text": "same source", "score": 0.87, "source": "a.md"},
+                {"chunk_id": "b1", "text": "diverse source", "score": 0.85, "source": "b.md"},
+            ]
+        }
+
+    backend.query_rewrite = rewrite
+    backend.search_chunks = search_chunks
+    request = service.build_request({"question": "assemble extended context", "mode": "extended"})
+
+    result = asyncio.run(
+        service.graph_runner.run(request, CollectingConversationEmitter(request))
+    )
+
+    generations = [call for call in backend.calls if call.get("request_type") == "answer_generation"]
+    evaluation = next(call for call in backend.calls if call.get("request_type") == "answer_evaluation")
+    expected = chunk_passages(evaluation["retrieved_chunks"])
+    assert [item["chunk_id"] for item in result["sources"]] == ["a1", "b1", "a2"]
+    assert len(generations) == 2
+    assert all(call["retrieved_context"] == expected for call in generations)
+
+
 def test_extended_pass_one_retrieval_is_bounded_and_deterministic():
     service, backend, _ = build_service()
     service.graph_runner.config.extended_retrieval_max_concurrency = 2
@@ -498,12 +610,16 @@ def test_pass_two_candidates_are_globally_ranked_and_deduped():
         {"question": "Need second retrieval and revise this answer", "mode": "extended"}
     )
     emitter = CollectingConversationEmitter(request)
+    trace = RetrievalTrace()
 
-    result = asyncio.run(service.graph_runner.run(request, emitter))
+    result = asyncio.run(
+        service.graph_runner.run(request, emitter, retrieval_trace=trace)
+    )
 
     chunk_ids = [chunk["chunk_id"] for chunk in result["sources"]]
-    assert chunk_ids == ["c2", "c1", "c3", "c4"]
-    assert chunk_ids[: service.graph_runner.config.top_k_documents] == ["c2", "c1"]
+    merged = next(stage for stage in trace.stages if stage["stage"] == STAGE_MERGED)
+    assert [item["chunk_id"] for item in merged["candidates"]] == ["c2", "c1", "c3", "c4"]
+    assert chunk_ids == ["c2", "c1"]
     assert chunk_ids.count("c1") == 1
     assert result["sources"][1]["score"] == 0.8
 

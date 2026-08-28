@@ -43,6 +43,13 @@ class RAGConfig(BaseSettings):
     generation_request_timeout: float = 120.0
     evaluation_request_timeout: float = 75.0
     top_k_documents: int = 6
+    # Final generation input is bounded independently of retrieval depth.
+    # The assembler first reserves space for the question, instructions and
+    # provider-owned system/chat framing, then applies this evidence ceiling.
+    generation_input_token_budget: int = 6144
+    generation_system_prompt_reserve_tokens: int = 512
+    context_token_budget: int = 3072
+    context_diversity_score_tolerance: float = 0.08
     max_recent_messages: int = 6
     max_memory_hits: int = 6
     min_similarity_threshold: float = 0.4
