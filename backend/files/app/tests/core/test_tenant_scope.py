@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.core.errors import DatabaseException
+from shared.errors import DatabaseException
 from app.db._base import BaseRepository
 from app.db._chunks import ChunksRepositoryMixin
 from app.db._files import FilesRepositoryMixin

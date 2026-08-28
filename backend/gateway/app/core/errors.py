@@ -1,14 +1,7 @@
 """Gateway error compatibility layer backed by shared structured errors."""
 from __future__ import annotations
 
-import sys
-from pathlib import Path
-
 from fastapi import HTTPException, status
-
-_BACKEND_ROOT = Path(__file__).resolve().parents[3]
-if str(_BACKEND_ROOT) not in sys.path:
-    sys.path.append(str(_BACKEND_ROOT))
 
 from shared.errors import (
     AppError,

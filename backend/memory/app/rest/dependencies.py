@@ -1,6 +1,6 @@
 """Dependency providers for the FastAPI transport layer."""
 from app.core.config import settings
-from app.core.logging_config import ServiceLogger
+from shared.logging import ServiceLogger
 from app.services.chat_service import ChatService
 from app.services.message_service import MessageService
 

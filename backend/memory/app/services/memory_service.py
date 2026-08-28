@@ -12,7 +12,7 @@ from pymongo.collection import Collection
 
 from app.core.config import settings
 from app.core.errors import DatabaseError
-from app.core.logging_config import ServiceLogger
+from shared.logging import ServiceLogger
 from app.db.session import get_db
 from app.services.memory_qdrant_service import MemoryQdrantIndex
 from app.services.tenant_scope import current_identity, ownership_fields, scope_filter

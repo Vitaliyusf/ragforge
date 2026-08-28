@@ -14,7 +14,7 @@ from langchain_core.tools import tool
 
 from app.core.config import settings
 from app.services.memory_service import LongTermMemoryService
-from app.core.logging_config import ServiceLogger
+from shared.logging import ServiceLogger
 
 
 _SYSTEM_PROMPT = """\

@@ -5,7 +5,7 @@ from typing import Any, Dict
 import time
 from uuid import uuid4
 
-from app.core.errors import ValidationException
+from shared.errors import ValidationError as ValidationException
 from app.services.base import BaseRAGService
 from app.services.conversation_events import SocketIOConversationEmitter, build_error_event
 from app.services.rag_service import RAGService

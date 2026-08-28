@@ -20,7 +20,7 @@ from app.schemas.embedding_job import (
 )
 from app.services.embedding_job_publisher import EmbeddingJobPublisher
 from app.services.embedding_job_tracing import EmbeddingLangSmithTracer
-from app.core.logging_config import ServiceLogger
+from shared.logging import ServiceLogger
 from app.messaging.embedding_kafka import EmbeddingKafkaProducer
 # Imported normally rather than through `_load_shared_symbol` below: the service
 # already imports `shared.metrics` in main.py, and loading the module a second

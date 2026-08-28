@@ -1,13 +1,7 @@
 """Compatibility wrapper over the shared request context helpers."""
 from __future__ import annotations
 
-import sys
-from pathlib import Path
 from typing import Any, Dict, Optional
-
-_BACKEND_ROOT = Path(__file__).resolve().parents[3]
-if str(_BACKEND_ROOT) not in sys.path:
-    sys.path.append(str(_BACKEND_ROOT))
 
 from shared.context import Token, clear_context, get_context, set_context, update_context
 

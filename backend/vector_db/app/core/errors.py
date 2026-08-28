@@ -1,15 +1,20 @@
-"""Vector DB error compatibility layer backed by shared structured errors."""
-import sys
-from pathlib import Path
+"""Vector-owned errors and HTTP mapping built on shared contracts."""
 
 from fastapi import HTTPException
 
-_BACKEND_ROOT = Path(__file__).resolve().parents[3]
-if str(_BACKEND_ROOT) not in sys.path:
-    sys.path.append(str(_BACKEND_ROOT))
+from shared.errors import AppError, ErrorCode, ValidationError, coerce_error
 
-from shared.errors import *  # noqa: F401,F403
-from shared.errors import coerce_error
+
+class VectorStoreError(AppError):
+    """Raised when the vector store cannot complete an operation."""
+
+    error_code = ErrorCode.VECTOR_STORE_ERROR
+
+
+class InvalidVectorError(ValidationError):
+    """Raised when a vector request is invalid."""
+
+    error_code = ErrorCode.INVALID_VECTOR
 
 
 def handle_vector_db_error(error: Exception) -> HTTPException:

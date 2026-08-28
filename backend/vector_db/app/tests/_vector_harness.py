@@ -9,7 +9,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from app.core.logging_config import ServiceLogger
+from shared.logging import ServiceLogger
 from app.db.implementations.in_memory import InMemoryVectorStore
 from app.db.interfaces import IVectorStore
 from app.messaging.interfaces import IProducer

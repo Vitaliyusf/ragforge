@@ -2,7 +2,7 @@
 from typing import Any, Dict
 
 from app.services.embedding_job_service import EmbeddingJobService
-from app.core.logging_config import ServiceLogger
+from shared.logging import ServiceLogger
 from app.messaging.embedding_kafka import EmbeddingKafkaConsumer
 
 

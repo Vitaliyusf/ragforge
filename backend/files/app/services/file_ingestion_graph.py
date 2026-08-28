@@ -13,7 +13,8 @@ except Exception:  # pragma: no cover - optional dependency fallback
     StateGraph = None
 
 from app.core.config import Settings
-from app.core.errors import NotFoundException, ValidationException
+from shared.errors import NotFoundError as NotFoundException
+from shared.errors import ValidationError as ValidationException
 from app.db.repository import FileRepository
 from app.messaging.interfaces import IProducer
 from app.services.graph_types import FilesLangSmithTracer, OutboundMessage

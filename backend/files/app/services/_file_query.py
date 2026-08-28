@@ -5,7 +5,7 @@ import re
 import unicodedata
 from typing import Any, Dict, List, Optional
 
-from app.core.errors import ValidationException
+from shared.errors import ValidationError as ValidationException
 
 
 UNRESOLVED_FILE = "UNRESOLVED_FILE"

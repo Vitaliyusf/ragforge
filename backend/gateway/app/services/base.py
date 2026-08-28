@@ -6,7 +6,7 @@ from typing import Any, Dict, Optional
 
 from app.core.config import GatewayConfig
 from app.core.errors import RPCConnectionError, RPCTimeoutError
-from app.core.logging_config import ServiceLogger
+from shared.logging import ServiceLogger
 from app.core.rabbitmq_client import RabbitMQClient
 
 

@@ -29,7 +29,7 @@ from typing import Optional
 
 from pymongo.collection import Collection
 
-from app.core.errors import DatabaseException
+from shared.errors import DatabaseException
 from app.db._audit import AuditRepositoryMixin
 from app.db._base import BaseRepository
 from app.db._chunks import ChunksRepositoryMixin

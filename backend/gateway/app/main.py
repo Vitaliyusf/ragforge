@@ -11,7 +11,7 @@ from app.core.exception_handlers import (
     register_exception_handlers,  # re-exported for tests that import from app.main
 )
 from app.core.http_middleware import CorrelationMiddleware
-from app.core.logging_config import ServiceLogger, setup_logging
+from shared.logging import ServiceLogger, setup_logging
 from app.core.rabbitmq_client import RabbitMQClient
 from app.core.rpc_client import GatewayRPCClient
 from app.db.session import close_db, get_db, init_db

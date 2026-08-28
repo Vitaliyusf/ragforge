@@ -5,7 +5,7 @@ import time
 import uuid
 
 from app.core.constants import EmbeddingAction, FileStage, FileStatus
-from app.core.logging_config import ServiceLogger
+from shared.logging import ServiceLogger
 from app.config import EmbeddingConfig
 from app.extraction.interfaces import IFileExtractor
 from app.extraction.factories import FileExtractorFactory

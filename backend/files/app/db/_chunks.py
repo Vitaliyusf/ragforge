@@ -9,7 +9,7 @@ from typing import Any, Dict, Iterable, List
 
 from pymongo import ASCENDING, DESCENDING
 
-from app.core.errors import DatabaseException
+from shared.errors import DatabaseException
 
 
 class ChunksRepositoryMixin:

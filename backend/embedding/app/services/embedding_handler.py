@@ -7,7 +7,7 @@ import time
 import httpx
 
 from app.core.constants import EmbeddingAction, FileStage, FileStatus
-from app.core.logging_config import ServiceLogger
+from shared.logging import ServiceLogger
 from app.config import EmbeddingConfig
 from app.embedding.interfaces import IEmbeddingModel
 from app.messaging.interfaces import IProducer

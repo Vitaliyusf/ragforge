@@ -8,7 +8,7 @@ from __future__ import annotations
 from typing import Optional, TypeVar
 
 from app.core.config import GatewayConfig
-from app.core.logging_config import ServiceLogger
+from shared.logging import ServiceLogger
 from app.core.rabbitmq_client import RabbitMQClient
 from app.services.chat_history_service import ChatHistoryService
 from app.services.chat_service import ChatService
