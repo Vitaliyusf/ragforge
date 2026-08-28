@@ -23,7 +23,7 @@ export default function Select({
       <SelectPrimitive.Trigger
         className={cn(
           'inline-flex items-center justify-between gap-2 w-full px-3 py-2 rounded-lg text-[15px] font-medium',
-          'border outline-none transition-all duration-150',
+          'border outline-hidden transition-all duration-150',
           'focus:ring-2 focus:ring-[var(--ring)] focus:border-[var(--border-focus)]',
           'disabled:opacity-50 disabled:cursor-not-allowed',
           className
@@ -78,7 +78,7 @@ export function SelectItem({ value, children, textValue, className = '' }) {
       // type-ahead on exactly the options that need it most.
       textValue={textValue}
       className={cn(
-        'relative flex items-center justify-between px-3 py-2 rounded-md text-[15px] font-medium outline-none cursor-pointer select-none',
+        'relative flex items-center justify-between px-3 py-2 rounded-md text-[15px] font-medium outline-hidden cursor-pointer select-none',
         'transition-colors duration-100',
         className
       )}

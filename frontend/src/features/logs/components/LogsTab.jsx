@@ -60,7 +60,7 @@ const SERVICE_COLORS = {
 
 function SummaryItem({ icon: Icon, label, value, color }) {
   return (
-    <div className="flex items-center justify-between rounded-xl border border-border bg-bg-tertiary/50 px-3 py-2.5">
+    <div className="flex items-center justify-between rounded-xl border border-border px-3 py-2.5">
       <span className="flex items-center gap-2 text-[13px] text-text-muted">
         <Icon size={13} style={{ color }} /> {label}
       </span>
@@ -318,7 +318,7 @@ export default function LogsTab() {
         </aside>
 
         <section className="flex min-h-[580px] min-w-0 flex-col overflow-hidden rounded-2xl border border-border bg-bg-elevated shadow-md xl:min-h-0">
-          <div className="flex flex-col gap-3 border-b border-border bg-bg-tertiary/30 px-4 py-3.5 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-col gap-3 border-b border-border px-4 py-3.5 sm:flex-row sm:items-center sm:justify-between">
             <div className="min-w-0">
               <div className="flex items-center gap-2">
                 <span className="h-2 w-2 rounded-full bg-success" />
@@ -348,7 +348,7 @@ export default function LogsTab() {
               <motion.div
                 initial={{ opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="flex min-h-[360px] flex-col items-center justify-center rounded-2xl border border-dashed border-border bg-bg-tertiary/20 px-6 text-center"
+                className="flex min-h-[360px] flex-col items-center justify-center rounded-2xl border border-dashed border-border px-6 text-center"
               >
                 <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary-soft text-primary">
                   <Terminal size={23} />
@@ -382,7 +382,7 @@ export default function LogsTab() {
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: Math.min(groupIndex, 6) * 0.025 }}
                   >
-                    <div className="sticky top-0 z-10 mb-1.5 flex items-center gap-2 rounded-xl border border-border bg-bg-elevated/95 px-3 py-2 backdrop-blur">
+                    <div className="sticky top-0 z-10 mb-1.5 flex items-center gap-2 rounded-xl border border-border px-3 py-2 backdrop-blur">
                       <span className="h-2 w-2 rounded-full" style={{ background: getServiceColor(service) }} />
                       <span className="text-xs font-semibold capitalize text-text-primary">{service.replace(/_/g, ' ')}</span>
                       <span className="ml-auto text-xs text-text-muted">{serviceLogs.length} events</span>
@@ -396,7 +396,7 @@ export default function LogsTab() {
                         return (
                           <div
                             key={`${log.service}-${log.index}-${index}`}
-                            className="group flex items-start gap-2.5 rounded-lg border-l-2 px-2.5 py-2 transition-colors hover:bg-bg-tertiary/60"
+                            className="group flex items-start gap-2.5 rounded-lg border-l-2 px-2.5 py-2 transition-colors"
                             style={{ borderLeftColor: severityColor }}
                           >
                             <span
@@ -419,7 +419,7 @@ export default function LogsTab() {
             )}
           </div>
 
-          <div className="flex items-center gap-4 border-t border-border bg-bg-tertiary/30 px-4 py-2 text-xs text-text-muted">
+          <div className="flex items-center gap-4 border-t border-border px-4 py-2 text-xs text-text-muted">
             <span className="flex items-center gap-1.5"><Activity size={11} className="text-success" /> {autoRefresh ? 'Stream active' : 'Stream paused'}</span>
             <span>{filteredLogs.length}/{totalLogsCount} events</span>
             <span className="ml-auto hidden sm:inline">Showing the latest {lines} lines per service</span>

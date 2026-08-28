@@ -7,7 +7,7 @@ export default function NotFound() {
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-bg-primary text-text-primary p-8">
       <div className="flex flex-col items-center max-w-md text-center">
-        <div className="w-24 h-24 rounded-2xl bg-accent/10 flex items-center justify-center mb-6">
+        <div className="w-24 h-24 rounded-2xl flex items-center justify-center mb-6">
           <Compass className="text-accent" size={48} />
         </div>
         <h2 className="text-6xl font-bold text-accent mb-2">404</h2>

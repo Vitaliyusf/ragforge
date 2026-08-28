@@ -8,7 +8,7 @@ const buttonVariants = cva(
   [
     'inline-flex items-center justify-center font-medium select-none',
     'transition-colors duration-150',
-    'focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg)]',
+    'focus:outline-hidden focus-visible:ring-2 focus-visible:ring-[var(--ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg)]',
     'disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none',
   ].join(' '),
   {

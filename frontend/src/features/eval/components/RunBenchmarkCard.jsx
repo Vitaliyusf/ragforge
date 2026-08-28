@@ -135,7 +135,7 @@ export default function RunBenchmarkCard({
           className="group mt-5 rounded-xl border"
           style={{ borderColor: 'var(--border)' }}
         >
-          <summary className="flex cursor-pointer list-none items-center gap-2 rounded-xl px-3 py-2.5 text-[13px] font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]">
+          <summary className="flex cursor-pointer list-none items-center gap-2 rounded-xl px-3 py-2.5 text-[13px] font-medium focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[var(--ring)]">
             <ChevronRight
               size={14}
               aria-hidden="true"

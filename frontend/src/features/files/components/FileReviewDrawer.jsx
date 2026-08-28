@@ -110,7 +110,7 @@ export default function FileReviewDrawer({
             <DataCell label="Extracted text hash" value={extractedTextHash} />
           </div>
 
-          <section className="space-y-2 rounded-2xl border border-border bg-bg-tertiary/70 p-4">
+          <section className="space-y-2 rounded-2xl border border-border p-4">
             <div className="flex items-center gap-2 text-[15px] font-semibold text-text-primary">
               <FileWarning size={16} className="text-warning" />
               Problem Description
@@ -118,7 +118,7 @@ export default function FileReviewDrawer({
             <p className="text-[15px] text-text-secondary">{reviewCase.problem_description || 'Not provided'}</p>
           </section>
 
-          <section className="space-y-2 rounded-2xl border border-border bg-bg-tertiary/70 p-4">
+          <section className="space-y-2 rounded-2xl border border-border p-4">
             <div className="flex items-center gap-2 text-[15px] font-semibold text-text-primary">
               <AlertTriangle size={16} className="text-danger" />
               Problematic Text Snippet
@@ -128,7 +128,7 @@ export default function FileReviewDrawer({
             </pre>
           </section>
 
-          <section className="space-y-2 rounded-2xl border border-border bg-bg-tertiary/70 p-4">
+          <section className="space-y-2 rounded-2xl border border-border p-4">
             <div className="text-[15px] font-semibold text-text-primary">Why Problematic</div>
             <p className="text-[15px] text-text-secondary">{reviewCase.why_problematic || 'Not provided'}</p>
             {Array.isArray(reviewCase.issue_categories) && reviewCase.issue_categories.length > 0 ? (
@@ -142,7 +142,7 @@ export default function FileReviewDrawer({
             ) : null}
           </section>
 
-          <section className="space-y-3 rounded-2xl border border-border bg-bg-tertiary/70 p-4">
+          <section className="space-y-3 rounded-2xl border border-border p-4">
             <div className="text-[15px] font-semibold text-text-primary">Allowed Actions</div>
             <div className="grid gap-3">
               {actions.map((action) => {
@@ -161,7 +161,7 @@ export default function FileReviewDrawer({
                     onClick={() => setSelectedAction(action)}
                     className={`rounded-2xl border px-4 py-3 text-left transition ${
                       active
-                        ? 'border-accent bg-accent/10'
+                        ? 'border-accent'
                         : 'border-border bg-bg-elevated hover:border-border-hover hover:bg-bg-secondary'
                     }`}
                   >
@@ -176,7 +176,7 @@ export default function FileReviewDrawer({
             </div>
           </section>
 
-          <section className="space-y-2 rounded-2xl border border-border bg-bg-tertiary/70 p-4">
+          <section className="space-y-2 rounded-2xl border border-border p-4">
             <div className="text-[15px] font-semibold text-text-primary">Patch Map Preview</div>
             {patchMap.length > 0 ? (
               <div className="space-y-2">
@@ -205,7 +205,7 @@ export default function FileReviewDrawer({
                 value={notes}
                 onChange={(event) => setNotes(event.target.value)}
                 placeholder="Optional decision note"
-                className="w-full rounded-xl border border-border bg-bg-elevated px-3 py-2 text-[15px] text-text-primary outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/20"
+                className="w-full rounded-xl border border-border bg-bg-elevated px-3 py-2 text-[15px] text-text-primary outline-hidden transition focus:border-accent focus:ring-2"
               />
             </label>
           </section>

@@ -83,7 +83,7 @@ export default function HealthDashboard() {
       {/* ── KPI stat row ── */}
       <div
         className="relative overflow-hidden rounded-3xl border p-5 md:p-6"
-        style={{ background: 'var(--gradient-subtle)', borderColor: overallCfg.border, boxShadow: 'var(--shadow-md)' }}
+        style={{ borderColor: overallCfg.border, boxShadow: 'var(--shadow-md)' }}
       >
         <div className="pointer-events-none absolute -right-16 -top-20 h-56 w-56 rounded-full bg-primary-soft blur-3xl" />
         <div className="relative flex flex-col gap-5 md:flex-row md:items-center">
@@ -126,7 +126,7 @@ export default function HealthDashboard() {
               ['Degraded', degradedCount, 'var(--warning)'],
               ['Down', unhealthyCount, 'var(--danger)'],
             ].map(([label, value, color]) => (
-              <div key={label} className="rounded-xl border border-border bg-bg-elevated/70 px-3 py-2.5 text-center backdrop-blur">
+              <div key={label} className="rounded-xl border border-border px-3 py-2.5 text-center backdrop-blur">
                 <div className="text-xl font-semibold tabular-nums" style={{ color }}>{value}</div>
                 <div className="mt-0.5 text-xs uppercase tracking-wide text-text-muted">{label}</div>
               </div>

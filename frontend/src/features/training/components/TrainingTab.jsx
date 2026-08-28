@@ -72,7 +72,7 @@ function DatasetUploadForm({ onUpload }) {
     <div className="space-y-3">
       <div
         className={`relative border-2 border-dashed rounded-xl p-6 text-center transition-colors ${
-          dragOver ? 'border-accent bg-accent/5' : 'border-border hover:border-border-hover'
+          dragOver ? 'border-accent' : 'border-border hover:border-border-hover'
         }`}
         onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
         onDragLeave={() => setDragOver(false)}
@@ -98,12 +98,12 @@ function DatasetUploadForm({ onUpload }) {
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="Dataset name..."
-          className="px-3 py-2 rounded-lg bg-bg-tertiary border border-border text-[15px] text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-accent"
+          className="px-3 py-2 rounded-lg bg-bg-tertiary border border-border text-[15px] text-text-primary placeholder:text-text-muted focus:outline-hidden focus:ring-2 focus:ring-accent"
         />
         <select
           value={format}
           onChange={(e) => setFormat(e.target.value)}
-          className="px-3 py-2 rounded-lg bg-bg-tertiary border border-border text-[15px] text-text-primary focus:outline-none focus:ring-2 focus:ring-accent"
+          className="px-3 py-2 rounded-lg bg-bg-tertiary border border-border text-[15px] text-text-primary focus:outline-hidden focus:ring-2 focus:ring-accent"
         >
           <option value="instruction">Instruction (instruction/input/output)</option>
           <option value="conversational">Conversational (messages)</option>
@@ -144,7 +144,7 @@ function TrainingConfigForm({ onStart, disabled }) {
         value={datasetId}
         onChange={(e) => setDatasetId(e.target.value)}
         placeholder="Dataset ID to train on..."
-        className="w-full px-3 py-2 rounded-lg bg-bg-tertiary border border-border text-[15px] text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-accent"
+        className="w-full px-3 py-2 rounded-lg bg-bg-tertiary border border-border text-[15px] text-text-primary placeholder:text-text-muted focus:outline-hidden focus:ring-2 focus:ring-accent"
       />
 
       <button
@@ -157,7 +157,7 @@ function TrainingConfigForm({ onStart, disabled }) {
       </button>
 
       {showAdvanced && (
-        <div className="grid grid-cols-2 gap-2 p-3 rounded-lg bg-bg-tertiary/50 border border-border/50">
+        <div className="grid grid-cols-2 gap-2 p-3 rounded-lg border border-border">
           {[
             { key: 'lora_r', label: 'LoRA Rank', type: 'number' },
             { key: 'lora_alpha', label: 'LoRA Alpha', type: 'number' },
@@ -173,7 +173,7 @@ function TrainingConfigForm({ onStart, disabled }) {
                 value={config[key]}
                 onChange={(e) => updateConfig(key, type === 'number' ? Number(e.target.value) : e.target.value)}
                 step={step}
-                className="w-full px-2 py-1.5 rounded-md bg-bg-primary border border-border text-[13px] text-text-primary font-mono focus:outline-none focus:ring-1 focus:ring-accent"
+                className="w-full px-2 py-1.5 rounded-md bg-bg-primary border border-border text-[13px] text-text-primary font-mono focus:outline-hidden focus:ring-1 focus:ring-accent"
               />
             </div>
           ))}
@@ -323,7 +323,7 @@ export default function TrainingTab() {
           {datasets.length > 0 && (
             <div className="mt-4 space-y-2">
               {datasets.map((ds) => (
-                <div key={ds.dataset_id} className="flex items-center justify-between p-2.5 rounded-lg bg-bg-tertiary/50 border border-border/50">
+                <div key={ds.dataset_id} className="flex items-center justify-between p-2.5 rounded-lg border border-border">
                   <div>
                     <div className="text-[15px] font-medium text-text-primary">{ds.name}</div>
                     <div className="text-xs text-text-muted">
@@ -375,7 +375,7 @@ export default function TrainingTab() {
           ) : (
             <div className="space-y-2 max-h-64 overflow-y-auto">
               {jobs.map((job) => (
-                <div key={job.job_id} className="p-3 rounded-lg bg-bg-tertiary/50 border border-border/50">
+                <div key={job.job_id} className="p-3 rounded-lg border border-border">
                   <div className="flex items-center justify-between mb-1">
                     <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${STATUS_STYLES[job.status] || ''}`}>
                       {job.status}
@@ -407,7 +407,7 @@ export default function TrainingTab() {
           ) : (
             <div className="space-y-2 max-h-64 overflow-y-auto">
               {adapters.map((adapter) => (
-                <div key={adapter.adapter_id} className="flex items-center justify-between p-3 rounded-lg bg-bg-tertiary/50 border border-border/50">
+                <div key={adapter.adapter_id} className="flex items-center justify-between p-3 rounded-lg border border-border">
                   <div>
                     <div className="text-[13px] font-medium text-text-primary">{adapter.base_model?.split('/').pop()}</div>
                   </div>

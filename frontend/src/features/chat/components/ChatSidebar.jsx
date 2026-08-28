@@ -57,7 +57,7 @@ export default function ChatSidebar({
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Search conversations"
-            className="h-9 w-full rounded-xl border bg-transparent pl-9 pr-3 text-[13px] text-[var(--fg)] outline-none transition-all placeholder:text-[var(--fg-soft)] focus:border-[var(--border-focus)] focus:ring-2 focus:ring-[var(--ring)]"
+            className="h-9 w-full rounded-xl border bg-transparent pl-9 pr-3 text-[13px] text-[var(--fg)] outline-hidden transition-all placeholder:text-[var(--fg-soft)] focus:border-[var(--border-focus)] focus:ring-2 focus:ring-[var(--ring)]"
             style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}
           />
         </label>
@@ -142,7 +142,7 @@ function ChatItem({ chat, isActive, isDeleting, isGeneratingTitle, onSelect, onD
       initial={{ opacity: 0, x: -6 }}
       animate={{ opacity: isDeleting ? 0.5 : 1, x: 0 }}
       transition={{ delay: Math.min(index, 8) * 0.025 }}
-      className="group relative mb-1 flex cursor-pointer items-center gap-2 rounded-xl border px-2.5 py-2.5 outline-none transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+      className="group relative mb-1 flex cursor-pointer items-center gap-2 rounded-xl border px-2.5 py-2.5 outline-hidden transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
       style={{
         background: isActive ? 'var(--primary-soft)' : 'transparent',
         borderColor: isActive ? 'rgba(var(--primary-rgb) / 0.22)' : 'transparent',
@@ -186,7 +186,7 @@ function ChatItem({ chat, isActive, isDeleting, isGeneratingTitle, onSelect, onD
         type="button"
         onClick={onDelete}
         disabled={isDeleting}
-        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-[var(--fg-soft)] opacity-0 transition-all hover:bg-[var(--danger-soft)] hover:text-[var(--danger)] focus-visible:opacity-100 focus-visible:outline-none group-hover:opacity-100"
+        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-[var(--fg-soft)] opacity-0 transition-all hover:bg-[var(--danger-soft)] hover:text-[var(--danger)] focus-visible:opacity-100 focus-visible:outline-hidden group-hover:opacity-100"
         aria-label={`Delete ${chat.title}`}
       >
         {isDeleting ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}

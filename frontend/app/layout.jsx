@@ -16,7 +16,7 @@ export default function RootLayout({ children }) {
       <body className="font-sans antialiased" style={{ background: 'var(--bg)', color: 'var(--fg)' }}>
         <a
           href="#main-content"
-          className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-[9999] focus:px-4 focus:py-2 focus:rounded-lg focus:text-white focus:outline-none"
+          className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-[9999] focus:px-4 focus:py-2 focus:rounded-lg focus:text-white focus:outline-hidden"
           style={{ background: 'var(--primary)' }}
         >
           Skip to main content

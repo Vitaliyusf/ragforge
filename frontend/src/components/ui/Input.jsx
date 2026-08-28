@@ -49,7 +49,7 @@ const Input = forwardRef(function Input(
           ref={ref}
           disabled={disabled}
           className={cn(
-            'w-full rounded-lg border outline-none transition-all duration-150',
+            'w-full rounded-lg border outline-hidden transition-all duration-150',
             'placeholder:text-[var(--fg-soft)]',
             'focus:ring-2 focus:ring-[var(--ring)] focus:border-[var(--border-focus)]',
             'disabled:opacity-50 disabled:cursor-not-allowed',
@@ -104,7 +104,7 @@ export const Textarea = forwardRef(function Textarea(
       <textarea
         ref={ref}
         className={cn(
-          'w-full rounded-lg border px-3 py-2 text-[15px] outline-none resize-y transition-all duration-150',
+          'w-full rounded-lg border px-3 py-2 text-[15px] outline-hidden resize-y transition-all duration-150',
           'placeholder:text-[var(--fg-soft)]',
           'focus:ring-2 focus:ring-[var(--ring)] focus:border-[var(--border-focus)]',
           'disabled:opacity-50 disabled:cursor-not-allowed',

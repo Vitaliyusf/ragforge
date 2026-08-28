@@ -302,7 +302,7 @@ function Disclosure({ title, summary, tone, defaultOpen = false, children }) {
       style={{ borderColor: 'var(--border)' }}
       open={defaultOpen}
     >
-      <summary className="flex cursor-pointer list-none items-start gap-2 py-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]">
+      <summary className="flex cursor-pointer list-none items-start gap-2 py-3 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[var(--ring)]">
         <ChevronRight
           size={14}
           aria-hidden="true"

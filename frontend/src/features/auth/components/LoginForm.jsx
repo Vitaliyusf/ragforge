@@ -58,7 +58,7 @@ export default function LoginForm() {
 
   return (
     <div className="min-h-screen flex">
-      <div className="hidden lg:flex flex-1 bg-gradient-accent items-center justify-center p-12">
+      <div className="hidden lg:flex flex-1 bg-gradient-primary items-center justify-center p-12">
         <div className="max-w-md text-white">
           <h2 className="text-3xl font-bold mb-4">RAGForge</h2>
           <p className="text-white/90 text-xl">

@@ -83,7 +83,7 @@ export default function MessageMetricsModal({ open, onOpenChange, message }) {
                     >
                       <div className="flex flex-wrap gap-2 text-[13px]">
                         {src.filename && (
-                          <span className="px-2 py-0.5 rounded bg-accent/20 text-accent">
+                          <span className="px-2 py-0.5 rounded text-accent">
                             {src.filename}
                           </span>
                         )}
@@ -229,7 +229,7 @@ export default function MessageMetricsModal({ open, onOpenChange, message }) {
               </div>
               <textarea
                 placeholder="Optional notes..."
-                className="mt-3 w-full p-3 rounded-lg bg-bg-tertiary border border-border text-[15px] resize-none h-20 focus:outline-none focus:ring-2 focus:ring-accent/50"
+                className="mt-3 w-full p-3 rounded-lg bg-bg-tertiary border border-border text-[15px] resize-none h-20 focus:outline-hidden focus:ring-2"
                 readOnly
               />
             </Section>

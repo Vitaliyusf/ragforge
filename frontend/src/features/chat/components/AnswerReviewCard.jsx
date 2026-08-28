@@ -22,7 +22,7 @@ export default function AnswerReviewCard({ review }) {
   const issues = Array.isArray(review.issues) ? review.issues : []
 
   return (
-    <div className="mt-2 w-full rounded-2xl border border-border bg-bg-tertiary/70 p-3">
+    <div className="mt-2 w-full rounded-2xl border border-border p-3">
       <div className="mb-2 flex flex-wrap items-center gap-2">
         <span className="text-[13px] font-semibold uppercase tracking-wide text-text-muted">Answer Review</span>
         <Badge variant={verdictVariant(review.verdict)}>
