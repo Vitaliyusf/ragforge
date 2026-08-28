@@ -7,6 +7,7 @@ from pymongo import MongoClient
 
 from app.db.interfaces import IChatRepository, IMessageRepository, ILongTermMemoryRepository
 from app.config import MemoryConfig
+from app.core.errors import raise_database_failure
 from app.services.tenant_scope import ownership_fields, scope_filter
 
 logger = logging.getLogger(__name__)
@@ -40,12 +41,12 @@ class MongoDBChatRepository(IChatRepository):
                     time.sleep(self.config.mongodb_retry_delay)
                 else:
                     logger.error("Failed to initialize MongoDB after %d attempts: %s", self.config.mongodb_max_retries, e)
-                    raise
+                    raise_database_failure("initialize_chat_repository", e)
 
     def create(self, chat_id: str, title: str) -> bool:
         """Create a new chat."""
         if self._collection is None:
-            return False
+            raise_database_failure("create_chat", RuntimeError("chat collection unavailable"))
         
         try:
             now = datetime.now().isoformat()
@@ -58,35 +59,35 @@ class MongoDBChatRepository(IChatRepository):
             }
             self._collection.insert_one(chat_doc)
             return True
-        except Exception:
-            return False
+        except Exception as exc:
+            raise_database_failure("create_chat", exc)
     
     def get_all(self) -> List[Dict[str, Any]]:
         """Get all chats."""
         if self._collection is None:
-            return []
+            raise_database_failure("get_all_chats", RuntimeError("chat collection unavailable"))
         
         try:
             chats = list(self._collection.find(scope_filter(), {"_id": 0}).sort("updated_at", -1))
             return chats
-        except Exception:
-            return []
+        except Exception as exc:
+            raise_database_failure("get_all_chats", exc)
     
     def delete(self, chat_id: str) -> bool:
         """Delete a chat."""
         if self._collection is None:
-            return False
+            raise_database_failure("delete_chat", RuntimeError("chat collection unavailable"))
         
         try:
             result = self._collection.delete_one(scope_filter({"id": chat_id}))
             return result.deleted_count > 0
-        except Exception:
-            return False
+        except Exception as exc:
+            raise_database_failure("delete_chat", exc)
     
     def update_timestamp(self, chat_id: str, timestamp: str) -> bool:
         """Update chat's updated_at timestamp."""
         if self._collection is None:
-            return False
+            raise_database_failure("update_chat_timestamp", RuntimeError("chat collection unavailable"))
         
         try:
             result = self._collection.update_one(
@@ -94,13 +95,13 @@ class MongoDBChatRepository(IChatRepository):
                 {"$set": {"updated_at": timestamp}}
             )
             return result.modified_count > 0
-        except Exception:
-            return False
+        except Exception as exc:
+            raise_database_failure("update_chat_timestamp", exc)
     
     def update_title(self, chat_id: str, title: str) -> bool:
         """Update chat's title."""
         if self._collection is None:
-            return False
+            raise_database_failure("update_chat_title", RuntimeError("chat collection unavailable"))
         
         try:
             now = datetime.now().isoformat()
@@ -109,8 +110,8 @@ class MongoDBChatRepository(IChatRepository):
                 {"$set": {"title": title, "updated_at": now}}
             )
             return result.modified_count > 0
-        except Exception:
-            return False
+        except Exception as exc:
+            raise_database_failure("update_chat_title", exc)
 
 
 class MongoDBMessageRepository(IMessageRepository):
@@ -141,12 +142,12 @@ class MongoDBMessageRepository(IMessageRepository):
                     time.sleep(self.config.mongodb_retry_delay)
                 else:
                     logger.error("Failed to initialize MongoDB after %d attempts: %s", self.config.mongodb_max_retries, e)
-                    raise
+                    raise_database_failure("initialize_message_repository", e)
 
     def create(self, message_id: str, chat_id: str, sender: str, message: str, timestamp: str) -> bool:
         """Create a new message."""
         if self._collection is None:
-            return False
+            raise_database_failure("create_message", RuntimeError("message collection unavailable"))
         
         try:
             message_doc = {
@@ -159,13 +160,13 @@ class MongoDBMessageRepository(IMessageRepository):
             }
             self._collection.insert_one(message_doc)
             return True
-        except Exception:
-            return False
+        except Exception as exc:
+            raise_database_failure("create_message", exc)
     
     def get_by_chat_id(self, chat_id: str) -> List[Dict[str, Any]]:
         """Get all messages for a chat."""
         if self._collection is None:
-            return []
+            raise_database_failure("get_messages", RuntimeError("message collection unavailable"))
         
         try:
             messages = list(self._collection.find(
@@ -173,19 +174,19 @@ class MongoDBMessageRepository(IMessageRepository):
                 {"_id": 0}
             ).sort("timestamp", 1))
             return messages
-        except Exception:
-            return []
+        except Exception as exc:
+            raise_database_failure("get_messages", exc)
     
     def delete_by_chat_id(self, chat_id: str) -> bool:
         """Delete all messages for a chat."""
         if self._collection is None:
-            return False
+            raise_database_failure("delete_messages", RuntimeError("message collection unavailable"))
         
         try:
             result = self._collection.delete_many(scope_filter({"chat_id": chat_id}))
             return result.deleted_count > 0
-        except Exception:
-            return False
+        except Exception as exc:
+            raise_database_failure("delete_messages", exc)
 
 
 class MongoDBLongTermMemoryRepository(ILongTermMemoryRepository):
