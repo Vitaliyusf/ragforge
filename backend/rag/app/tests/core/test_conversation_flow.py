@@ -327,10 +327,53 @@ def test_output_guardrail_block_preserves_its_stage_in_the_result():
 
     backend.risk_scan = block_output
     request = service.build_request({"question": "normal question", "mode": "regular"})
-    result = asyncio.run(service.graph_runner.run(request, CollectingConversationEmitter(request)))
+    emitter = CollectingConversationEmitter(request)
+    result = asyncio.run(service.graph_runner.run(request, emitter))
 
     assert result["outcome"] == "guardrail_blocked"
     assert result["guardrail_stage"] == "output"
+    assert not any(event["type"] == "token" for event in emitter.events)
+    assert emitter.ttft_seconds is None
+    assert emitter.events[-1]["data"]["final_answer"] == "Safe response"
 
+
+def test_approved_output_streams_only_after_the_output_guardrail():
+    service, _, _ = build_service()
+    request = service.build_request({"question": "What is RAG?", "mode": "regular"})
+    emitter = CollectingConversationEmitter(request)
+
+    asyncio.run(service.graph_runner.run(request, emitter))
+
+    token_indexes = [
+        index for index, event in enumerate(emitter.events) if event["type"] == "token"
+    ]
+    guardrail_index = next(
+        index
+        for index, event in enumerate(emitter.events)
+        if event["type"] == "status"
+        and event["data"].get("node") == "output_guardrails"
+        and event["data"].get("phase") == "started"
+    )
+    assert token_indexes
+    assert min(token_indexes) > guardrail_index
+    assert "".join(emitter.events[index]["data"]["text_delta"] for index in token_indexes).rstrip() == "Regular answer"
+
+
+def test_extended_revision_never_streams_the_superseded_draft():
+    service, _, _ = build_service()
+    request = service.build_request(
+        {"question": "Need second retrieval and revise this answer", "mode": "extended"}
+    )
+    emitter = CollectingConversationEmitter(request)
+
+    asyncio.run(service.graph_runner.run(request, emitter))
+
+    streamed = "".join(
+        event["data"]["text_delta"]
+        for event in emitter.events
+        if event["type"] == "token"
+    )
+    assert streamed.rstrip() == "Revised final answer"
+    assert "Draft answer" not in streamed
 
 
