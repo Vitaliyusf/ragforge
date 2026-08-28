@@ -13,7 +13,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { AlertTriangle, Check, X } from 'lucide-react'
 import { ACTIVITY_STATES, isTerminalState } from '../activityModel'
-import { usePrefersReducedMotion } from '../hooks/usePrefersReducedMotion'
+import { usePrefersReducedMotion } from '@/lib/accessibility/usePrefersReducedMotion'
 
 const STATE_COLORS = {
   [ACTIVITY_STATES.QUEUED]: 'var(--accent)',

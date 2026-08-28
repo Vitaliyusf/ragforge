@@ -8,7 +8,7 @@ import Button from '@/components/ui/Button'
 import Badge from '@/components/ui/Badge'
 import PageHeader from '@/components/ui/PageHeader'
 import StatCard from '@/components/ui/StatCard'
-import EmptyState from '@/components/ui/EmptyState'
+import EmptyState from '@/components/feedback/EmptyState'
 import ProgressBar from '@/components/ui/ProgressBar'
 import { useHealth } from '../hooks/useHealth'
 

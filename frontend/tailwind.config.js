@@ -54,6 +54,8 @@ module.exports = {
         'danger-soft':  'var(--danger-soft)',
         info:     'var(--info)',
         'info-soft':    'var(--info-soft)',
+        /* Work happening right now. See --status-live in globals.css. */
+        'status-live':  'var(--status-live)',
 
         /* ── Backward-compat aliases ── */
         'bg-primary':   'var(--bg)',
@@ -68,69 +70,32 @@ module.exports = {
         error:          'var(--danger)',
       },
       boxShadow: {
-        sm:   'var(--shadow-sm)',
+        sm:      'var(--shadow-sm)',
         DEFAULT: 'var(--shadow-md)',
-        md:   'var(--shadow-md)',
-        lg:   'var(--shadow-lg)',
-        xl:   'var(--shadow-xl)',
-        glow: 'var(--shadow-glow)',
-        ring: '0 0 0 3px var(--ring)',
-      },
-      backgroundImage: {
-        'gradient-primary': 'var(--gradient-primary)',
-        'gradient-subtle':  'var(--gradient-subtle)',
-        'gradient-accent':  'var(--gradient-primary)',
+        md:      'var(--shadow-md)',
+        lg:      'var(--shadow-lg)',
+        xl:      'var(--shadow-xl)',
       },
       ringColor: {
         DEFAULT: 'var(--ring)',
         primary: 'var(--ring)',
       },
-      keyframes: {
-        'fade-in': {
-          '0%':   { opacity: '0', transform: 'translateY(4px)' },
-          '100%': { opacity: '1', transform: 'translateY(0)' },
-        },
-        'slide-up': {
-          '0%':   { opacity: '0', transform: 'translateY(10px)' },
-          '100%': { opacity: '1', transform: 'translateY(0)' },
-        },
-        'scale-in': {
-          '0%':   { opacity: '0', transform: 'scale(0.95)' },
-          '100%': { opacity: '1', transform: 'scale(1)' },
-        },
-        shimmer: {
-          '0%':   { backgroundPosition: '-200% 0' },
-          '100%': { backgroundPosition: '200% 0' },
-        },
-        blink: {
-          '0%, 100%': { opacity: '1' },
-          '50%':      { opacity: '0' },
-        },
-        float: {
-          '0%, 100%': { transform: 'translateY(0)' },
-          '50%':      { transform: 'translateY(-6px)' },
-        },
-        'pulse-ring': {
-          '0%':   { boxShadow: '0 0 0 0 var(--ring)' },
-          '70%':  { boxShadow: '0 0 0 6px transparent' },
-          '100%': { boxShadow: '0 0 0 0 transparent' },
-        },
-      },
-      animation: {
-        'fade-in':    'fade-in 0.2s ease-out both',
-        'slide-up':   'slide-up 0.3s ease-out both',
-        'scale-in':   'scale-in 0.2s ease-out both',
-        shimmer:      'shimmer 1.5s ease-in-out infinite',
-        blink:        'blink 1s infinite',
-        float:        'float 3s ease-in-out infinite',
-        'pulse-ring': 'pulse-ring 1.5s ease-out infinite',
-      },
+      /* The motion scale lives in globals.css so CSS and Tailwind agree. */
       transitionDuration: {
-        DEFAULT: '200ms',
+        DEFAULT: 'var(--motion-normal)',
+        fast:    'var(--motion-fast)',
+        normal:  'var(--motion-normal)',
+        slow:    'var(--motion-slow)',
+      },
+      transitionTimingFunction: {
+        emphasized: 'var(--motion-easing)',
       },
       /* Calmer than Tailwind's defaults. The app leans on rounded-lg/xl/2xl
          everywhere, so tightening these three reshapes every surface at once. */
       borderRadius: {
+        /* Semantic first: controls and surfaces name their own radius. */
+        control: 'var(--radius-control)',
+        surface: 'var(--radius-surface)',
         lg:    '0.5rem',   /* 8px  */
         xl:    '0.625rem', /* 10px */
         '2xl': '0.75rem',  /* 12px */

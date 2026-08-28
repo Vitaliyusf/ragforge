@@ -13,7 +13,7 @@ import { useDispatch, useSelector } from 'react-redux'
 import { filesChanged } from '@/store/slices/eventsSlice'
 import { setFiles, selectCachedFiles } from '@/store/slices/filesSlice'
 import fileService from '@/features/files/services/fileService'
-import { normalizeFileStatus } from '@/utils/common'
+import { normalizeFileStatus } from '@/features/files/fileStatus'
 import { buildInitialState, filesReducer } from './filesReducer'
 
 export function useFiles() {

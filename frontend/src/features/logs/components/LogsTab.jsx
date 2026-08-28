@@ -18,8 +18,9 @@ import {
   Trash2,
   X,
 } from 'lucide-react'
+import LoadingState from '@/components/feedback/LoadingState'
 import { useLogs } from '@/features/logs'
-import { formatLogLine } from '@/utils/common'
+import { formatLogLine } from '@/lib/formatting/logs'
 import {
   setAutoRefresh,
   setLines,
@@ -342,10 +343,7 @@ export default function LogsTab() {
             className="min-h-0 flex-1 overflow-y-auto bg-[var(--bg)] p-3 font-mono scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent md:p-4"
           >
             {loading && filteredLogs.length === 0 ? (
-              <div className="flex min-h-[360px] flex-col items-center justify-center">
-                <Loader2 size={28} className="mb-3 animate-spin text-primary" />
-                <p className="text-[13px] text-text-muted">Loading service output...</p>
-              </div>
+              <LoadingState label="Loading service output…" minHeight={360} />
             ) : filteredLogs.length === 0 ? (
               <motion.div
                 initial={{ opacity: 0, y: 8 }}

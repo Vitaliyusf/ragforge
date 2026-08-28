@@ -14,13 +14,14 @@ import {
   Trash2,
 } from 'lucide-react'
 import Badge from '@/components/ui/Badge'
+import StatusIndicator from '@/components/status/StatusIndicator'
 import { DataRow } from '@/components/ui/DataDisplay'
+import { formatFileSize } from '@/lib/formatting/bytes'
 import {
   computeEffectiveStatus,
-  formatFileSize,
-  getEffectiveStatusBadgeVariant,
   getEffectiveStatusLabel,
-} from '@/utils/common'
+  getEffectiveStatusTone,
+} from '@/features/files/fileStatus'
 import PipelineBar from './PipelineBar'
 
 function getFileTypeIcon(contentType, filename) {
@@ -57,7 +58,7 @@ function FileCard({
   const FileIcon = getFileTypeIcon(file.content_type, file.filename)
   const effectiveStatus = computeEffectiveStatus(file)
   const statusLabel = getEffectiveStatusLabel(file)
-  const statusVariant = getEffectiveStatusBadgeVariant(file)
+  const statusTone = getEffectiveStatusTone(file)
   const statusChipClass = STATUS_CHIP_STYLES[effectiveStatus] || 'bg-bg-tertiary text-accent'
 
   return (
@@ -104,7 +105,7 @@ function FileCard({
 
       {/* Status badges */}
       <div className="flex flex-wrap items-center gap-1.5 px-4 pb-3">
-        <Badge variant={statusVariant}>{statusLabel}</Badge>
+        <StatusIndicator tone={statusTone} label={statusLabel} />
         {file.review_status && file.review_status !== 'not_required' ? (
           <Badge variant="default">{String(file.review_status).replace(/_/g, ' ')}</Badge>
         ) : null}

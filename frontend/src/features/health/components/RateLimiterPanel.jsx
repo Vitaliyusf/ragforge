@@ -1,7 +1,7 @@
 'use client'
 
 import { CheckCircle2, Gauge, ShieldOff, Zap } from 'lucide-react'
-import EmptyState from '@/components/ui/EmptyState'
+import EmptyState from '@/components/feedback/EmptyState'
 import ProgressBar from '@/components/ui/ProgressBar'
 
 function RateLimiterPanel({ metrics }) {

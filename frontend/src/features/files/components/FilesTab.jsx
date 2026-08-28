@@ -17,13 +17,13 @@ import AuditTrailPanel from './AuditTrailPanel'
 import fileService from '@/features/files/services/fileService'
 import FileCard from './FileCard'
 import SummaryModal from './SummaryModal'
-import EmptyState from '@/components/ui/EmptyState'
+import EmptyState from '@/components/feedback/EmptyState'
 import {
   computeEffectiveStatus,
-  getFileStatusBadgeVariant,
   getFileStatusLabel,
+  getFileStatusTone,
   hasReviewPending,
-} from '@/utils/common'
+} from '@/features/files/fileStatus'
 
 const FILE_FILTERS = [
   { id: 'all', label: 'All files', countKey: 'totalFiles' },
@@ -495,7 +495,7 @@ export default function FilesTab() {
                     </div>
                   ) : null}
                   <div className="mt-1.5 flex flex-wrap gap-1.5">
-                    <Badge variant={getFileStatusBadgeVariant(upload.status)} size="sm">
+                    <Badge variant={getFileStatusTone(upload.status)} size="sm">
                       {getFileStatusLabel(upload.status)}
                     </Badge>
                     {upload.message ? <Badge variant="default" size="sm">{upload.message}</Badge> : null}

@@ -3,7 +3,7 @@
 import { AlertTriangle, BarChart3 } from 'lucide-react'
 import Button from '@/components/ui/Button'
 import Card, { CardHeader } from '@/components/ui/Card'
-import EmptyState from '@/components/ui/EmptyState'
+import EmptyState from '@/components/feedback/EmptyState'
 import TabSkeleton from '@/components/ui/TabSkeleton'
 import Histogram from './charts/Histogram'
 import StageBreakdown from './charts/StageBreakdown'

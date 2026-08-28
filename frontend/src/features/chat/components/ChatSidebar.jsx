@@ -5,7 +5,7 @@ import { useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
 import { Plus, Trash2, MessageSquare, Loader2, AlertCircle, Search } from 'lucide-react'
 import Button from '@/components/ui/Button'
-import { formatChatDate } from '@/utils/common'
+import { formatChatDate } from '@/lib/formatting/datetime'
 
 export default function ChatSidebar({
   chats,

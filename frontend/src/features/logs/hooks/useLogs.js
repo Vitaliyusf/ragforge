@@ -3,7 +3,7 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import logService from '@/features/logs/services/logService'
-import { detectLogSeverity } from '@/utils/common'
+import { detectLogSeverity } from '@/lib/formatting/logs'
 
 export function useLogs(
   selectedServices = ['gateway'],

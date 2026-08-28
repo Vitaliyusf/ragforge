@@ -5,7 +5,7 @@
  * open review/summary panels — separately from the fetched file list.
  */
 
-import { normalizeFileStatus } from '@/utils/common'
+import { normalizeFileStatus } from '@/features/files/fileStatus'
 
 function normalizeFileRecord(file) {
   if (!file) return file
