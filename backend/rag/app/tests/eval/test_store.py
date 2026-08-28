@@ -591,6 +591,7 @@ def test_a_pre_versioning_dataset_fingerprints_like_a_fresh_upload():
     assert migrated["dataset_sha256"] == fresh["dataset_sha256"]
 
 
+@pytest.mark.compat
 def test_the_backfill_stamps_legacy_datasets_and_leaves_the_rest_alone():
     store = build_store()
     seed_legacy_dataset(store)

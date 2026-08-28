@@ -23,11 +23,26 @@ SERVICE_DIRS = {
     "llm_agent": ROOT / "backend" / "llm_agent",
 }
 
+# Selectable RAG test lanes. Each lane is a directory under the service's test
+# tree, so the mapping stays obvious to a human and needs no generated index.
+LANES = {
+    "rag-core": ("rag", ["app/tests/core", "app/tests/contracts"]),
+    "rag-eval": ("rag", ["app/tests/eval"]),
+    "rag-benchmark": ("rag", ["app/tests/benchmark"]),
+    "rag-metrics": ("rag", ["app/tests/metrics"]),
+    "rag-compat": ("rag", ["app/tests/compat"]),
+}
+
 def _candidate_pythons() -> list[Path]:
     candidates = [
         ROOT / ".venv" / "Scripts" / "python.exe",
         ROOT / ".venv" / "bin" / "python",
         Path(sys.executable),
+        # Isolated uv interpreter: an accepted fallback when the repository
+        # .venv is unusable. Never repaired here — a broken .venv is skipped,
+        # not treated as a blocker.
+        ROOT / ".agent-private" / "rag-venv" / "Scripts" / "python.exe",
+        ROOT / ".agent-private" / "rag-venv" / "bin" / "python",
     ]
     result: list[Path] = []
     seen: set[str] = set()
@@ -67,6 +82,40 @@ def resolve_python() -> tuple[str, str]:
 
 def python_cmd() -> str:
     return resolve_python()[0]
+
+
+def _probe_pytest(path: Path) -> bool:
+    """A usable interpreter is one whose pytest actually starts."""
+    if not path.exists():
+        return False
+    try:
+        proc = subprocess.run(
+            [str(path), "-m", "pytest", "--version"],
+            cwd=str(ROOT),
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            timeout=PROBE_TIMEOUT_SECONDS,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return proc.returncode == 0
+
+
+def pytest_python() -> str:
+    """Resolve an interpreter that can run pytest.
+
+    A repository .venv whose interpreter starts but whose pytest is broken is
+    skipped rather than repaired or reported as BLOCKED, so an isolated
+    `uv --python 3.11` environment is a first-class fallback.
+    """
+    for candidate in _candidate_pythons():
+        if _probe_pytest(candidate):
+            return str(candidate)
+    raise RuntimeError(
+        "No interpreter with a working pytest. Create one with: "
+        "uv venv --python 3.11 .agent-private/rag-venv"
+    )
 
 def _tail(text: str, limit: int = MAX_FAILURE_LINES) -> list[str]:
     return (text or "").splitlines()[-limit:]
@@ -201,16 +250,25 @@ def run_mypy(files: list[str]) -> tuple[bool, bool]:
 def run_pytest(service: str, tests: list[str], label: str) -> tuple[bool, bool]:
     service_dir = SERVICE_DIRS[service]
     basetemp = _service_basetemp(service)
+    try:
+        py = pytest_python()
+    except RuntimeError as exc:
+        print(f"{label}: BLOCKED")
+        print(str(exc))
+        return False, True
+
     return run_check(
         label,
-        python_module(
+        [
+            py,
+            "-m",
             "pytest",
             *tests,
             "-q",
             "--maxfail=1",
             "--basetemp",
             str(basetemp),
-        ),
+        ],
         cwd=service_dir,
         env=service_env(service_dir),
         blocked_markers=(
@@ -311,6 +369,43 @@ def full(args: argparse.Namespace) -> int:
 
     return summary(results)
 
+def lane(args) -> int:
+    """Run one named test lane. Success stays a single PASS line."""
+    service, paths = LANES[args.lane]
+    return summary([run_pytest(service, paths, f"Pytest {args.lane}")])
+
+
+def inventory(args) -> int:
+    """Write full collection/duration output to a private file, not the transcript."""
+    service_dir = SERVICE_DIRS[args.service]
+    PRIVATE_TMP.mkdir(parents=True, exist_ok=True)
+    out = PRIVATE_TMP / f"{args.service}-inventory.txt"
+    proc = subprocess.run(
+        [
+            pytest_python(),
+            "-m",
+            "pytest",
+            "app/tests",
+            "-q",
+            "--collect-only",
+            "--durations=50",
+            "--basetemp",
+            str(_service_basetemp(args.service)),
+        ],
+        cwd=str(service_dir),
+        env=service_env(service_dir),
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+    )
+    out.write_text(proc.stdout or "", encoding="utf-8")
+    tail = [ln for ln in (proc.stdout or "").splitlines() if " test" in ln and "collected" in ln]
+    print(f"Inventory: {'PASS' if proc.returncode == 0 else 'FAIL'} ({out})")
+    for line in tail[-1:]:
+        print(line.strip())
+    return 0 if proc.returncode == 0 else 1
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Low-noise, CI-delegated validation for RAGForge agents."
@@ -331,6 +426,12 @@ def main() -> int:
     p_affected.add_argument("--mypy", action="store_true")
     p_affected.add_argument("--build", action="store_true")
 
+    p_lane = sub.add_parser("lane")
+    p_lane.add_argument("lane", choices=[*LANES])
+
+    p_inventory = sub.add_parser("inventory")
+    p_inventory.add_argument("service", choices=[*SERVICE_DIRS])
+
     p_full = sub.add_parser("full")
     p_full.add_argument("--fail-fast", action="store_true")
     p_full.add_argument("--build", action="store_true")
@@ -343,6 +444,10 @@ def main() -> int:
         return focused(args)
     if args.mode in {"affected", "service"}:
         return affected(args)
+    if args.mode == "lane":
+        return lane(args)
+    if args.mode == "inventory":
+        return inventory(args)
     return full(args)
 
 if __name__ == "__main__":

@@ -27,8 +27,8 @@ from app.services.retrieval_trace import (
     STAGE_PASS_TWO,
     RetrievalTrace,
 )
-from app.tests.test_eval_runner import ADMIN, FakeBackend, build, execute, fetch
-from app.tests.test_rag import TEST_IDENTITY, build_service
+from app.tests.eval._harness import ADMIN, FakeBackend, build, execute, fetch
+from app.tests._service_harness import TEST_IDENTITY, build_service
 from shared.context import bound_context
 
 

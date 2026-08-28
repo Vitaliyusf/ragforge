@@ -18,7 +18,7 @@ from app.services.benchmark_export import (
 )
 from app.services.benchmark_runner import PHASE_RETRIEVAL_BASE
 from app.services.eval_store import EvalNotFound
-from app.tests.test_benchmark_runner import ADMIN, build, run_benchmark
+from app.tests.benchmark._harness import ADMIN, build, run_benchmark
 from shared.auth import AuthIdentity
 from shared.context import bound_context
 
@@ -110,6 +110,7 @@ def test_new_export_survives_live_dataset_deletion():
     assert evidence["dataset_id"] == dataset_id
 
 
+@pytest.mark.compat
 def test_legacy_export_marks_current_dataset_dependency_or_missing_dataset():
     store, orchestrator, _, dataset_id = build()
     benchmark = run_benchmark(orchestrator, dataset_id, [PHASE_RETRIEVAL_BASE])
@@ -203,6 +204,7 @@ def test_per_item_export_identifies_guardrail_outcome_and_stage():
     ]
 
 
+@pytest.mark.compat
 def test_legacy_per_item_export_uses_null_for_unknown_outcome_fields():
     evidence = _trace_evidence([{"item_id": "legacy-1", "skipped": True}])
 

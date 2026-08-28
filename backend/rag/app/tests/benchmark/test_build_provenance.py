@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-ROOT = Path(__file__).resolve().parents[4]
+ROOT = Path(__file__).resolve().parents[5]
 SPEC = importlib.util.spec_from_file_location(
     "build_rag_image", ROOT / "scripts" / "build_rag_image.py"
 )

@@ -27,8 +27,8 @@ from app.services.conversation_messages import (
     DownstreamRPCError,
     extract_reply_payload,
 )
-from app.tests.test_benchmark_comparison import benchmark, benchmark_compatibility
-from app.tests.test_rag import TEST_IDENTITY, build_service
+from app.tests._service_harness import TEST_IDENTITY, build_service
+from app.tests.eval._harness import FailingGraph, build, fetch, run_end_to_end
 from shared.context import bound_context
 
 
@@ -348,32 +348,8 @@ def test_export_keeps_llm_evidence_and_no_model_text():
     assert "query" not in exported[0]
 
 
-def test_a_different_evaluator_budget_makes_two_runs_incompatible():
-    baseline = benchmark("base", created_at="2026-01-01")
-    candidate = benchmark("candidate", created_at="2026-01-02")
-    candidate["manifest"]["llm"]["max_tokens"]["answer_evaluation"] = 640
-
-    result = benchmark_compatibility(baseline, candidate)
-
-    assert baseline["manifest"]["llm"]["max_tokens"]["answer_evaluation"] == 512
-    field = next(
-        row for row in result["compatibility_fields"] if row["field"] == "llm.max_tokens"
-    )
-    assert field["status"] == "different"
-    assert result["compatibility_status"] == "incompatible"
-
-
-# ── The eval row keeps what the graph reported ────────────────────────────
-
 
 def test_a_failed_item_row_keeps_the_evaluator_evidence():
-    from app.tests.test_eval_runner import (
-        FailingGraph,
-        build,
-        fetch,
-        run_end_to_end,
-    )
-
     store, runner, _, dataset_id = build(
         items=[{"query": "first", "relevant_chunk_ids": ["c1"]}]
     )
