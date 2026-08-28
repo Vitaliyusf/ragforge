@@ -29,3 +29,15 @@ class FileAction(str, Enum):
     DELETE = "delete"
     RERUN_STAGE = "rerun_stage"
     GET_METRICS = "get_metrics"
+
+
+class IngestionState(str, Enum):
+    """Persisted states for the deterministic file-ingestion workflow."""
+
+    LOAD_EXTRACTION_RESULT = "load_extraction_result"
+    DETECT_ISSUES = "detect_issues"
+    AWAIT_HUMAN_REVIEW = "await_human_review"
+    APPLY_DECISION = "apply_decision"
+    CHUNK_TEXT = "chunk_text"
+    REQUEST_EMBEDDINGS = "request_embeddings"
+    FINALIZE = "finalize"

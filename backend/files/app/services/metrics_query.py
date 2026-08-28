@@ -40,7 +40,7 @@ WINDOW_SECONDS: Dict[str, int] = {
 DEFAULT_WINDOW = "24h"
 
 # A file whose status is one of these is mid-pipeline: work is expected to
-# be happening. Every value is written by file_ingestion_graph or by
+# be happening. Every value is written by the ingestion state machine or by
 # create_file_document; none is invented here.
 IN_FLIGHT_STATUSES = ("started", "processing", "resuming")
 
@@ -153,7 +153,7 @@ class FileMetricsQueryService:
     def funnel(self, window: str, tenant_id: Optional[str] = None) -> Dict[str, Any]:
         """Return the ingestion funnel counted by status and by stage.
 
-        Statuses are reported exactly as the ingestion graph writes them.
+        Statuses are reported exactly as the ingestion state machine writes them.
         Nothing is renamed, merged, or normalised on the way out — a status
         this module has never seen still appears in the result.
 

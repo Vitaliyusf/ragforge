@@ -1,4 +1,4 @@
-"""Shared data types for the file ingestion graph."""
+"""Shared data types for file-ingestion orchestration."""
 from __future__ import annotations
 
 from contextlib import contextmanager
@@ -16,8 +16,8 @@ class OutboundMessage:
     message: Dict[str, Any]
 
 
-class FilesLangSmithTracer:
-    """Lightweight LangSmith tracer wrapper with a no-op fallback."""
+class FilesIngestionTracer:
+    """Lightweight ingestion tracer with a no-op fallback."""
 
     def __init__(self, config: Settings):
         self.config = config

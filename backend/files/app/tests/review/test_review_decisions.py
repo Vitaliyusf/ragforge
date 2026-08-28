@@ -1,6 +1,7 @@
 """What each reviewer decision does to the file, its chunks and downstream work."""
 from __future__ import annotations
 
+from app.core.constants import IngestionState
 from app.tests._files_harness import (
     make_actor,
     make_graph,
@@ -18,6 +19,7 @@ def test_issue_detection_creates_review_case_with_bounded_snippet(config):
 
     assert repo.files["file-1"]["status"] == "awaiting_review"
     assert repo.files["file-1"]["review_status"] == "pending"
+    assert repo.tasks["task-1"]["current_node"] == IngestionState.AWAIT_HUMAN_REVIEW.value
     assert review_case is not None
     assert review_case["extracted_text_hash"]
     assert len(review_case["problematic_text"]) <= config.review_snippet_max_chars
@@ -55,6 +57,7 @@ def test_delete_file_decision_rejects_file_and_requests_cleanup_when_needed(conf
     assert repo.files["file-1"]["status"] == "rejected"
     assert repo.files["file-1"]["review_status"] == "rejected"
     assert repo.tasks["task-1"]["status"] == "rejected"
+    assert repo.tasks["task-1"]["current_node"] == IngestionState.FINALIZE.value
     assert any(outbound_payload(message.message)["event_type"] == "vector_db.delete.requested" for message in outbound)
 
 

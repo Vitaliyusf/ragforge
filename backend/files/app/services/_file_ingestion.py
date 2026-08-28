@@ -5,9 +5,10 @@ import base64
 import os
 from typing import Any, Dict, Optional
 
+
 from shared.errors import NotFoundError as NotFoundException
 from shared.errors import ValidationError as ValidationException
-from app.services.file_ingestion_graph import OutboundMessage
+from app.services.graph_types import OutboundMessage
 from app.utils.common import (
     build_message_envelope,
     create_file_document,
@@ -136,7 +137,7 @@ class FileIngestionMixin:
         )
 
     def handle_complete_extraction(self, correlation_id: Optional[str], request: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        """Resume the ingestion graph after extraction completes."""
+        """Advance ingestion after extraction completes."""
         payload = self._payload(request)
         request_context = self._request_context(request)
         file_id = payload.get("file_id")
@@ -154,7 +155,7 @@ class FileIngestionMixin:
             raise NotFoundException("File task not found")
 
         try:
-            outbound = self.graph.handle_extraction_completion(
+            outbound = self.state_machine.handle_extraction_completion(
                 file_doc=file_doc,
                 task_doc=task_doc,
                 extracted_text=extracted_text,
@@ -163,7 +164,7 @@ class FileIngestionMixin:
                 request_context=request_context,
             )
         except Exception as exc:
-            self._write_graph_failure_event(file_doc, task_doc, self._actor(request), exc)
+            self._write_ingestion_failure_event(file_doc, task_doc, self._actor(request), exc)
             raise
         self._publish_messages(outbound)
 

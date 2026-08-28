@@ -13,7 +13,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from app.services.file_ingestion_graph import FileIngestionGraph
+from app.services.file_ingestion_state_machine import FileIngestionStateMachine
 from app.utils.common import create_file_document, create_file_task_document, utcnow
 from shared.context import bound_context
 
@@ -339,7 +339,7 @@ def make_repo():
 
 
 def make_graph(repo, config):
-    return FileIngestionGraph(repo, DummyProducer(), Mock(), config)
+    return FileIngestionStateMachine(repo, DummyProducer(), Mock(), config)
 
 
 def make_actor():

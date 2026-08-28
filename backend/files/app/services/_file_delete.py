@@ -4,7 +4,7 @@ from __future__ import annotations
 import os
 from typing import Any, Dict
 
-from app.services.file_ingestion_graph import OutboundMessage
+from app.services.graph_types import OutboundMessage
 from app.utils.common import build_message_envelope, generate_event_id, utcnow
 
 

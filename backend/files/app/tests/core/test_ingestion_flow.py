@@ -6,6 +6,7 @@ from unittest.mock import Mock
 import pytest
 
 from app.services.file_handlers import FileHandlers
+from app.core.constants import IngestionState
 from app.tests._files_harness import (
     authenticated_request_context,  # noqa: F401  (autouse within this module)
     DummyProducer,
@@ -34,6 +35,7 @@ def test_clean_file_flow_creates_clean_chunks(config):
     assert repo.files["file-1"]["review_status"] == "not_required"
     assert repo.files["file-1"]["stage"]["chunking"] == "done"
     assert repo.tasks["task-1"]["status"] == "completed"
+    assert repo.tasks["task-1"]["current_node"] == IngestionState.FINALIZE.value
     assert repo.review_cases == {}
     assert repo.chunks
     assert all(chunk["review_status"] == "clean" for chunk in repo.chunks.values())
