@@ -1,0 +1,56 @@
+# Task Index V3
+
+- **BRAIN-01** — Anti-monolith task and engineering guardrails — `chore/ai-complexity-ratchet` — 0 Governance — P0
+- **RAG-RESUME-01** — Make extended RAG checkpoint recovery unambiguous — `fix/rag-extended-resume-stages` — 1 Current hardening — P0
+- **CONFIG-01** — Make runtime configuration honest and deployment-owned — `fix/runtime-config-control-plane` — 1 Current hardening — P0
+- **RAG-03** — Token-aware diverse context assembler — `feat/rag-context-assembler` — 1 Current hardening — P0
+- **SAFE-01** — Fail-closed streaming output safety — `fix/streaming-output-guardrail` — 1 Current hardening — P0
+- **FILES-01** — Fix Mongo transaction fallback semantics — `fix/files-transaction-fallback` — 1 Current hardening — P0
+- **MEM-CORRECT-01** — Fix Memory error semantics and failure classification — `fix/memory-error-semantics` — 1 Current hardening — P0
+- **HEALTH-01** — Standardize liveness and readiness contracts — `fix/service-health-readiness` — 1 Current hardening — P1
+- **SEC-03** — Run application containers as non-root — `fix/non-root-containers` — 1 Current hardening — P1
+- **TEST-01** — Restructure tests by contract and add highest-risk boundary coverage — `test/contract-oriented-suites` — 1 Current hardening — P1
+- **SHARED-02** — Consolidate proven cross-cutting contracts without a shared god module — `refactor/shared-contracts-v2` — 1 Current hardening — P1
+- **DEPS-01** — Staged dependency and image-surface modernization — `chore/staged-dependency-modernization` — 1 Current hardening — P1
+- **VALIDATE-01** — Baseline hardening release gate — `release/baseline-validation-v1` — 1 Current hardening — P0
+- **EMBED-01** — Canonicalize embedding runtime and retire legacy paths — `refactor/embedding-runtime` — 2 Simplification — P1
+- **FILES-02** — Simplify Files ingestion into an explicit state machine — `refactor/files-ingestion-state-machine` — 2 Simplification — P1
+- **LLM-CTRL-01** — Unify LLM control plane and simplify execution/provider ownership — `refactor/llm-control-plane` — 2 Simplification — P1
+- **CHAT-01** — Make completed-turn persistence server-owned — `feat/server-owned-chat-persistence` — 2 Simplification — P1
+- **FRONT-01** — Batch chat streaming renders and shrink ChatContext responsibility — `perf/chat-stream-rendering` — 2 Simplification — P1
+- **FILES-LIST-01** — Add scalable server-side file listing — `perf/files-list-pagination` — 2 Simplification — P1
+- **PRODUCT-01** — Remove or graduate incomplete operator surfaces — `chore/product-surface-hardening` — 2 Simplification — P2
+- **APP-01** — Residual ApplicationRuntime and lifecycle consolidation — `refactor/service-runtime-containers` — 2 Simplification — P2
+- **TYPES-01** — Strengthen critical contracts incrementally — `refactor/typed-contracts` — 2 Simplification — P2
+- **VECTOR-01** — Versioned vector index lifecycle — `feat/vector-index-lifecycle` — 3 Document Representation V2 — P0
+- **DOCPIPE-01** — Introduce a canonical structured document model — `feat/structured-document-contract` — 3 Document Representation V2 — P0
+- **DOCPIPE-02** — Add structured parser adapters and fallback policy — `feat/document-parser-adapters` — 3 Document Representation V2 — P1
+- **CHUNK-01** — Structure-aware token-budgeted chunking baseline — `feat/structured-token-chunking` — 3 Document Representation V2 — P0
+- **CHUNK-02** — Contextual chunk augmentation — `feat/contextual-chunk-metadata` — 3 Document Representation V2 — P1
+- **CHUNK-03** — Benchmark advanced chunking strategies — `exp/advanced-chunking` — 3 Document Representation V2 — P2
+- **CHUNK-04** — Agent-assisted document repair for low-confidence cases — `feat/agentic-document-repair` — 3 Document Representation V2 — P3
+- **RAG-05** — True dense+sparse hybrid retrieval — `feat/hybrid-retrieval` — 4 Retrieval V2 — P1
+- **RAG-04** — Add a real learned reranker — `feat/cross-encoder-reranking` — 4 Retrieval V2 — P1
+- **RAG-06** — Neighbor expansion and evidence diversity policy — `feat/retrieval-context-expansion` — 4 Retrieval V2 — P2
+- **VECTOR-02** — Optimize Qdrant operations after Retrieval V2 stabilizes — `perf/qdrant-operations` — 4 Retrieval V2 — P2
+- **TRACE-01** — Deep structured retrieval diagnostics — `feat/rag-retrieval-diagnostics-v2` — 4 Retrieval V2 — P2
+- **MEM-01** — Use real neural embeddings for long-term memory — `feat/neural-memory-embeddings` — 5 Memory V2 — P1
+- **MEM-QUERY-01** — Move Memory filtering/scoring data access out of Python scans — `perf/memory-query-scaling` — 5 Memory V2 — P1
+- **MEM-02** — Repairable memory secondary-index reconciliation — `feat/memory-index-reconciliation` — 5 Memory V2 — P1
+- **MEM-03** — Create a memory quality golden set — `feat/memory-quality-evals` — 5 Memory V2 — P1
+- **AGENT-01** — Harden Memory agent server-side mutation policy — `feat/memory-agent-policy` — 5 Memory V2 — P1
+- **AGENT-02** — Typed Memory agent tool protocol and deterministic termination — `refactor/memory-agent-tool-protocol` — 5 Memory V2 — P2
+- **AGENT-03** — Memory agent evaluation harness — `feat/memory-agent-evals` — 5 Memory V2 — P2
+- **AGENT-04** — Tenant-scoped general agent mode — `feat/rag-agent-mode` — 5 Memory V2 — P3
+- **QUAL-01** — Consolidate claim coverage, citation edges and deterministic support metrics — `feat/claim-quality-metrics-v2` — 6 Quality & Observability — P2
+- **OBS-TRACE-01** — Unify AI tracing on a vendor-neutral instrumentation layer — `feat/otel-ai-tracing` — 6 Quality & Observability — P2
+- **EVAL-EXT-01** — External eval calibration and Eval subsystem decomposition — `feat/eval-calibration` — 6 Quality & Observability — P2
+- **E2E-01** — Browser end-to-end critical-flow suite — `test/browser-e2e` — 6 Quality & Observability — P1
+- **OBS-02** — SLOs, distributed observability and GPU/queue telemetry — `feat/distributed-observability` — 6 Quality & Observability — P2
+- **DIST-01** — Canonical turn persistence with transactional outbox — `feat/conversation-outbox` — 7 Distributed production — P2
+- **DIST-02** — Version Kafka delivery contracts and strengthen idempotency — `feat/kafka-delivery-contracts` — 7 Distributed production — P2
+- **DIST-03** — Distributed tenant-aware rate limiting when Gateway scales out — `feat/distributed-rate-limits` — 7 Distributed production — P3
+- **CHAOS-01** — Controlled failure and recovery suite — `test/chaos-recovery` — 7 Distributed production — P2
+- **SUPPLY-01** — Supply-chain and artifact security gate — `ci/supply-chain-hardening` — 7 Distributed production — P2
+- **DEPLOY-01** — Production deployment profile and stateful-service policy — `chore/production-deployment-profile` — 7 Distributed production — P2
+- **VALIDATE-02** — Advanced platform release gate — `release/advanced-validation-v2` — 8 Final release — P0
