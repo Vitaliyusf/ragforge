@@ -2,7 +2,7 @@
 
 import { CircleDot } from 'lucide-react'
 import Badge from '@/components/ui/Badge'
-import EmptyState from '@/components/ui/EmptyState'
+import EmptyState from '@/components/feedback/EmptyState'
 import ProgressBar from '@/components/ui/ProgressBar'
 import { ShieldCheck } from 'lucide-react'
 import { CB_STATE } from './healthConfig'

@@ -7,8 +7,8 @@ import remarkGfm from 'remark-gfm'
 import ProgressBar from '@/components/ui/ProgressBar'
 import { ArrowUpRight, Bot, ChevronDown, ChevronUp, Copy, Info, Sparkles } from 'lucide-react'
 import { toast } from 'sonner'
-import { formatMessageTime } from '@/utils/common'
-import { containsHebrew, getTextDirection } from '@/utils/textUtils'
+import { formatMessageTime } from '@/lib/formatting/datetime'
+import { bidiTextProps, containsHebrew } from '@/lib/accessibility/direction'
 import AnswerReviewCard from './AnswerReviewCard'
 // import FeedbackControls from './FeedbackControls' // feedback UI temporarily hidden
 
@@ -99,8 +99,8 @@ const MessageBubble = React.memo(function MessageBubble({
   const rawPrompt     = debugPayloads.raw_prompt || ''
   const hasPromptData = canViewDebug && Boolean(systemPrompt || rawPrompt)
 
-  const textDir  = getTextDirection(answer)
   const hasHebrew = containsHebrew(answer)
+  const bidi      = bidiTextProps(answer)
   const review    = message.metadata?.answerReview || turn?.answerReview
 
   return (
@@ -150,13 +150,13 @@ const MessageBubble = React.memo(function MessageBubble({
 
         {/* Answer bubble */}
         <div
-          dir={hasHebrew ? textDir : 'ltr'}
+          dir={hasHebrew ? bidi.dir : 'ltr'}
           lang={hasHebrew ? 'he' : undefined}
           className={`break-words px-4 py-3 text-[15px] leading-relaxed ${
             isUser
               ? 'rounded-2xl rounded-tr-md bg-primary text-[var(--primary-fg)] shadow-sm whitespace-pre-wrap'
               : 'rounded-2xl rounded-tl-md border border-border bg-bg-elevated text-text-secondary shadow-sm'
-          } ${hasHebrew && textDir === 'rtl' ? 'text-right' : 'text-left'}`}
+          } ${hasHebrew ? bidi.className : 'text-left'}`}
           style={hasHebrew ? { unicodeBidi: 'plaintext' } : undefined}
         >
           {!answer && isStreaming ? (
@@ -269,7 +269,7 @@ function ChatWelcome({ suggestedPrompts, onSuggestedPrompt }) {
         <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-primary-soft">
           <Sparkles className="text-primary" size={27} />
         </div>
-        <div className="absolute -right-2 -top-2 h-5 w-5 rounded-full border-4 border-[var(--surface)] bg-accent animate-float" />
+        <div className="absolute -right-2 -top-2 h-5 w-5 rounded-full border-4 border-[var(--surface)] bg-accent" />
       </div>
 
       <h2 className="text-2xl font-semibold tracking-tight text-text-primary md:text-3xl">

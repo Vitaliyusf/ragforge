@@ -14,7 +14,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import fileService from '@/features/files/services/fileService'
 import { selectCachedFiles, setFiles } from '@/store/slices/filesSlice'
-import { computeEffectiveStatus } from '@/utils/common'
+import { computeEffectiveStatus } from '@/features/files/fileStatus'
 import {
   ACTIVITY_FEATURES,
   ACTIVITY_STATES,

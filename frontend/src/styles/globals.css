@@ -53,7 +53,6 @@
     --primary-fg:       #FFFFFF;
     --primary-rgb:      109 93 246;
     --primary-soft:     rgba(109, 93, 246, 0.10);
-    --primary-glow:     rgba(109, 93, 246, 0.16);
 
     --secondary:        #ECEEF5;
     --secondary-hover:  #E1E5EF;
@@ -73,41 +72,17 @@
     --ring:             rgba(109, 93, 246, 0.24);
 
     --gradient-primary: linear-gradient(135deg, #7667F6 0%, #5D7FEF 58%, #33A6D8 100%);
-    --gradient-subtle:  linear-gradient(135deg, rgba(109,93,246,0.09) 0%, rgba(15,175,159,0.04) 100%);
     --glass:            rgba(255, 255, 255, 0.82);
 
     --scrollbar-thumb:  #C7CEDD;
     --scrollbar-track:  transparent;
 
-    /* Tight and neutral. Elevation should read as a plane above the page,
-       not as a coloured halo. --shadow-glow is kept as an alias so the
-       existing call sites stop glowing without needing to be touched. */
+    /* Tight and neutral. Elevation reads as a plane above the page,
+       never as a coloured halo. */
     --shadow-sm:        0 1px 2px rgba(24,32,51,0.06);
     --shadow-md:        0 2px 8px rgba(24,32,51,0.08);
     --shadow-lg:        0 8px 24px rgba(24,32,51,0.10);
     --shadow-xl:        0 16px 48px rgba(24,32,51,0.14);
-    --shadow-glow:      0 2px 8px rgba(24,32,51,0.08);
-
-    /* ── Backward-compat aliases ── */
-    --bg-primary:       #F4F6FB;
-    --bg-secondary:     #ECEFF6;
-    --bg-tertiary:      #FFFFFF;
-    --bg-elevated:      #FFFFFF;
-    --bg-muted:         #F0F2F8;
-    --text-primary:     #182033;
-    --text-secondary:   #586478;
-    --text-muted:       #606977;
-    --accent-hover:     #0D998C;
-    --accent-light:     #27C5B5;
-    --accent-secondary: #8B7CF8;
-    --border-hover:     #C7CEDD;
-    --gradient-accent:  linear-gradient(135deg, #7667F6 0%, #5D7FEF 58%, #33A6D8 100%);
-    --glow-accent:      0 0 0 3px rgba(109,93,246,0.22);
-    --success:          #16A34A;
-    --warning:          #D97706;
-    --error:            #DC2626;
-    --scrollbar-thumb:  #C7CEDD;
-    --scrollbar-track:  transparent;
   }
 
   /* ─── DARK THEME ─────────────────────────────────────────── */
@@ -133,7 +108,6 @@
     --primary-fg:       #10101B;
     --primary-rgb:      154 139 255;
     --primary-soft:     rgba(154, 139, 255, 0.13);
-    --primary-glow:     rgba(154, 139, 255, 0.20);
 
     --secondary:        #222836;
     --secondary-hover:  #2B3344;
@@ -153,7 +127,6 @@
     --ring:             rgba(154, 139, 255, 0.30);
 
     --gradient-primary: linear-gradient(135deg, #9A8BFF 0%, #7B8FF8 55%, #4DB9E8 100%);
-    --gradient-subtle:  linear-gradient(135deg, rgba(154,139,255,0.10) 0%, rgba(67,214,196,0.04) 100%);
     --glass:            rgba(21, 25, 35, 0.82);
 
     --scrollbar-thumb:  #3A455B;
@@ -163,28 +136,6 @@
     --shadow-md:        0 2px 8px rgba(0,0,0,0.45);
     --shadow-lg:        0 8px 24px rgba(0,0,0,0.55);
     --shadow-xl:        0 16px 48px rgba(0,0,0,0.65);
-    --shadow-glow:      0 2px 8px rgba(0,0,0,0.45);
-
-    /* ── Backward-compat aliases ── */
-    --bg-primary:       #0B0D13;
-    --bg-secondary:     #11141D;
-    --bg-tertiary:      #151923;
-    --bg-elevated:      #191E2A;
-    --bg-muted:         #202635;
-    --text-primary:     #F3F5FA;
-    --text-secondary:   #A7B0C1;
-    --text-muted:       #8F99AB;
-    --accent-hover:     #55E1CF;
-    --accent-light:     #68E5D6;
-    --accent-secondary: #B1A6FF;
-    --border-hover:     #3A455B;
-    --gradient-accent:  linear-gradient(135deg, #9A8BFF 0%, #7B8FF8 55%, #4DB9E8 100%);
-    --glow-accent:      0 0 0 3px rgba(154,139,255,0.28);
-    --success:          #22C55E;
-    --warning:          #F59E0B;
-    --error:            #EF4444;
-    --scrollbar-thumb:  #3A455B;
-    --scrollbar-track:  transparent;
   }
 
   /* ─── Custom scrollbars ─────────────────────────────────── */
@@ -209,6 +160,28 @@
   }
 }
 
+/* ─── Non-colour semantic tokens ───────────────────────────────────────
+   Radius and motion do not change between themes, so they are declared once
+   rather than restated in every theme block. Themes override colour only. */
+:root {
+  /* Controls (buttons, inputs, badges) versus surfaces (cards, panels, sheets). */
+  --radius-control: 0.625rem; /* 10px — matches the existing rounded-xl controls */
+  --radius-surface: 0.75rem;  /* 12px — matches the existing rounded-2xl panels  */
+
+  /* One motion scale. `fast` is hover/focus/colour, `normal` is a small
+     enter/exit, `slow` is a panel or drawer moving across the viewport. */
+  --motion-fast:   150ms;
+  --motion-normal: 200ms;
+  /* No consumer yet: it is the third step of the scale, reserved for a
+     transition that crosses the viewport. Nothing today is that large. */
+  --motion-slow:   320ms;
+  --motion-easing: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* `live` is the tone for work that is happening right now — streaming,
+   running, processing. It is the only status allowed to animate continuously. */
+:root { --status-live: var(--accent); }
+
 ::selection {
   background: var(--primary-soft);
   color: var(--fg);
@@ -229,24 +202,24 @@
 @keyframes drawer-in   { from { opacity: 0; transform: translateX(48px) } to { opacity: 1; transform: none } }
 @keyframes drawer-out  { from { opacity: 1; transform: none } to { opacity: 0; transform: translateX(48px) } }
 
-.modal-overlay[data-state='open']  { animation: overlay-in  150ms ease-out }
-.modal-overlay[data-state='closed'] { animation: overlay-out 150ms ease-in }
-.modal-content[data-state='open']  { animation: dialog-in  180ms cubic-bezier(0.16, 1, 0.3, 1) }
-.modal-content[data-state='closed'] { animation: dialog-out 140ms ease-in }
-.drawer-content[data-state='open']  { animation: drawer-in  220ms cubic-bezier(0.16, 1, 0.3, 1) }
-.drawer-content[data-state='closed'] { animation: drawer-out 160ms ease-in }
+.modal-overlay[data-state='open']  { animation: overlay-in  var(--motion-fast) ease-out }
+.modal-overlay[data-state='closed'] { animation: overlay-out var(--motion-fast) ease-in }
+.modal-content[data-state='open']  { animation: dialog-in  var(--motion-normal) var(--motion-easing) }
+.modal-content[data-state='closed'] { animation: dialog-out var(--motion-fast) ease-in }
+.drawer-content[data-state='open']  { animation: drawer-in  var(--motion-normal) var(--motion-easing) }
+.drawer-content[data-state='closed'] { animation: drawer-out var(--motion-fast) ease-in }
 
 @keyframes icon-swap {
   from { opacity: 0; transform: rotate(-20deg) scale(0.8) }
   to   { opacity: 1; transform: none }
 }
-.animate-icon-swap { animation: icon-swap 140ms ease-out }
+.animate-icon-swap { animation: icon-swap var(--motion-fast) ease-out }
 
 @keyframes dropdown-in {
   from { opacity: 0; transform: translateY(-6px) scale(0.98) }
   to   { opacity: 1; transform: none }
 }
-.animate-dropdown-in { animation: dropdown-in 150ms ease-out }
+.animate-dropdown-in { animation: dropdown-in var(--motion-fast) ease-out }
 
 /* ─── Navigation activity ─────────────────────────────────────────────
    One place for every activity animation the shell uses. Timings live here
@@ -360,35 +333,13 @@
 
 @layer utilities {
   /* ─── Animations ─────────────────────────────────────────── */
-  .animate-spin-slow {
-    animation: spin 0.8s linear infinite;
-  }
-
-  .ws-connecting {
-    animation: pulse 2s ease-in-out infinite;
-  }
-
   /* ─── Gradient helpers ───────────────────────────────────── */
   /* Retained for the few remaining hero surfaces. Controls use flat fills. */
   .bg-gradient-primary {
     background: var(--gradient-primary);
   }
   .bg-gradient-accent {
-    background: var(--gradient-accent);
-  }
-
-  /* ─── Focus ──────────────────────────────────────────────── */
-  .focus-glow {
-    box-shadow: 0 0 0 3px var(--ring);
-  }
-
-  /* ─── Float ──────────────────────────────────────────────── */
-  @keyframes float {
-    0%, 100% { transform: translateY(0); }
-    50%       { transform: translateY(-6px); }
-  }
-  .animate-float {
-    animation: float 3s ease-in-out infinite;
+    background: var(--gradient-primary);
   }
 
   /* ─── Blink ──────────────────────────────────────────────── */

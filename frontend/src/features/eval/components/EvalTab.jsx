@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { AlertTriangle, FlaskConical, RefreshCw, Upload } from 'lucide-react'
 import Button from '@/components/ui/Button'
-import EmptyState from '@/components/ui/EmptyState'
+import EmptyState from '@/components/feedback/EmptyState'
 import PageHeader from '@/components/ui/PageHeader'
 import TabSkeleton from '@/components/ui/TabSkeleton'
 import GoldenSetImporter from '@/features/metrics/components/benchmark/GoldenSetImporter'

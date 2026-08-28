@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { UserPlus, Users } from 'lucide-react'
 import adminUserService from '@/features/admin/services/adminUserService'
 import Button from '@/components/ui/Button'
+import LoadingState from '@/components/feedback/LoadingState'
 import Input from '@/components/ui/Input'
 
 export default function AdminUsersTab() {
@@ -67,7 +68,7 @@ export default function AdminUsersTab() {
         {error && <div className="rounded-xl border border-danger bg-danger-soft p-3 text-[15px] text-danger">{error}</div>}
 
         <div className="overflow-hidden rounded-2xl border" style={{ borderColor: 'var(--border)', background: 'var(--surface-elevated)' }}>
-          {loading ? <p className="p-5 text-[15px] text-[var(--fg-soft)]">Loading users…</p> : users.map((user) => (
+          {loading ? <LoadingState label="Loading users…" /> : users.map((user) => (
             <div key={user.user_id} className="flex items-center justify-between gap-4 border-b p-4 last:border-b-0" style={{ borderColor: 'var(--border)' }}>
               <div className="min-w-0">
                 <p className="truncate text-[15px] font-medium text-[var(--fg)]">{user.display_name}</p>

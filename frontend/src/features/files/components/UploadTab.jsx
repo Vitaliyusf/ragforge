@@ -5,7 +5,8 @@ import { FileText, Loader2, RefreshCw, Upload } from 'lucide-react'
 import fileService from '@/features/files/services/fileService'
 import Badge from '@/components/ui/Badge'
 import Button from '@/components/ui/Button'
-import { formatFileSize, getFileStatusBadgeVariant, normalizeFileStatus } from '@/utils/common'
+import { formatFileSize } from '@/lib/formatting/bytes'
+import { getFileStatusTone, normalizeFileStatus } from '@/features/files/fileStatus'
 
 const POLL_INTERVAL_MS = 5000
 
@@ -139,7 +140,7 @@ export default function UploadTab() {
                   <div className="truncate text-[15px] font-medium text-[var(--fg)]">{item.filename || 'Unknown file'}</div>
                   <div className="mt-0.5 text-[13px] text-[var(--fg-muted)]">{formatFileSize(item.size)}</div>
                 </div>
-                <Badge variant={getFileStatusBadgeVariant(item.status)}>{uploaderStatusLabel(item.status)}</Badge>
+                <Badge variant={getFileStatusTone(item.status)}>{uploaderStatusLabel(item.status)}</Badge>
               </li>
             ))}
           </ul>
