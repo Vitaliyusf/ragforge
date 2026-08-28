@@ -18,11 +18,10 @@ function renderAnswer(text) {
       turnsById={{}}
       suggestedPrompts={[]}
       onSuggestedPrompt={vi.fn()}
-      onOpenDebug={vi.fn()}
+      onOpenInspector={vi.fn()}
       onAnswerFeedback={vi.fn()}
-      onFlowFeedback={vi.fn()}
-      canViewDebug={false}
-      extendedProgress={null}
+      canInspect={false}
+      activityStatus={null}
     />
   )
 }

@@ -1,12 +1,14 @@
 'use client'
 
 import { useEffect, useRef } from 'react'
-import { ArrowUp, Loader2, Wifi, WifiOff, ServerCrash } from 'lucide-react'
+import { ArrowUp, Loader2, WifiOff, ServerCrash } from 'lucide-react'
 import Badge from '@/components/ui/Badge'
 import Select, { SelectItem } from '@/components/ui/Select'
 
+// A healthy connection says nothing: a permanently lit "Live" chip is noise
+// that competes with the real, transient states below it. `connected` is
+// therefore absent from this table, and the badge is simply not rendered.
 const WS_STATUS_CONFIG = {
-  connected: { variant: 'success', label: 'Live', icon: Wifi, iconSpin: false },
   connecting: { variant: 'warning', label: 'Connecting...', icon: Loader2, iconSpin: true },
   failed: { variant: 'error', label: 'Offline', icon: WifiOff, iconSpin: false },
   disconnected: { variant: 'default', label: 'Disconnected', icon: WifiOff, iconSpin: false },
@@ -31,10 +33,13 @@ export default function ChatInput({
 }) {
   const textareaRef = useRef(null)
   // Until the LLM backend is ready the badge reflects LLM availability rather
-  // than the WebSocket transport — a "Live" socket is meaningless if vLLM
-  // can't answer yet.
+  // than the WebSocket transport — a healthy socket is meaningless if vLLM
+  // can't answer yet. When both are healthy there is nothing to report and the
+  // badge is omitted entirely.
   const statusConfig = llmReady
-    ? (WS_STATUS_CONFIG[wsConnectionStatus] ?? WS_STATUS_CONFIG.disconnected)
+    ? (wsConnectionStatus === 'connected'
+        ? null
+        : (WS_STATUS_CONFIG[wsConnectionStatus] ?? WS_STATUS_CONFIG.disconnected))
     : (llmChecked ? LLM_UNAVAILABLE_CONFIG : LLM_STARTING_CONFIG)
   const canSend = llmReady && !sendingMessage && value.trim().length > 0
   const inputDisabled = sendingMessage || !llmReady
@@ -111,17 +116,20 @@ export default function ChatInput({
             <SelectItem value="extended">Deep research</SelectItem>
           </Select>
 
-          <div className="h-3.5 w-px shrink-0 bg-[var(--border)]" />
-
-          <Badge
-            variant={statusConfig.variant}
-            icon={statusConfig.icon}
-            spin={statusConfig.iconSpin}
-            size="xs"
-            aria-label={`Status: ${statusConfig.label}`}
-          >
-            {statusConfig.label}
-          </Badge>
+          {statusConfig ? (
+            <>
+              <div className="h-3.5 w-px shrink-0 bg-[var(--border)]" />
+              <Badge
+                variant={statusConfig.variant}
+                icon={statusConfig.icon}
+                spin={statusConfig.iconSpin}
+                size="xs"
+                aria-label={`Status: ${statusConfig.label}`}
+              >
+                {statusConfig.label}
+              </Badge>
+            </>
+          ) : null}
 
           <span className="ml-auto hidden text-xs text-[var(--fg-soft)] sm:block">
             Enter to send · Shift+Enter for a new line

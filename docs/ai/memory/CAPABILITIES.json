@@ -261,6 +261,24 @@
         "stage failure category"
       ],
       "notes": "Classifies each eval/benchmark item from its own retrieval trace into index/retrieval/pass_two/ranking/context/completeness/generation/grounding/stale_labels/pipeline_error, or unclassified when evidence is insufficient. No LLM is used to guess a retrieval-stage failure. Benchmark phases inherit it through the shared eval aggregate."
+    },
+    {
+      "id": "CAP-016",
+      "name": "Chat answer surface and Developer Inspector",
+      "status": "implemented",
+      "owner": "frontend",
+      "canonical_paths": [
+        "frontend/src/features/chat/utils/answerQuality.js",
+        "frontend/src/features/chat/components/MessageBubble.jsx",
+        "frontend/src/features/chat/components/inspector/DeveloperInspector.jsx"
+      ],
+      "search_terms": [
+        "buildAnswerQuality",
+        "AnswerQualitySummary",
+        "DeveloperInspector",
+        "describeStage"
+      ],
+      "notes": "Default answer surface shows answer/sources/feedback/compact quality only; identifiers, prompts, evaluator payloads and per-node timings belong to the inspector. Unmeasured review scores must never render as 0%."
     }
   ]
 }

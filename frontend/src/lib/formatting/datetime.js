@@ -44,3 +44,46 @@ export function formatChatDate(dateStr) {
     return ''
   }
 }
+
+/**
+ * Format any timestamp the backend might hand over as a human date and time.
+ *
+ * Accepts ISO strings, `Date` objects, and raw epoch numbers in either seconds
+ * or milliseconds — the inspector must never surface `1774310400` to a reader.
+ * @param {string|number|Date|null} value
+ * @returns {string}
+ */
+export function formatAbsoluteDateTime(value) {
+  if (value == null || value === '') return ''
+  try {
+    // Epoch seconds and epoch milliseconds are told apart by magnitude: any
+    // plausible second-precision timestamp is far below the ms threshold.
+    const numeric = typeof value === 'number'
+      ? value
+      : (typeof value === 'string' && /^\d+$/.test(value) ? Number(value) : null)
+    const date = numeric == null
+      ? new Date(value)
+      : new Date(numeric < 1e11 ? numeric * 1000 : numeric)
+    if (isNaN(date.getTime())) return ''
+    return date.toLocaleString(undefined, {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    })
+  } catch {
+    return ''
+  }
+}
+
+/**
+ * Format a millisecond duration for display ("820 ms", "3.4 s").
+ * @param {number|null} ms
+ * @returns {string|null} `null` when the duration was never measured.
+ */
+export function formatDuration(ms) {
+  if (!Number.isFinite(ms)) return null
+  if (ms < 1000) return `${Math.round(ms)} ms`
+  return `${(ms / 1000).toFixed(1)} s`
+}

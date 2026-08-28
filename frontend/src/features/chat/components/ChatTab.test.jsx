@@ -48,6 +48,7 @@ vi.mock('@/features/chat/services/chatService', () => ({
     deleteChat: vi.fn(),
     processChatExit: vi.fn(),
     generateTitle: vi.fn(),
+    updateChatTitle: vi.fn(),
   },
 }))
 
@@ -102,6 +103,7 @@ describe('ChatTab', () => {
     chatService.deleteChat.mockResolvedValue({})
     chatService.processChatExit.mockResolvedValue({})
     chatService.generateTitle.mockResolvedValue({ title: 'Generated title' })
+    chatService.updateChatTitle.mockResolvedValue({})
   })
 
   it('handles direct chat streaming, renders answer review, and opens the trace panel', async () => {
@@ -192,33 +194,48 @@ describe('ChatTab', () => {
       expect.any(Object)
     )
 
-    expect(await screen.findByText(/Answer Review/i)).toBeInTheDocument()
-    expect(screen.getByText(/Revision applied/i)).toBeInTheDocument()
-    expect(screen.getByText(/Citation coverage could be stronger/i)).toBeInTheDocument()
-    expect(screen.getByText(/review-1/i)).toBeInTheDocument()
-    expect(screen.getByText(/eval-model/i)).toBeInTheDocument()
+    // The default surface carries a compact quality state and nothing
+    // engineering-facing: no review UUID, no evaluator model slug.
+    expect(await screen.findByText(/Grounded . 1 source . Review passed/)).toBeInTheDocument()
+    expect(screen.queryByText(/review-1/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/eval-model/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Citation coverage could be stronger/i)).not.toBeInTheDocument()
 
     await waitFor(() => {
       expect(chatService.addMessage).toHaveBeenCalledTimes(2)
     })
 
-    const debugButtons = screen.getAllByLabelText(/View trace and debug details/i)
-    await user.click(debugButtons[1])
+    // Everything withheld above is reachable through the Developer Inspector,
+    // where model input and output stay masked until explicitly revealed.
+    const inspectorButtons = screen.getAllByLabelText(/Open developer inspector/i)
+    await user.click(inspectorButtons[1])
 
-    expect(await screen.findByText(/Trace \/ Debug/i)).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: /^Prompt$/i }))
-    await user.click(await screen.findByRole('button', { name: /System prompt/i }))
+    expect(await screen.findByText(/^Inspector$/)).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: /^Generation$/ }))
+    expect((await screen.findAllByText(/Hidden by default/i)).length).toBeGreaterThan(0)
+    expect(screen.queryByText(/system prompt text/i)).not.toBeInTheDocument()
+    await user.click(await screen.findByRole('button', { name: /Reveal System prompt/i }))
     expect(await screen.findByText(/system prompt text/i)).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: /Raw Output/i }))
+    await user.click(screen.getByRole('button', { name: /Reveal Raw output/i }))
     expect(screen.getByText((content) => content.trim() === 'raw output text')).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: /Structured Output Candidates/i }))
+
+    await user.click(screen.getByRole('button', { name: /^Quality$/ }))
+    expect(await screen.findByText(/Citation coverage could be stronger/i)).toBeInTheDocument()
+    expect(screen.getByText('eval-model')).toBeInTheDocument()
+    expect(screen.getByText('review-1')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: /^Trace$/ }))
+    await user.click(await screen.findByRole('button', { name: /Reveal Structured output candidates/i }))
     expect(screen.getByText(/"selected_payload_index": 1/i)).toBeInTheDocument()
 
-    // Answer/flow feedback is deliberately not asserted here: FeedbackControls
-    // is currently commented out of MessageList ("feedback UI temporarily
-    // hidden"). The transport, the RAG Socket.IO handlers, and the component
-    // itself all still exist, so re-enabling that import is the only step
-    // needed to bring these assertions back.
+    await user.click(screen.getByRole('button', { name: /Not helpful/i }))
+    await waitFor(() => {
+      expect(socketService.sendFeedback).toHaveBeenCalledWith(
+        'answer_feedback',
+        expect.objectContaining({ label: 'not_helpful', rating: 'negative' })
+      )
+    })
   })
 
   it('sends extended mode requests', async () => {
@@ -273,8 +290,9 @@ describe('ChatTab', () => {
     expect(screen.getByLabelText(/Chat message/i)).toBeDisabled()
     expect(screen.getByLabelText(/Send message/i)).toBeDisabled()
     expect(await screen.findByText(/isn.t available yet/i)).toBeInTheDocument()
-    // The marker appears in both the header pill and the composer badge.
-    expect(screen.getAllByText(/LLM not available/i).length).toBeGreaterThan(0)
+    // Readiness is reported once, in the composer — the header no longer keeps
+    // a second copy of the transport state.
+    expect(screen.getAllByText(/LLM not available/i).length).toBe(1)
     expect(socketService.askQuestion).not.toHaveBeenCalled()
   })
 
@@ -465,6 +483,26 @@ describe('ChatTab', () => {
     rerender(renderUi())
 
     expect(await screen.findByText('Recovered history')).toBeInTheDocument()
+  })
+
+  it('renames a chat from the sidebar and shows the new title immediately', async () => {
+    navState.pathname = '/chat/chat-1'
+    chatService.getChats.mockResolvedValue({
+      chats: [{ id: 'chat-1', title: 'Old Title', updated_at: '2026-03-17T00:00:00Z' }],
+    })
+
+    const user = userEvent.setup()
+    renderChatTab()
+
+    await user.click(await screen.findByRole('button', { name: /Rename Old Title/i }))
+    const input = screen.getByLabelText(/Rename Old Title/i)
+    await user.clear(input)
+    await user.type(input, 'Key rotation notes{Enter}')
+
+    await waitFor(() => {
+      expect(chatService.updateChatTitle).toHaveBeenCalledWith('chat-1', 'Key rotation notes')
+    })
+    expect((await screen.findAllByText('Key rotation notes')).length).toBeGreaterThan(0)
   })
 
   it('navigates home after deleting the active chat', async () => {
