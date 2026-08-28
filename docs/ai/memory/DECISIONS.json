@@ -109,6 +109,28 @@
       "evidence": [
         "backend/rag/app/services/retrieval_metrics.py"
       ]
+    },
+    {
+      "id": "DEC-008",
+      "status": "accepted",
+      "title": "One persistent frontend shell; cache structure, never operational truth",
+      "decision": "Every application URL is a page under app/(workspace), whose layout owns the single TabbedPageLayout shell. Chat, Files, Metrics and Eval are retained across tab switches with React <Activity>; every other tab still mounts and unmounts. No Next.js cache boundary or cacheComponents adoption.",
+      "reason": "A route that mounts its own shell rebuilds the header and active tab on every transition. <Activity> keeps hand-entered state (filters, drafts, scroll) while still tearing down Effects, so polling stops for a hidden tab. Caching is declined because the app is fully client-rendered behind an auth gate: there is no server-owned stable payload, and every remaining candidate is tenant-scoped or live operational truth.",
+      "do_not_do": [
+        "Do not render TabbedPageLayout from a page; the shell belongs to the layout.",
+        "Do not wrap every tab in <Activity> - a hidden subtree costs memory and only pays for itself where mount/unmount destroys operator input.",
+        "Do not cache logs, health, metrics, eval runs, ingestion progress or chat streams; do not cache tenant-scoped config to save a request."
+      ],
+      "revisit_if": [
+        "A surface becomes server-rendered and genuinely tenant-neutral.",
+        "A retained tab is measured to cost meaningful memory.",
+        "PRODUCT-01 makes the shell destination URL-driven."
+      ],
+      "evidence": [
+        "frontend/app/(workspace)/layout.jsx",
+        "frontend/src/components/layout/TabbedPageLayout.jsx",
+        "frontend/src/components/layout/shellPersistence.test.jsx"
+      ]
     }
   ]
 }

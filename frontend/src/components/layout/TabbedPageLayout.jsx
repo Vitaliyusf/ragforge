@@ -5,7 +5,7 @@
  * Each tab controls its own padding and layout.
  */
 
-import { useEffect, useState } from 'react'
+import { Activity, useEffect, useRef, useState } from 'react'
 import dynamic from 'next/dynamic'
 import Header from '@/components/layout/Header'
 import TabSkeleton from '@/components/ui/TabSkeleton'
@@ -72,6 +72,28 @@ const TAB_COMPONENTS = {
 }
 
 /**
+ * Tabs kept alive across navigation with React's <Activity>.
+ *
+ * The list is deliberately short. A hidden Activity keeps its subtree's state
+ * and DOM in memory, so it is only worth it where mount/unmount destroys work
+ * the operator did by hand:
+ *
+ *   chat    — composer draft and message scroll position
+ *   files   — search text, status filter, open audit drawer, table scroll
+ *   metrics — selected section, time window and tenant
+ *   eval    — in-progress setup form and importer state
+ *
+ * Everything else (logs, health, models, config, memory, users, upload,
+ * training) rebuilds its view from Redux or from its own fetch on mount, so
+ * retaining it would buy memory cost and nothing else.
+ *
+ * A hidden subtree has its Effects torn down exactly as an unmount would, so
+ * polling stops while a tab is off-screen and no subscription is duplicated
+ * when it comes back.
+ */
+const STATE_PRESERVING_TABS = new Set(['chat', 'files', 'metrics', 'eval'])
+
+/**
  * Destinations that used to live inside another tab.
  *
  * Eval was a Metrics sub-section before it became a workspace of its own.
@@ -91,10 +113,20 @@ export function resolveTab(tab) {
 
 const ACKNOWLEDGEABLE = new Set(Object.values(ACTIVITY_FEATURES))
 
-export default function TabbedPageLayout({ defaultTab = 'chat' }) {
+/**
+ * @param {string} defaultTab - destination when the route has no opinion.
+ * @param {?string} routeTab - destination named by the current URL, if any.
+ *   The shell owns tab state; this only re-points it when the route itself
+ *   moves to a URL that names a different destination.
+ */
+export default function TabbedPageLayout({ defaultTab = 'chat', routeTab = null }) {
   const { isAdmin } = useAuth()
   const { activities, acknowledge } = useActivity()
-  const [activeTab, setActiveTab] = useState(resolveTab(defaultTab))
+  const initialTab = resolveTab(routeTab || defaultTab)
+  const [activeTab, setActiveTab] = useState(initialTab)
+  const [retainedTabs, setRetainedTabs] = useState(() =>
+    STATE_PRESERVING_TABS.has(initialTab) ? [initialTab] : []
+  )
   const allowedTabs = isAdmin
     ? new Set(['chat', 'files', 'logs', 'models', 'config', 'memory', 'health', 'metrics', 'eval', 'users', ...(appConfig.enableTrainingTab ? ['training'] : [])])
     : new Set(['chat', 'upload', 'memory'])
@@ -105,6 +137,22 @@ export default function TabbedPageLayout({ defaultTab = 'chat' }) {
   useEffect(() => {
     if (!allowedTabs.has(resolveTab(activeTab))) setActiveTab('chat')
   }, [activeTab, isAdmin])
+
+  // The URL steers the shell only when the route itself moves to a different
+  // named destination. Switching tabs by hand leaves the pathname alone, so
+  // this must not fire and drag the operator back to the route's tab.
+  const appliedRouteTab = useRef(routeTab)
+  useEffect(() => {
+    if (!routeTab || routeTab === appliedRouteTab.current) return
+    appliedRouteTab.current = routeTab
+    setActiveTab(routeTab)
+  }, [routeTab])
+
+  // A retained tab is only paid for once it has actually been opened.
+  useEffect(() => {
+    if (!STATE_PRESERVING_TABS.has(safeActiveTab)) return
+    setRetainedTabs((tabs) => (tabs.includes(safeActiveTab) ? tabs : [...tabs, safeActiveTab]))
+  }, [safeActiveTab])
 
   // Opening a feature is the acknowledgement: the page itself now shows the
   // authoritative result, so the nav marker has done its job. Only terminal
@@ -126,22 +174,43 @@ export default function TabbedPageLayout({ defaultTab = 'chat' }) {
         id="main-content"
         className="relative z-10 flex min-h-0 flex-1 flex-col overflow-hidden"
       >
-        {/* Keyed so React remounts on tab change, which restarts the CSS
-            enter animation. Previously framer-motion — dropping it here (and
-            in Header and Modal) keeps the library out of the first load. */}
-        {TabComponent ? (
-          <div
-            key={safeActiveTab}
-            className="flex min-h-0 flex-1 animate-fade-in flex-col overflow-hidden"
-          >
-            <ErrorBoundary name={safeActiveTab}>
-              <TabComponent onNavigate={setActiveTab} />
-            </ErrorBoundary>
-          </div>
-        ) : (
-          <div key="skeleton" className="flex min-h-0 flex-1 animate-fade-in flex-col">
-            <TabSkeleton />
-          </div>
+        {/* Retained workspaces stay mounted and merely hide, which is what
+            preserves their local state. Their enter animation therefore plays
+            on first open only — a returning tab is meant to look exactly as it
+            was left. */}
+        {retainedTabs.map((id) => {
+          const RetainedTab = TAB_COMPONENTS[id]
+          if (!RetainedTab) return null
+          return (
+            <Activity key={id} mode={id === safeActiveTab ? 'visible' : 'hidden'}>
+              <div className="flex min-h-0 flex-1 animate-fade-in flex-col overflow-hidden">
+                <ErrorBoundary name={id}>
+                  <RetainedTab onNavigate={setActiveTab} />
+                </ErrorBoundary>
+              </div>
+            </Activity>
+          )
+        })}
+
+        {/* Every other tab is still keyed so React remounts it on entry, which
+            restarts the CSS enter animation. Previously framer-motion —
+            dropping it here (and in Header and Modal) keeps the library out of
+            the first load. */}
+        {!STATE_PRESERVING_TABS.has(safeActiveTab) && (
+          TabComponent ? (
+            <div
+              key={safeActiveTab}
+              className="flex min-h-0 flex-1 animate-fade-in flex-col overflow-hidden"
+            >
+              <ErrorBoundary name={safeActiveTab}>
+                <TabComponent onNavigate={setActiveTab} />
+              </ErrorBoundary>
+            </div>
+          ) : (
+            <div key="skeleton" className="flex min-h-0 flex-1 animate-fade-in flex-col">
+              <TabSkeleton />
+            </div>
+          )
         )}
       </main>
     </div>

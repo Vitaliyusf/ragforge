@@ -33,6 +33,20 @@ If the brain reports stale state and retrieval is needed, run:
 python scripts/ai/brain.py sync
 ```
 
+## Execution efficiency
+
+- Use the Repo Brain first; avoid broad repository exploration when targeted retrieval is sufficient.
+- Use at most 2 Brain query refinements before targeted file inspection.
+- Do not repeat inventory, searches, benchmarks, or evidence already available for the active task.
+- During implementation, run only the smallest focused tests that cover the change.
+- Run affected/domain validation once near completion and the full relevant suite at most once.
+- Do not rerun a passing validation unless relevant source changed afterward.
+- Do not probe multiple runtimes, repair `.venv`, or alter dependencies to make validation pass.
+- Use the repository's canonical runtime. After one diagnosed environment retry, report `BLOCKED`.
+- Do not create extra benchmarks, comparisons, profiler runs, or old-vs-new experiments unless required by acceptance criteria or needed to prove a non-obvious regression.
+- Keep investigation and progress reporting concise; do not narrate every command.
+- Once acceptance criteria are satisfied and required validation is green, **STOP**. Do not look for additional improvements.
+
 ## Navigation map
 
 Load details only when the task requires them:
