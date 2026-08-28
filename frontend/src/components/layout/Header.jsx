@@ -15,7 +15,6 @@ import {
   Brain,
   Sun,
   Moon,
-  Check,
   WifiOff,
   ChevronDown,
   Layers,
@@ -23,9 +22,7 @@ import {
   Upload,
   LogOut,
 } from 'lucide-react'
-import { toast } from 'sonner'
 import { configService } from '@/features/config'
-import { modelService } from '@/features/models'
 import { useTheme } from '@/context/ThemeContext'
 import { config as appConfig } from '@/lib/config'
 import { cn } from '@/lib/utils'
@@ -70,9 +67,7 @@ export default function Header({ activeTab, setActiveTab }) {
   const { user, isAdmin, logout } = useAuth()
   const navigationTabs = isAdmin ? ADMIN_TABS : USER_TABS
   const [showSettings, setShowSettings] = useState(false)
-  const [implementations, setImplementations] = useState([])
   const [currentImplementation, setCurrentImplementation] = useState(null)
-  const [loading, setLoading] = useState(false)
   const [isOnline, setIsOnline] = useState(
     typeof navigator !== 'undefined' ? navigator.onLine : true
   )
@@ -82,12 +77,7 @@ export default function Header({ activeTab, setActiveTab }) {
     if (!isAdmin) return
     const load = async () => {
       try {
-        const [implData, configData] = await Promise.all([
-          modelService.getImplementations(),
-          configService.getConfig(),
-        ])
-        const impls = implData?.implementations || implData?.data?.implementations || []
-        setImplementations(impls)
+        const configData = await configService.getConfig()
         if (configData?.llm_implementation) {
           setCurrentImplementation(configData.llm_implementation)
         }
@@ -125,21 +115,6 @@ export default function Header({ activeTab, setActiveTab }) {
       document.removeEventListener('keydown', keyHandler)
     }
   }, [])
-
-  const handleSwitchImplementation = async (name) => {
-    try {
-      setLoading(true)
-      await configService.switchImplementation(name)
-      const cfg = await configService.getConfig()
-      if (cfg?.llm_implementation) setCurrentImplementation(cfg.llm_implementation)
-      setShowSettings(false)
-      toast.success(`Switched to ${name}`)
-    } catch (err) {
-      toast.error('Failed to switch', { description: err.message })
-    } finally {
-      setLoading(false)
-    }
-  }
 
   const settingsActive = activeTab === 'config' || activeTab === 'memory'
 
@@ -316,36 +291,13 @@ export default function Header({ activeTab, setActiveTab }) {
                   </div>
 
                   <div className="p-3">
-                    <p className="label-xs mb-2 px-1">LLM implementation</p>
-                    <div className="flex max-h-48 flex-col gap-1 overflow-y-auto">
-                      {implementations.length > 0 ? implementations.map((impl) => {
-                        const isActive = impl.name === currentImplementation
-                        return (
-                          <button
-                            key={impl.name}
-                            type="button"
-                            onClick={(event) => {
-                              event.stopPropagation()
-                              handleSwitchImplementation(impl.name)
-                            }}
-                            disabled={loading || isActive}
-                            role="menuitem"
-                            className={cn(
-                              'flex w-full items-center justify-between rounded-xl border px-3 py-2.5 text-left text-[13px] font-medium',
-                              'transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
-                              isActive
-                                ? 'border-[var(--border-focus)] bg-[var(--primary-soft)] text-[var(--primary)]'
-                                : 'border-transparent text-[var(--fg-muted)] hover:bg-[var(--surface-hover)] hover:text-[var(--fg)]'
-                            )}
-                          >
-                            <span>{impl.display_name || impl.name}</span>
-                            {isActive && <Check size={13} />}
-                          </button>
-                        )
-                      }) : (
-                        <p className="px-3 py-2 text-[13px] text-[var(--fg-soft)]">No runtimes available</p>
-                      )}
+                    <p className="label-xs mb-2 px-1">Effective LLM implementation</p>
+                    <div className="rounded-xl border border-[var(--border-focus)] bg-[var(--primary-soft)] px-3 py-2.5 text-[13px] font-medium text-[var(--primary)]">
+                      {currentImplementation || 'Unavailable'}
                     </div>
+                    <p className="mt-2 px-1 text-xs text-[var(--fg-soft)]">
+                      Deployment-owned; changes require a service restart.
+                    </p>
                   </div>
 
                   <div className="grid grid-cols-2 gap-2 border-t p-3" style={{ borderColor: 'var(--border)' }}>

@@ -83,11 +83,8 @@ class ModelManagementRequest(CorrelatedRequest):
 
 
 class ConfigManagementRequest(CorrelatedRequest):
-    """Legacy configuration read/write action request."""
-    action: str = Field(..., min_length=1)
-    updates: Optional[Dict[str, Any]] = None
-    model_configs: Optional[Dict[str, Any]] = None
-    implementation: Optional[str] = None
+    """Legacy effective-configuration read request."""
+    action: Literal["get_config"]
 
 
 class GenerateQuestionsRequest(BaseModel):

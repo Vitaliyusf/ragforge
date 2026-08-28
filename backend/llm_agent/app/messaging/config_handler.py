@@ -1,10 +1,10 @@
-"""Configuration read/write RabbitMQ handler."""
+"""Read-only effective-configuration RabbitMQ handler."""
 from typing import Any, Dict
 
 from app.messaging.base_handler import BaseRabbitMQHandler
 from app.messaging.interfaces import IProducer
 from app.core.config import Settings
-from app.core.constants import VALID_IMPLEMENTATIONS, ConfigAction
+from app.core.constants import ConfigAction
 from app.core.logging_config import ServiceLogger
 from app.services.config_service import ConfigService
 
@@ -16,7 +16,7 @@ except ImportError:
 
 
 class ConfigManagementHandler(BaseRabbitMQHandler):
-    """Handle configuration read/write actions using a dispatch table."""
+    """Handle the effective-configuration read action."""
 
     def __init__(
         self,
@@ -28,13 +28,7 @@ class ConfigManagementHandler(BaseRabbitMQHandler):
         super().__init__(producer, logger, config)
         self.config_service = config_service
         self._dispatch = {
-            ConfigAction.GET_CONFIG:            lambda m: self.config_service.get_config(),
-            ConfigAction.UPDATE_CONFIG:         lambda m: self.config_service.update_config(m.get("updates", {})),
-            ConfigAction.GET_GENERATION_PARAMS: lambda m: self.config_service.get_generation_params(),
-            ConfigAction.GET_MODEL_CONFIGS:     lambda m: self.config_service.get_model_configs(),
-            ConfigAction.UPDATE_MODEL_CONFIGS:  lambda m: self.config_service.update_model_configs(
-                                                    m.get("model_configs", {})
-                                                ),
+            ConfigAction.GET_CONFIG: lambda m: self.config_service.get_config(),
         }
 
     def handle(self, message: Dict[str, Any]) -> None:
@@ -47,28 +41,6 @@ class ConfigManagementHandler(BaseRabbitMQHandler):
                 return
 
         action = normalized.get("action")
-
-        # Implementation switch is handled upstream in main.py; we only
-        # acknowledge the request here so the gateway gets a response.
-        if action == ConfigAction.SWITCH_IMPLEMENTATION:
-            implementation = normalized.get("implementation")
-            if implementation not in VALID_IMPLEMENTATIONS:
-                self._send_error(
-                    normalized,
-                    f"Invalid implementation: {implementation}",
-                    error_code="invalid_request",
-                    status_code=400,
-                )
-                return
-            self._send_response(
-                normalized,
-                {
-                    "status": "switch_requested",
-                    "implementation": implementation,
-                    "message": "Implementation switch will be processed",
-                },
-            )
-            return
 
         handler_fn = self._dispatch.get(action)
         if not handler_fn:

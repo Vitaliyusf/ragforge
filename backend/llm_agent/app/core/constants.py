@@ -30,11 +30,6 @@ class ConfigAction(str, Enum):
     """Action names handled by ConfigManagementHandler."""
 
     GET_CONFIG = "get_config"
-    UPDATE_CONFIG = "update_config"
-    GET_GENERATION_PARAMS = "get_generation_params"
-    GET_MODEL_CONFIGS = "get_model_configs"
-    UPDATE_MODEL_CONFIGS = "update_model_configs"
-    SWITCH_IMPLEMENTATION = "switch_implementation"
 
 
 class LLMRequestType(str, Enum):

@@ -15,7 +15,7 @@ vi.mock('@/features/auth', () => ({
   useAuth: () => ({ user: { email: 'admin@example.com' }, isAdmin: true, logout: vi.fn() }),
 }))
 vi.mock('@/features/config', () => ({
-  configService: { getConfig: vi.fn().mockResolvedValue({}), switchImplementation: vi.fn() },
+  configService: { getConfig: vi.fn().mockResolvedValue({}) },
 }))
 vi.mock('@/features/models', () => ({
   modelService: { getImplementations: vi.fn().mockResolvedValue({ implementations: [] }) },
