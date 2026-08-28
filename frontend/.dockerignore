@@ -1,6 +1,14 @@
 node_modules/
 .next/
 coverage/
+test-results/
+playwright-report/
+.agent-private/
+.uv-cache*/
+.env
+.env.*
+.idea/
+.vscode/
 dist/
 npm-debug.log*
 yarn-debug.log*

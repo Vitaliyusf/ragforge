@@ -132,6 +132,51 @@ def test_application_images_use_non_root_runtime_users():
     assert "COPY --chown=node:node" in frontend
 
 
+def test_application_images_use_canonical_runtime_lines():
+    for dockerfile in (
+        "backend/gateway/Dockerfile",
+        "backend/llm_agent/Dockerfile",
+        "backend/embedding/Dockerfile",
+        "backend/rag/Dockerfile",
+        "backend/files/Dockerfile",
+        "backend/vector_db/Dockerfile",
+        "backend/memory/Dockerfile",
+    ):
+        text = (REPO_ROOT / dockerfile).read_text(encoding="utf-8")
+        assert text.startswith("FROM python:3.12-slim"), (
+            f"{dockerfile} must stay on the canonical Python 3.12 runtime line"
+        )
+
+    frontend = (REPO_ROOT / "frontend/Dockerfile").read_text(encoding="utf-8")
+    assert frontend.count("FROM node:24-alpine") == 2
+
+
+def test_frontend_uses_minimal_standalone_runtime():
+    config = (REPO_ROOT / "frontend/next.config.js").read_text(encoding="utf-8")
+    dockerfile = (REPO_ROOT / "frontend/Dockerfile").read_text(encoding="utf-8")
+
+    assert "output: 'standalone'" in config
+    assert "/app/.next/standalone" in dockerfile
+    assert "/app/.next/static" in dockerfile
+    assert 'CMD ["node", "server.js"]' in dockerfile
+    assert "COPY --chown=node:node --from=deps /app/node_modules" not in dockerfile
+
+
+def test_docker_build_context_excludes_private_and_generated_artifacts():
+    dockerignore = (REPO_ROOT / ".dockerignore").read_text(encoding="utf-8")
+    for excluded in (
+        ".git",
+        ".agent-private/",
+        ".uv-cache*/",
+        "frontend/node_modules/",
+        "frontend/.next/",
+        "frontend/coverage/",
+        ".env",
+        ".env.*",
+    ):
+        assert excluded in dockerignore, f"root .dockerignore missing: {excluded}"
+
+
 def test_compose_applies_runtime_privilege_restrictions():
     compose_text = (REPO_ROOT / "docker-compose.yml").read_text(encoding="utf-8")
     assert "no-new-privileges:true" in compose_text
