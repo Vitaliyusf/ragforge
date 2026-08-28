@@ -1,32 +1,60 @@
 # RAG-02 — Bounded parallel subquery retrieval
 
-**Branch:** `perf/rag-parallel-subquery-retrieval`
+## Execution location
 
-## Goal
-Reduce Extended retrieval wall time without unbounded downstream fan-out.
+**RUN BY:** Codex locally on the user's machine.
 
-## Problem
-Independent rewrite/subquery searches are executed sequentially.
+**REPOSITORY ROOT:**
+```powershell
+cd "C:/Users/vital/Desktop/AgentAPP/ragapp-public"
+```
 
-## Primary scope
-- `conversation_graph.py`
-- `RAG config/tests/instrumentation`
+## Global rules
 
-## Required behavior
-- Use bounded TaskGroup/gather semantics.
-- Preserve deterministic merge order and context/trace identity.
-- Document partial/fail-fast error behavior.
+- Do not reset, stash, clean, revert, or switch branches.
+- Do not commit or push unless explicitly requested.
+- Inspect current code before editing.
+- TEST WHAT CHANGED. LET CI TEST THE REPOSITORY.
+- Use the repository's canonical Python 3.11 test toolchain.
+- Do not weaken tests, mypy, Ruff, auth, security, or benchmark gates just to make them pass.
+- Stop on any new unrelated failure and report it.
 
-## Acceptance
-- Controlled-delay test proves overlap and configured max concurrency.
-- Results remain deterministic.
 
-## Measurement
-Compare retrieval/E2E p50/p95 and downstream saturation before/after.
+## Files to inspect
+- `backend/rag/app/services/conversation_graph.py`
+- retrieval/backend client code
+- RAG concurrency tests
 
-## Task rules
-- Follow root and scoped AGENTS.md/CLAUDE.md.
-- Inspect current code before editing; current implementation wins over stale assumptions.
-- Keep this branch limited to this task.
-- Run focused tests, then broader affected checks.
-- Do not commit or push; return a recommended Conventional Commit message.
+## DISCOVERY
+```powershell
+cd "C:/Users/vital/Desktop/AgentAPP/ragapp-public"
+rg -n "rewrite|decompose|subquery|gather|TaskGroup|retrieve" backend/rag/app/services backend/rag/app/tests
+```
+
+## LOCAL FOCUSED TEST
+```powershell
+cd "C:/Users/vital/Desktop/AgentAPP/ragapp-public/backend/rag"
+$env:PYTHONPATH="$PWD;$PWD\.."
+pytest app/tests -q -k "rewrite or decompose or subquery or concurrency or retrieval"
+```
+
+Tests must prove:
+- actual overlap under artificial delay
+- max concurrency bound
+- deterministic merge regardless of completion order
+
+## FULL RAG SUITE
+```powershell
+pytest app/tests -q
+```
+
+## LOCAL DOCKER BENCHMARK 1
+Smoke30 regular.
+
+## LOCAL DOCKER BENCHMARK 2
+Repository-supported Extended/extended comparison benchmark.
+
+Compare retrieval/E2E p50/p95 and downstream saturation.
+
+## DO NOT RUN
+Full240.

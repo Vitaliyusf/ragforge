@@ -1,33 +1,69 @@
-# PERF-01 — Async RAG persistence and checkpoint retention
+# PERF-01 — Remove blocking persistence from async RAG hot path
 
-**Branch:** `perf/rag-async-persistence`
+## Execution location
 
-## Goal
-Remove sync persistence blocking from async RAG hot paths and bound checkpoint growth.
+**RUN BY:** Codex locally on the user's machine.
 
-## Problem
-Sync PyMongo/time.sleep and repeated full checkpoint snapshots can block event-loop work and amplify storage.
+**REPOSITORY ROOT:**
+```powershell
+cd "C:/Users/vital/Desktop/AgentAPP/ragapp-public"
+```
 
-## Primary scope
-- `conversation_persistence.py`
-- `metrics_facts.py`
-- `eval_store.py where hot`
-- `conversation_graph.py/config/tests`
+## Global rules
+
+- Do not reset, stash, clean, revert, or switch branches.
+- Do not commit or push unless explicitly requested.
+- Inspect current code before editing.
+- TEST WHAT CHANGED. LET CI TEST THE REPOSITORY.
+- Use the repository's canonical Python 3.11 test toolchain.
+- Do not weaken tests, mypy, Ruff, auth, security, or benchmark gates just to make them pass.
+- Stop on any new unrelated failure and report it.
+
+
+## Files to inspect
+- `backend/rag/app/services/conversation_persistence.py`
+- `backend/rag/app/services/conversation_graph.py`
+- persistence/checkpoint tests
+
+## DISCOVERY
+```powershell
+cd "C:/Users/vital/Desktop/AgentAPP/ragapp-public"
+rg -n "MongoClient|time\.sleep|load_context\(|save_turn\(|save_thread\(|save_summary\(|save_checkpoint\(" backend/rag
+```
 
 ## Required behavior
-- Async PyMongo or explicit bounded offload.
-- No blocking sleep on async path.
-- Checkpoint TTL/pruning policy preserving recovery/failed diagnostics.
+Make the persistence boundary awaitable via stable async driver support or one bounded offload adapter. Do not scatter ad-hoc `to_thread()` calls across graph nodes.
 
-## Acceptance
-- Recovery semantics remain correct; TTL/pruning tested; no direct blocking sleep in touched async path.
+## LOCAL FOCUSED TEST — RUN BY CODEX
+```powershell
+cd "C:/Users/vital/Desktop/AgentAPP/ragapp-public/backend/rag"
+$env:PYTHONPATH="$PWD;$PWD\.."
+pytest app/tests -q -k "persistence or checkpoint or context or resume"
+```
 
-## Measurement
-Event-loop lag, TTFT/E2E p95, persistence latency and storage/write volume before/after.
+Add/execute controlled-delay tests proving the event loop continues while persistence is delayed.
 
-## Task rules
-- Follow root and scoped AGENTS.md/CLAUDE.md.
-- Inspect current code before editing; current implementation wins over stale assumptions.
-- Keep this branch limited to this task.
-- Run focused tests, then broader affected checks.
-- Do not commit or push; return a recommended Conventional Commit message.
+## LOCAL FULL RAG SUITE
+```powershell
+pytest app/tests -q
+```
+
+## LOCAL DOCKER CHAT SMOKE
+```powershell
+cd "C:/Users/vital/Desktop/AgentAPP/ragapp-public"
+docker compose exec -T frontend node < tests/smoke_chat.js
+```
+
+## LOCAL DOCKER BENCHMARK
+Smoke30.
+
+Compare to accepted interactivity baseline:
+- wall
+- queue p95
+- TTFT p50/p95
+- E2E p95
+- errors
+
+## DO NOT RUN
+Retrieval220 unless retrieval behavior changed.
+Full240 never here.

@@ -3,13 +3,15 @@
 Goal: preserve correctness while minimizing repeated environment setup, execution time and agent-token output.
 
 ## Environment rule
-Do not use `uv run --isolated --with-requirements ...` for normal iterative validation.
+`doctor` is opt-in diagnostic help, not a universal task gate.
 
-Use the existing project/dev environment:
+Prefer an existing suitable project/dev environment:
 1. repository `.venv` if present;
 2. otherwise the currently active Python environment.
 
-Clean/fresh dependency installation belongs in CI, not every agent iteration.
+Do not repair `.venv` unless environment repair is the task. A missing or broken `.venv`
+must not block validation: direct `uv run --isolated --python 3.11` is an accepted fallback.
+Avoid fresh dependency installation on every iteration; clean-environment authority remains CI.
 
 ## Progressive validation
 
@@ -34,7 +36,7 @@ python scripts/ai/check.py fast rag \
 Do not repeatedly run the full service suite while iterating.
 
 ### Tier 2 — SERVICE
-Run once near task completion.
+Run once near task completion only for cross-cutting or high-risk service changes.
 
 ```bash
 python scripts/ai/check.py service rag
@@ -57,6 +59,16 @@ python scripts/ai/check.py full --fail-fast
 ```
 
 CI remains the authoritative clean-environment validation.
+
+## Test-suite ratchet
+
+- Select exact focused/domain tests during iteration; do not optimize for a smaller raw test count.
+- Each behavior has one primary test layer; higher layers prove wiring without duplicating every lower-layer case.
+- Keep security, tenant isolation, recovery, idempotency and provenance coverage unless the production contract is retired.
+- Keep supported historical behavior in an isolated compatibility lane.
+- When compatibility code is retired, delete its tests and update the support policy in the same task.
+- Do not combine independent cases into one giant loop solely to reduce reported test count.
+- Split test monoliths by stable behavior ownership when that improves focused selection.
 
 ## Mypy policy
 Do not run mypy automatically for every Python edit.
