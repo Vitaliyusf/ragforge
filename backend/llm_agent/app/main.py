@@ -13,7 +13,7 @@ except ImportError:
 from fastapi import FastAPI
 
 from app.core.config import get_settings, Settings
-from app.core.logging_config import setup_logging, ServiceLogger
+from shared.logging import ServiceLogger, setup_logging
 from app.messaging.factories import MessageQueueFactory
 from app.messaging.handlers import (
     LLMHandler,

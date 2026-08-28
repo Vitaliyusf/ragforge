@@ -15,7 +15,7 @@ except ImportError:
 
 from app.core.config import RAGConfig
 from app.core.exception_handlers import register_exception_handlers
-from app.core.logging_config import ServiceLogger
+from shared.logging import ServiceLogger
 from app.messaging.factories import MessageQueueFactory
 from app.messaging.rag_rpc_handler import build_reply_envelope, extract_request_payload
 from app.messaging.rpc_client import RabbitMQRPCClient

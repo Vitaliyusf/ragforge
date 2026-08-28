@@ -2,7 +2,7 @@
 import json
 import uuid
 
-from app.core.logging_config import ServiceLogger
+from shared.logging import ServiceLogger
 from app.core.request_context import clear_request_context, set_request_context
 
 

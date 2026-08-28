@@ -10,7 +10,7 @@ from typing import Any, Dict, Optional
 
 from pymongo import ASCENDING, DESCENDING
 
-from app.core.errors import DatabaseException
+from shared.errors import DatabaseException
 from app.db._base import serialize
 
 

@@ -5,7 +5,7 @@ import re
 from collections import Counter
 
 from app.llm.interfaces import ILLMClient, LLMInvocation
-from app.core.logging_config import ServiceLogger
+from shared.logging import ServiceLogger
 from app.core.config import Settings
 from app.core.constants import LLMImplementation
 from app.services.base import BaseService

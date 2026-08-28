@@ -4,7 +4,7 @@ import time
 from typing import Any, Dict, Optional
 
 from app.core.config import settings
-from app.core.logging_config import ServiceLogger
+from shared.logging import ServiceLogger
 from app.messaging.factories import MessageQueueFactory
 from app.messaging.implementations.rabbitmq import RabbitMQConsumerImpl
 from app.services.chat_exit_service import ChatExitService

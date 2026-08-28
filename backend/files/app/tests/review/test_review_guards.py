@@ -5,7 +5,7 @@ from datetime import timedelta
 
 import pytest
 
-from app.core.errors import ValidationException
+from shared.errors import ValidationError as ValidationException
 from app.utils.common import utcnow
 from app.tests._files_harness import (
     make_actor,

@@ -7,7 +7,7 @@ from pymongo.collection import Collection
 from pymongo.database import Database
 
 from app.core.config import settings
-from app.core.errors import DatabaseException, ErrorCode
+from shared.errors import DatabaseException, ErrorCode
 
 
 _client: Optional[MongoClient] = None

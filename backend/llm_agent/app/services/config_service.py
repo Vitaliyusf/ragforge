@@ -2,7 +2,7 @@
 from typing import Any, Dict, Optional
 
 from app.core.config import Settings, get_settings
-from app.core.logging_config import ServiceLogger
+from shared.logging import ServiceLogger
 
 
 class ConfigService:

@@ -9,7 +9,7 @@ from typing import Any, Dict, List
 import httpx
 
 from app.core.config import settings
-from app.core.logging_config import ServiceLogger
+from shared.logging import ServiceLogger
 from app.services.tenant_scope import current_identity
 
 

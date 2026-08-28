@@ -13,7 +13,7 @@ import aio_pika.abc
 from app.core.config import GatewayConfig
 from app.core.correlation import ensure_correlation_ids
 from app.core.errors import GatewayError, NotFoundError, ServiceUnavailableError, ValidationError
-from app.core.logging_config import ServiceLogger
+from shared.logging import ServiceLogger
 from app.core.request_context import get_request_context
 from app.schemas.common import MessageEnvelope, ReplyEnvelope, MessageType
 from shared.auth import attach_internal_auth_context, identity_from_context, verify_internal_ticket_from_envelope

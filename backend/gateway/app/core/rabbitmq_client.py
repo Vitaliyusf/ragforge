@@ -6,7 +6,7 @@ import time as _time
 from typing import Any, Dict, Optional
 
 from app.core.config import GatewayConfig
-from app.core.logging_config import ServiceLogger
+from shared.logging import ServiceLogger
 from app.core.rpc_client import GatewayRPCClient
 
 try:

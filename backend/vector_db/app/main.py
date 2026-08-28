@@ -16,7 +16,7 @@ except ImportError:
 
 from app.core.config import settings
 from app.core.exception_handlers import register_exception_handlers
-from app.core.logging_config import ServiceLogger
+from shared.logging import ServiceLogger
 from app.db.interfaces import IVectorStore
 from app.db.session import get_vector_store
 from app.messaging.factories import MessageQueueFactory

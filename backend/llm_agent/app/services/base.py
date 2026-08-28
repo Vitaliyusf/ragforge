@@ -2,7 +2,7 @@
 from abc import ABC
 
 from app.llm.interfaces import ILLMClient
-from app.core.logging_config import ServiceLogger
+from shared.logging import ServiceLogger
 from app.core.config import Settings
 
 

@@ -7,7 +7,7 @@ from uuid import uuid4
 from pydantic import BaseModel, ValidationError
 
 from app.messaging.interfaces import IProducer
-from app.core.logging_config import ServiceLogger
+from shared.logging import ServiceLogger
 from app.core.config import Settings
 from app.core.errors import NotFoundException, ServiceException, TimeoutException, ValidationException
 from shared.auth import attach_internal_auth_context

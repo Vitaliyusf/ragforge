@@ -7,7 +7,7 @@ import time
 from shared.auth import verify_internal_ticket_from_envelope
 from shared.context import bound_context
 
-from app.core.logging_config import ServiceLogger
+from shared.logging import ServiceLogger
 from app.messaging.interfaces import IConsumer
 from app.services.vector_service import VectorService
 

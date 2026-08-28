@@ -5,8 +5,10 @@ import base64
 import os
 from typing import Any, Dict, Optional
 
-from app.core.errors import NotFoundException, ValidationException
-from app.services.graph_types import OutboundMessage
+
+from shared.errors import NotFoundError as NotFoundException
+from shared.errors import ValidationError as ValidationException
+from app.services.file_ingestion_graph import OutboundMessage
 from app.utils.common import (
     build_message_envelope,
     create_file_document,
