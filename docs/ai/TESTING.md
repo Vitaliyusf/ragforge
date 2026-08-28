@@ -172,6 +172,26 @@ fallback is direct isolated Python 3.11, with the task's required tools or requi
 uv run --isolated --python 3.11 ...
 ```
 
+When isolated uv is needed, choose one workspace-local `UV_CACHE_DIR` at task start.
+For each environment/tooling root cause, diagnose once and make at most one corrected
+retry. If the canonical command still cannot run, report `BLOCKED`; do not rotate
+through interpreters, virtualenvs, cache layouts, plugin sets or injected dependencies.
+
+## CI parity and authoritative PASS
+
+A local `PASS` is authoritative only when it uses the corresponding CI lane's
+canonical dependency layers, Python/runtime version, `PYTHONPATH`/import roots,
+pytest plugins, configuration files and required feature flags/environment.
+
+Do not use `uv run ... --with <missing-package>` or another ad-hoc dependency to
+convert a canonical-lane failure into `PASS`. Fix the canonical dependency owner or
+report the canonical validation `BLOCKED`. A useful run made with extra non-CI
+dependencies must be labeled exactly:
+
+```text
+NON-AUTHORITATIVE / ENVIRONMENT-ADJUSTED
+```
+
 Do not repeatedly probe:
 - `.venv`;
 - `py`;
@@ -233,6 +253,16 @@ Run only when:
 - task acceptance requires it.
 
 Do not repeatedly shrink the scope to get a green result.
+
+If changed files intersect an authoritative static-analysis scope, run that exact
+command once before completion. For changes under `backend/shared` or
+`backend/gateway/app`, the authoritative scope is:
+
+```bash
+mypy backend/shared backend/gateway/app --config-file mypy.ini
+```
+
+File-by-file mypy is not an equivalent completion check.
 
 ## Frontend
 
@@ -301,9 +331,13 @@ otherwise:
 targeted implementation
 → focused tests
 → focused tests again only if later edits invalidate them
+→ required domain/static checks
 → optional affected-service suite once
-→ final diff
-→ memory once
+→ final diff audit
+→ no more source/test edits
+→ record handoff once
+→ rebuild brain once
+→ validate memory once
 → PR
 → GitHub CI broad validation
 ```

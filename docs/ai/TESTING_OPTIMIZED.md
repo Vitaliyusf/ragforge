@@ -13,6 +13,16 @@ Do not repair `.venv` unless environment repair is the task. A missing or broken
 must not block validation: direct `uv run --isolated --python 3.11` is an accepted fallback.
 Avoid fresh dependency installation on every iteration; clean-environment authority remains CI.
 
+An authoritative local `PASS` must preserve the matching CI lane's dependency
+layers, runtime, import roots, plugins, configuration and required environment.
+Extra non-CI dependencies may support diagnosis, but the result must be reported as
+`NON-AUTHORITATIVE / ENVIRONMENT-ADJUSTED`, not `PASS`. Fix a missing package in its
+canonical dependency owner or report the canonical run `BLOCKED`.
+
+For isolated uv, use one workspace-local `UV_CACHE_DIR`. Diagnose the same
+environment root cause once, make at most one corrected retry, then report `BLOCKED`
+instead of cycling through interpreters, virtualenvs, caches or dependency injections.
+
 ## Progressive validation
 
 ### Tier 1 — FAST
@@ -94,6 +104,16 @@ Run it when:
 - task acceptance explicitly requires it.
 
 Otherwise focused pytest + Ruff is usually sufficient during iteration.
+
+When changed files intersect an authoritative static-analysis scope, that exact
+scope is mandatory once before completion. Changes under `backend/shared` or
+`backend/gateway/app` require:
+
+```bash
+mypy backend/shared backend/gateway/app --config-file mypy.ini
+```
+
+File-by-file mypy is not equivalent.
 
 ## Docker
 Docker does not inherently save tokens.

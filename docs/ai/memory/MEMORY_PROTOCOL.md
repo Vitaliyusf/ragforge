@@ -46,15 +46,20 @@ Required order:
 ```text
 code complete
 → focused tests
-→ affected service tests
+→ required domain/static checks
+→ affected service tests when justified
 → final diff review
-→ memory updates
-→ rebuild once
-→ validate once
+→ no more source/test edits
+→ record handoff once
+→ rebuild brain once
+→ validate memory once
 → final response
 ```
 
-If code changes after memory update, validate the code first, then refresh memory once at the end.
+Do not run `record_handoff.py`, `rebuild_repo_brain.py` or
+`validate_ai_memory.py` before this point. If code changes after handoff creation,
+the handoff was premature: validate the code first, then replace the memory state
+once at the end. Do not perform duplicate handoff/rebuild cycles.
 
 ## Handoff/history
 Prefer:

@@ -1,6 +1,7 @@
 fastapi==0.115.12
 uvicorn==0.34.0
 aio-pika>=9.4,<10.0
+kafka-python==2.0.2
 pymongo==4.10.1
 pydantic==2.12.5
 pydantic-settings==2.7.1

@@ -1,6 +1,7 @@
 """Gateway liveness and readiness contract tests."""
 import asyncio
 
+import httpx
 from fastapi.testclient import TestClient
 
 from app.main import app
@@ -53,15 +54,16 @@ def test_dependency_failure_live_and_recovery(monkeypatch) -> None:
 
 
 def test_detailed_probe_distinguishes_live_from_ready() -> None:
-    class Response:
-        def __init__(self, status_code: int) -> None:
-            self.status_code = status_code
+    async def run_probe() -> dict:
+        async def respond(request: httpx.Request) -> httpx.Response:
+            status_code = 503 if request.url.path.endswith("/ready") else 200
+            return httpx.Response(status_code, request=request)
 
-    class Client:
-        async def get(self, url: str) -> Response:
-            return Response(503 if url.endswith("/ready") else 200)
+        transport = httpx.MockTransport(respond)
+        async with httpx.AsyncClient(transport=transport) as client:
+            return await _probe_service(client, "rag", 8004)
 
-    result = asyncio.run(_probe_service(Client(), "rag", 8004))
+    result = asyncio.run(run_probe())
     assert result == {
         "name": "rag",
         "status": "degraded",

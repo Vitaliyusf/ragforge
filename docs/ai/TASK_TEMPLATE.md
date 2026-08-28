@@ -50,6 +50,14 @@ Only for quality/performance work.
 - No generic doctor gate.
 - Do not repair `.venv`.
 - Use isolated uv Python 3.11 when local environment is unsuitable.
+- Preserve the matching CI lane's canonical environment; extra dependencies make a
+  result `NON-AUTHORITATIVE / ENVIRONMENT-ADJUSTED`, not `PASS`.
+- Use one workspace-local uv cache and at most one corrected retry per environment
+  root cause before reporting `BLOCKED`.
+- Run any authoritative static-analysis scope intersected by changed files once
+  before completion; do not substitute a narrower file-by-file scope.
+- After the final diff audit and last source/test edit, record handoff once, rebuild
+  the brain once and validate memory once.
 
 ## Final complexity report
 Every task reports:
