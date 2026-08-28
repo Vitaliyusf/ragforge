@@ -1,5 +1,7 @@
 # DEV-01 — Align local agent Python environment with CI
 
+**Status:** completed / historical — runtime/toolchain migration task; it owns the versions it names. The current runtime is `docs/ai/RUNTIME_CONTRACT.md`.
+
 **Branch:** `chore/dev-python-alignment`
 
 ## Goal

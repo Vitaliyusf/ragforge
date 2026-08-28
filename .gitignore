@@ -11,10 +11,17 @@ __pycache__/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
-.uv-cache/
 .venv/
 venv/
 *.egg-info/
+
+# Task-local tool caches. These belong under .agent-private/tooling/<task-id>/,
+# but variants such as .uv-cache-safe01-memory have escaped to the repo root
+# before; match the family, not one exact name.
+.uv-cache*/
+.uv-python*/
+.pytest-tmp*/
+.ruff-cache*/
 
 # Env and secrets
 .env
@@ -64,14 +71,8 @@ htmlcov/
 .claude/
 CLAUDE.md
 # AI Brain local/generated/private state
+/docs/ai
+/docs/ai/tasks
 /docs/ai/generated/*.json
 /.agent-private/
-/docs/ai/tasks
-/docs/ai
-/docs/ai
-/docs/ai/tasks
 *.zip
-/docs/ai/tasks
-/docs/ai/tasks
-/docs/ai
-/docs/ai/tasks

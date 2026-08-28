@@ -1,5 +1,7 @@
 # BMARK-04 — Deterministic chunk labels and readiness
 
+**Status:** completed / historical — retained as execution evidence. Runtime/tooling text here is superseded by `docs/ai/RUNTIME_CONTRACT.md`.
+
 **Branch:** `feat/eval-chunk-label-resolution`
 
 ## Goal

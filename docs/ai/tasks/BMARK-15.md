@@ -1,5 +1,7 @@
 # BMARK-15 — Benchmark Center hardening
 
+**Status:** completed / historical — retained as execution evidence. Runtime/tooling text here is superseded by `docs/ai/RUNTIME_CONTRACT.md`.
+
 **Branch:** `chore/benchmark-center-hardening`
 
 ## Goal

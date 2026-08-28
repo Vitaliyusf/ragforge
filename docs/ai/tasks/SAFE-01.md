@@ -1,5 +1,7 @@
 # SAFE-01 — Fail-closed streaming output safety
 
+**Status:** completed / historical — retained as execution evidence. Runtime/tooling text here is superseded by `docs/ai/RUNTIME_CONTRACT.md`.
+
 **Order:** 5  
 **Phase:** 1 Current hardening  
 **Priority:** P0  
@@ -51,6 +53,6 @@ This task may perform behavior-neutral cleanup only in code it already needs to 
 - Do not commit or push.
 - Do not run `doctor` as a generic prerequisite.
 - Do not repair `.venv` as part of normal task work.
-- If the local Python environment is unsuitable, use direct `uv run --isolated --python 3.11`.
+- If the local Python environment is unsuitable, use the canonical runtime/tooling from `docs/ai/RUNTIME_CONTRACT.md`.
 - Iterate with focused tests; run the affected service suite once near completion.
 - Do not run expensive benchmarks unless the task explicitly requires them.

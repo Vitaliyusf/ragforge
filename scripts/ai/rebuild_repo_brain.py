@@ -6,20 +6,18 @@ import ast
 import hashlib
 import json
 import re
+import sys
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Iterable
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from _brain_sources import classify_source, enumerate_sources  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[2]
 OUT = ROOT / "docs" / "ai" / "generated"
 
-SKIP_DIRS = {
-    ".git", ".next", "node_modules", "__pycache__", ".pytest_cache", ".mypy_cache",
-    ".ruff_cache", ".venv", "venv", "coverage", "dist", "build", "logs",
-    "qdrant_storage", "uploads", ".agent-private", ".uv-cache",
-}
-TEXT_EXTS = {".py", ".js", ".jsx", ".ts", ".tsx", ".json", ".yml", ".yaml", ".toml", ".md"}
 FRONTEND_EXTS = {".js", ".jsx", ".ts", ".tsx"}
-MAX_FILE_BYTES = 2 * 1024 * 1024
 
 FASTAPI = re.compile(r"(?P<router>[A-Za-z_][\w\.]*)\.(?P<method>get|post|put|patch|delete|options|head|websocket)\(\s*[\"'](?P<path>[^\"']+)")
 JS_EXPORT = re.compile(r"\bexport\s+(?:default\s+)?(?:async\s+)?(?:function|class|const|let|var)\s+([A-Za-z_$][\w$]*)")
@@ -35,21 +33,9 @@ def rel(path: Path) -> str:
     return path.relative_to(ROOT).as_posix()
 
 def iter_files() -> Iterable[Path]:
-    for path in ROOT.rglob("*"):
-        if not path.is_file():
-            continue
-        if any(part in SKIP_DIRS for part in path.parts):
-            continue
-        if path.suffix.lower() not in TEXT_EXTS:
-            continue
-        if "docs/ai/generated" in path.as_posix():
-            continue
-        try:
-            if path.stat().st_size > MAX_FILE_BYTES:
-                continue
-        except OSError:
-            continue
-        yield path
+    """Repository source, enumerated through Git so caches cannot leak in."""
+    for rel_path in enumerate_sources(ROOT):
+        yield ROOT / rel_path
 
 def read_text(path: Path) -> str:
     return path.read_text(encoding="utf-8", errors="replace")
@@ -128,6 +114,7 @@ def main() -> int:
             "size": len(text.encode("utf-8", errors="ignore")),
             "lines": text.count("\n") + 1,
             "ext": path.suffix.lower(),
+            "source_class": classify_source(rel(path)),
         }
         if not args.compact:
             row["sha256"] = content_hash
@@ -153,17 +140,23 @@ def main() -> int:
     configs.sort(key=lambda x: (x["key"], x["path"]))
     frontend.sort(key=lambda x: (x["name"].lower(), x["path"]))
 
+    class_counts: dict[str, int] = {}
+    for row in file_index:
+        key = str(row["source_class"])
+        class_counts[key] = class_counts.get(key, 0) + 1
+
     meta = {
-        "schema_version": 2,
+        "schema_version": 3,
         "source_fingerprint_sha256": fingerprint.hexdigest(),
         "file_count": len(file_index),
         "symbol_count": len(symbols),
         "route_count": len(routes),
+        "source_class_counts": dict(sorted(class_counts.items())),
     }
 
     payloads = {
         "INDEX_META.json": meta,
-        "FILE_INDEX.json": {"schema_version": 2, "files": file_index},
+        "FILE_INDEX.json": {"schema_version": 3, "files": file_index},
         "SYMBOL_INDEX.json": {"schema_version": 2, "symbols": symbols},
         "ROUTE_INDEX.json": {"schema_version": 2, "routes": routes},
         "IMPORT_INDEX.json": {"schema_version": 2, "imports": imports},

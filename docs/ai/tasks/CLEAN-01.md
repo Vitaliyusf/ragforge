@@ -15,7 +15,7 @@ cd "C:/Users/vital/Desktop/AgentAPP/ragapp-public"
 - Do not commit or push unless explicitly requested.
 - Inspect current code before editing.
 - TEST WHAT CHANGED. LET CI TEST THE REPOSITORY.
-- Use the repository's canonical Python 3.11 test toolchain.
+- Use the canonical runtime/tooling from `docs/ai/RUNTIME_CONTRACT.md`.
 - Do not weaken tests, mypy, Ruff, auth, security, or benchmark gates just to make them pass.
 - Stop on any new unrelated failure and report it.
 

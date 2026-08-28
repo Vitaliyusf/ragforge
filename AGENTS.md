@@ -68,6 +68,18 @@ Rules:
 - If overlapping uncommitted work exists, stop and report it.
 - Do not fix unrelated existing issues unless they block the task and the user asks.
 
+## 3a. Runtime and tooling authority
+
+`docs/ai/RUNTIME_CONTRACT.md` is the canonical source for Python/Node versions,
+dependency layers, the isolated-uv fallback, the authoritative mypy scope and the
+pinned Ruff version. It, `.python-version` and CI config override generic runtime
+text embedded in older task specs, handoffs, historical docs or benchmark records,
+unless the active task explicitly owns a runtime/toolchain migration.
+
+All workspace-local task/tool caches belong under `.agent-private/tooling/<task-id>/`
+when possible. Never create task-local cache directories at the repository root such
+as `.uv-cache-<task>` or `.uv-python-<task>`.
+
 ## 4. Engineering invariants
 
 - Preserve tenant isolation and authorization.
@@ -111,7 +123,7 @@ If it reports `BLOCKED`, do not spend many commands probing Python/uv/pytest/plu
 Report the environment problem unless environment repair is the task.
 
 When isolated uv is required, establish one workspace-local `UV_CACHE_DIR` for the
-task. Diagnose an environment/tooling root cause once and make at most one corrected
+task under `.agent-private/tooling/<task-id>/`. Diagnose an environment/tooling root cause once and make at most one corrected
 retry for that root cause. If canonical validation still cannot run, report `BLOCKED`;
 do not cycle through interpreters, virtualenvs, cache layouts or dependency injections.
 
@@ -168,7 +180,7 @@ python scripts/ai/check.py lane <lane>
 
 ```text
 shared                  backend/shared/tests: auth, transport, envelopes, redaction
-repo-contract           repository guardrails (tests/test_public_repo_guardrails.py)
+repo-contract           repository guardrails + repo-brain/tooling contract tests
 
 gateway                 the whole gateway service
 gateway-auth            authentication, RBAC, CSRF, security startup
