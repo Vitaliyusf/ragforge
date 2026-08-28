@@ -170,6 +170,11 @@
   --motion-fast:   var(--duration-fast);
   --motion-normal: var(--duration-normal);
   --motion-easing: var(--ease-emphasized);
+
+  /* `live` is the tone for work happening right now — streaming, running,
+     processing. statusTone.js reads it as a raw var(), not as a utility, so
+     it needs this spelling alongside the --color-status-live theme key. */
+  --status-live: var(--accent);
 }
 
 /* ─── Tailwind-facing theme ────────────────────────────────────────────
@@ -289,122 +294,8 @@
   }
 
   a {
-<<<<<<< Updated upstream
-    @apply text-inherit no-underline;
-  }
-
-  /* ─── LIGHT THEME (default :root) ───────────────────────── */
-  :root {
-    --bg:               #F4F6FB;
-    --bg-subtle:        #ECEFF6;
-    --surface:          #FFFFFF;
-    --surface-elevated: #FFFFFF;
-    --surface-hover:    #F0F2F8;
-    --surface-active:   #E7EAF3;
-
-    --border:           #DDE2EC;
-    --border-strong:    #C7CEDD;
-    --border-focus:     #7767F6;
-
-    --fg:               #182033;
-    --fg-muted:         #586478;
-    /* 4.61:1 against every light surface token. The old #8490A3 was 3.23:1
-       on white and worse elsewhere, and it carries real copy in ~17 files,
-       so the fix belongs here rather than at 112 call sites. */
-    --fg-soft:          #606977;
-
-    --primary:          #6D5DF6;
-    --primary-hover:    #5D4DE5;
-    --primary-fg:       #FFFFFF;
-    --primary-rgb:      109 93 246;
-    --primary-soft:     rgba(109, 93, 246, 0.10);
-
-    --secondary:        #ECEEF5;
-    --secondary-hover:  #E1E5EF;
-
-    --accent:           #0FAF9F;
-    --accent-soft:      rgba(15, 175, 159, 0.10);
-
-    --success:          #16A34A;
-    --success-soft:     rgba(22, 163, 74, 0.10);
-    --warning:          #D97706;
-    --warning-soft:     rgba(217, 119, 6, 0.10);
-    --danger:           #DC2626;
-    --danger-soft:      rgba(220, 38, 38, 0.10);
-    --info:             #0284C7;
-    --info-soft:        rgba(2, 132, 199, 0.10);
-
-    --ring:             rgba(109, 93, 246, 0.24);
-
-    --gradient-primary: linear-gradient(135deg, #7667F6 0%, #5D7FEF 58%, #33A6D8 100%);
-    --glass:            rgba(255, 255, 255, 0.82);
-
-    --scrollbar-thumb:  #C7CEDD;
-    --scrollbar-track:  transparent;
-
-    /* Tight and neutral. Elevation reads as a plane above the page,
-       never as a coloured halo. */
-    --shadow-sm:        0 1px 2px rgba(24,32,51,0.06);
-    --shadow-md:        0 2px 8px rgba(24,32,51,0.08);
-    --shadow-lg:        0 8px 24px rgba(24,32,51,0.10);
-    --shadow-xl:        0 16px 48px rgba(24,32,51,0.14);
-  }
-
-  /* ─── DARK THEME ─────────────────────────────────────────── */
-  .dark {
-    --bg:               #0B0D13;
-    --bg-subtle:        #11141D;
-    --surface:          #151923;
-    --surface-elevated: #191E2A;
-    --surface-hover:    #202635;
-    --surface-active:   #292F3F;
-
-    --border:           #293142;
-    --border-strong:    #3A455B;
-    --border-focus:     #9A8BFF;
-
-    --fg:               #F3F5FA;
-    --fg-muted:         #A7B0C1;
-    /* 4.65:1 against every dark surface token; the old #747F93 was 4.13:1. */
-    --fg-soft:          #8F99AB;
-
-    --primary:          #9A8BFF;
-    --primary-hover:    #AA9EFF;
-    --primary-fg:       #10101B;
-    --primary-rgb:      154 139 255;
-    --primary-soft:     rgba(154, 139, 255, 0.13);
-
-    --secondary:        #222836;
-    --secondary-hover:  #2B3344;
-
-    --accent:           #43D6C4;
-    --accent-soft:      rgba(67, 214, 196, 0.12);
-
-    --success:          #22C55E;
-    --success-soft:     rgba(34, 197, 94, 0.12);
-    --warning:          #F59E0B;
-    --warning-soft:     rgba(245, 158, 11, 0.12);
-    --danger:           #EF4444;
-    --danger-soft:      rgba(239, 68, 68, 0.12);
-    --info:             #38BDF8;
-    --info-soft:        rgba(56, 189, 248, 0.12);
-
-    --ring:             rgba(154, 139, 255, 0.30);
-
-    --gradient-primary: linear-gradient(135deg, #9A8BFF 0%, #7B8FF8 55%, #4DB9E8 100%);
-    --glass:            rgba(21, 25, 35, 0.82);
-
-    --scrollbar-thumb:  #3A455B;
-    --scrollbar-track:  transparent;
-
-    --shadow-sm:        0 1px 2px rgba(0,0,0,0.35);
-    --shadow-md:        0 2px 8px rgba(0,0,0,0.45);
-    --shadow-lg:        0 8px 24px rgba(0,0,0,0.55);
-    --shadow-xl:        0 16px 48px rgba(0,0,0,0.65);
-=======
     color: inherit;
     text-decoration: none;
->>>>>>> Stashed changes
   }
 
   /* ─── Custom scrollbars ─────────────────────────────────── */
@@ -429,28 +320,6 @@
   }
 }
 
-/* ─── Non-colour semantic tokens ───────────────────────────────────────
-   Radius and motion do not change between themes, so they are declared once
-   rather than restated in every theme block. Themes override colour only. */
-:root {
-  /* Controls (buttons, inputs, badges) versus surfaces (cards, panels, sheets). */
-  --radius-control: 0.625rem; /* 10px — matches the existing rounded-xl controls */
-  --radius-surface: 0.75rem;  /* 12px — matches the existing rounded-2xl panels  */
-
-  /* One motion scale. `fast` is hover/focus/colour, `normal` is a small
-     enter/exit, `slow` is a panel or drawer moving across the viewport. */
-  --motion-fast:   150ms;
-  --motion-normal: 200ms;
-  /* No consumer yet: it is the third step of the scale, reserved for a
-     transition that crosses the viewport. Nothing today is that large. */
-  --motion-slow:   320ms;
-  --motion-easing: cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-/* `live` is the tone for work that is happening right now — streaming,
-   running, processing. It is the only status allowed to animate continuously. */
-:root { --status-live: var(--accent); }
-
 ::selection {
   background: var(--primary-soft);
   color: var(--fg);
@@ -471,41 +340,24 @@
 @keyframes drawer-in   { from { opacity: 0; transform: translateX(48px) } to { opacity: 1; transform: none } }
 @keyframes drawer-out  { from { opacity: 1; transform: none } to { opacity: 0; transform: translateX(48px) } }
 
-<<<<<<< Updated upstream
-.modal-overlay[data-state='open']  { animation: overlay-in  var(--motion-fast) ease-out }
-.modal-overlay[data-state='closed'] { animation: overlay-out var(--motion-fast) ease-in }
-.modal-content[data-state='open']  { animation: dialog-in  var(--motion-normal) var(--motion-easing) }
-.modal-content[data-state='closed'] { animation: dialog-out var(--motion-fast) ease-in }
-.drawer-content[data-state='open']  { animation: drawer-in  var(--motion-normal) var(--motion-easing) }
-.drawer-content[data-state='closed'] { animation: drawer-out var(--motion-fast) ease-in }
-=======
 .modal-overlay[data-state='open']  { animation: overlay-in  var(--duration-fast) ease-out }
 .modal-overlay[data-state='closed'] { animation: overlay-out var(--duration-fast) ease-in }
 .modal-content[data-state='open']  { animation: dialog-in  var(--duration-normal) var(--ease-emphasized) }
 .modal-content[data-state='closed'] { animation: dialog-out var(--duration-fast) ease-in }
 .drawer-content[data-state='open']  { animation: drawer-in  var(--duration-normal) var(--ease-emphasized) }
 .drawer-content[data-state='closed'] { animation: drawer-out var(--duration-fast) ease-in }
->>>>>>> Stashed changes
 
 @keyframes icon-swap {
   from { opacity: 0; transform: rotate(-20deg) scale(0.8) }
   to   { opacity: 1; transform: none }
 }
-<<<<<<< Updated upstream
-.animate-icon-swap { animation: icon-swap var(--motion-fast) ease-out }
-=======
 .animate-icon-swap { animation: icon-swap var(--duration-fast) ease-out }
->>>>>>> Stashed changes
 
 @keyframes dropdown-in {
   from { opacity: 0; transform: translateY(-6px) scale(0.98) }
   to   { opacity: 1; transform: none }
 }
-<<<<<<< Updated upstream
-.animate-dropdown-in { animation: dropdown-in var(--motion-fast) ease-out }
-=======
 .animate-dropdown-in { animation: dropdown-in var(--duration-fast) ease-out }
->>>>>>> Stashed changes
 
 /* ─── Navigation activity ─────────────────────────────────────────────
    One place for every activity animation the shell uses. Timings live here
@@ -617,18 +469,6 @@
   background: linear-gradient(to bottom, transparent 0%, var(--surface) 34%, var(--surface) 100%);
 }
 
-<<<<<<< Updated upstream
-@layer utilities {
-  /* ─── Animations ─────────────────────────────────────────── */
-  /* ─── Gradient helpers ───────────────────────────────────── */
-  /* Retained for the few remaining hero surfaces. Controls use flat fills. */
-  .bg-gradient-primary {
-    background: var(--gradient-primary);
-  }
-  .bg-gradient-accent {
-    background: var(--gradient-primary);
-  }
-=======
 @utility bg-gradient-primary {
   /* Retained for the few remaining hero surfaces. Controls use flat fills. */
   background: var(--gradient-primary);
@@ -649,7 +489,6 @@
   from { opacity: 0; transform: translateY(4px); }
   to   { opacity: 1; transform: translateY(0); }
 }
->>>>>>> Stashed changes
 
 @utility animate-shimmer {
   background: linear-gradient(

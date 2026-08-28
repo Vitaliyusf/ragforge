@@ -76,6 +76,17 @@ describe('semantic colour tokens reach utilities', () => {
     expect(rule('bg-error')).toEqual(rule('bg-danger'))
   })
 
+  it('emits the raw var() spellings that JS reads directly', () => {
+    // statusTone.js and the keyframe blocks consume these as plain var(), not
+    // as utilities, so the @theme key alone is not enough: --color-status-live
+    // is a different custom property than --status-live. Dropping the raw
+    // spelling makes the live status tone resolve to nothing, with no build
+    // error and no failing utility test.
+    for (const name of ['--status-live', '--motion-fast', '--motion-normal', '--motion-easing']) {
+      expect(css).toMatch(new RegExp(`${name}\\s*:`))
+    }
+  })
+
   it('resolves colours through var() so one .dark class repaints every utility', () => {
     // Without @theme inline the utility would inline a frozen hex here and dark
     // mode would stop working, with no build error to show for it.
