@@ -9,7 +9,7 @@ from app.messaging.handlers import (
     ModelManagementHandler,
 )
 
-from app.tests.test_llm_service import FakeLogger
+from app.tests._service_harness import FakeLogger
 
 
 class FakeProducer:

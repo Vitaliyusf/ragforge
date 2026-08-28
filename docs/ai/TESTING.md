@@ -65,6 +65,61 @@ Add mypy only if justified:
 
 Do not rerun a PASS unless later edits can invalidate it.
 
+## Level 1b — Domain lane
+
+Near completion, run the lane that owns the behavior you changed instead of a whole
+service. Lanes are directories under each service's test tree, so the mapping stays
+readable without a generated index.
+
+```bash
+python scripts/ai/check.py lane <lane>
+```
+
+| Lane | Covers |
+| --- | --- |
+| `shared` | `backend/shared/tests` — auth, transport, envelopes, redaction |
+| `repo-contract` | repository guardrails (`tests/test_public_repo_guardrails.py`) |
+| `gateway` | the whole gateway service |
+| `gateway-auth` | authentication, RBAC, CSRF, security startup |
+| `gateway-routes` | files, RAG, chat, memory and model-management routes |
+| `gateway-observability` | metrics/eval routes, Prometheus client, correlation, logging |
+| `gateway-compat` | error-body shapes kept for older clients |
+| `rag-core` | regular/extended flow, retrieval, checkpoint/resume, context assembly, contracts |
+| `rag-eval` | eval runner lifecycle, retrieval scoring, import, pipeline, validation, store |
+| `rag-benchmark` | planning/profiles, execution/recovery, manifest, summary, export, comparison |
+| `rag-metrics` | turn facts, citation metrics, graph instrumentation, metrics query |
+| `rag-compat` | legacy/pre-versioning RAG behavior |
+| `files-core` | ingestion flow, label resolution, service contract, tenant scope, metrics |
+| `files-review` | review decisions, single-apply guards, what review state callers may read |
+| `embedding` | canonical job pipeline, query embedding, model factory, config, health |
+| `vector` | the whole vector_db service |
+| `vector-qdrant` | the production Qdrant adapter contract |
+| `vector-compat` | flat, pre-envelope request shapes |
+| `llm-core` | budgets, structured output, streaming, observability, prompts, contracts |
+| `llm-provider` | provider finish reasons, vLLM streaming usage, vLLM auth |
+| `llm-compat` | legacy management/config handlers |
+| `memory-core` | write policy, retrieval, chat API, handler contracts |
+| `memory-agent` | chat exit, title generation, utility LLM calls, message parsing |
+| `memory-compat` | legacy memory requests, deprecated insight surfaces |
+| `frontend-chat` | chat feature tests |
+| `frontend-files` | files feature tests |
+| `frontend-eval` | eval feature tests |
+| `frontend-metrics` | metrics/benchmark feature tests |
+| `frontend-activity` | activity model and navigation activity |
+| `frontend-websocket` | socket service |
+| `frontend-shared-ui` | error boundary, HTTP client, store slices, render smoke tests |
+
+Which lane to run:
+
+- implementation iteration → the exact changed test files (Level 1);
+- change inside one domain → that domain's lane;
+- cross-cutting change inside a service → that service's affected suite, once;
+- full repository → CI.
+
+A `*-compat` lane holds behavior kept alive for older artifacts or APIs. Normal feature
+work neither reads nor runs it. When a compatibility path is retired, delete the
+production code and its compat tests together — never the test alone.
+
 ## Level 2 — Affected service
 
 Use once near completion only for cross-cutting/high-risk service changes.
@@ -185,6 +240,12 @@ During coding:
 
 ```bash
 npm test -- <specific-test-file>
+```
+
+Near completion, run the feature lane rather than the whole suite:
+
+```bash
+python scripts/ai/check.py lane frontend-files
 ```
 
 Do not run full frontend tests locally by default.

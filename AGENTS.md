@@ -133,44 +133,72 @@ Run it only when:
 If run, use the intended scope once and rerun the same scope after fixes.
 Do not shrink the scope repeatedly just to obtain a green command.
 
-### 5.3a RAG test lanes
+### 5.3a Test lanes
 
-RAG tests are grouped by behavior ownership under `backend/rag/app/tests/`:
-
-```text
-core/       regular+extended flow, retrieval, checkpoint/resume, context assembly
-contracts/  typed llm_agent contracts, RPC/internal auth, transport and HTTP routes
-eval/       eval runner lifecycle, retrieval scoring, import, pipeline, validation, store
-benchmark/  planning/profiles, execution/recovery, manifest, summary, export, comparison
-metrics/    turn facts, citation metrics, graph instrumentation, metrics query
-compat/     legacy/pre-versioning behavior still supported in production
-```
-
-Select a lane instead of the whole service:
+Backend tests are grouped by behavior ownership into directories under each
+service's test tree, and frontend tests by feature directory. Select a lane
+instead of a whole service:
 
 ```bash
-python scripts/ai/check.py lane rag-core        # core + contracts
-python scripts/ai/check.py lane rag-eval
-python scripts/ai/check.py lane rag-benchmark
-python scripts/ai/check.py lane rag-metrics
-python scripts/ai/check.py lane rag-compat
+python scripts/ai/check.py lane <lane>
+```
+
+```text
+shared                  backend/shared/tests: auth, transport, envelopes, redaction
+repo-contract           repository guardrails (tests/test_public_repo_guardrails.py)
+
+gateway                 the whole gateway service
+gateway-auth            authentication, RBAC, CSRF, security startup
+gateway-routes          files, RAG, chat, memory, model-management routes
+gateway-observability   metrics/eval routes, Prometheus client, correlation, logging
+gateway-compat          error-body shapes kept for older clients
+
+rag-core                regular+extended flow, retrieval, checkpoint/resume, context, contracts
+rag-eval                eval runner lifecycle, retrieval scoring, import, pipeline, store
+rag-benchmark           planning/profiles, execution/recovery, manifest, summary, export
+rag-metrics             turn facts, citation metrics, graph instrumentation, metrics query
+rag-compat              legacy/pre-versioning RAG behavior
+
+files-core              ingestion flow, label resolution, service contract, tenant scope
+files-review            review decisions, single-apply guards, review-state exposure
+
+embedding               canonical job pipeline, query embedding, model factory, config, health
+
+vector                  the whole vector_db service
+vector-qdrant           the production Qdrant adapter contract
+vector-compat           flat, pre-envelope request shapes
+
+llm-core                budgets, structured output, streaming, observability, contracts
+llm-provider            provider finish reasons, vLLM streaming usage, vLLM auth
+llm-compat              legacy management/config handlers
+
+memory-core             write policy, retrieval, chat API, handler contracts
+memory-agent            chat exit, title generation, utility LLM calls, message parsing
+memory-compat           legacy memory requests, deprecated insight surfaces
+
+frontend-chat           chat feature
+frontend-files          files feature
+frontend-eval           eval feature
+frontend-metrics        metrics/benchmark feature
+frontend-activity       activity model and navigation activity
+frontend-websocket      socket service
+frontend-shared-ui      error boundary, HTTP client, store slices, render smoke tests
 ```
 
 Which lane to run:
 
 - implementation iteration → the exact changed test files;
-- RAG orchestration change → `rag-core` plus the relevant domain lane;
-- eval change → `rag-eval`;
-- benchmark change → `rag-benchmark`;
-- metrics change → `rag-metrics`;
-- compatibility change → `rag-compat`;
-- full RAG → CI, and once locally only for cross-cutting/high-risk completion.
+- change inside one domain → that domain's lane;
+- orchestration change → the service's `*-core` lane plus the relevant domain lane;
+- compatibility change → that service's `*-compat` lane;
+- cross-cutting/high-risk change → the affected service suite once;
+- full repository → CI.
 
-`compat/` holds behavior kept alive for older artifacts/APIs. Normal feature
-tasks neither read nor run it. Compatibility cases that cannot be separated
-from their own module's builders stay in place and carry the registered
-`compat` marker instead, so the whole compatibility surface is selectable
-either way:
+A `*-compat` lane holds behavior kept alive for older artifacts/APIs. Normal
+feature tasks neither read nor run it. Compatibility cases that cannot be
+separated from their own module's builders stay in place and carry the
+registered `compat` marker instead, so the whole compatibility surface is
+selectable either way:
 
 ```bash
 python scripts/ai/check.py lane rag-compat   # the compat/ directory
@@ -180,6 +208,11 @@ pytest app/tests -m "not compat"             # feature work
 
 When a compatibility path is retired, delete the production code and its
 compat tests together — never the test alone.
+
+Shared fakes live in one `_*_harness.py` per service (for example
+`backend/files/app/tests/_files_harness.py`). Fixtures that every lane may need
+are re-exported from a `conftest.py`; an autouse fixture only some modules need
+is imported by those modules, never by a lane-wide `conftest.py`.
 
 Full collection/duration inventory goes to a private file, not the transcript:
 

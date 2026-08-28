@@ -35,6 +35,17 @@ python scripts/ai/check.py fast rag \
 
 Do not repeatedly run the full service suite while iterating.
 
+### Tier 1b — DOMAIN LANE
+Run the lane that owns the changed behavior, not the whole service.
+
+```bash
+python scripts/ai/check.py lane files-review
+python scripts/ai/check.py lane frontend-metrics
+```
+
+The full lane table lives in `TESTING.md`. Compatibility lanes (`*-compat`) stay out of
+normal feature work.
+
 ### Tier 2 — SERVICE
 Run once near task completion only for cross-cutting or high-risk service changes.
 
@@ -69,6 +80,9 @@ CI remains the authoritative clean-environment validation.
 - When compatibility code is retired, delete its tests and update the support policy in the same task.
 - Do not combine independent cases into one giant loop solely to reduce reported test count.
 - Split test monoliths by stable behavior ownership when that improves focused selection.
+- Keep shared fakes in one `_*_harness.py` per service rather than re-declaring them per file.
+- Avoid autouse fixtures at directory scope: an identity or environment fixture that only
+  some modules need belongs in those modules, not in a lane `conftest.py`.
 
 ## Mypy policy
 Do not run mypy automatically for every Python edit.
