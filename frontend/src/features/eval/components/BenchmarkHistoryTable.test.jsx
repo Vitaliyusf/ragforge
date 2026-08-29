@@ -64,7 +64,7 @@ describe('BenchmarkHistoryTable', () => {
     expect(within(row).getByText(/golden_smoke_30 · v2/)).toBeInTheDocument()
     expect(within(row).getByText('Completed')).toBeInTheDocument()
     expect(within(row).getByText('2m 41s')).toBeInTheDocument()
-    expect(within(row).getByText('MRR 0.812')).toBeInTheDocument()
+    expect(within(row).getByText('MRR 0.81')).toBeInTheDocument()
   })
 
   it('keeps the benchmark id out of the row body and in its title', () => {
@@ -78,7 +78,7 @@ describe('BenchmarkHistoryTable', () => {
     setup([RUNNING])
     const row = screen.getAllByRole('row')[1]
     expect(within(row).getAllByText('—').length).toBeGreaterThan(0)
-    expect(within(row).queryByText('MRR 0.000')).not.toBeInTheDocument()
+    expect(within(row).queryByText('MRR 0.00')).not.toBeInTheDocument()
   })
 
   it('selects a run and downloads a terminal one by id', async () => {

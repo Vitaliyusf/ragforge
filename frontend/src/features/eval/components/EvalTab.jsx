@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { AlertTriangle, FlaskConical, RefreshCw, Upload } from 'lucide-react'
 import Button from '@/components/ui/Button'
 import EmptyState from '@/components/feedback/EmptyState'
@@ -12,9 +12,9 @@ import { useBenchmarkRuns } from '@/features/metrics/hooks/useBenchmarkRuns'
 import { useEvalActivityPublisher } from '@/features/activity/sources/EvalActivityProvider'
 import { useEvalRuns } from '@/features/metrics/hooks/useEvalRuns'
 import { isBenchmarkActive } from '../evalProfiles'
-import ActiveRunPanel from './ActiveRunPanel'
+import { benchmarkReport, evaluationReport } from '../runReport'
 import BenchmarkHistoryTable from './BenchmarkHistoryTable'
-import EvalResults from './EvalResults'
+import RunReport from './report/RunReport'
 import EvalSetupCard from './EvalSetupCard'
 import RunBenchmarkCard from './RunBenchmarkCard'
 import SingleEvaluation from './SingleEvaluation'
@@ -63,6 +63,12 @@ export default function EvalTab() {
   const [importOpen, setImportOpen] = useState(false)
   const dataset = datasets.find((entry) => entry.dataset_id === datasetId)
   const benchmarkRunning = isBenchmarkActive(benchmark)
+
+  // Both run kinds render through the same report. They are two different
+  // runs, so they get one report each rather than one merged view that would
+  // have to average a benchmark phase with an ad-hoc evaluation.
+  const benchmarkView = useMemo(() => benchmarkReport(benchmark, dataset), [benchmark, dataset])
+  const evaluationView = useMemo(() => evaluationReport(run, dataset), [run, dataset])
 
   const importer = (
     <GoldenSetImporter
@@ -186,14 +192,22 @@ export default function EvalTab() {
               />
             </RunBenchmarkCard>
 
-            <ActiveRunPanel
-              benchmark={benchmark}
+            <RunReport
+              report={benchmarkView}
               history={history}
+              dataset={dataset}
               busy={benchmarkBusy}
               onDownload={download}
+              onRetry={() => start(benchmark?.profile)}
             />
 
-            <EvalResults run={run} runs={runs} dataset={dataset} />
+            <RunReport
+              report={evaluationView}
+              runs={runs}
+              dataset={dataset}
+              busy={busy}
+              onRetry={() => startRun(run?.mode || 'retrieval')}
+            />
 
             <BenchmarkHistoryTable
               history={history}
