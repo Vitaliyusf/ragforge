@@ -61,6 +61,12 @@ class ModelExecutionSchemaTests(unittest.TestCase):
                     ]
                 },
             ),
+            ("chat_title", {"conversation_history": []}),
+            ("chat_summary", {"conversation_history": []}),
+            (
+                "memory_curation",
+                {"conversation_history": [], "existing_memory": []},
+            ),
         ]
 
         for request_type, input_payload in cases:

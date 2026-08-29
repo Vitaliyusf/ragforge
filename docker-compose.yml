@@ -240,9 +240,6 @@ services:
       INTERNAL_AUTH_SECRET: ${INTERNAL_AUTH_SECRET:?Set INTERNAL_AUTH_SECRET}
       RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672/
       MONGODB_URL: mongodb://memory:${MONGO_MEMORY_PASSWORD}@mongodb:27017/memory?authSource=memory
-      VLLM_BASE_URL: http://vllm:8000
-      VLLM_API_KEY: ${VLLM_API_KEY:-none}
-      DEFAULT_MODEL: ${DEFAULT_MODEL:-RedHatAI/Qwen3.5-4B-quantized.w4a16}
       QDRANT_ENABLED: ${MEMORY_QDRANT_ENABLED:-true}
       QDRANT_URL: http://qdrant:6333
       QDRANT_API_KEY: ${QDRANT_API_KEY:-}
@@ -258,8 +255,8 @@ services:
         condition: service_healthy
       qdrant:
         condition: service_started
-      vllm:
-        condition: service_started
+      llm_agent:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8007/ready', timeout=4)"]
       interval: 10s
@@ -267,7 +264,7 @@ services:
       retries: 12
       start_period: 20s
     restart: unless-stopped
-    networks: [messaging, data, ai]
+    networks: [messaging, data]
 
   files:
     <<: *runtime-security

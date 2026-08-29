@@ -1,165 +1,71 @@
-"""The utility LLM call behind exit summaries: what it sends, and how it fails."""
+"""Typed llm_agent requests used by chat-exit orchestration."""
+from unittest.mock import AsyncMock, Mock
 
-from unittest.mock import Mock
-
-import httpx
-
-from app.services.chat_exit_service import ChatExitService, _normalize_vllm_base_url
+from app.services.chat_exit_service import ChatExitService
 
 
-def test_normalize_vllm_base_url_accepts_root_or_v1():
-    assert _normalize_vllm_base_url("http://vllm:8000") == "http://vllm:8000/v1"
-    assert _normalize_vllm_base_url("http://vllm:8000/v1") == "http://vllm:8000/v1"
-    assert _normalize_vllm_base_url("") == "http://vllm:8000/v1"
-
-
-def test_request_llm_completion_returns_first_message_content(monkeypatch):
-    class _FakeResponse:
-        def raise_for_status(self) -> None:
-            return None
-
-        def json(self):
-            return {"choices": [{"message": {"content": "Generated headline"}}]}
-
-    class _FakeClient:
-        def __init__(self, timeout):
-            self.timeout = timeout
-
-        def __enter__(self):
-            return self
-
-        def __exit__(self, exc_type, exc, tb):
-            return False
-
-        def post(self, url, json, headers):
-            assert url.endswith("/chat/completions")
-            assert json["model"]
-            assert headers["Authorization"].startswith("Bearer ")
-            return _FakeResponse()
-
-    monkeypatch.setattr("app.services.chat_exit_service.httpx.Client", _FakeClient)
-
+def test_request_typed_llm_runs_the_async_rpc(monkeypatch):
     service = ChatExitService(Mock(), Mock(), Mock(), Mock())
+    transport = AsyncMock(return_value={"title": "Beta launch"})
+    monkeypatch.setattr(service, "_request_typed_llm_async", transport)
 
-    assert service._request_llm_completion("Name this conversation") == "Generated headline"
+    result = service._request_typed_llm(
+        "chat_title",
+        {"conversation_history": [{"role": "user", "content": "We launched."}]},
+        15.0,
+    )
 
-
-def test_request_llm_completion_disables_reasoning_for_utility_calls(monkeypatch):
-    """Qwen3-style reasoning models return null content unless thinking is off."""
-    captured = {}
-
-    class _FakeResponse:
-        def raise_for_status(self) -> None:
-            return None
-
-        def json(self):
-            return {"choices": [{"message": {"content": "A headline"}}]}
-
-    class _FakeClient:
-        def __init__(self, timeout):
-            self.timeout = timeout
-
-        def __enter__(self):
-            return self
-
-        def __exit__(self, exc_type, exc, tb):
-            return False
-
-        def post(self, url, json, headers):
-            captured.update(json)
-            return _FakeResponse()
-
-    monkeypatch.setattr("app.services.chat_exit_service.httpx.Client", _FakeClient)
-
-    service = ChatExitService(Mock(), Mock(), Mock(), Mock())
-    service._request_llm_completion("Name this conversation")
-
-    assert captured["chat_template_kwargs"] == {"enable_thinking": False}
+    assert result == {"title": "Beta launch"}
+    transport.assert_awaited_once()
 
 
-def test_request_llm_completion_strips_leaked_reasoning(monkeypatch):
-    """Any leaked <think> block is removed before the text is returned."""
-    class _FakeResponse:
-        def raise_for_status(self) -> None:
-            return None
+def test_conversation_history_normalizes_sender_roles():
+    history = ChatExitService._conversation_history(
+        [
+            {"sender": "User", "message": "Question"},
+            {"sender": "Assistant", "message": "Answer"},
+            {"sender": "unexpected", "message": "Fallback"},
+        ]
+    )
 
-        def json(self):
-            return {"choices": [{"message": {"content": "<think>hmm</think>Beta launch"}}]}
-
-    class _FakeClient:
-        def __init__(self, timeout):
-            self.timeout = timeout
-
-        def __enter__(self):
-            return self
-
-        def __exit__(self, exc_type, exc, tb):
-            return False
-
-        def post(self, url, json, headers):
-            return _FakeResponse()
-
-    monkeypatch.setattr("app.services.chat_exit_service.httpx.Client", _FakeClient)
-
-    service = ChatExitService(Mock(), Mock(), Mock(), Mock())
-
-    assert service._request_llm_completion("Name this") == "Beta launch"
+    assert history == [
+        {"role": "user", "content": "Question"},
+        {"role": "assistant", "content": "Answer"},
+        {"role": "user", "content": "Fallback"},
+    ]
 
 
-def test_request_llm_completion_raises_when_llm_returns_no_choices(monkeypatch):
-    class _FakeResponse:
-        def raise_for_status(self) -> None:
-            return None
+def test_memory_curation_applies_only_actions_for_supplied_memory_ids():
+    memory_service = Mock()
+    memory_service.get_all_memories.return_value = [
+        {"id": "allowed", "content": "Old", "category": "chat_insight"}
+    ]
+    service = ChatExitService(Mock(), Mock(), memory_service, Mock())
+    service._request_typed_llm = Mock(
+        return_value={
+            "actions": [
+                {"action": "add", "content": "New preference", "category": "user_preference"},
+                {"action": "update", "memory_id": "allowed", "content": "Updated"},
+                {"action": "delete", "memory_id": "not-supplied"},
+            ],
+            "summary": "Added and updated memory",
+        }
+    )
 
-        def json(self):
-            return {"choices": []}
+    service._curate_memories(
+        [
+            {"sender": "User", "message": "Remember this"},
+            {"sender": "Assistant", "message": "Okay"},
+        ],
+        "chat-1",
+    )
 
-    class _FakeClient:
-        def __init__(self, timeout):
-            self.timeout = timeout
-
-        def __enter__(self):
-            return self
-
-        def __exit__(self, exc_type, exc, tb):
-            return False
-
-        def post(self, url, json, headers):
-            return _FakeResponse()
-
-    monkeypatch.setattr("app.services.chat_exit_service.httpx.Client", _FakeClient)
-
-    service = ChatExitService(Mock(), Mock(), Mock(), Mock())
-
-    try:
-        service._request_llm_completion("This should fail")
-    except RuntimeError as exc:
-        assert "No completion choices" in str(exc)
-    else:
-        raise AssertionError("Expected RuntimeError when the LLM returned no choices")
-
-
-def test_request_llm_completion_raises_runtime_error_on_timeout(monkeypatch):
-    class _FakeClient:
-        def __init__(self, timeout):
-            self.timeout = timeout
-
-        def __enter__(self):
-            return self
-
-        def __exit__(self, exc_type, exc, tb):
-            return False
-
-        def post(self, url, json, headers):
-            raise httpx.TimeoutException("timed out")
-
-    monkeypatch.setattr("app.services.chat_exit_service.httpx.Client", _FakeClient)
-
-    service = ChatExitService(Mock(), Mock(), Mock(), Mock())
-
-    try:
-        service._request_llm_completion("This should time out")
-    except RuntimeError as exc:
-        assert "timed out" in str(exc).lower()
-    else:
-        raise AssertionError("Expected RuntimeError when the chat-exit LLM timed out")
+    service._request_typed_llm.assert_called_once()
+    assert service._request_typed_llm.call_args.args[0] == "memory_curation"
+    memory_service.create_memory.assert_called_once_with(
+        "New preference",
+        "user_preference",
+        {"source": "llm_agent", "chat_id": "chat-1"},
+    )
+    memory_service.update_memory.assert_called_once_with("allowed", content="Updated")
+    memory_service.delete_memory.assert_not_called()

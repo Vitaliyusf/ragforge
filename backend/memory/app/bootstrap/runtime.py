@@ -75,7 +75,7 @@ class MemoryApplicationRuntime:
         }
 
     def readiness_payload(self) -> tuple[dict, bool]:
-        """Return core dependency state; optional Qdrant/vLLM remain degraded."""
+        """Return core dependency state; optional Qdrant remains degraded."""
         try:
             mongodb_ready = bool(get_client().admin.command("ping").get("ok"))
         except Exception:
@@ -90,7 +90,7 @@ class MemoryApplicationRuntime:
                 "status": "ready" if is_ready else "not_ready",
                 "service": settings.service_name,
                 "checks": {"mongodb": mongodb_ready, "rabbitmq": rabbitmq_ready},
-                "degraded": {"qdrant": "optional", "vllm": "optional"},
+                "degraded": {"qdrant": "optional"},
             },
             is_ready,
         )

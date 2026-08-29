@@ -5,7 +5,6 @@ import time
 from app.llm.interfaces import ILLMClient, LLMInvocation
 from shared.logging import ServiceLogger
 from app.core.config import Settings
-from app.core.constants import LLMImplementation
 from app.core.errors import TimeoutException, ServiceException
 from app.services.base import BaseService
 from app.services.text_window import ContextWindowResolver, estimate_tokens, split_text
@@ -168,9 +167,6 @@ class SummaryService(BaseService):
             model, reserved_tokens=overhead, output_tokens=max_tokens
         )
 
-        # Ollama has no reliable window probe; keep the historical conservative cap.
-        if self.config.llm_implementation == LLMImplementation.OLLAMA:
-            budget = min(budget, 3000)
         return budget
 
     def _summarize_sections(

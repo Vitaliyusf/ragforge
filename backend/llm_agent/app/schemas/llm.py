@@ -1,7 +1,7 @@
 """Typed schemas for llm_agent model execution and shared message envelopes."""
 from __future__ import annotations
 
-from typing import Annotated, Any, Dict, List, Literal, Optional, Union
+from typing import Annotated, Any, Dict, List, Literal, Optional, Union, cast
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, model_validator
 
@@ -14,6 +14,9 @@ RequestType = Literal[
     "content_risk_scan",
     "query_rewrite",
     "memory_extraction",
+    "chat_title",
+    "chat_summary",
+    "memory_curation",
 ]
 ReplyStatus = Literal["success", "error"]
 # The provider's own bounded finish reason. `unknown` = no provider response.
@@ -135,6 +138,18 @@ class MemoryExtractionInput(StrictSchema):
     extraction_scope: Optional[str] = None
 
 
+class ChatUtilityInput(StrictSchema):
+    """Conversation input shared by chat-title and chat-summary requests."""
+
+    conversation_history: List[ConversationMessage]
+
+
+class MemoryCurationInput(ChatUtilityInput):
+    """Conversation and current state used to plan bounded memory mutations."""
+
+    existing_memory: List[Dict[str, Any]] = Field(default_factory=list)
+
+
 class ModelExecutionRequestBase(StrictSchema):
     """Typed inner request payload carried inside the shared envelope."""
 
@@ -181,6 +196,27 @@ class MemoryExtractionRequest(ModelExecutionRequestBase):
     input: MemoryExtractionInput
 
 
+class ChatTitleRequest(ModelExecutionRequestBase):
+    """Typed request payload for generating a concise chat title."""
+
+    request_type: Literal["chat_title"]
+    input: ChatUtilityInput
+
+
+class ChatSummaryRequest(ModelExecutionRequestBase):
+    """Typed request payload for compressing chat history."""
+
+    request_type: Literal["chat_summary"]
+    input: ChatUtilityInput
+
+
+class MemoryCurationRequest(ModelExecutionRequestBase):
+    """Typed request payload for planning durable memory mutations."""
+
+    request_type: Literal["memory_curation"]
+    input: MemoryCurationInput
+
+
 ModelExecutionRequest = Annotated[
     Union[
         AnswerGenerationRequest,
@@ -188,6 +224,9 @@ ModelExecutionRequest = Annotated[
         ContentRiskScanRequest,
         QueryRewriteRequest,
         MemoryExtractionRequest,
+        ChatTitleRequest,
+        ChatSummaryRequest,
+        MemoryCurationRequest,
     ],
     Field(discriminator="request_type"),
 ]
@@ -237,7 +276,7 @@ _REQUEST_MESSAGE_ADAPTER = TypeAdapter(ModelExecutionRequestMessage)
 
 def validate_model_execution_request_message(payload: Dict[str, Any]) -> ModelExecutionRequestMessage:
     """Validate a raw inbound message into the shared typed request envelope."""
-    return _REQUEST_MESSAGE_ADAPTER.validate_python(payload)
+    return cast(ModelExecutionRequestMessage, _REQUEST_MESSAGE_ADAPTER.validate_python(payload))
 
 
 # Backward-compatible local alias for callers using the older request name.
@@ -352,12 +391,53 @@ class MemoryExtractionParsedOutput(StrictSchema):
     memories: List[MemoryItem]
 
 
+class ChatTitleParsedOutput(StrictSchema):
+    """Validated title returned for an exiting conversation."""
+
+    title: str
+
+
+class ChatSummaryParsedOutput(StrictSchema):
+    """Validated compressed history returned for an exiting conversation."""
+
+    summary: str
+
+
+class MemoryCurationAction(StrictSchema):
+    """One bounded mutation proposed against the caller's current memories."""
+
+    action: Literal["add", "update", "delete"]
+    memory_id: Optional[str] = None
+    content: Optional[str] = None
+    category: Optional[str] = None
+
+    @model_validator(mode="after")
+    def validate_action_fields(self) -> "MemoryCurationAction":
+        if self.action == "add" and not self.content:
+            raise ValueError("add actions require content")
+        if self.action == "update" and (not self.memory_id or not self.content):
+            raise ValueError("update actions require memory_id and content")
+        if self.action == "delete" and not self.memory_id:
+            raise ValueError("delete actions require memory_id")
+        return self
+
+
+class MemoryCurationParsedOutput(StrictSchema):
+    """Validated, bounded memory mutation plan."""
+
+    actions: List[MemoryCurationAction] = Field(default_factory=list, max_length=10)
+    summary: str
+
+
 ParsedOutput = Union[
     AnswerGenerationParsedOutput,
     AnswerReviewParsedOutput,
     ContentRiskScanParsedOutput,
     QueryRewriteParsedOutput,
     MemoryExtractionParsedOutput,
+    ChatTitleParsedOutput,
+    ChatSummaryParsedOutput,
+    MemoryCurationParsedOutput,
 ]
 
 
@@ -454,4 +534,4 @@ def answer_review_output_schema_sha256() -> str:
     ``ANSWER_EVALUATION_OUTPUT_SCHEMA_SHA256`` so a benchmark manifest can
     record it; see ``scripts/answer_review_schema_sha.py``.
     """
-    return canonical_schema_sha256(AnswerReviewParsedOutput.model_json_schema())
+    return str(canonical_schema_sha256(AnswerReviewParsedOutput.model_json_schema()))

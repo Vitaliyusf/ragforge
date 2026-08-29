@@ -32,89 +32,36 @@
   },
   "$schema": "https://json.schemastore.org/claude-code-settings.json",
   "hooks": {
-    "SessionStart": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node",
-            "args": [
-              "${CLAUDE_PROJECT_DIR}/.claude/hooks/brain-gate.mjs",
-              "session-start"
-            ]
-          }
-        ]
-      }
-    ],
-    "UserPromptSubmit": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node",
-            "args": [
-              "${CLAUDE_PROJECT_DIR}/.claude/hooks/brain-gate.mjs",
-              "prompt"
-            ]
-          }
-        ]
-      }
-    ],
     "PreToolUse": [
       {
-        "matcher": "Bash|PowerShell|Read|Glob|Grep|Agent|Edit|Write",
+        "matcher": "Read|Glob|Grep|Edit|Write|Bash|PowerShell|Agent",
         "hooks": [
           {
             "type": "command",
-            "command": "node",
+            "command": "py",
             "args": [
-              "${CLAUDE_PROJECT_DIR}/.claude/hooks/brain-gate.mjs",
+              "-3.12",
+              "${CLAUDE_PROJECT_DIR}/.claude/hooks/repo-bootstrap.py",
               "pre"
-            ]
+            ],
+            "timeout": 3
           }
         ]
       }
     ],
     "PostToolUse": [
       {
-        "matcher": "Bash|PowerShell",
+        "matcher": "Read|Bash|PowerShell",
         "hooks": [
           {
             "type": "command",
-            "command": "node",
+            "command": "py",
             "args": [
-              "${CLAUDE_PROJECT_DIR}/.claude/hooks/brain-gate.mjs",
+              "-3.12",
+              "${CLAUDE_PROJECT_DIR}/.claude/hooks/repo-bootstrap.py",
               "post"
-            ]
-          }
-        ]
-      }
-    ],
-    "PostToolUseFailure": [
-      {
-        "matcher": "Bash|PowerShell",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node",
-            "args": [
-              "${CLAUDE_PROJECT_DIR}/.claude/hooks/brain-gate.mjs",
-              "failure"
-            ]
-          }
-        ]
-      }
-    ],
-    "SessionEnd": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node",
-            "args": [
-              "${CLAUDE_PROJECT_DIR}/.claude/hooks/brain-gate.mjs",
-              "session-end"
-            ]
+            ],
+            "timeout": 3
           }
         ]
       }

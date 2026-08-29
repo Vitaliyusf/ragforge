@@ -119,21 +119,20 @@
     },
     {
       "id": "CAP-008",
-      "name": "Memory tool-calling agent",
+      "name": "Typed memory curation",
       "status": "implemented",
-      "owner": "memory",
+      "owner": "memory/llm_agent",
       "canonical_paths": [
-        "backend/memory/app/agent/memory_agent.py"
+        "backend/memory/app/services/chat_exit_service.py",
+        "backend/llm_agent/app/llm/prompts/memory_maintenance.py"
       ],
       "search_terms": [
-        "create_agent",
-        "list_memories",
-        "add_memory",
-        "update_memory",
-        "delete_memory",
-        "done"
+        "memory_curation",
+        "chat_title",
+        "chat_summary",
+        "MemoryCurationAction"
       ],
-      "notes": "Harden existing agent rather than create duplicate."
+      "notes": "llm_agent owns model execution; Memory validates and applies only mutations against tenant-scoped supplied IDs."
     },
     {
       "id": "CAP-009",

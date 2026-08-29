@@ -1,16 +1,2 @@
 # Shared runtime pins live in docker/requirements-base.txt.
-#
-# The local Hugging Face inference stack backs the `huggingface` LLM
-# implementation, which is still selectable through LLM_IMPLEMENTATION, the
-# gateway model routes and the config UI.
-#
-# transformers 5.x and torch >= 2.10 are taken for the advisories that only
-# they fix (PYSEC-2026-2288/2289/2290, PYSEC-2025-194, PYSEC-2026-2286,
-# CVE-2025-3001), not for freshness. `pipeline`, `AutoModel` and
-# `AutoTokenizer` — everything HuggingFaceClient and ModelService use — are
-# unchanged, and the llm_agent and embedding lanes pass without code changes.
-transformers==5.16.1
-torch==2.13.0
-accelerate==1.14.0
-# Slow tokenizers for the T5/BART summarization models this client can load.
-sentencepiece==0.2.2
+# llm_agent delegates inference to the separately managed vLLM service.

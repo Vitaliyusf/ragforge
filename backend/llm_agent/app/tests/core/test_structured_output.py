@@ -321,7 +321,15 @@ class StructuredOutputFailureContractTests(unittest.TestCase):
     """Every structured action fails the same way, and says why."""
 
     def test_truncated_structured_outputs_remain_explicit_errors(self):
-        for action in ("answer_evaluation", "content_risk_scan", "query_rewrite", "memory_extraction"):
+        for action in (
+            "answer_evaluation",
+            "content_risk_scan",
+            "query_rewrite",
+            "memory_extraction",
+            "chat_title",
+            "chat_summary",
+            "memory_curation",
+        ):
             with self.subTest(action=action):
                 service = _service({action: '{"truncated":'})
                 reply = service.execute(request_message(action, VALID_INPUTS[action]))

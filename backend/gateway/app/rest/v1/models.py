@@ -62,7 +62,7 @@ async def get_model_info(
 @router.post("/models/{model}/download")
 async def download_model(
     model: str,
-    implementation: str = Query(default="huggingface"),
+    implementation: str = Query(default="vllm"),
     service: ModelManagementService = Depends(get_model_management_service),
 ):
     """Download a model."""

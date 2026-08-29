@@ -134,7 +134,7 @@ class ManagementHandlerCompatibilityTests(unittest.TestCase):
         service = FakeConfigService()
         handler = ConfigManagementHandler(producer, service, FakeLogger(), _settings())
 
-        handler.handle(_typed_request("switch_implementation", implementation="ollama"))
+        handler.handle(_typed_request("switch_implementation", implementation="vllm"))
 
         topic, reply = producer.messages[-1]
         self.assertEqual(topic, "gateway.replies")
