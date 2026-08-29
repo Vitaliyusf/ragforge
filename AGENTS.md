@@ -20,8 +20,7 @@ Never let an old task, handoff, benchmark note, or README override current code 
 
 1. Inspect Git state once: `git status --short`, `git branch --show-current`, `git rev-parse HEAD`.
 2. If a task ID is named, read only `docs/ai/tasks/<TASK-ID>.md` first.
-3. Locate current ownership with the local repo brain before broad search:
-   `python scripts/ai/brain.py query "<task-id> <goal>" --top 12`.
+3. Build the shared source-oriented ownership packet before broad search; see **Canonical repository bootstrap** below.
 4. Inspect the returned implementation/tests and direct callers only.
 5. If acceptance criteria are already satisfied, return **NO-OP VERIFIED** and run only acceptance-focused checks.
 
@@ -36,8 +35,8 @@ python scripts/ai/brain.py sync
 ## Execution efficiency
 
 - Before inspecting implementation files, running `find`/`grep`, or reading recent commits, you MUST run at least one Repo Brain query unless the task is a trivial one-file edit with an explicit path.
-- Use the Repo Brain first; avoid broad repository exploration when targeted retrieval is sufficient.
-- Use at most 2 Brain query refinements before targeted file inspection.
+- Use the shared repository bootstrap first; avoid broad repository exploration when targeted retrieval is sufficient.
+- Use one shared repository bootstrap and at most one concrete refinement before targeted file inspection.
 - Do not repeat inventory, searches, benchmarks, or evidence already available for the active task.
 - Never print/read an entire source file over ~250 lines unless the whole file is genuinely required; inspect symbols or bounded line ranges first.
 - After Brain retrieval, inspect no more than ~8 initial implementation/test files before deciding whether more context is actually needed.
@@ -138,3 +137,18 @@ Return:
 8. Copy-paste commit description.
 
 Do not commit or push unless explicitly requested.
+
+<!-- RAGFORGE_SHARED_BOOTSTRAP_BEGIN -->
+## Canonical repository bootstrap
+
+These operational rules supersede older direct initial `brain.py query`, generic Windows `python`, and ad-hoc test-environment wording elsewhere in this file.
+
+- For a named task, read `docs/ai/tasks/<TASK-ID>.md`, then run the shared source-oriented bootstrap before broad repository search.
+- Windows PowerShell: `$env:PYTHONIOENCODING="utf-8"; py -3.12 scripts/ai/repo_bootstrap.py --task "<TASK-ID>" --query "<goal>" --top 12`.
+- Do not use the literal task id in a direct `brain.py query` as the initial ownership lookup; the shared bootstrap removes task-id ranking bias and diversifies implementation/test evidence.
+- One bootstrap is the default. At most one refinement is allowed, using concrete behavior, symbol, endpoint, or contract terms.
+- Inspect the returned implementation/tests first. Do not replace the packet with repo-wide `rg --files`, recursive `find`, or feature-wide inventory unless the packet is genuinely insufficient.
+- On Windows, `py -3.12` is the first Python launcher. Do not probe generic `python`, create a new uv environment, or jump to Docker before trying it.
+- Validation environment ownership belongs to `scripts/ai/check.py` and the active task's explicit build commands. If the canonical check path reports `BLOCKED`, do not create an ad-hoc `Dockerfile.test`, venv, or dependency install merely to manufacture local green validation.
+- A required production image build is not a substitute test environment and should run only when the task explicitly requires it.
+<!-- RAGFORGE_SHARED_BOOTSTRAP_END -->

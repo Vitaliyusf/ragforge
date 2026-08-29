@@ -162,6 +162,37 @@
         "frontend/src/features/chat/components/MessageList.authorization.test.jsx",
         "frontend/src/features/chat/components/MessageList.performance.test.jsx"
       ]
+    },
+    {
+      "id": "DEC-010",
+      "status": "accepted",
+      "title": "Eval renders a run as a report: header, execution flow, KPIs, tabbed evidence",
+      "decision": "A benchmark run and a single evaluation run are both normalised by frontend/src/features/eval/runReport.js into one report shape and rendered by one component. The page order is fixed: human run header (profile, dataset, time, duration, status; the id is secondary metadata), execution flow, KPI summary, then tabs (Overview / Retrieval / Quality / Failures / Items / Configuration). Label-validation warnings and run failures are rendered outside the tabs. A failure is stated as what happened, impact, likely cause when the error text supports one, next actions that the page can actually perform, and the raw exception under a collapsed Technical details block. A comparison declares 'Not directly comparable' and lists the changed provenance fields above any delta, and colours a delta only when the run pair is comparable and the metric direction is defined.",
+      "reason": "The previous surface was a stack of cards and accordions in which a UUID was the run's name, a skipped phase read like a failed one, a stack trace was the primary error copy, and deltas were shown without a comparability verdict. Each of those turns an evaluation into a misdiagnosis. Keeping every derivation in runReport.js also removes the three separate metric formatters the eval surfaces had grown.",
+      "do_not_do": [
+        "Do not render a skipped or unsupported stage in a failure tone, and do not omit which stage blocked it.",
+        "Do not put a raw exception, a stale-label warning or a run failure behind a tab or a disclosure summary.",
+        "Do not colour a delta when the runs are not comparable or the metric has no direction in METRIC_DIRECTION.",
+        "Do not invent a metric the run did not record: an unmeasured figure is a dash, never a zero.",
+        "Do not offer a run action (retry, export, trace) that the page cannot actually perform.",
+        "Do not add a second metric formatter to the eval feature; format through metricsConfig or runReport."
+      ],
+      "revisit_if": [
+        "Benchmark per-item rows become available to the page, at which point the Items tab stops pointing at the diagnostic archive.",
+        "Runs gain server-computed latency percentiles, replacing the client-side percentiles taken from per-item rows.",
+        "A trace or log deep link becomes reachable from the frontend, adding a next action to the failure block."
+      ],
+      "evidence": [
+        "EVAL-UX-01",
+        "frontend/src/features/eval/runReport.js",
+        "frontend/src/features/eval/components/report/RunReport.jsx",
+        "frontend/src/features/eval/components/report/ComparisonPanel.jsx",
+        "frontend/src/features/eval/components/report/RunFailure.jsx",
+        "frontend/src/features/eval/components/report/ItemExplorer.jsx",
+        "frontend/src/components/ui/Tabs.jsx",
+        "frontend/src/features/eval/runReport.test.js",
+        "frontend/src/features/eval/components/report/RunReport.test.jsx"
+      ]
     }
   ]
 }

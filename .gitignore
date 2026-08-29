@@ -92,3 +92,7 @@ htmlcov/
 !/.claude/settings.json
 !/.claude/hooks/
 !/.claude/hooks/**
+
+# ...but never the Python build caches the hook runtime leaves behind.
+/.claude/hooks/**/__pycache__
+/.claude/hooks/**/*.pyc
