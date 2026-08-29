@@ -33,7 +33,6 @@ from app.services.summary_service import SummaryService
 from app.services.metadata_service import MetadataService
 from app.services.model_service import ModelService
 from app.services.config_service import ConfigService
-from app.messaging.implementations.rabbitmq import RabbitMQProducerImpl
 from app.rest.routes import setup_routes
 
 # ---------------------------------------------------------------------------
@@ -82,20 +81,6 @@ def _startup_llm_checks() -> None:
             logger.log("main:startup", "Model preloading initiated", {"models": model_configs})
         except Exception as e:
             logger.log("main:startup", "Error preloading models", {"error": str(e)}, hypothesis_id="W")
-
-
-def _rebuild_llm_stack(new_impl: str, producer: RabbitMQProducerImpl) -> None:
-    """Recreate all LLM-dependent services and handlers after an implementation switch.
-
-    Called exclusively from the config_management consumer handler.
-    """
-    global llm_client, llm_service, summary_service, metadata_service, model_service
-
-    llm_client = LLMClientFactory.create(settings, new_impl)
-    llm_service = LLMService(llm_client, logger, settings)
-    summary_service = SummaryService(llm_client, logger, settings)
-    metadata_service = MetadataService(llm_client, logger, settings)
-    model_service = ModelService(llm_client, model_cache, logger, settings)
 
 
 @asynccontextmanager

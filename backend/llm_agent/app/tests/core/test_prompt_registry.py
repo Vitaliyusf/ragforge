@@ -32,6 +32,9 @@ class PromptRegistryTests(unittest.TestCase):
             "content_risk_scan",
             "query_rewrite",
             "memory_extraction",
+            "chat_title",
+            "chat_summary",
+            "memory_curation",
         ):
             with self.subTest(request_type=request_type):
                 entry = registry.resolve(request_type, None)

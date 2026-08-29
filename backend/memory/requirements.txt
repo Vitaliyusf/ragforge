@@ -1,7 +1,2 @@
 # Shared runtime pins live in docker/requirements-base.txt.
-#
-# The LangChain trio moves as one group: langchain pins langchain-core and
-# langgraph ranges, and langchain-openai pins langchain-core again.
-langchain==1.3.18
-langchain-openai==1.6.0
-langchain-core==1.6.1
+# Memory has no service-specific runtime dependencies.

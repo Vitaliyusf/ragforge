@@ -5,9 +5,6 @@ dist/
 coverage/
 
 # Python
-__pycache__/
-*.py[cod]
-*.pyo
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
@@ -96,3 +93,6 @@ htmlcov/
 # ...but never the Python build caches the hook runtime leaves behind.
 /.claude/hooks/**/__pycache__
 /.claude/hooks/**/*.pyc
+# Python bytecode / interpreter caches
+__pycache__/
+*.py[cod]

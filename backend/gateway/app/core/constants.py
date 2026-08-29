@@ -140,9 +140,7 @@ class ReviewDecision(str, Enum):
 
 class LLMImplementation(str, Enum):
     """Supported LLM backend implementations."""
-    HUGGINGFACE = "huggingface"
     VLLM = "vllm"
-    OLLAMA = "ollama"
 
 
 # ── Kafka Action Names ────────────────────────────────────────────────────────

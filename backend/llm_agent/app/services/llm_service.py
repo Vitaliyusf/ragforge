@@ -1,34 +1,19 @@
 """Typed LLM execution service."""
 from __future__ import annotations
 
-import json
 import time
 from typing import Any, Callable, Dict, List, Optional
 
 from app.core.config import Settings
-from app.services.base import BaseService
-from app.services.text_window import ContextWindowResolver, estimate_tokens, truncate_middle
 from app.core.errors import (
     ServiceException,
     StreamingNotSupportedException,
     TimeoutException,
 )
-from shared.logging import ServiceLogger
-from app.core.safety import redact_secrets, sanitize_debug_text
+from app.core.safety import sanitize_debug_text
 from app.core.tracing import ExecutionTracer
-from app.llm.interfaces import (
-    ILLMClient,
-    LLMInvocation,
-    LLMUsage,
-    ProviderHTTPError,
-    ProviderProtocolError,
-    ProviderTimeoutError,
-)
-from app.llm.prompt_registry import (
-    PromptRegistry,
-    STRUCTURED_OUTPUT_DEBUG_PREFIX,
-    StructuredExtractionResult,
-)
+from app.llm.interfaces import ILLMClient, LLMInvocation
+from app.llm.prompt_registry import PromptRegistry
 from app.schemas.llm import (
     ErrorEntry,
     ModelExecutionRequestMessage,
@@ -37,7 +22,11 @@ from app.schemas.llm import (
     TraceInfo,
     UsageInfo,
 )
-from shared.metrics import METRICS, traffic_class
+from app.services.base import BaseService
+from app.services.execution_pipeline import ExecutionPipeline
+from app.services.text_window import ContextWindowResolver
+from shared.logging import ServiceLogger
+from shared.metrics import METRICS
 
 
 StreamPublisher = Callable[[ModelExecutionStreamPayload], None]
@@ -94,6 +83,13 @@ class LLMService(BaseService):
         self.prompt_registry = PromptRegistry(config)
         self.tracer = ExecutionTracer(config)
         self.context_window = ContextWindowResolver(llm_client, config, logger)
+        self.pipeline = ExecutionPipeline(
+            llm_client,
+            config,
+            self.prompt_registry,
+            self.context_window,
+            logger,
+        )
 
     def generate_text(
         self,
@@ -124,7 +120,7 @@ class LLMService(BaseService):
                     timeout=timeout,
                 )
             )
-            return result.raw_output
+            return str(result.raw_output)
         except TimeoutError as exc:
             raise TimeoutException(
                 f"LLM generation timed out after {timeout}s",
@@ -185,12 +181,16 @@ class LLMService(BaseService):
         )
 
         try:
-            entry = self.prompt_registry.resolve(request.request_type, request.prompt_version)
-            resolved_prompt_version = entry.prompt_version
-            resolved_model = request.model or entry.default_model(self.config)
-            resolved_max_tokens = self.config.max_tokens_for_request_type(request.request_type)
+            plan = self.pipeline.plan(
+                request_message,
+                streaming_requested=stream_publisher is not None,
+            )
+            entry = plan.entry
+            resolved_prompt_version = plan.prompt_version
+            resolved_model = plan.model
+            resolved_max_tokens = plan.max_tokens
             trace.add_metadata(
-                self._build_trace_metadata(
+                self.pipeline.build_trace_metadata(
                     request_message=request_message,
                     resolved_model=resolved_model,
                     resolved_prompt_version=resolved_prompt_version,
@@ -202,15 +202,9 @@ class LLMService(BaseService):
                 inputs={"request_type": request.request_type},
                 metadata={"prompt_version": resolved_prompt_version},
             ) as span:
-                rendered_prompt = entry.build_prompt(request)
-                system_prompt = rendered_prompt.system_prompt
-                raw_prompt = rendered_prompt.raw_prompt
-                raw_prompt_budget = self.context_window.input_budget_chars(
-                    resolved_model,
-                    reserved_tokens=estimate_tokens(system_prompt),
-                    output_tokens=resolved_max_tokens,
-                )
-                raw_prompt = truncate_middle(raw_prompt, raw_prompt_budget)
+                rendered = self.pipeline.render(request_message, plan)
+                system_prompt = rendered.system_prompt
+                raw_prompt = rendered.raw_prompt
                 span.finish(
                     outputs={
                         "system_prompt_length": len(system_prompt),
@@ -220,9 +214,7 @@ class LLMService(BaseService):
 
             visible_reasoning_steps.append(f"Rendered {resolved_prompt_version}")
 
-            can_stream = bool(
-                request_message.stream_to and entry.streaming_allowed and stream_publisher
-            )
+            can_stream = plan.can_stream
 
             def on_token(token: str, index: int) -> None:
                 nonlocal token_event_count
@@ -236,59 +228,26 @@ class LLMService(BaseService):
                     )
                 )
 
-            timeout = request.timeout or self.config.llm_timeout
-            invocation = LLMInvocation(
-                system_prompt=system_prompt,
-                raw_prompt=raw_prompt,
-                model=resolved_model,
-                timeout=timeout,
-                max_tokens=resolved_max_tokens,
-                on_token=on_token if can_stream else None,
-                metadata={
-                    "request_type": request.request_type,
-                    "request_id": request_message.request_id,
-                    "trace_id": request_message.trace_id,
-                    "correlation_id": request_message.correlation_id,
-                    "structured_output_hint": (
-                        "json_object"
-                        if request.request_type
-                        in {
-                            "answer_evaluation",
-                            "content_risk_scan",
-                            "query_rewrite",
-                            "memory_extraction",
-                        }
-                        else None
-                    ),
-                    "structured_output_transport": (
-                        self.config.answer_evaluation_structured_output_transport
-                        if request.request_type == "answer_evaluation"
-                        else "legacy"
-                    ),
-                    "structured_output_schema": (
-                        entry.output_model.model_json_schema()
-                        if request.request_type == "answer_evaluation"
-                        and self.config.answer_evaluation_structured_output_transport
-                        == "json_schema"
-                        else None
-                    ),
-                },
-            )
-
             with trace.span(
                 "model_invoke",
                 inputs={"model": resolved_model, "streaming": can_stream},
-                metadata={"provider": self.config.llm_implementation, "timeout": timeout},
+                metadata={"provider": self.config.llm_implementation, "timeout": plan.timeout},
             ) as span:
                 provider_started_at = time.perf_counter()
                 try:
-                    generation = self.llm_client.generate(invocation)
+                    evidence = self.pipeline.invoke(
+                        request_message,
+                        plan,
+                        rendered,
+                        on_token if can_stream else None,
+                    )
                 finally:
                     provider_duration_seconds = time.perf_counter() - provider_started_at
+                generation = evidence.generation
                 raw_output = generation.raw_output or ""
                 finish_reason = generation.finish_reason or "completed"
                 raw_provider_finish_reason = finish_reason
-                usage = self._normalize_usage(generation.usage)
+                usage = self.pipeline.normalize_usage(generation.usage)
                 span.finish(
                     outputs={
                         "finish_reason": finish_reason,
@@ -299,7 +258,7 @@ class LLMService(BaseService):
             visible_reasoning_steps.append(f"Invoked model {resolved_model}")
         except StreamingNotSupportedException as exc:
             status = "error"
-            errors.append(self._error_entry("streaming_not_supported", str(exc)))
+            errors.append(self.pipeline.error_entry("streaming_not_supported", str(exc)))
             visible_reasoning_steps.append("Streaming was not supported by the active provider")
             self._publish_stream_error(stream_publisher, "streaming_not_supported", str(exc))
             trace.finish(outputs={"status": status, "error_codes": [err.code for err in errors]}, error=exc)
@@ -308,10 +267,10 @@ class LLMService(BaseService):
             # A provider/inference failure and a local failure before the call
             # are different diagnoses: one points at the model server, the
             # other at this service.
-            error_code = self._provider_failure_code(
+            error_code = self.pipeline.provider_failure_code(
                 exc, provider_attempted=provider_duration_seconds is not None
             )
-            errors.append(self._error_entry(error_code, str(exc)))
+            errors.append(self.pipeline.error_entry(error_code, str(exc)))
             visible_reasoning_steps.append("Execution failed")
             self._publish_stream_error(stream_publisher, error_code, str(exc))
             trace.finish(outputs={"status": status, "error_codes": [err.code for err in errors]}, error=exc)
@@ -323,17 +282,12 @@ class LLMService(BaseService):
                     metadata={"structured_output_required": entry.structured_output_required},
                 ) as span:
                     try:
-                        parsed_payload = (
-                            entry.parser(raw_output, request)
-                            if entry.parser_accepts_request
-                            else entry.parser(raw_output)
-                        )
-                        if isinstance(parsed_payload, StructuredExtractionResult):
-                            structured_output_debug = parsed_payload.metadata
-                            parsed_payload = parsed_payload.payload
+                        decoded = self.pipeline.decode(raw_output, request_message, plan)
+                        parsed_payload = decoded.payload
+                        structured_output_debug = decoded.debug
                     except Exception as exc:
                         parse_stage = "parse"
-                        self._log_structured_output_failure(
+                        self.pipeline.log_structured_output_failure(
                             request_message=request_message,
                             resolved_model=resolved_model,
                             resolved_prompt_version=resolved_prompt_version,
@@ -351,15 +305,15 @@ class LLMService(BaseService):
                     metadata=None,
                 ) as span:
                     try:
-                        parsed_payload = self._finalize_parsed_payload(
+                        parsed_payload = self.pipeline.finalize_payload(
                             request_message=request_message,
                             parsed_payload=parsed_payload,
                             resolved_model=resolved_model,
                         )
-                        parsed_output = entry.output_model.model_validate(parsed_payload)
+                        parsed_output = self.pipeline.validate(plan, parsed_payload)
                     except Exception as exc:
                         parse_stage = "validation"
-                        self._log_structured_output_failure(
+                        self.pipeline.log_structured_output_failure(
                             request_message=request_message,
                             resolved_model=resolved_model,
                             resolved_prompt_version=resolved_prompt_version,
@@ -374,7 +328,9 @@ class LLMService(BaseService):
 
                 visible_reasoning_steps.append("Validated parsed output")
                 if structured_output_debug:
-                    visible_reasoning_steps.extend(self._build_structured_output_debug_steps(structured_output_debug))
+                    visible_reasoning_steps.extend(
+                        self.pipeline.structured_output_debug_steps(structured_output_debug)
+                    )
                     if structured_output_debug.get("payload_count", 0) > 1:
                         self.logger.log(
                             "service:llm",
@@ -417,7 +373,7 @@ class LLMService(BaseService):
                     # The output was rejected somewhere other than the two
                     # instrumented stages. `unknown` is the honest label.
                     parse_stage = "unknown"
-                errors.append(self._error_entry(error_code, str(exc)))
+                errors.append(self.pipeline.error_entry(error_code, str(exc)))
                 visible_reasoning_steps.append(
                     "Structured output validation failed"
                     if error_code == "structured_output_invalid"
@@ -431,72 +387,22 @@ class LLMService(BaseService):
         latency_ms = int((time.perf_counter() - started_at) * 1000)
         trace_snapshot = trace.snapshot()
 
-        metric_model = resolved_model or "unknown"
-        METRICS.llm_requests_total.labels(
-            service=self.config.service_name,
-            model=metric_model,
-            request_type=request.request_type,
-            traffic_class=traffic_class(),
-        ).inc()
-        METRICS.llm_request_duration.labels(
-            service=self.config.service_name,
-            model=metric_model,
-            request_type=request.request_type,
-            traffic_class=traffic_class(),
-        ).observe(latency_ms / 1000)
-        if provider_duration_seconds is not None:
-            METRICS.llm_provider_duration.labels(
-                service=self.config.service_name,
-                model=metric_model,
-                request_type=request.request_type,
-                traffic_class=traffic_class(),
-            ).observe(provider_duration_seconds)
-        if status == "error":
-            METRICS.llm_errors_total.labels(
-                service=self.config.service_name,
-                model=metric_model,
-                request_type=request.request_type,
-                error_type=errors[0].code if errors else "unknown",
-                traffic_class=traffic_class(),
-            ).inc()
-        # Skip None rather than coercing to 0, so a provider that reports no
-        # usage does not look like zero-cost traffic.
-        for direction, token_count in (
-            ("input", usage.input_tokens),
-            ("output", usage.output_tokens),
-            ("total", usage.total_tokens),
-        ):
-            if token_count is not None:
-                METRICS.llm_tokens_total.labels(
-                    service=self.config.service_name,
-                    model=metric_model,
-                    request_type=request.request_type,
-                    direction=direction,
-                    traffic_class=traffic_class(),
-                ).inc(token_count)
-        if usage.output_tokens is not None:
-            METRICS.llm_output_tokens.labels(
-                service=self.config.service_name,
-                request_type=request.request_type,
-                traffic_class=traffic_class(),
-            ).observe(usage.output_tokens)
-        METRICS.llm_finish_reasons_total.labels(
-            service=self.config.service_name,
-            model=metric_model,
-            request_type=request.request_type,
-            finish_reason=_metric_finish_reason(
-                raw_provider_finish_reason, errored=status == "error"
-            ),
-            traffic_class=traffic_class(),
-        ).inc()
         bounded_finish_reason = provider_finish_reason(raw_provider_finish_reason)
-        METRICS.llm_provider_finish_reasons_total.labels(
-            service=self.config.service_name,
-            model=metric_model,
+        self.pipeline.record_telemetry(
+            METRICS,
+            config=self.config,
             request_type=request.request_type,
-            finish_reason=bounded_finish_reason,
-            traffic_class=traffic_class(),
-        ).inc()
+            model=resolved_model,
+            latency_seconds=latency_ms / 1000,
+            provider_duration_seconds=provider_duration_seconds,
+            usage=usage,
+            error_code=(errors[0].code if errors else "unknown") if status == "error" else None,
+            legacy_finish_reason=_metric_finish_reason(
+                raw_provider_finish_reason,
+                errored=status == "error",
+            ),
+            provider_finish_reason=bounded_finish_reason,
+        )
 
         response_payload = ModelExecutionResponsePayload(
             request_type=request.request_type,
@@ -561,185 +467,3 @@ class LLMService(BaseService):
                 },
             )
         )
-
-    @staticmethod
-    def _provider_failure_code(exc: Exception, *, provider_attempted: bool) -> str:
-        """Bounded application status for a failure raised before parsing.
-
-        A timeout, a provider/inference failure and a local failure that never
-        reached the provider are three different diagnoses, and only the last
-        one is this service's own bug.
-        """
-        if isinstance(exc, ProviderProtocolError):
-            return "provider_protocol_error"
-        if isinstance(exc, ProviderTimeoutError):
-            return "provider_timeout"
-        if isinstance(exc, ProviderHTTPError):
-            return "provider_http_error"
-        if isinstance(exc, (TimeoutError, TimeoutException)):
-            return "provider_timeout"
-        return "provider_error" if provider_attempted else "execution_error"
-
-    def _normalize_usage(self, usage: LLMUsage) -> UsageInfo:
-        return UsageInfo(
-            provider=usage.provider or self.config.llm_implementation,
-            input_tokens=usage.input_tokens,
-            output_tokens=usage.output_tokens,
-            total_tokens=usage.total_tokens,
-        )
-
-    def _error_entry(self, code: str, message: str) -> ErrorEntry:
-        return ErrorEntry(
-            code=code,
-            message=sanitize_debug_text(redact_secrets(message), self.config.debug_max_field_length),
-        )
-
-    def _build_trace_metadata(
-        self,
-        request_message: ModelExecutionRequestMessage,
-        resolved_model: str,
-        resolved_prompt_version: str,
-    ) -> Dict[str, Any]:
-        request = request_message.payload
-        metadata: Dict[str, Any] = {
-            "service": self.config.service_name,
-            "request_id": request_message.request_id,
-            "trace_id": request_message.trace_id,
-            "correlation_id": request_message.correlation_id,
-            "request_type": request.request_type,
-            "model_name": resolved_model,
-            "prompt_version": resolved_prompt_version,
-        }
-
-        for field_name in (
-            "conversation_id",
-            "turn_id",
-            "file_id",
-            "document_id",
-            "graph_run_id",
-            "mode",
-        ):
-            value = request.metadata.get(field_name)
-            if value is not None:
-                metadata[field_name] = value
-
-        return metadata
-
-    def _log_structured_output_failure(
-        self,
-        request_message: ModelExecutionRequestMessage,
-        resolved_model: str,
-        resolved_prompt_version: str,
-        raw_output: str,
-        stage: str,
-        detail: str,
-        normalized_payload: Optional[Any] = None,
-        extraction_metadata: Optional[Dict[str, Any]] = None,
-    ) -> None:
-        request_type = request_message.payload.request_type
-        if request_type not in {
-            "answer_evaluation",
-            "content_risk_scan",
-            "query_rewrite",
-            "memory_extraction",
-        }:
-            return
-
-        data: Dict[str, Any] = {
-            "request_type": request_type,
-            "request_id": request_message.request_id,
-            "trace_id": request_message.trace_id,
-            "correlation_id": request_message.correlation_id,
-            "model": resolved_model,
-            "prompt_version": resolved_prompt_version,
-            "parse_stage": stage,
-            "validation_stage": "not_started" if stage == "parse" else "failed",
-            "raw_output_excerpt": sanitize_debug_text(
-                redact_secrets(raw_output),
-                self.config.debug_max_field_length,
-            ),
-            "detail": sanitize_debug_text(
-                redact_secrets(detail),
-                self.config.debug_max_field_length,
-            ),
-        }
-        if extraction_metadata:
-            data["payload_count"] = extraction_metadata.get("payload_count")
-            data["selected_payload_index"] = extraction_metadata.get("selected_payload_index")
-            data["extraction_mode"] = extraction_metadata.get("extraction_mode")
-        if normalized_payload is not None:
-            data["normalized_payload"] = normalized_payload
-
-        self.logger.log(
-            "service:llm",
-            "Typed structured output handling failed",
-            data,
-            hypothesis_id="E",
-        )
-
-    def _build_structured_output_debug_steps(self, metadata: Dict[str, Any]) -> List[str]:
-        debug_blob = {
-            "payload_count": metadata.get("payload_count"),
-            "selected_payload_index": metadata.get("selected_payload_index"),
-            "selection_policy": metadata.get("selection_policy"),
-            "extraction_mode": metadata.get("extraction_mode"),
-            "candidates": metadata.get("candidates", []),
-        }
-        return [
-            f"Structured output extraction mode: {metadata.get('extraction_mode', 'unknown')}",
-            f"Structured output payload count: {metadata.get('payload_count', 0)}",
-            f"Structured output selected index: {metadata.get('selected_payload_index')}",
-            f"{STRUCTURED_OUTPUT_DEBUG_PREFIX}{json.dumps(debug_blob, ensure_ascii=True)}",
-        ]
-
-    def _finalize_parsed_payload(
-        self,
-        request_message: ModelExecutionRequestMessage,
-        parsed_payload: Any,
-        resolved_model: str,
-    ) -> Any:
-        request = request_message.payload
-        if request.request_type == "content_risk_scan":
-            return parsed_payload
-
-        if request.request_type != "answer_evaluation":
-            return parsed_payload
-
-        if not isinstance(parsed_payload, dict):
-            raise ValueError("Answer evaluation output must be a JSON object")
-
-        verdict_raw = parsed_payload.get("verdict")
-        verdict = str(verdict_raw).strip() if verdict_raw is not None else "unknown"
-
-        def _to_float_or_none(v: Any) -> Any:
-            if v is None:
-                return None
-            try:
-                return float(v)
-            except (TypeError, ValueError):
-                return None
-
-        def _to_int_or_none(v: Any) -> Any:
-            if v is None:
-                return None
-            try:
-                return int(v)
-            except (TypeError, ValueError):
-                return None
-
-        return {
-            "review_id": str(parsed_payload.get("review_id") or f"review_{request_message.request_id}"),
-            "verdict": verdict,
-            "groundedness_score": _to_float_or_none(parsed_payload.get("groundedness_score")),
-            "completeness_score": _to_float_or_none(parsed_payload.get("completeness_score")),
-            "safety_score": _to_float_or_none(parsed_payload.get("safety_score")),
-            "issues": parsed_payload.get("issues") or [],
-            "claims": parsed_payload.get("claims") or [],
-            "unsupported_claim_count": _to_int_or_none(
-                parsed_payload.get("unsupported_claim_count")
-            ),
-            "hallucination_verdict": parsed_payload.get("hallucination_verdict"),
-            "revision_applied": bool(parsed_payload.get("revision_applied", False)),
-            "model_name": resolved_model,
-            "created_at": int(time.time() * 1000),
-        }
