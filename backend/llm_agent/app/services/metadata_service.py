@@ -7,7 +7,6 @@ from collections import Counter
 from app.llm.interfaces import ILLMClient, LLMInvocation
 from shared.logging import ServiceLogger
 from app.core.config import Settings
-from app.core.constants import LLMImplementation
 from app.services.base import BaseService
 from app.services.text_window import ContextWindowResolver, estimate_tokens, split_text
 
@@ -68,10 +67,6 @@ class MetadataService(BaseService):
         budget = self.window.input_budget_chars(
             model, reserved_tokens=estimate_tokens(KEYWORD_PROMPT)
         )
-        # Ollama has no reliable window probe; keep the historical conservative cap.
-        if self.config.llm_implementation == LLMImplementation.OLLAMA:
-            budget = min(budget, 3000)
-
         sections = split_text(text, budget)
         if len(sections) > MAX_KEYWORD_SECTIONS:
             # Ten keywords do not get better past a point, and each section is a

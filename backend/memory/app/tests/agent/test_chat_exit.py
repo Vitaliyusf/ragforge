@@ -5,7 +5,7 @@ from unittest.mock import Mock
 from app.services.chat_exit_service import ChatExitService
 
 
-def test_process_chat_exit_uses_local_llm_helper_for_headline_and_summary():
+def test_process_chat_exit_uses_typed_llm_requests_for_all_model_work():
     chat_service = Mock()
     chat_service.get_chat.return_value = {"id": "chat-1", "title": "New Chat"}
     message_service = Mock()
@@ -14,19 +14,28 @@ def test_process_chat_exit_uses_local_llm_helper_for_headline_and_summary():
         {"sender": "Assistant", "message": "I will remember the launch milestone."},
     ]
     memory_service = Mock()
+    memory_service.get_all_memories.return_value = []
     logger = Mock()
 
     service = ChatExitService(chat_service, message_service, memory_service, logger)
-    service._memory_agent = Mock()
-    service._request_llm_completion = Mock(side_effect=["Beta launch", "Summary text"])
+    service._request_typed_llm = Mock(
+        side_effect=[
+            {"title": "Beta launch"},
+            {"actions": [], "summary": "No memory changes"},
+            {"summary": "Summary text"},
+        ]
+    )
 
     result = service.process_chat_exit("chat-1")
 
     assert result == {"status": "success", "headline": "Beta launch", "memories_updated": True}
     chat_service.update_title.assert_called_once_with("chat-1", "Beta launch")
     chat_service.update_compressed_summary.assert_called_once_with("chat-1", "Summary text")
-    service._memory_agent.run.assert_called_once()
-    assert service._request_llm_completion.call_count == 2
+    assert [call.args[0] for call in service._request_typed_llm.call_args_list] == [
+        "chat_title",
+        "memory_curation",
+        "chat_summary",
+    ]
 
 
 def test_generate_title_names_an_untitled_chat():
@@ -39,7 +48,7 @@ def test_generate_title_names_an_untitled_chat():
     ]
 
     service = ChatExitService(chat_service, message_service, Mock(), Mock())
-    service._request_llm_completion = Mock(return_value="Rotating signing keys")
+    service._request_typed_llm = Mock(return_value={"title": "Rotating signing keys"})
 
     result = service.generate_title("chat-1")
 
@@ -56,13 +65,13 @@ def test_generate_title_is_a_noop_once_a_chat_is_named():
     ]
 
     service = ChatExitService(chat_service, message_service, Mock(), Mock())
-    service._request_llm_completion = Mock()
+    service._request_typed_llm = Mock()
 
     result = service.generate_title("chat-1")
 
     assert result == {"status": "success", "title": "Rotating signing keys"}
     chat_service.update_title.assert_not_called()
-    service._request_llm_completion.assert_not_called()
+    service._request_typed_llm.assert_not_called()
 
 
 def test_generate_title_skips_empty_conversations():
@@ -72,10 +81,10 @@ def test_generate_title_skips_empty_conversations():
     message_service.get_messages.return_value = []
 
     service = ChatExitService(chat_service, message_service, Mock(), Mock())
-    service._request_llm_completion = Mock()
+    service._request_typed_llm = Mock()
 
     result = service.generate_title("chat-1")
 
     assert result == {"status": "success", "title": None}
     chat_service.update_title.assert_not_called()
-    service._request_llm_completion.assert_not_called()
+    service._request_typed_llm.assert_not_called()

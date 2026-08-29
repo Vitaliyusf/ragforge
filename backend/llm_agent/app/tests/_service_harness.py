@@ -10,13 +10,16 @@ from app.core.config import Settings
 from app.llm.interfaces import ILLMClient, LLMGenerationResult, LLMInvocation, LLMUsage
 from app.schemas.llm import validate_model_execution_request_message
 
-# The five typed actions, in the order the settings/env tests assert on.
+# Typed actions, in the order the settings/env tests assert on.
 ACTION_ORDER = (
     "answer_generation",
     "answer_evaluation",
     "content_risk_scan",
     "query_rewrite",
     "memory_extraction",
+    "chat_title",
+    "chat_summary",
+    "memory_curation",
 )
 
 # Valid structured payloads per action, reused by tests that only care that a
@@ -31,6 +34,9 @@ VALID_RESPONSES = {
     "content_risk_scan": '{"risk_level":"low","categories":[],"flags":[],"summary":"safe"}',
     "query_rewrite": '{"rewritten_query":"widgets","search_intent":"lookup"}',
     "memory_extraction": '{"memories":[]}',
+    "chat_title": '{"title":"Beta launch"}',
+    "chat_summary": '{"summary":"The beta launched."}',
+    "memory_curation": '{"actions":[],"summary":"No changes"}',
 }
 
 VALID_INPUTS = {
@@ -43,6 +49,9 @@ VALID_INPUTS = {
     "content_risk_scan": {"content": "safe", "policy_hints": []},
     "query_rewrite": {"query": "widgets"},
     "memory_extraction": {"conversation_history": []},
+    "chat_title": {"conversation_history": []},
+    "chat_summary": {"conversation_history": []},
+    "memory_curation": {"conversation_history": [], "existing_memory": []},
 }
 
 EVALUATION_INPUT = {

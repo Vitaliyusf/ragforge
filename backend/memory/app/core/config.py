@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     # loads with prefetch_count=1. Dependent writes are ordered by the caller,
     # which awaits each add_message before sending the next.
     rabbitmq_prefetch_count: int = 10
+    llm_agent_queue: str = "llm_agent"
 
     # MongoDB configuration
     mongodb_url: str = "mongodb://localhost:27017/"
@@ -44,15 +45,10 @@ class Settings(BaseSettings):
     qdrant_timeout_seconds: float = 3.0
     qdrant_api_key: str = ""
 
-    # Direct vLLM access for chat exit and agent flows
-    vllm_base_url: str = "http://vllm:8000"
-    vllm_api_key: str = "none"
-    default_model: str = "RedHatAI/Qwen3.5-4B-quantized.w4a16"
+    # Typed llm_agent request deadlines for chat-exit flows.
     chat_exit_llm_timeout_seconds: float = 30.0
     chat_exit_headline_timeout_seconds: float = 15.0
     chat_exit_summary_timeout_seconds: float = 20.0
-    chat_exit_headline_max_tokens: int = 64
-    chat_exit_summary_max_tokens: int = 256
 
     # Runtime controls
     enable_background_consumers: bool = True

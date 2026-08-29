@@ -5,9 +5,6 @@ dist/
 coverage/
 
 # Python
-__pycache__/
-*.py[cod]
-*.pyo
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
@@ -92,3 +89,6 @@ htmlcov/
 !/.claude/settings.json
 !/.claude/hooks/
 !/.claude/hooks/**
+# Python bytecode / interpreter caches
+__pycache__/
+*.py[cod]

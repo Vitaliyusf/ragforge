@@ -32,6 +32,9 @@ class ActionBudgetResolutionTests(unittest.TestCase):
             content_risk_scan_max_tokens=303,
             query_rewrite_max_tokens=404,
             memory_extraction_max_tokens=505,
+            chat_title_max_tokens=61,
+            chat_summary_max_tokens=206,
+            memory_curation_max_tokens=506,
         )
 
         expected = {
@@ -40,6 +43,9 @@ class ActionBudgetResolutionTests(unittest.TestCase):
             "content_risk_scan": 303,
             "query_rewrite": 404,
             "memory_extraction": 505,
+            "chat_title": 61,
+            "chat_summary": 206,
+            "memory_curation": 506,
         }
         self.assertEqual(
             {action: resolved.max_tokens_for_request_type(action) for action in expected},
@@ -61,6 +67,9 @@ class ActionBudgetResolutionTests(unittest.TestCase):
                 "content_risk_scan": 128,
                 "query_rewrite": 128,
                 "memory_extraction": 512,
+                "chat_title": 64,
+                "chat_summary": 256,
+                "memory_curation": 512,
             },
         )
         self.assertEqual(resolved.max_tokens_for_request_type("unknown"), 777)
@@ -72,13 +81,16 @@ class ActionBudgetResolutionTests(unittest.TestCase):
             "CONTENT_RISK_SCAN_MAX_TOKENS": "203",
             "QUERY_REWRITE_MAX_TOKENS": "204",
             "MEMORY_EXTRACTION_MAX_TOKENS": "205",
+            "CHAT_TITLE_MAX_TOKENS": "206",
+            "CHAT_SUMMARY_MAX_TOKENS": "207",
+            "MEMORY_CURATION_MAX_TOKENS": "208",
         }
         with patch.dict(os.environ, env, clear=False):
             resolved = Settings()
 
         self.assertEqual(
             [resolved.max_tokens_for_request_type(action) for action in ACTION_ORDER],
-            [201, 202, 203, 204, 205],
+            [201, 202, 203, 204, 205, 206, 207, 208],
         )
 
     def test_summary_budget_remains_independent(self):
@@ -138,6 +150,9 @@ class BudgetReachesInvocationTests(unittest.TestCase):
                 "content_risk_scan": 128,
                 "query_rewrite": 128,
                 "memory_extraction": 512,
+                "chat_title": 64,
+                "chat_summary": 256,
+                "memory_curation": 512,
             },
         )
 

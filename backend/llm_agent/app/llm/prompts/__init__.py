@@ -1,7 +1,6 @@
 """Prompt registry helpers package.
 
-Re-exports all shared types and per-domain helpers so that
-app.llm._prompt_registry_helpers can become a thin backward-compat shim.
+Exports shared prompt types and the domain prompt modules.
 """
 from app.llm.prompts._base import (
     STRUCTURED_OUTPUT_DEBUG_PREFIX,
@@ -15,7 +14,14 @@ from app.llm.prompts._base import (
     _extract_json_payload,
     _extract_json_payload_with_metadata,
 )
-from app.llm.prompts import answer_generation, answer_evaluation, content_risk, query_rewrite, memory_extraction
+from app.llm.prompts import (
+    answer_evaluation,
+    answer_generation,
+    content_risk,
+    memory_extraction,
+    memory_maintenance,
+    query_rewrite,
+)
 
 __all__ = [
     "STRUCTURED_OUTPUT_DEBUG_PREFIX",
@@ -33,4 +39,5 @@ __all__ = [
     "content_risk",
     "query_rewrite",
     "memory_extraction",
+    "memory_maintenance",
 ]

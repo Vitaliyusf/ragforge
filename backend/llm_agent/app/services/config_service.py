@@ -29,14 +29,12 @@ class ConfigService:
                     "models",
                     "generation_params",
                     "vllm",
-                    "ollama_url",
                     "timeouts",
                 ],
             },
             "llm_implementation": self.config.llm_implementation,
             "device": self.config.device,
             "max_concurrent_requests": self.config.max_concurrent_requests,
-            "ollama_url": self.config.ollama_url,
             "models": {
                 "summary": self.config.summary_model,
                 "metadata": self.config.metadata_model,
@@ -44,12 +42,6 @@ class ConfigService:
                 "default": self.config.default_model,
             },
             "generation_params": {
-                "huggingface": {
-                    "max_length": self.config.hf_max_length,
-                    "temperature": self.config.hf_temperature,
-                    "top_p": self.config.hf_top_p,
-                    "do_sample": self.config.hf_do_sample,
-                },
                 "vllm": {
                     "max_tokens": self.config.vllm_max_tokens,
                     "temperature": self.config.vllm_temperature,

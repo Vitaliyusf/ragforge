@@ -67,7 +67,7 @@ class ModelManagementHandler(BaseRabbitMQHandler):
             "list_models":             lambda m: self.model_service.list_models(),
             "get_model_info":          lambda m: self.model_service.get_model_info(m.get("model")),
             "download_model":          lambda m: self.model_service.start_download(
-                                           m.get("model"), m.get("implementation", "huggingface")
+                                           m.get("model"), m.get("implementation", "vllm")
                                        ),
             "get_download_status":     lambda m: self.model_service.get_download_status(m.get("model")),
             "llm_ready":               lambda m: self.model_service.llm_ready(),

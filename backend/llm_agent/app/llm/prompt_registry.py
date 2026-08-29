@@ -1,43 +1,38 @@
-"""Prompt registry and output parsing for typed model execution.
-
-Re-exports all data types and helper functions from the helpers module,
-and defines the PromptRegistry lookup class.
-"""
+"""Prompt registry for typed model execution."""
 from __future__ import annotations
 
 from typing import Dict, Optional
 
 from app.core.config import Settings
-from app.schemas.llm import (
-    AnswerReviewParsedOutput,
-    AnswerGenerationParsedOutput,
-    ContentRiskScanParsedOutput,
-    MemoryExtractionParsedOutput,
-    QueryRewriteParsedOutput,
+from app.llm.prompts import (
+    answer_evaluation,
+    answer_generation,
+    content_risk,
+    memory_extraction,
+    memory_maintenance,
+    query_rewrite,
 )
-from app.llm._prompt_registry_helpers import (
+from app.llm.prompts._base import (
     STRUCTURED_OUTPUT_DEBUG_PREFIX,
+    ModelResolver,
     PromptBuilder,
     PromptParser,
-    ModelResolver,
     PromptRenderResult,
     PromptRegistryEntry,
     StructuredExtractionResult,
     StructuredOutputParseError,
-    _build_answer_evaluation_prompt_v1,
-    _build_answer_evaluation_prompt_v2,
-    _build_answer_generation_prompt,
-    _build_content_risk_scan_prompt_v1,
-    _build_content_risk_scan_prompt_v2,
-    _build_memory_extraction_prompt,
-    _build_query_rewrite_prompt,
     _extract_json_payload,
     _extract_json_payload_with_metadata,
-    _parse_answer_evaluation,
-    _parse_answer_generation,
-    _parse_content_risk_scan,
-    _parse_memory_extraction,
-    _parse_query_rewrite,
+)
+from app.schemas.llm import (
+    AnswerGenerationParsedOutput,
+    AnswerReviewParsedOutput,
+    ChatSummaryParsedOutput,
+    ChatTitleParsedOutput,
+    ContentRiskScanParsedOutput,
+    MemoryCurationParsedOutput,
+    MemoryExtractionParsedOutput,
+    QueryRewriteParsedOutput,
 )
 
 __all__ = [
@@ -66,6 +61,9 @@ class PromptRegistry:
             "content_risk_scan": "content_risk_scan.v2",
             "query_rewrite": "query_rewrite.v1",
             "memory_extraction": "memory_extraction.v1",
+            "chat_title": "chat_title.v1",
+            "chat_summary": "chat_summary.v1",
+            "memory_curation": "memory_curation.v1",
         }
         self._entries: Dict[str, Dict[str, PromptRegistryEntry]] = {
             "answer_generation": {
@@ -73,8 +71,8 @@ class PromptRegistry:
                     request_type="answer_generation",
                     prompt_version="answer_generation.v1",
                     default_model=lambda settings: settings.rag_chat_model or settings.default_model or "",
-                    build_prompt=_build_answer_generation_prompt,
-                    parser=_parse_answer_generation,
+                    build_prompt=answer_generation.build_prompt,
+                    parser=answer_generation.parse,
                     output_model=AnswerGenerationParsedOutput,
                     streaming_allowed=True,
                     structured_output_required=False,
@@ -86,8 +84,8 @@ class PromptRegistry:
                     request_type="answer_evaluation",
                     prompt_version="answer_evaluation.v2",
                     default_model=lambda settings: settings.default_model or settings.rag_chat_model or "",
-                    build_prompt=_build_answer_evaluation_prompt_v2,
-                    parser=_parse_answer_evaluation,
+                    build_prompt=answer_evaluation.build_prompt_v2,
+                    parser=answer_evaluation.parse,
                     output_model=AnswerReviewParsedOutput,
                     streaming_allowed=False,
                     structured_output_required=True,
@@ -96,8 +94,8 @@ class PromptRegistry:
                     request_type="answer_evaluation",
                     prompt_version="answer_evaluation.v1",
                     default_model=lambda settings: settings.default_model or settings.rag_chat_model or "",
-                    build_prompt=_build_answer_evaluation_prompt_v1,
-                    parser=_parse_answer_evaluation,
+                    build_prompt=answer_evaluation.build_prompt_v1,
+                    parser=answer_evaluation.parse,
                     output_model=AnswerReviewParsedOutput,
                     streaming_allowed=False,
                     structured_output_required=True,
@@ -108,8 +106,8 @@ class PromptRegistry:
                     request_type="content_risk_scan",
                     prompt_version="content_risk_scan.v2",
                     default_model=lambda settings: settings.default_model or settings.rag_chat_model or "",
-                    build_prompt=_build_content_risk_scan_prompt_v2,
-                    parser=_parse_content_risk_scan,
+                    build_prompt=content_risk.build_prompt_v2,
+                    parser=content_risk.parse,
                     output_model=ContentRiskScanParsedOutput,
                     streaming_allowed=False,
                     structured_output_required=True,
@@ -118,8 +116,8 @@ class PromptRegistry:
                     request_type="content_risk_scan",
                     prompt_version="content_risk_scan.v1",
                     default_model=lambda settings: settings.default_model or settings.rag_chat_model or "",
-                    build_prompt=_build_content_risk_scan_prompt_v1,
-                    parser=_parse_content_risk_scan,
+                    build_prompt=content_risk.build_prompt_v1,
+                    parser=content_risk.parse,
                     output_model=ContentRiskScanParsedOutput,
                     streaming_allowed=False,
                     structured_output_required=True,
@@ -130,8 +128,8 @@ class PromptRegistry:
                     request_type="query_rewrite",
                     prompt_version="query_rewrite.v1",
                     default_model=lambda settings: settings.default_model or settings.rag_chat_model or "",
-                    build_prompt=_build_query_rewrite_prompt,
-                    parser=_parse_query_rewrite,
+                    build_prompt=query_rewrite.build_prompt,
+                    parser=query_rewrite.parse,
                     output_model=QueryRewriteParsedOutput,
                     streaming_allowed=False,
                     structured_output_required=True,
@@ -142,10 +140,43 @@ class PromptRegistry:
                     request_type="memory_extraction",
                     prompt_version="memory_extraction.v1",
                     default_model=lambda settings: settings.default_model or settings.rag_chat_model or "",
-                    build_prompt=_build_memory_extraction_prompt,
-                    parser=_parse_memory_extraction,
+                    build_prompt=memory_extraction.build_prompt,
+                    parser=memory_extraction.parse,
                     output_model=MemoryExtractionParsedOutput,
                     streaming_allowed=False,
+                    structured_output_required=True,
+                )
+            },
+            "chat_title": {
+                "chat_title.v1": PromptRegistryEntry(
+                    request_type="chat_title",
+                    prompt_version="chat_title.v1",
+                    default_model=lambda settings: settings.default_model or settings.rag_chat_model or "",
+                    build_prompt=memory_maintenance.build_chat_title_prompt,
+                    parser=memory_maintenance.parse,
+                    output_model=ChatTitleParsedOutput,
+                    structured_output_required=True,
+                )
+            },
+            "chat_summary": {
+                "chat_summary.v1": PromptRegistryEntry(
+                    request_type="chat_summary",
+                    prompt_version="chat_summary.v1",
+                    default_model=lambda settings: settings.summary_model or settings.default_model or "",
+                    build_prompt=memory_maintenance.build_chat_summary_prompt,
+                    parser=memory_maintenance.parse,
+                    output_model=ChatSummaryParsedOutput,
+                    structured_output_required=True,
+                )
+            },
+            "memory_curation": {
+                "memory_curation.v1": PromptRegistryEntry(
+                    request_type="memory_curation",
+                    prompt_version="memory_curation.v1",
+                    default_model=lambda settings: settings.default_model or settings.rag_chat_model or "",
+                    build_prompt=memory_maintenance.build_memory_curation_prompt,
+                    parser=memory_maintenance.parse,
+                    output_model=MemoryCurationParsedOutput,
                     structured_output_required=True,
                 )
             },

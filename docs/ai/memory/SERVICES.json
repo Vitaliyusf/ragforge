@@ -163,22 +163,22 @@
       "responsibilities": [
         "chat-history projection",
         "long-term memory",
-        "memory curation agent"
+        "typed memory curation orchestration"
       ],
       "owns": [
         "memory records",
         "memory mutation semantics",
-        "memory agent tools"
+        "validated memory mutation application"
       ],
       "calls": [
-        "configured model path for memory curation"
+        "llm_agent typed title/summary/curation requests"
       ],
       "transports": [
         "RabbitMQ RPC",
         "events/projections where configured"
       ],
       "look_first": [
-        "backend/memory/app/agent/memory_agent.py",
+        "backend/memory/app/services/chat_exit_service.py",
         "backend/memory/app/services",
         "backend/memory/app/db"
       ],
@@ -189,14 +189,15 @@
       "path": "backend/llm_agent",
       "entrypoint": "backend/llm_agent/app/main.py",
       "responsibilities": [
-        "LLM generation/evaluation abstraction",
-        "provider/model implementations"
+        "typed LLM generation/evaluation control plane",
+        "vLLM provider integration"
       ],
       "owns": [
-        "shared generation/evaluation model boundary where routed through this service"
+        "canonical typed model execution boundary",
+        "prompt rendering, invocation, decoding, validation, and telemetry policy"
       ],
       "calls": [
-        "vLLM/other configured model backend"
+        "vLLM model backend"
       ],
       "transports": [
         "RabbitMQ RPC",
@@ -207,7 +208,7 @@
         "backend/llm_agent/app/core",
         "backend/llm_agent/app/services"
       ],
-      "avoid_duplicate": "Before creating a new direct model client, inspect existing LLM Agent/shared model boundary."
+      "avoid_duplicate": "All service-owned model calls must use typed llm_agent requests; do not add direct provider clients."
     }
   ]
 }

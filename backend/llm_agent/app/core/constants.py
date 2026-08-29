@@ -10,9 +10,7 @@ from enum import Enum
 class LLMImplementation(str, Enum):
     """Supported LLM backend identifiers."""
 
-    HUGGINGFACE = "huggingface"
     VLLM = "vllm"
-    OLLAMA = "ollama"
 
 
 VALID_IMPLEMENTATIONS: frozenset = frozenset(m.value for m in LLMImplementation)
@@ -40,6 +38,9 @@ class LLMRequestType(str, Enum):
     CONTENT_RISK_SCAN = "content_risk_scan"
     QUERY_REWRITE = "query_rewrite"
     MEMORY_EXTRACTION = "memory_extraction"
+    CHAT_TITLE = "chat_title"
+    CHAT_SUMMARY = "chat_summary"
+    MEMORY_CURATION = "memory_curation"
     GENERATE_QUESTIONS = "generate_questions"
     SUMMARIZE = "summarize"
 

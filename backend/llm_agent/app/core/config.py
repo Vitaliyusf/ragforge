@@ -17,6 +17,9 @@ class Settings(BaseSettings):
         "content_risk_scan": "content_risk_scan_max_tokens",
         "query_rewrite": "query_rewrite_max_tokens",
         "memory_extraction": "memory_extraction_max_tokens",
+        "chat_title": "chat_title_max_tokens",
+        "chat_summary": "chat_summary_max_tokens",
+        "memory_curation": "memory_curation_max_tokens",
     }
     
     model_config = SettingsConfigDict(
@@ -56,7 +59,7 @@ class Settings(BaseSettings):
     files_queue: str = Field(default="files")
     
     # LLM configuration
-    llm_implementation: str = Field(default="huggingface", description="LLM implementation (huggingface, vllm, ollama)")
+    llm_implementation: Literal["vllm"] = Field(default="vllm", description="Supported LLM implementation")
 
     # Answer citations change user-visible answer text (inline [1] markers),
     # so the behaviour is switchable without a rollback.
@@ -75,12 +78,6 @@ class Settings(BaseSettings):
     device: str = Field(default="auto", description="Device (auto, cuda, cpu, mps)")
     max_concurrent_requests: int = Field(default=10, description="Max concurrent requests")
     
-    # Hugging Face generation parameters
-    hf_max_length: int = Field(default=512, description="HF max generation length")
-    hf_temperature: float = Field(default=0.7, description="HF temperature")
-    hf_top_p: float = Field(default=0.9, description="HF top-p")
-    hf_do_sample: bool = Field(default=True, description="HF do sample")
-    
     # vLLM generation parameters
     vllm_max_tokens: int = Field(
         default=512,
@@ -96,6 +93,9 @@ class Settings(BaseSettings):
     content_risk_scan_max_tokens: int = Field(default=128, ge=1, le=131072)
     query_rewrite_max_tokens: int = Field(default=128, ge=1, le=131072)
     memory_extraction_max_tokens: int = Field(default=512, ge=1, le=131072)
+    chat_title_max_tokens: int = Field(default=64, ge=1, le=131072)
+    chat_summary_max_tokens: int = Field(default=256, ge=1, le=131072)
+    memory_curation_max_tokens: int = Field(default=512, ge=1, le=131072)
     # Summaries need far more room than the chat default: a truncation at 512
     # tokens cuts a document summary off mid-sentence (and non-Latin scripts such
     # as Hebrew burn ~2 tokens/char, so 512 tokens is only ~1k characters).
@@ -109,9 +109,6 @@ class Settings(BaseSettings):
     )
     vllm_base_url: str = Field(default="http://localhost:8000", description="vLLM base URL")
     vllm_api_key: str = Field(default="none", description="vLLM bearer API key")
-    
-    # Legacy Ollama configuration
-    ollama_url: str = Field(default="http://host.docker.internal:11434", description="Ollama URL")
     
     # Model cache configuration
     models_cache_ttl: int = Field(default=300, description="Models cache TTL in seconds")
