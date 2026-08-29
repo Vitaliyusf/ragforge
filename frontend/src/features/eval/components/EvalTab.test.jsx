@@ -129,8 +129,8 @@ describe('EvalTab page chrome', () => {
     })
     expect(evalHook.run).toBeTruthy()
 
-    await user.click(screen.getByText('Scores at k'))
-    await user.click(screen.getByText('Per-item results'))
+    await user.click(screen.getByRole('tab', { name: /Retrieval/ }))
+    await user.click(screen.getByRole('tab', { name: /Items/ }))
 
     for (const table of screen.getAllByRole('table')) {
       expect(table.closest('.overflow-x-auto'), 'a table with no scroller of its own').not.toBeNull()
@@ -268,7 +268,8 @@ describe('EvalTab active benchmark', () => {
   it('makes the running phase, its progress and its outcomes the focal point', () => {
     setup({ benchmarkOverrides: { benchmark: RUNNING } })
 
-    expect(screen.getByRole('heading', { name: 'Active run' })).toBeInTheDocument()
+    // The run is named by what a person started, not by its id.
+    expect(screen.getByRole('heading', { name: /Full Quality/ })).toBeInTheDocument()
     expect(screen.getAllByText('Running').length).toBeGreaterThan(0)
     expect(screen.getByText(/18 \/ 30 items · 60%/)).toBeInTheDocument()
     expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '60')
@@ -279,10 +280,10 @@ describe('EvalTab active benchmark', () => {
 
   it('reads an unsupported phase as unsupported, never as a failure', () => {
     setup({ benchmarkOverrides: { benchmark: RUNNING } })
-    const stepper = screen.getByRole('list', { name: 'Benchmark phases' })
-    expect(within(stepper).getByText('Not supported')).toBeInTheDocument()
-    expect(within(stepper).queryByText('Failed')).not.toBeInTheDocument()
-    expect(within(stepper).getByText('Completed')).toBeInTheDocument()
+    const flow = screen.getByRole('list', { name: 'Execution flow' })
+    expect(within(flow).getByText('Not supported')).toBeInTheDocument()
+    expect(within(flow).queryByText('Failed')).not.toBeInTheDocument()
+    expect(within(flow).getByText('Completed')).toBeInTheDocument()
   })
 
   it('blocks a second benchmark while one is running', () => {
@@ -299,16 +300,16 @@ describe('EvalTab active benchmark', () => {
 
   it.each([
     ['completed', /every executable phase finished/i],
-    ['partial', /some phases did not finish/i],
-    ['interrupted', /stopped before finishing/i],
-    ['failed', /stopped after an error/i],
+    ['partial', /at least one phase ended without producing a full set/i],
+    ['interrupted', /stopped from outside rather than by an error of its own/i],
+    ['failed', /stopped while executing, and no single stage recorded the error/i],
   ])('states in words what a %s run means, not only in colour', (status, note) => {
     setup({
       benchmarkOverrides: {
         benchmark: { ...RUNNING, status, phases: [], error: status === 'failed' ? 'Vector store unavailable' : null },
       },
     })
-    expect(screen.getByRole('heading', { name: 'Latest run' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: /Full Quality/ })).toBeInTheDocument()
     expect(screen.getByText(note)).toBeInTheDocument()
     expect(
       screen.getByRole('button', { name: /download diagnostic zip/i })

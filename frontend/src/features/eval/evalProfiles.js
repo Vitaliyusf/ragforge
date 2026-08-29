@@ -18,8 +18,12 @@ import {
   PauseCircle,
   XCircle,
 } from 'lucide-react'
+import { EMPTY, formatScore } from '@/features/metrics/components/metricsConfig'
 
-export const EMPTY = '—'
+// One dash, one score format, for the whole app. The eval surfaces used to
+// carry their own copies of both, which is how the same MRR came to be
+// printed to two different precisions on one page.
+export { EMPTY }
 
 export const PHASE_LABELS = {
   retrieval_base: 'Retrieval baseline',
@@ -220,11 +224,6 @@ export function formatRunTimestamp(value) {
     : EMPTY
 }
 
-/** A phase metric, or a dash. Never a confident zero for an absent figure. */
-export function formatMetric(value, suffix = '') {
-  return Number.isFinite(value) ? `${value.toFixed(value <= 1 ? 3 : 0)}${suffix}` : EMPTY
-}
-
 /** Phases that produced numbers — the only ones with results to show. */
 export function measuredPhases(benchmark) {
   return (benchmark?.phases || []).filter((phase) =>
@@ -242,7 +241,7 @@ export function keyResult(benchmark) {
   const measured = measuredPhases(benchmark)
   for (let index = measured.length - 1; index >= 0; index -= 1) {
     const mrr = measured[index]?.results?.mrr
-    if (Number.isFinite(mrr)) return `MRR ${formatMetric(mrr)}`
+    if (Number.isFinite(mrr)) return `MRR ${formatScore(mrr)}`
   }
   return EMPTY
 }

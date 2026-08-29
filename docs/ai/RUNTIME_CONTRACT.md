@@ -105,3 +105,24 @@ source         everything else
 indexes `docs/ai/generated/**` as a content source. A direct task-ID query still
 retrieves that task's spec — but generic environment/runtime guidance inside a
 task file never overrides this contract.
+
+<!-- RAGFORGE_WINDOWS_RUNTIME_BEGIN -->
+## Windows PowerShell launcher
+
+For agent tooling on Windows, the first canonical invocation is:
+
+```powershell
+$env:PYTHONIOENCODING="utf-8"
+py -3.12 scripts/ai/repo_bootstrap.py --task "<TASK-ID>" --query "<goal>" --top 12
+py -3.12 scripts/ai/check.py <mode> ...
+```
+
+Fallback order for agent tooling:
+
+1. `py -3.12`
+2. one diagnosed repository-approved fallback, such as the existing isolated `uv --python 3.12` path
+3. a compatible Linux container only when the active task or canonical validation path actually requires it
+4. otherwise report `BLOCKED`
+
+Do not start by probing generic `python` on this Windows repository. Do not create task-specific virtualenvs, install ad-hoc dependencies, or create a temporary `Dockerfile.test` unless the active task explicitly owns runtime/test-tooling changes.
+<!-- RAGFORGE_WINDOWS_RUNTIME_END -->
