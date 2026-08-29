@@ -92,3 +92,6 @@ htmlcov/
 !/.claude/settings.json
 !/.claude/hooks/
 !/.claude/hooks/**
+# Python bytecode / interpreter caches
+__pycache__/
+*.py[cod]
