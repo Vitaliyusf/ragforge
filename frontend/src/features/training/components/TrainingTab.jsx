@@ -23,7 +23,7 @@ import Card from '@/components/ui/Card'
 import Button from '@/components/ui/Button'
 import ProgressBar from '@/components/ui/ProgressBar'
 import { ConfirmModal } from '@/components/ui/Modal'
-import { toast } from 'sonner'
+import { notifyError } from '@/lib/notify'
 import { useTraining } from '../hooks/useTraining'
 
 const STATUS_STYLES = {
@@ -259,7 +259,7 @@ export default function TrainingTab() {
     try {
       await action()
     } catch (err) {
-      toast.error(`${label} failed`, { description: err?.message || 'Please try again.' })
+      notifyError(`${label} failed`, { error: err, onRetry: () => runAction(label, action) })
     }
   }
 
@@ -438,7 +438,13 @@ export default function TrainingTab() {
         open={Boolean(pendingDelete)}
         onOpenChange={(open) => { if (!open) setPendingDelete(null) }}
         title={pendingDelete?.kind === 'adapter' ? 'Delete adapter?' : 'Delete dataset?'}
-        description={pendingDelete ? `Delete "${pendingDelete.name}"? This cannot be undone.` : ''}
+        description={
+          pendingDelete
+            ? pendingDelete.kind === 'adapter'
+              ? `"${pendingDelete.name}" and its weights are removed. Any runtime currently serving this adapter keeps it until it is restarted; new loads will fail. This cannot be undone.`
+              : `"${pendingDelete.name}" and its training examples are removed. Adapters already trained from it are unaffected. This cannot be undone.`
+            : ''
+        }
         confirmLabel="Delete"
         cancelLabel="Cancel"
         onConfirm={confirmDelete}

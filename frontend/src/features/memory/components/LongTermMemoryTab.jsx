@@ -5,17 +5,21 @@ import { useState, useEffect } from 'react'
 import { useSelector } from 'react-redux'
 import { Brain, Plus, Edit2, Trash2, Lock, Bot, X, Check, ChevronDown, ChevronUp } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { toast } from 'sonner'
+import { notifyError, notifySuccess } from '@/lib/notify'
 import memoryService from '@/features/memory/services/memoryService'
 import Button from '@/components/ui/Button'
 import Badge from '@/components/ui/Badge'
 import PageHeader from '@/components/ui/PageHeader'
 import EmptyState from '@/components/feedback/EmptyState'
+import ErrorState from '@/components/feedback/ErrorState'
 import { ConfirmModal } from '@/components/ui/Modal'
 import { cn } from '@/lib/utils'
 import AddMemoryForm from './AddMemoryForm'
 import MemoryCard from './MemoryCard'
 import { CATEGORY_OPTIONS } from './memoryConfig'
+
+/** Enough of the memory to recognise which one is about to go. */
+const truncate = (text = '') => (text.length > 80 ? `${text.slice(0, 80)}…` : text)
 
 export default function LongTermMemoryTab() {
   const [memories, setMemories]         = useState([])
@@ -23,6 +27,7 @@ export default function LongTermMemoryTab() {
   const [showAddForm, setShowAddForm]   = useState(false)
   const [deletingIds, setDeletingIds]   = useState(new Set())
   const [deleteModal, setDeleteModal]   = useState({ open: false, memory: null })
+  const [loadError, setLoadError]       = useState(null)
 
   const chatDeletedVersion = useSelector((state) => state.events.chatDeletedVersion)
 
@@ -33,8 +38,11 @@ export default function LongTermMemoryTab() {
       setLoading(true)
       const data = await memoryService.getMemories()
       setMemories(data.memories || [])
+      setLoadError(null)
     } catch (err) {
-      console.error('Error loading memories:', err)
+      // A failed load used to fall through to the empty state, which reads as
+      // "you have no memories" — the one thing it does not mean.
+      setLoadError(err)
     } finally {
       setLoading(false)
     }
@@ -44,13 +52,13 @@ export default function LongTermMemoryTab() {
     await memoryService.createMemory(content, category)
     await loadMemories()
     setShowAddForm(false)
-    toast.success('Memory saved')
+    notifySuccess('Memory saved')
   }
 
   const handleEdit = async (id, content) => {
     await memoryService.updateMemory(id, content)
     await loadMemories()
-    toast.success('Memory updated')
+    notifySuccess('Memory updated')
   }
 
   const handleDeleteClick = (memory) => setDeleteModal({ open: true, memory })
@@ -62,9 +70,9 @@ export default function LongTermMemoryTab() {
     try {
       await memoryService.deleteMemory(memory.id)
       await loadMemories()
-      toast.success('Memory deleted')
+      notifySuccess('Memory deleted')
     } catch (err) {
-      toast.error('Delete failed')
+      notifyError('Delete failed', { error: err, onRetry: handleConfirmDelete })
     } finally {
       setDeletingIds(prev => { const n = new Set(prev); n.delete(memory.id); return n })
       setDeleteModal({ open: false, memory: null })
@@ -107,6 +115,13 @@ export default function LongTermMemoryTab() {
               <div key={i} className="h-24 rounded-xl animate-shimmer" style={{ borderLeft: '3px solid var(--border)' }} />
             ))}
           </div>
+        ) : loadError ? (
+          <ErrorState
+            title="Could not load memories"
+            description="The memory service did not answer. Your stored memories are unaffected."
+            detail={loadError?.message}
+            action={<Button variant="secondary" size="sm" onClick={loadMemories}>Retry</Button>}
+          />
         ) : memories.length === 0 ? (
           <EmptyState
             icon={Brain}
@@ -140,7 +155,11 @@ export default function LongTermMemoryTab() {
         open={deleteModal.open}
         onOpenChange={open => setDeleteModal(prev => ({ ...prev, open }))}
         title="Delete memory?"
-        description="This memory will be permanently removed. This cannot be undone."
+        description={
+          deleteModal.memory
+            ? `"${truncate(deleteModal.memory.content)}" is removed from long-term memory, so the assistant stops using it in future conversations. Past replies that already used it are unchanged. This cannot be undone.`
+            : ''
+        }
         confirmLabel="Delete"
         onConfirm={handleConfirmDelete}
         variant="danger"

@@ -15,7 +15,7 @@ import {
   Sparkles,
   Zap,
 } from 'lucide-react'
-import { toast } from 'sonner'
+import { notifyError, notifySuccess } from '@/lib/notify'
 import { modelService } from '@/features/models'
 import Badge from '@/components/ui/Badge'
 import Button from '@/components/ui/Button'
@@ -89,7 +89,7 @@ export default function ModelManagementTab() {
         }
       }
     } catch (err) {
-      toast.error('Failed to load runtimes', { description: err.message })
+      notifyError('Failed to load runtimes', { error: err, onRetry: loadImplementations })
     } finally {
       setLoading(false)
     }
@@ -110,7 +110,7 @@ export default function ModelManagementTab() {
       const data = await modelService.listAllModels()
       if (data.models) setModels(data.models)
     } catch (err) {
-      toast.error('Failed to load models', { description: err.message })
+      notifyError('Failed to load models', { error: err, onRetry: loadModels })
     } finally {
       setLoading(false)
     }
@@ -148,17 +148,26 @@ export default function ModelManagementTab() {
           if (status.status === 'completed' || status.status === 'error') {
             stopPoll()
             setLoading(false)
-            if (status.status === 'completed') loadModels()
+            if (status.status === 'completed') {
+              notifySuccess(`${model} downloaded`)
+              loadModels()
+            }
           }
         } catch (err) {
           stopPoll()
           setLoading(false)
-          toast.error('Download status check failed', { description: err.message })
+          notifyError('Download status check failed', {
+            error: err,
+            description: `RAGForge stopped following "${model}". The download may still be running on the server.`,
+          })
         }
       }, 2000)
       downloadPollsRef.current.add(pollStatus)
     } catch (err) {
-      toast.error('Download failed', { description: err.message })
+      notifyError('Download failed', {
+        error: err,
+        onRetry: () => handleDownload(model, implementation),
+      })
       setLoading(false)
     }
   }

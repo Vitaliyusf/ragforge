@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ChevronLeft, ChevronRight, FolderOpen, Loader2, Search, Upload } from 'lucide-react'
-import { toast } from 'sonner'
+import { notifyCritical, notifyError, notifySuccess } from '@/lib/notify'
 import { useFiles } from '@/features/files'
 import { ACTIVITY_FEATURES, useLiveActivitySource } from '@/features/activity'
 import Badge from '@/components/ui/Badge'
@@ -149,11 +149,11 @@ export default function FilesTab({ intent = null }) {
     if (!filesToUpload?.length) return
     try {
       await uploadFiles(Array.from(filesToUpload))
-      toast.success('Upload accepted', {
+      notifySuccess('Upload accepted', {
         description: `${filesToUpload.length} document(s) queued for ingestion.`,
       })
     } catch (error) {
-      toast.error('Upload failed', { description: error?.message || 'Please try again.' })
+      notifyError('Upload failed', { error, onRetry: () => handleUpload(filesToUpload) })
     }
   }, [uploadFiles])
 
@@ -206,16 +206,16 @@ export default function FilesTab({ intent = null }) {
     try {
       await openReview(fileId)
     } catch (error) {
-      toast.error('Review case unavailable', { description: error?.message || 'Please try again.' })
+      notifyError('Review case unavailable', { error, onRetry: () => handleOpenReview(fileId) })
     }
   }, [openReview])
 
   const handleSubmitDecision = useCallback(async (fileId, payload) => {
     try {
       await submitReviewDecision(fileId, payload)
-      toast.success('Review decision submitted')
+      notifySuccess('Review decision submitted')
     } catch (error) {
-      toast.error('Decision failed', { description: error?.message || 'Please try again.' })
+      notifyError('Decision failed', { error })
       throw error
     }
   }, [submitReviewDecision])
@@ -244,11 +244,14 @@ export default function FilesTab({ intent = null }) {
       if (targets.some((file) => file.file_id === activeFileId)) handleCloseDocument()
       setSelectedIds(new Set())
       if (failed > 0) {
-        toast.error('Some documents were not deleted', {
-          description: `${succeeded} deleted, ${failed} failed.`,
+        // A partial delete leaves the list in a state the user has to
+        // reconcile by hand, so it does not auto-dismiss the way a clean
+        // success does.
+        notifyCritical('Some documents were not deleted', {
+          description: `${succeeded} deleted, ${failed} failed. The failed documents are still listed.`,
         })
       } else {
-        toast.success(succeeded === 1 ? 'Document deleted' : `${succeeded} documents deleted`)
+        notifySuccess(succeeded === 1 ? 'Document deleted' : `${succeeded} documents deleted`)
       }
     } finally {
       setBulkBusy(false)

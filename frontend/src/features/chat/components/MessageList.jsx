@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef } from 'react'
-import { toast } from 'sonner'
+import { notifyError, notifySuccess } from '@/lib/notify'
 import ActivityIndicator from './ActivityIndicator'
 import ChatWelcome from './ChatWelcome'
 import MessageBubble from './MessageBubble'
@@ -34,7 +34,14 @@ export default function MessageList({
   }, [messages])
 
   const handleCopy = useCallback((text) => {
-    navigator.clipboard.writeText(text).then(() => toast.success('Copied to clipboard'))
+    // `writeText` rejects outside a secure context and when the permission
+    // is denied. Swallowing that left the user believing they had copied.
+    navigator.clipboard.writeText(text)
+      .then(() => notifySuccess('Copied to clipboard'))
+      .catch((error) => notifyError('Could not copy', {
+        error,
+        description: 'Your browser blocked clipboard access. Select the text and copy it manually.',
+      }))
   }, [])
 
   return (

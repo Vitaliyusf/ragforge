@@ -1,8 +1,8 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Clock, Cpu, Database, Settings, Sliders } from 'lucide-react'
-import { toast } from 'sonner'
+import { notifyCritical } from '@/lib/notify'
 
 import Card from '@/components/ui/Card'
 import PageHeader from '@/components/ui/PageHeader'
@@ -35,11 +35,16 @@ function ConfigCard({ icon: Icon, title, children }) {
 export default function ConfigTab() {
   const [config, setConfig] = useState(null)
 
-  useEffect(() => {
-    configService.getConfig().then(setConfig).catch((err) => {
-      toast.error('Failed to load configuration', { description: err.message })
+  // Without the config payload this tab has nothing to render, so a load
+  // failure is blocking rather than routine: it stays up, and it carries the
+  // retry instead of asking the user to reload the page.
+  const loadConfig = useCallback(() => {
+    configService.getConfig().then(setConfig).catch((error) => {
+      notifyCritical('Configuration unavailable', { error, onRetry: loadConfig })
     })
   }, [])
+
+  useEffect(() => { loadConfig() }, [loadConfig])
 
   if (!config) {
     return (

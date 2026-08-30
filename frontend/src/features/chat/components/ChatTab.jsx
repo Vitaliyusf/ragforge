@@ -271,7 +271,14 @@ export default function ChatTab() {
           open={deleteModalOpen}
           onOpenChange={setDeleteModalOpen}
           title="Delete chat?"
-          description={chatToDelete ? `Delete "${chatToDelete.title}"? This cannot be undone.` : ''}
+          // The delete_chat handler drops the chat, its messages and the
+          // memories indexed against it; long-term memory is a separate store
+          // and survives, so the copy says so rather than implying otherwise.
+          description={
+            chatToDelete
+              ? `"${chatToDelete.title}" and all of its messages are removed, along with anything this conversation contributed to chat memory. Long-term memories stay. This cannot be undone.`
+              : ''
+          }
           confirmLabel="Delete"
           onConfirm={handleConfirmDelete}
           variant="danger"

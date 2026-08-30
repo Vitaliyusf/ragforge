@@ -92,7 +92,17 @@ function NavItem({ destination, active, activity, onSelect }) {
           color: active ? 'var(--primary)' : working ? 'var(--accent)' : undefined,
         }}
       />
-      <span className="relative z-10 hidden xl:inline">{label}</span>
+      {/* 1600px, not a named step. The ten labelled destinations measure
+          ~1006px, and the nav only gets what the brand and the right-hand
+          cluster leave it: 955px at 1366 and 1000px at 1536. Revealing labels
+          at xl therefore clipped the first and last destination behind a
+          scrollbar-none horizontal scroller with no affordance, and 2xl only
+          moved the same clipping to 1536 — that is the breakpoint where the
+          runtime pill and user chip expand too, so supply drops exactly where
+          demand rises. 1600 is the first width that fits both. The button
+          keeps its aria-label, so the icon-only state below is still announced
+          in full. */}
+      <span className="relative z-10 hidden min-[1600px]:inline">{label}</span>
       {activity && <NavActivityIndicator state={activityState} selected={active} />}
       {activityText && (
         <span className="sr-only" role="status">

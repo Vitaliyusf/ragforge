@@ -23,6 +23,8 @@ export default function Modal({
   open,
   onOpenChange,
   title,
+  description,
+  descriptionIcon,
   children,
   showClose = true,
   size = 'default',
@@ -34,6 +36,24 @@ export default function Modal({
   }, [])
 
   const sizeClass = getSizeClass(size, variant)
+
+  // Radix links `aria-describedby` to a `Dialog.Description` if one is
+  // rendered, and warns when it is not. A dialog whose body is a form or a
+  // table has no one-line description to give, so the attribute is removed
+  // explicitly instead of pointing at an element that does not exist.
+  const describedBy = description ? undefined : { 'aria-describedby': undefined }
+
+  const descriptionBlock = description ? (
+    <div className="mb-4 flex gap-3">
+      {descriptionIcon}
+      <Dialog.Description
+        className="text-[15px] leading-relaxed"
+        style={{ color: 'var(--fg-muted)' }}
+      >
+        {description}
+      </Dialog.Description>
+    </div>
+  ) : null
 
   const sharedContentStyle = {
     background: 'var(--surface-elevated)',
@@ -70,6 +90,7 @@ export default function Modal({
           <Dialog.Content
             className="drawer-content fixed inset-y-0 right-0 flex w-full justify-end p-3"
             style={{ zIndex: MODAL_Z + 1 }}
+            {...describedBy}
           >
             <div
               className={cn('flex h-full w-full flex-col overflow-hidden rounded-2xl', sizeClass)}
@@ -84,7 +105,10 @@ export default function Modal({
                 </Dialog.Title>
                 {showClose && <CloseButton />}
               </div>
-              <div className="flex-1 overflow-y-auto p-5">{children}</div>
+              <div className="flex-1 overflow-y-auto p-5">
+                {descriptionBlock}
+                {children}
+              </div>
             </div>
           </Dialog.Content>
         ) : (
@@ -98,6 +122,7 @@ export default function Modal({
                 sizeClass
               )}
               style={sharedContentStyle}
+              {...describedBy}
             >
               <div className="p-5">
                 <div className="mb-4 flex items-center justify-between gap-3">
@@ -106,6 +131,7 @@ export default function Modal({
                   </Dialog.Title>
                   {showClose && <CloseButton />}
                 </div>
+                {descriptionBlock}
                 {children}
               </div>
             </Dialog.Content>
@@ -132,44 +158,67 @@ export function ConfirmModal({
     onOpenChange(false)
   }
 
+  // The confirm and cancel controls suppress the UA outline to carry the
+  // app's own ring, so the ring has to be spelled out — an `outline-hidden`
+  // with no `focus-visible` replacement leaves a keyboard user with no way to
+  // tell which of two buttons, one of them destructive, is about to fire.
+  const focusRing =
+    'focus:outline-hidden focus-visible:ring-2 focus-visible:ring-[var(--ring)] ' +
+    'focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--surface-elevated)]'
+
   return (
-    <Modal open={open} onOpenChange={onOpenChange} title={title} showClose={!loading} size="sm">
-      <div className="space-y-5">
-        {description && (
-          <div className="flex gap-3">
-            {variant === 'danger' && (
-              <AlertTriangle size={18} className="shrink-0 mt-0.5" style={{ color: 'var(--warning)' }} />
-            )}
-            <p className="text-[15px] leading-relaxed" style={{ color: 'var(--fg-muted)' }}>
-              {description}
-            </p>
-          </div>
-        )}
-        <div className="flex justify-end gap-2">
-          <Dialog.Close asChild>
-            <button
-              disabled={loading}
-              className="px-4 py-2 rounded-lg text-[15px] font-medium transition-colors outline-hidden"
-              style={{ background: 'var(--surface-hover)', color: 'var(--fg-muted)' }}
-              onMouseEnter={e => e.currentTarget.style.background = 'var(--surface-active)'}
-              onMouseLeave={e => e.currentTarget.style.background = 'var(--surface-hover)'}
-            >
-              {cancelLabel}
-            </button>
-          </Dialog.Close>
+    <Modal
+      open={open}
+      onOpenChange={onOpenChange}
+      title={title}
+      description={description}
+      descriptionIcon={
+        variant === 'danger' ? (
+          <AlertTriangle
+            size={18}
+            className="shrink-0 mt-0.5"
+            style={{ color: 'var(--warning)' }}
+            aria-hidden="true"
+          />
+        ) : null
+      }
+      showClose={!loading}
+      size="sm"
+    >
+      <div className="flex justify-end gap-2">
+        <Dialog.Close asChild>
           <button
-            onClick={handleConfirm}
+            type="button"
             disabled={loading}
-            className="px-4 py-2 rounded-lg text-[15px] font-medium text-white transition-all outline-hidden disabled:opacity-60"
-            style={{
-              background: variant === 'danger' ? 'var(--danger)' : 'var(--gradient-primary)',
-            }}
-            onMouseEnter={e => e.currentTarget.style.filter = 'brightness(1.1)'}
-            onMouseLeave={e => e.currentTarget.style.filter = ''}
+            className={cn(
+              'px-4 py-2 rounded-lg text-[15px] font-medium transition-colors',
+              'disabled:opacity-60 disabled:cursor-not-allowed',
+              focusRing
+            )}
+            style={{ background: 'var(--surface-hover)', color: 'var(--fg-muted)' }}
+            onMouseEnter={e => e.currentTarget.style.background = 'var(--surface-active)'}
+            onMouseLeave={e => e.currentTarget.style.background = 'var(--surface-hover)'}
           >
-            {loading ? 'Loading…' : confirmLabel}
+            {cancelLabel}
           </button>
-        </div>
+        </Dialog.Close>
+        <button
+          type="button"
+          onClick={handleConfirm}
+          disabled={loading}
+          className={cn(
+            'px-4 py-2 rounded-lg text-[15px] font-medium text-white transition-colors',
+            'disabled:opacity-60 disabled:cursor-not-allowed',
+            focusRing
+          )}
+          style={{
+            background: variant === 'danger' ? 'var(--danger)' : 'var(--primary)',
+          }}
+          onMouseEnter={e => e.currentTarget.style.filter = 'brightness(1.1)'}
+          onMouseLeave={e => e.currentTarget.style.filter = ''}
+        >
+          {loading ? 'Working…' : confirmLabel}
+        </button>
       </div>
     </Modal>
   )
