@@ -165,6 +165,16 @@ async def lifespan(app: FastAPI):
         await executor.shutdown()
 
         try:
+            llm_client.shutdown()
+        except Exception as exc:
+            logger.log(
+                "main:shutdown",
+                "Provider client shutdown failed",
+                {"error": str(exc)},
+                hypothesis_id="W",
+            )
+
+        try:
             await producer.close()
         except Exception:
             pass

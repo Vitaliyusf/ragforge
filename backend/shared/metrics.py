@@ -88,6 +88,9 @@ DEGRADED_PATH_REASONS = frozenset({
 # track: it means a concurrent caller was turned away and the pipeline fell
 # back to RRF, which is a quality regression that latency numbers alone hide.
 RERANKER_STATUSES = frozenset({"success", "busy", "timeout", "error"})
+VLLM_ADMISSION_STATUSES = frozenset(
+    {"admitted", "timeout", "closed", "failed", "cancelled"}
+)
 
 # Queue wait separates "the service is slow" from "the service never started".
 # The dense sub-10ms buckets exist because a healthy in-process handoff should
@@ -738,6 +741,25 @@ class ServiceMetrics:
             "ragapp_vllm_inflight_requests",
             "Requests this service currently has open against vLLM",
             ["service"],
+        )
+
+        self.vllm_configured_limit = Gauge(
+            "ragapp_vllm_configured_limit",
+            "Configured process-wide vLLM inference capacity",
+            ["service"],
+        )
+
+        self.vllm_admission_wait_seconds = Histogram(
+            "ragapp_vllm_admission_wait_seconds",
+            "Time spent waiting for shared vLLM inference capacity",
+            ["service", "traffic_class"],
+            buckets=list(QUEUE_WAIT_BUCKETS),
+        )
+
+        self.vllm_admission_outcomes_total = Counter(
+            "ragapp_vllm_admission_outcomes_total",
+            "Shared vLLM admission outcomes",
+            ["service", "traffic_class", "status"],
         )
 
         self.vllm_ttft_seconds = Histogram(

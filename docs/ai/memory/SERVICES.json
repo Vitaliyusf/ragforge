@@ -201,11 +201,13 @@
       "entrypoint": "backend/llm_agent/app/main.py",
       "responsibilities": [
         "typed LLM generation/evaluation control plane",
-        "vLLM provider integration"
+        "vLLM provider integration",
+        "process-wide fair vLLM admission and reusable HTTP transport"
       ],
       "owns": [
         "canonical typed model execution boundary",
-        "prompt rendering, invocation, decoding, validation, and telemetry policy"
+        "prompt rendering, invocation, decoding, validation, and telemetry policy",
+        "one shared provider capacity budget across live, eval, summary, metadata, memory, rewrite, risk, and generated-question work"
       ],
       "calls": [
         "vLLM model backend"

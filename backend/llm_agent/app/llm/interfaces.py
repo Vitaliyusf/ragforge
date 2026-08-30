@@ -21,6 +21,10 @@ class ProviderTimeoutError(RuntimeError):
     """The provider request exceeded its deadline."""
 
 
+class ProviderOverloadedError(RuntimeError):
+    """The provider could not admit work within its bounded wait."""
+
+
 @dataclass
 class LLMUsage:
     """Normalized token usage metadata returned by providers."""
@@ -109,3 +113,6 @@ class ILLMClient(ABC):
     def is_available(self) -> bool:
         """Check if the LLM service is available."""
         raise NotImplementedError
+
+    def shutdown(self) -> None:
+        """Close process-owned provider resources when the implementation has any."""

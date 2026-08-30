@@ -15,6 +15,7 @@ from app.llm.interfaces import (
     LLMInvocation,
     LLMUsage,
     ProviderHTTPError,
+    ProviderOverloadedError,
     ProviderProtocolError,
     ProviderTimeoutError,
 )
@@ -211,6 +212,8 @@ class ExecutionPipeline:
     def provider_failure_code(exc: Exception, *, provider_attempted: bool) -> str:
         if isinstance(exc, ProviderProtocolError):
             return "provider_protocol_error"
+        if isinstance(exc, ProviderOverloadedError):
+            return "provider_overloaded"
         if isinstance(exc, ProviderTimeoutError):
             return "provider_timeout"
         if isinstance(exc, ProviderHTTPError):

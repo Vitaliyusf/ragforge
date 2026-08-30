@@ -76,9 +76,19 @@ class Settings(BaseSettings):
     
     # Device configuration
     device: str = Field(default="auto", description="Device (auto, cuda, cpu, mps)")
-    max_concurrent_requests: int = Field(default=10, description="Max concurrent requests")
+    max_concurrent_requests: int = Field(
+        default=4,
+        ge=1,
+        description="Process-wide vLLM inference limit and handler worker count",
+    )
+    vllm_max_num_seqs: int = Field(
+        default=4,
+        ge=1,
+        description="Selected downstream vLLM sequence capacity",
+    )
     executor_queue_bound: int = Field(default=0, ge=0)
     executor_submit_timeout_seconds: float = Field(default=1.0, gt=0)
+    provider_admission_timeout_seconds: float = Field(default=1.0, gt=0)
     
     # vLLM generation parameters
     vllm_max_tokens: int = Field(
@@ -111,6 +121,11 @@ class Settings(BaseSettings):
     )
     vllm_base_url: str = Field(default="http://localhost:8000", description="vLLM base URL")
     vllm_api_key: str = Field(default="none", description="vLLM bearer API key")
+    vllm_connect_timeout: float = Field(default=5.0, gt=0)
+    vllm_read_timeout: float = Field(default=60.0, gt=0)
+    vllm_write_timeout: float = Field(default=10.0, gt=0)
+    vllm_pool_timeout: float = Field(default=1.0, gt=0)
+    vllm_keepalive_expiry: float = Field(default=30.0, gt=0)
     
     # Model cache configuration
     models_cache_ttl: int = Field(default=300, description="Models cache TTL in seconds")
@@ -169,7 +184,7 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_output_token_budgets(self) -> "Settings":
-        """Reject output ceilings that cannot fit inside the configured window."""
+        """Reject output ceilings and provider limits the server cannot honor."""
         fields = (
             "vllm_max_tokens",
             "summary_max_tokens",
@@ -181,6 +196,11 @@ class Settings(BaseSettings):
                     f"{field_name} must not exceed vllm_max_model_len "
                     f"({self.vllm_max_model_len})"
                 )
+        if self.max_concurrent_requests > self.vllm_max_num_seqs:
+            raise ValueError(
+                "max_concurrent_requests must not exceed vllm_max_num_seqs "
+                f"({self.vllm_max_num_seqs})"
+            )
         return self
 
     def max_tokens_for_request_type(self, request_type: str) -> int:

@@ -304,6 +304,28 @@
       "evidence": [
         "MEMORY-EVAL-02"
       ]
+    },
+    {
+      "id": "DEC-016",
+      "status": "accepted",
+      "title": "vLLM capacity is one fair process-wide budget aligned to max-num-seqs",
+      "decision": "The llm_agent singleton VLLMClient owns one reusable bounded httpx.Client and one synchronous fair admission controller. MAX_CONCURRENT_REQUESTS=4 is both the CONC-02 handler worker count and provider inference ceiling, aligned with VLLM_MAX_NUM_SEQS=4 and LLM_REQUEST_PREFETCH=4. Eval/background work may use at most three slots; live work leaves one slot for waiting eval work, with alternating admission when total capacity is one.",
+      "reason": "The fixed CONC-03 probe measured concurrency 4 at 168.2959 output tokens/s, 0.1367s TTFT p95 and 1.5232s E2E p95 with no errors/timeouts. Concurrency 8 reached 194.9909 output tokens/s but TTFT p95 rose to 1.5217s and E2E p95 to 2.6228s while the server remained capped at four sequences, so four is the measured interactive knee.",
+      "do_not_do": [
+        "Do not add a private provider ThreadPoolExecutor or request-scoped HTTP client beneath the service-owned handler executor.",
+        "Do not assign independent provider semaphores to individual RabbitMQ queues or LLM request classes.",
+        "Do not raise MAX_CONCURRENT_REQUESTS above VLLM_MAX_NUM_SEQS without a new fixed-shape provider measurement."
+      ],
+      "revisit_if": [
+        "The model, quantization, GPU, max-num-seqs, max-num-batched-tokens, or serving performance mode changes.",
+        "A representative live/background benchmark shows a different concurrency point improves throughput without unacceptable TTFT or tail-latency cost."
+      ],
+      "evidence": [
+        "CONC-03",
+        "backend/llm_agent/app/llm/provider_capacity.py",
+        "backend/llm_agent/app/llm/implementations/vllm.py",
+        "scripts/perf/vllm_concurrency_probe.py"
+      ]
     }
   ]
 }

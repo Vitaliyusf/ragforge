@@ -193,6 +193,8 @@ services:
       LLM_IMPLEMENTATION: ${LLM_IMPLEMENTATION:-vllm}
       VLLM_BASE_URL: http://vllm:8000
       VLLM_API_KEY: ${VLLM_API_KEY:?Set VLLM_API_KEY}
+      # Feed the selected server ceiling into client-side config validation.
+      VLLM_MAX_NUM_SEQS: ${VLLM_MAX_NUM_SEQS:-4}
       # Fallback context window used until vLLM can be probed for max_model_len.
       # Same variable as the vllm service's --max-model-len, so they cannot drift.
       VLLM_MAX_MODEL_LEN: ${VLLM_MAX_MODEL_LEN:-10240}
@@ -207,7 +209,15 @@ services:
       METADATA_MODEL: ${METADATA_MODEL:-RedHatAI/Qwen3.5-4B-quantized.w4a16}
       RAG_CHAT_MODEL: ${RAG_CHAT_MODEL:-RedHatAI/Qwen3.5-4B-quantized.w4a16}
       DEFAULT_MODEL: ${DEFAULT_MODEL:-RedHatAI/Qwen3.5-4B-quantized.w4a16}
-      MAX_CONCURRENT_REQUESTS: ${MAX_CONCURRENT_REQUESTS:-10}
+      # One measured provider budget: handler workers and vLLM admission share it.
+      # Primary prefetch is equal to this limit; auxiliary queues retain prefetch 1.
+      MAX_CONCURRENT_REQUESTS: ${MAX_CONCURRENT_REQUESTS:-4}
+      PROVIDER_ADMISSION_TIMEOUT_SECONDS: ${PROVIDER_ADMISSION_TIMEOUT_SECONDS:-1}
+      VLLM_CONNECT_TIMEOUT: ${VLLM_CONNECT_TIMEOUT:-5}
+      VLLM_READ_TIMEOUT: ${VLLM_READ_TIMEOUT:-60}
+      VLLM_WRITE_TIMEOUT: ${VLLM_WRITE_TIMEOUT:-10}
+      VLLM_POOL_TIMEOUT: ${VLLM_POOL_TIMEOUT:-1}
+      VLLM_KEEPALIVE_EXPIRY: ${VLLM_KEEPALIVE_EXPIRY:-30}
       LLM_TIMEOUT: ${LLM_TIMEOUT:-60}
       SUMMARY_TIMEOUT: ${SUMMARY_TIMEOUT:-120}
       METADATA_TIMEOUT: ${METADATA_TIMEOUT:-60}
