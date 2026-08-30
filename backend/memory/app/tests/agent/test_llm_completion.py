@@ -1,4 +1,5 @@
 """Typed llm_agent requests used by chat-exit orchestration."""
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
 from app.services.chat_exit_service import ChatExitService
@@ -35,18 +36,25 @@ def test_conversation_history_normalizes_sender_roles():
     ]
 
 
-def test_memory_curation_applies_only_actions_for_supplied_memory_ids():
+def test_memory_curation_applies_validated_actions_through_canonical_write_service(monkeypatch):
+    monkeypatch.setattr(
+        "app.services.chat_exit_service.current_identity",
+        lambda: SimpleNamespace(tenant_id="tenant-1", user_id="user-1", role="user"),
+    )
     memory_service = Mock()
-    memory_service.get_all_memories.return_value = [
-        {"id": "allowed", "content": "Old", "category": "chat_insight"}
+    memory_service.get_relevant_memories.return_value = {
+        "memories": [{"id": "allowed", "content": {"text": "Old"}, "category": "chat_insight"}]
+    }
+    memory_service.write_memory.side_effect = [
+        {"status": "accepted", "memory_id": "new-1"},
+        {"status": "accepted", "memory_id": "replacement-1"},
     ]
     service = ChatExitService(Mock(), Mock(), memory_service, Mock())
     service._request_typed_llm = Mock(
         return_value={
             "actions": [
-                {"action": "add", "content": "New preference", "category": "user_preference"},
+                {"action": "create", "content": "New preference", "category": "user_preference"},
                 {"action": "update", "memory_id": "allowed", "content": "Updated"},
-                {"action": "delete", "memory_id": "not-supplied"},
             ],
             "summary": "Added and updated memory",
         }
@@ -58,14 +66,52 @@ def test_memory_curation_applies_only_actions_for_supplied_memory_ids():
             {"sender": "Assistant", "message": "Okay"},
         ],
         "chat-1",
+        {
+            "tenant_id": "tenant-1",
+            "owner_id": "user-1",
+            "role": "user",
+            "request_id": "req-1",
+            "trace_id": "trace-1",
+        },
     )
 
     service._request_typed_llm.assert_called_once()
     assert service._request_typed_llm.call_args.args[0] == "memory_curation"
-    memory_service.create_memory.assert_called_once_with(
-        "New preference",
-        "user_preference",
-        {"source": "llm_agent", "chat_id": "chat-1"},
+    assert memory_service.write_memory.call_count == 2
+    assert memory_service.write_memory.call_args_list[0].args[0]["content"]["text"] == "New preference"
+    assert memory_service.write_memory.call_args_list[1].args[0]["supersedes"] == "allowed"
+    memory_service.delete_memory.assert_not_called()
+
+
+def test_memory_curation_rejects_the_whole_plan_when_an_id_is_outside_the_bound(monkeypatch):
+    monkeypatch.setattr(
+        "app.services.chat_exit_service.current_identity",
+        lambda: SimpleNamespace(tenant_id="tenant-1", user_id="user-1", role="user"),
     )
-    memory_service.update_memory.assert_called_once_with("allowed", content="Updated")
+    memory_service = Mock()
+    memory_service.get_relevant_memories.return_value = {
+        "memories": [{"id": "allowed", "content": {"text": "Old"}}]
+    }
+    service = ChatExitService(Mock(), Mock(), memory_service, Mock())
+    service._request_typed_llm = Mock(
+        return_value={
+            "actions": [{"action": "update", "memory_id": "cross-tenant", "content": "Changed"}],
+            "summary": "unsafe",
+        }
+    )
+
+    result = service._curate_memories(
+        [{"sender": "User", "message": "Remember this"}, {"sender": "Assistant", "message": "Okay"}],
+        "chat-1",
+        {
+            "tenant_id": "tenant-1",
+            "owner_id": "user-1",
+            "role": "user",
+            "request_id": "req-1",
+            "trace_id": "trace-1",
+        },
+    )
+
+    assert result.status == "fallback"
+    memory_service.write_memory.assert_not_called()
     memory_service.delete_memory.assert_not_called()

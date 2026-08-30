@@ -270,6 +270,7 @@ class MemoryHandlerService:
 
     def _memory_request_context(self, request: Dict[str, Any]) -> Dict[str, Any]:
         """Build service request context for write operations."""
+        identity = current_identity()
         return {
             "request_id": request.get("request_id"),
             "trace_id": request.get("trace_id"),
@@ -277,6 +278,7 @@ class MemoryHandlerService:
             "owner_id": request.get("owner_id"),
             "owner_type": request.get("owner_type"),
             "tenant_id": request.get("tenant_id"),
+            "role": identity.role if identity is not None else None,
             "source": request.get("source") or request.get("source_service") or request.get("action") or "rabbitmq_request",
         }
 
@@ -540,7 +542,10 @@ class MemoryHandlerService:
         chat_id = request.get("chat_id")
         if not chat_id:
             return self._send_error(request, "chat_id is required")
-        result = self.chat_exit_service.process_chat_exit(chat_id)
+        result = self.chat_exit_service.process_chat_exit(
+            chat_id,
+            self._memory_request_context(request),
+        )
         return self._send_response(request, result)
 
     def _handle_generate_title(self, request: Dict[str, Any]) -> Optional[Dict[str, Any]]:

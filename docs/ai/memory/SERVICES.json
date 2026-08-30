@@ -169,6 +169,7 @@
         "memory records",
         "memory mutation semantics",
         "validated memory mutation application",
+        "bounded Memory Agent policy, retries and safe fallback",
         "memory lifecycle state (active/superseded/archived/deleted)",
         "memory vector synchronization state",
         "deterministic memory consolidation and temporal conflict policy",
@@ -183,6 +184,7 @@
         "events/projections where configured"
       ],
       "look_first": [
+        "backend/memory/app/agent/memory_agent.py",
         "backend/memory/app/services/memory_service.py",
         "backend/memory/app/services/memory_embedding_client.py",
         "backend/memory/app/services/memory_vector_index.py",

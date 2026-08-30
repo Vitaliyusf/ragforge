@@ -46,6 +46,7 @@ class PromptRegistryTests(unittest.TestCase):
 
         self.assertEqual(registry.resolve("answer_evaluation", None).prompt_version, "answer_evaluation.v2")
         self.assertEqual(registry.resolve("content_risk_scan", None).prompt_version, "content_risk_scan.v2")
+        self.assertEqual(registry.resolve("memory_curation", None).prompt_version, "memory_curation.v2")
 
     def test_prompt_registry_keeps_v1_and_v2_resolvable_for_targeted_requests(self):
         registry = PromptRegistry(Settings())
@@ -65,6 +66,14 @@ class PromptRegistryTests(unittest.TestCase):
         self.assertEqual(
             registry.resolve("content_risk_scan", "content_risk_scan.v2").prompt_version,
             "content_risk_scan.v2",
+        )
+        self.assertEqual(
+            registry.resolve("memory_curation", "memory_curation.v1").prompt_version,
+            "memory_curation.v1",
+        )
+        self.assertEqual(
+            registry.resolve("memory_curation", "memory_curation.v2").prompt_version,
+            "memory_curation.v2",
         )
 
     def test_structured_extractor_selects_last_valid_payload_when_multiple_objects_exist(self):

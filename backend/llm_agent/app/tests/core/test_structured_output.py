@@ -295,7 +295,7 @@ class MemoryExtractionParsingTests(unittest.TestCase):
             {
                 "memory_extraction": (
                     '{"memories":[{"type":"preference","content":"User prefers concise summaries.",'
-                    '"confidence":0.91,"action":"store"}]}'
+                    '"confidence":0.91,"action":"create","source_role":"user"}]}'
                 )
             }
         )
@@ -314,7 +314,8 @@ class MemoryExtractionParsingTests(unittest.TestCase):
         self.assertEqual(reply.status, "success")
         self.assertEqual(len(reply.parsed_output.memories), 1)
         self.assertEqual(reply.parsed_output.memories[0].type, "preference")
-        self.assertEqual(reply.parsed_output.memories[0].action, "store")
+        self.assertEqual(reply.parsed_output.memories[0].action, "create")
+        self.assertEqual(len(reply.output_schema_sha256), 64)
 
 
 class StructuredOutputFailureContractTests(unittest.TestCase):
