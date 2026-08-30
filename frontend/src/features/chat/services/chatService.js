@@ -1,5 +1,5 @@
 /** Chat service for API calls */
-import { get, post, del } from '@/lib/http/client'
+import { get, post, patch, del } from '@/lib/http/client'
 
 class ChatService {
   /**
@@ -98,7 +98,10 @@ class ChatService {
    * @returns {Promise<Object>} Response data
    */
   async updateChatTitle(chatId, title) {
-    return await post(`/v1/chats/${chatId}/title?title=${encodeURIComponent(title)}`)
+    // PATCH, not POST: the gateway declares this route as PATCH only, so the
+    // POST this used to send came back 405 and every rename failed. The unit
+    // tests mock this service, so only a live call surfaces it.
+    return await patch(`/v1/chats/${chatId}/title?title=${encodeURIComponent(title)}`)
   }
 }
 
