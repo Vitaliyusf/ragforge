@@ -80,7 +80,15 @@ class FakeBackendClient:
         self.calls.append({"type": "memory", "depth": depth, "request_id": request.request_id})
         return {"memories": [{"content": f"{depth} memory"}]}
 
-    async def search_chunks(self, request, query, retrieval_plan=None, pass_name="pass_one"):
+    async def search_chunks(
+        self,
+        request,
+        query,
+        retrieval_plan=None,
+        pass_name="pass_one",
+        *,
+        top_k=None,
+    ):
         self.calls.append({"type": "vector_db", "pass_name": pass_name, "query": query})
         if pass_name == "pass_two":
             return {
@@ -283,5 +291,4 @@ def build_http_client(service: HTTPRouteService):
         admin_id="admin-a",
     )
     return TestClient(app)
-
 

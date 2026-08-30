@@ -90,11 +90,13 @@ from app.services.eval_store import (
 )
 from app.services.failure_attribution import aggregate_attribution, classify_item
 from app.services.golden_set_parser import prepare_chunk_labels, prepare_file_labels
+from app.services.learned_reranker import CrossEncoderReranker
 from app.services.retrieval_trace import (
     DROP_RETRIEVAL_NOT_ALLOWED,
     DROP_REVIEW_REMOVED,
     STAGE_BASE,
     STAGE_FINAL_CONTEXT,
+    STAGE_RERANKED,
     RetrievalTrace,
     dropped_view,
 )
@@ -554,6 +556,7 @@ class EvalRunner:
         backend_client: Any,
         logger: Any = None,
         graph_runner: Any = None,
+        reranker: Any = None,
     ) -> None:
         self.config = config
         self.store = store
@@ -563,6 +566,11 @@ class EvalRunner:
         # reason rather than silently downgraded to a retrieval run whose
         # answer-quality columns would all be blank.
         self.graph_runner = graph_runner
+        self.reranker = (
+            reranker
+            or getattr(graph_runner, "reranker", None)
+            or CrossEncoderReranker(config)
+        )
         self.owner_id = f"eval-{uuid4()}"
         # Strong references to in-flight runs. asyncio only holds a weak
         # reference to a task, so without this set a run can be garbage
@@ -888,7 +896,11 @@ class EvalRunner:
                 # its depth is the production one — recording the eval depth
                 # there would claim a candidate pool the run never saw.
                 candidate_k=(
-                    self.config.top_k_documents
+                    (
+                        self.reranker.candidate_limit
+                        if self.reranker.enabled
+                        else self.config.top_k_documents
+                    )
                     if mode == MODE_END_TO_END
                     else candidate_depth(self.config)
                 ),
@@ -1199,8 +1211,24 @@ class EvalRunner:
                         ),
                         dropped=dropped,
                     )
-                    trace.record_stage(STAGE_FINAL_CONTEXT, eligible)
-                    ids = retrieved_ids(eligible, item_mode)
+                    reranked = await self.reranker.rerank(
+                        query,
+                        eligible,
+                        traffic_class="eval",
+                    )
+                    trace.record_stage(STAGE_RERANKED, reranked.candidates)
+                    trace.record_decision(
+                        STAGE_RERANKED,
+                        reranked.status,
+                        reason=(
+                            "learned_cross_encoder"
+                            if reranked.status == "success"
+                            else "deterministic_retrieval_order_fallback"
+                        ),
+                        detail={"candidate_count": reranked.candidate_count},
+                    )
+                    trace.record_stage(STAGE_FINAL_CONTEXT, reranked.candidates)
+                    ids = retrieved_ids(reranked.candidates, item_mode)
             finally:
                 semaphore.release()
         except Exception as exc:  # noqa: BLE001 - one item, not the run
@@ -1636,10 +1664,11 @@ def create_eval_runner(
     backend_client: Any,
     logger: Any = None,
     graph_runner: Any = None,
+    reranker: Any = None,
 ) -> EvalRunner:
     """Create the eval runner.
 
     ``graph_runner`` is required only for ``end_to_end`` runs; without it
     that mode is refused rather than downgraded.
     """
-    return EvalRunner(config, store, backend_client, logger, graph_runner)
+    return EvalRunner(config, store, backend_client, logger, graph_runner, reranker)

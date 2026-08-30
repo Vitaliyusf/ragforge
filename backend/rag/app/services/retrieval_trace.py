@@ -38,6 +38,7 @@ from typing import Any, Dict, Iterable, List, Optional
 STAGE_BASE = "base"
 STAGE_PASS_ONE = "pass_one"
 STAGE_MERGED = "merged"
+STAGE_RERANKED = "reranked"
 STAGE_PASS_TWO = "pass_two"
 STAGE_FINAL_CONTEXT = "final_context"
 
@@ -95,6 +96,8 @@ def candidate_view(chunk: Dict[str, Any], rank: int) -> Dict[str, Any]:
         "file_id": _clean_id(_field(chunk, "file_id") or _field(chunk, "document_id")),
         "score": _score(_field(chunk, "score")),
     }
+    if chunk.get("reranker_score") is not None:
+        view["reranker_score"] = _score(chunk.get("reranker_score"))
     diagnostics = chunk.get("retrieval_diagnostics") or {}
     if diagnostics:
         view["retrieval"] = {

@@ -6,8 +6,8 @@ compatibility" — ``reranker_enabled`` and ``hybrid_search_enabled`` among
 them — which default to ``True`` and which no retrieval code reads. Every
 provenance record that copied them said a reranker and a hybrid retriever
 produced its numbers. Neither exists: ``search_chunks`` sends only a query
-vector and a ``top_k``, and ``_rerank_and_merge`` de-duplicates by chunk id
-and sorts by the vector score the store already assigned.
+vector and a ``top_k``; RAG-04 replaces the former score-only merge with an
+actual cross-encoder stage.
 
 So the first thing asserted below is that a true legacy flag does not survive
 into an "active" claim. The second is the distinction that makes the nulls
@@ -25,22 +25,34 @@ from app.services.effective_retrieval import (
 
 
 def config() -> RAGConfig:
-    return RAGConfig()
+    return RAGConfig(reranker_enabled=True)
 
 
-def test_a_true_legacy_flag_never_becomes_an_active_reranker():
+def test_the_enabled_learned_reranker_is_reported_with_a_pinned_model():
     """The acceptance criterion, stated directly."""
     live = config()
     assert live.reranker_enabled is True
-    assert live.reranker_top_k == 5
 
     effective = effective_retrieval_config(live, pipeline_active=True)
 
-    assert effective["reranker_active"] is False
+    assert effective["reranker_active"] is True
     # Null because there is no second model scoring a candidate — the only
     # ordering in the pipeline is the vector store's own.
+    assert effective["reranker_model"] == live.reranker_model
+    assert effective["reranker_model_revision"] == live.reranker_model_revision
+    assert effective["reranker_candidate_k"] == live.reranker_candidate_k
+    assert effective["reranker_implementation"] == "sentence_transformers_cross_encoder"
+
+
+def test_a_disabled_reranker_reports_proven_absence():
+    effective = effective_retrieval_config(
+        RAGConfig(reranker_enabled=False), pipeline_active=True
+    )
+
+    assert effective["reranker_active"] is False
     assert effective["reranker_model"] is None
-    assert effective["reranker_implementation"] == "score_order_merge"
+    assert effective["reranker_model_revision"] is None
+    assert effective["reranker_implementation"] is None
 
 
 def test_effective_config_reports_the_real_hybrid_path():
@@ -56,7 +68,7 @@ def test_effective_config_reports_the_real_hybrid_path():
     assert effective["fusion"] == "rrf"
     assert effective["dense_candidate_k"] == live.dense_candidate_k
     assert effective["sparse_candidate_k"] == live.sparse_candidate_k
-    assert effective["fused_candidate_k"] == live.top_k_documents
+    assert effective["fused_candidate_k"] == live.reranker_candidate_k
     assert effective["rrf_k"] == live.hybrid_rrf_k
 
 
@@ -69,7 +81,7 @@ def test_a_configured_similarity_floor_no_code_applies_is_reported_as_unapplied(
     assert effective["min_similarity_threshold_applied"] is None
 
 
-def test_a_run_that_never_reaches_a_stage_reports_null_not_the_production_value():
+def test_retrieval_eval_reaches_reranking_but_not_graph_only_stages():
     """A retrieval-only run issues one `search_chunks` call. Recording the
     merge cap, the pass-two thresholds and the answer-context depth would
     describe three stages it never entered."""
@@ -77,7 +89,7 @@ def test_a_run_that_never_reaches_a_stage_reports_null_not_the_production_value(
 
     effective = effective_retrieval_config(live, pipeline_active=False)
 
-    assert effective["reranker_implementation"] is None
+    assert effective["reranker_implementation"] == "sentence_transformers_cross_encoder"
     assert effective["context_k"] is None
     assert effective["merge_kept_k"] is None
     assert effective["pass_two_active"] is False
@@ -92,12 +104,22 @@ def test_the_pipeline_stage_settings_mirror_the_graph_when_it_runs():
     effective = effective_retrieval_config(live, pipeline_active=True)
 
     assert effective["context_k"] == live.top_k_documents
-    # `_rerank_and_merge` keeps `top_k_documents * 2` before the context is
-    # cut down, and a candidate lost to that cap was lost to the merge.
-    assert effective["merge_kept_k"] == live.top_k_documents * 2
+    assert effective["merge_kept_k"] == live.reranker_candidate_k
     assert effective["pass_two_active"] is True
     assert effective["pass_two_chunk_threshold"] == live.pass_two_chunk_threshold
     assert effective["pass_two_score_threshold"] == live.pass_two_score_threshold
+
+
+def test_regular_pipeline_reports_no_extended_merge_or_second_pass():
+    live = config()
+    effective = effective_retrieval_config(
+        live, pipeline_active=True, pipeline_mode="regular"
+    )
+
+    assert effective["reranker_active"] is True
+    assert effective["context_k"] == live.top_k_documents
+    assert effective["merge_kept_k"] is None
+    assert effective["pass_two_active"] is False
 
 
 def test_every_returned_key_is_declared_so_callers_can_exempt_its_nulls():

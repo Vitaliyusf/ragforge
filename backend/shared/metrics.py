@@ -335,22 +335,29 @@ class ServiceMetrics:
         # ── Reranker metrics ─────────────────────────────────────────
         self.reranker_requests_total = Counter(
             "ragapp_reranker_requests_total",
-            "Total reranker requests",
-            ["service"],
+            "Learned reranker attempts by deterministic outcome",
+            ["service", "status", "traffic_class"],
         )
 
         self.reranker_duration = Histogram(
             "ragapp_reranker_duration_seconds",
-            "Reranker scoring latency",
-            ["service"],
-            buckets=[0.01, 0.05, 0.1, 0.25, 0.5, 1.0, 2.0],
+            "Wall time spent awaiting learned reranker inference",
+            ["service", "status", "traffic_class"],
+            buckets=[0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0],
+        )
+
+        self.reranker_candidate_count = Histogram(
+            "ragapp_reranker_candidate_count",
+            "Candidates submitted to one learned reranker attempt",
+            ["service", "traffic_class"],
+            buckets=[1, 2, 3, 5, 8, 10, 15, 20, 30, 50, 100],
         )
 
         self.reranker_top_score = Histogram(
             "ragapp_reranker_top_score",
-            "Top reranker score per query",
-            ["service"],
-            buckets=[0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0],
+            "Top score produced by successful learned reranking",
+            ["service", "traffic_class"],
+            buckets=[0.0, 0.1, 0.25, 0.5, 0.75, 0.9, 1.0],
         )
 
         # ── Vector DB metrics ────────────────────────────────────────

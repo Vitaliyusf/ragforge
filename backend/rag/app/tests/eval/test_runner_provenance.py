@@ -31,7 +31,7 @@ def test_the_run_captures_a_config_snapshot_naming_what_it_cannot_see():
     assert "chunk_size" in snapshot["unobserved"]
 
 
-def test_a_retrieval_run_reports_hybrid_but_no_reranker():
+def test_a_retrieval_run_reports_the_pinned_learned_reranker():
     store, runner, _, dataset_id = build()
     assert runner.config.reranker_enabled is True
     assert runner.config.hybrid_search_enabled is True
@@ -39,8 +39,10 @@ def test_a_retrieval_run_reports_hybrid_but_no_reranker():
     run = execute(runner, dataset_id)
     snapshot = fetch(store, run["run_id"])["config_snapshot"]
 
-    assert snapshot["reranker_active"] is False
-    assert snapshot["reranker_model"] is None
+    assert snapshot["reranker_active"] is True
+    assert snapshot["reranker_model"] == runner.config.reranker_model
+    assert snapshot["reranker_model_revision"] == runner.config.reranker_model_revision
+    assert snapshot["reranker_candidate_k"] == runner.config.reranker_candidate_k
     assert snapshot["hybrid_search_active"] is True
     for legacy in (
         "reranker_enabled",
@@ -106,4 +108,3 @@ def test_relabelling_a_dataset_does_not_rewrite_what_past_runs_scored():
 
 
 # ── Failure paths ─────────────────────────────────────────────────────────
-

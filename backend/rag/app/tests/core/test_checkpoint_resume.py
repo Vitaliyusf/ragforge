@@ -105,7 +105,7 @@ def test_extended_resume_after_pass_two_runs_final_ranking_exactly_once():
             {"chunk_id": "c2", "text": "Pass two", "score": 0.91, "source": "two"},
         ],
     )
-    original_ranking = service.graph_runner._rerank_and_merge
+    original_ranking = service.graph_runner._rerank_candidates
     ranking_calls = 0
 
     async def count_ranking(state, runtime):
@@ -113,7 +113,7 @@ def test_extended_resume_after_pass_two_runs_final_ranking_exactly_once():
         ranking_calls += 1
         return await original_ranking(state, runtime)
 
-    service.graph_runner._rerank_and_merge = count_ranking
+    service.graph_runner._rerank_candidates = count_ranking
 
     result = asyncio.run(
         service.graph_runner.run(request, CollectingConversationEmitter(request), resume=True)
@@ -143,7 +143,7 @@ def test_extended_resume_after_final_ranking_repeats_no_retrieval_work():
         ranking_calls += 1
         return {"retrieved_chunks": state["retrieved_chunks"]}
 
-    service.graph_runner._rerank_and_merge = count_ranking
+    service.graph_runner._rerank_candidates = count_ranking
 
     result = asyncio.run(
         service.graph_runner.run(request, CollectingConversationEmitter(request), resume=True)
@@ -319,5 +319,4 @@ def test_checkpoint_restore_reuses_graph_run_id_and_owner_identity():
     assert resumed_request.graph_run_id == "graph-run-1"
     assert resumed_request.owner_id == TEST_IDENTITY.user_id
     assert resumed_request.owner_type == "user"
-
 

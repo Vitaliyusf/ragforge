@@ -80,7 +80,7 @@ RabbitMQ's exclusive auto-delete reply queues handle the RPC pattern directly. K
 
 - 8 backend microservices + 1 Next.js frontend in a single `docker compose up`
 - Hybrid RabbitMQ/Kafka messaging: native RPC for gateway flows, durable event stream for the embedding pipeline
-- Real-time chat with dense-vector retrieval and a score-ordered de-duplication/merge stage
+- Real-time chat with hybrid retrieval and a pinned multilingual cross-encoder reranker
 - LangChain tool-calling memory agent with consolidation/deduplication
 - QLoRA fine-tuning pipeline (dataset upload, training, adapter registry) — hidden by default in public stack
 - Centralized HTTP client with timeout, retry, and exponential backoff on both frontend and backend
@@ -88,13 +88,10 @@ RabbitMQ's exclusive auto-delete reply queues handle the RPC pattern directly. K
 
 These are repository and runtime metrics, not benchmark claims.
 
-Hybrid lexical/vector fusion and model-based reranking are optional extension
-capabilities, not current runtime defaults. The active request path sends a dense
-query vector and `top_k` to the vector service; it has no lexical arm and no
-second model that rescores candidates. The RAG configuration retains legacy
-`hybrid_search_*` and `reranker_*` fields for compatibility, but those fields do
-not activate either stage. In the default Compose environment,
-`RERANKER_ENABLED=false` makes that inactive state explicit.
+The default Compose profile fuses dense and sparse candidates with RRF, then
+reranks a bounded pool of 20 passages with the pinned multilingual
+`BAAI/bge-reranker-v2-m3` cross-encoder. A timeout or model error preserves the
+retrieval ordering deterministically and is exposed in metrics and eval traces.
 
 ## Quick Start
 

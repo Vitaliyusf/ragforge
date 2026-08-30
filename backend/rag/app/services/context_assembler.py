@@ -74,7 +74,8 @@ def _redundant(text: str, accepted: Sequence[Tuple[str, Set[str]]]) -> bool:
 
 def _score(chunk: Dict[str, Any]) -> float:
     try:
-        return float(chunk.get("score", 0.0))
+        value = chunk.get("reranker_score")
+        return float(chunk.get("score", 0.0) if value is None else value)
     except (TypeError, ValueError):
         return 0.0
 

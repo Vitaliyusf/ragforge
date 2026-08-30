@@ -31,6 +31,7 @@ from app.services.citation_metrics import (
     supporting_passage_ids,
 )
 from app.services.context_assembler import assemble_context, estimate_tokens
+from app.services.learned_reranker import CrossEncoderReranker
 from app.services.conversation_types import (
     ConversationRequest,
     ConversationState,
@@ -44,6 +45,7 @@ from app.services.retrieval_trace import (
     STAGE_MERGED,
     STAGE_PASS_ONE,
     STAGE_PASS_TWO,
+    STAGE_RERANKED,
     RetrievalTrace,
 )
 from app.services.metrics_facts import (
@@ -90,6 +92,7 @@ class ConversationGraphRunner:
         tracer: ConversationTracer,
         logger: Any,
         metrics_facts: Optional[MetricsFactStore] = None,
+        reranker: Optional[CrossEncoderReranker] = None,
     ):
         self.config = config
         self.backend_client = backend_client
@@ -101,6 +104,7 @@ class ConversationGraphRunner:
         self.tracer = tracer
         self.logger = logger
         self.metrics_facts = metrics_facts or create_metrics_fact_store(config)
+        self.reranker = reranker or CrossEncoderReranker(config)
         self._secret_key_pattern = re.compile(r"(secret|token|password|auth|credential|bootstrap|mongodb)", re.IGNORECASE)
         self._secret_string_patterns = [
             re.compile(r"mongodb:\/\/[^\s]+", re.IGNORECASE),
@@ -172,6 +176,7 @@ class ConversationGraphRunner:
             ),
             "current_node": "graph_start",
             "retrieval_trace": retrieval_trace,
+            "traffic_class": "live" if record_metrics else "eval",
             # Bounded per-call LLM evidence for this turn, in call order. No
             # prompt, output or context text ever enters it.
             "llm_actions": [],
@@ -443,10 +448,21 @@ class ConversationGraphRunner:
             self._select_mode,
             {"regular": regular_path[2], "extended": extended_path[2]},
         )
-        for path in (regular_path, extended_path):
+        # Both paths now share `rerank_candidates`, and a shared node with one
+        # unconditional edge per path fans out to every successor at once —
+        # which would run regular and extended generation for the same turn.
+        # Where the successors differ, the edge branches on the mode instead.
+        successors: Dict[str, Dict[str, Any]] = {}
+        for mode, path in (("regular", regular_path), ("extended", extended_path)):
             for current, following in zip(path[2:], path[3:]):
-                workflow.add_edge(current, following)
-            workflow.add_edge(path[-1], END)
+                successors.setdefault(current, {})[mode] = following
+            successors.setdefault(path[-1], {})[mode] = END
+        for current, by_mode in successors.items():
+            targets = set(by_mode.values())
+            if len(targets) == 1:
+                workflow.add_edge(current, targets.pop())
+            else:
+                workflow.add_conditional_edges(current, self._select_mode, by_mode)
         return workflow.compile()
 
     async def _run_fallback_graph(self, state: ConversationState, runtime: Dict[str, Any]) -> ConversationState:
@@ -481,8 +497,9 @@ class ConversationGraphRunner:
             "load_memory_deep": self._load_memory_deep,
             "rewrite_or_decompose_query": self._rewrite_or_decompose_query,
             "retrieve_pass_one": self._retrieve_pass_one,
-            "rerank_and_merge": self._rerank_and_merge,
             "retrieve_pass_two_if_needed": self._retrieve_pass_two_if_needed,
+            "merge_candidates": self._merge_candidates,
+            "rerank_candidates": self._rerank_candidates,
             "generate_draft_answer": self._generate_draft_answer,
             "evaluate_answer_deep": self._evaluate_answer_deep,
             "revise_once_if_needed": self._revise_once_if_needed,
@@ -514,7 +531,8 @@ class ConversationGraphRunner:
                 "retrieve_chunks_once": "retrieve_chunks",
                 "retrieve_pass_one": "retrieve_chunks",
                 "retrieve_pass_two_if_needed": "retrieve_chunks",
-                "rerank_and_merge": "rerank",
+                "merge_candidates": "merge_candidates",
+                "rerank_candidates": "rerank",
                 "generate_draft_answer": "generate_answer",
                 "evaluate_answer_light": "evaluate_answer",
                 "evaluate_answer_deep": "evaluate_answer",
@@ -1112,7 +1130,21 @@ class ConversationGraphRunner:
 
     async def _retrieve_chunks_once(self, state: ConversationState, runtime: Dict[str, Any]) -> Dict[str, Any]:
         request: ConversationRequest = runtime["request"]
-        response = await self.backend_client.search_chunks(request, request.user_message, state.get("retrieval_plan", {}), "regular")
+        if self.reranker.enabled:
+            response = await self.backend_client.search_chunks(
+                request,
+                request.user_message,
+                state.get("retrieval_plan", {}),
+                "regular",
+                top_k=max(self.config.top_k_documents, self.reranker.candidate_limit),
+            )
+        else:
+            response = await self.backend_client.search_chunks(
+                request,
+                request.user_message,
+                state.get("retrieval_plan", {}),
+                "regular",
+            )
         chunks = self._normalize_chunks(response)
         self._trace_stage(
             runtime,
@@ -1182,7 +1214,17 @@ class ConversationGraphRunner:
             query = queries[next_query]
             pending.append(
                 asyncio.create_task(
-                    self.backend_client.search_chunks(request, query, plan, "pass_one")
+                    self.backend_client.search_chunks(
+                        request,
+                        query,
+                        plan,
+                        "pass_one",
+                        **(
+                            {"top_k": self.reranker.candidate_limit}
+                            if self.reranker.enabled
+                            else {}
+                        ),
+                    )
                 )
             )
             next_query += 1
@@ -1195,7 +1237,17 @@ class ConversationGraphRunner:
                     query = queries[next_query]
                     pending.append(
                         asyncio.create_task(
-                            self.backend_client.search_chunks(request, query, plan, "pass_one")
+                            self.backend_client.search_chunks(
+                                request,
+                                query,
+                                plan,
+                                "pass_one",
+                                **(
+                                    {"top_k": self.reranker.candidate_limit}
+                                    if self.reranker.enabled
+                                    else {}
+                                ),
+                            )
                         )
                     )
                     next_query += 1
@@ -1232,53 +1284,89 @@ class ConversationGraphRunner:
             },
         }
 
-    async def _rerank_and_merge(self, state: ConversationState, runtime: Dict[str, Any]) -> Dict[str, Any]:
-        request: ConversationRequest = runtime["request"]
+    async def _merge_candidates(
+        self, state: ConversationState, runtime: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Deduplicate retrieval results without claiming learned scoring."""
         incoming = state.get("retrieved_chunks", [])
-        previous_top = incoming[0].get("chunk_id") if incoming else None
         merged: Dict[str, Dict[str, Any]] = {}
         for chunk in incoming:
             chunk_id = chunk["chunk_id"]
             current = merged.get(chunk_id)
             if current is None or chunk.get("score", 0.0) > current.get("score", 0.0):
                 merged[chunk_id] = chunk
-        reranked = sorted(merged.values(), key=lambda item: item.get("score", 0.0), reverse=True)
-        if previous_top is not None:
-            # Only meaningful when something was retrieved; an empty turn has no
-            # first-ranked chunk to change.
+        ordered = sorted(
+            merged.values(), key=lambda item: item.get("score", 0.0), reverse=True
+        )
+        kept = ordered[: self.reranker.candidate_limit]
+        self._trace_stage(runtime, STAGE_MERGED, kept, returned_count=len(ordered))
+        return {
+            "retrieved_chunks": kept,
+            "_meta": {
+                "message": "Candidate results merged",
+                "counters": {"chunk_count": len(kept)},
+                "debug_excerpt": (
+                    f"top_retrieval_score={kept[0]['score']:.3f}"
+                    if kept
+                    else "no merged chunks"
+                ),
+            },
+        }
+
+    async def _rerank_candidates(
+        self, state: ConversationState, runtime: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        request: ConversationRequest = runtime["request"]
+        incoming = list(state.get("retrieved_chunks", []))
+        previous_top = incoming[0].get("chunk_id") if incoming else None
+        query = (
+            state.get("retrieval_plan", {}).get("rewritten_query")
+            or request.user_message
+        )
+        outcome = await self.reranker.rerank(
+            query,
+            incoming,
+            traffic_class=runtime.get("traffic_class", "live"),
+        )
+        reranked = outcome.candidates
+        if outcome.status == "success" and previous_top is not None:
             changed = reranked[0].get("chunk_id") != previous_top if reranked else False
             runtime["reranker_changed_top1"] = changed
             METRICS.rag_reranker_changed_top1.labels(
-                service="rag",
-                changed="true" if changed else "false",
+                service="rag", changed="true" if changed else "false"
             ).inc()
-            self._trace_decision(
-                runtime,
-                STAGE_MERGED,
-                "top1_changed" if changed else "top1_unchanged",
-                reason="rerank_and_merge",
-                detail={"previous_top_chunk_id": previous_top},
-            )
-        kept = reranked[: self.config.top_k_documents * 2]
-        # Recorded after the cap: the merge's own bound is part of why a
-        # candidate stopped travelling, and a trace showing the pre-cap list
-        # would attribute that loss to the wrong step.
-        self._trace_stage(runtime, STAGE_MERGED, kept, returned_count=len(reranked))
+        self._trace_stage(runtime, STAGE_RERANKED, reranked)
+        self._trace_decision(
+            runtime,
+            STAGE_RERANKED,
+            outcome.status,
+            reason=(
+                "learned_cross_encoder"
+                if outcome.status == "success"
+                else "deterministic_retrieval_order_fallback"
+            ),
+            detail={"candidate_count": outcome.candidate_count},
+        )
         snapshot = copy.deepcopy(state)
-        snapshot["retrieved_chunks"] = kept
+        snapshot["retrieved_chunks"] = reranked
         await self._save_checkpoint(
             request,
             snapshot,
-            "rerank_and_merge",
+            "rerank_candidates",
             "after_final_ranking",
             "ok",
         )
         return {
-            "retrieved_chunks": kept,
+            "retrieved_chunks": reranked,
             "_meta": {
-                "message": "Chunks reranked and merged",
-                "counters": {"chunk_count": len(reranked)},
-                "debug_excerpt": f"top_score={reranked[0]['score']:.3f}" if reranked else "no reranked chunks",
+                "message": f"Candidate reranking {outcome.status}",
+                "decision": outcome.status,
+                "counters": {"candidate_count": outcome.candidate_count},
+                "debug_excerpt": (
+                    f"top_reranker_score={reranked[0].get('reranker_score')}"
+                    if reranked
+                    else "no candidates"
+                ),
             },
         }
 
@@ -1342,7 +1430,17 @@ class ConversationGraphRunner:
                 "score_threshold": self.config.pass_two_score_threshold,
             },
         )
-        response = await self.backend_client.search_chunks(request, alt_query, state.get("retrieval_plan", {}), "pass_two")
+        response = await self.backend_client.search_chunks(
+            request,
+            alt_query,
+            state.get("retrieval_plan", {}),
+            "pass_two",
+            **(
+                {"top_k": self.reranker.candidate_limit}
+                if self.reranker.enabled
+                else {}
+            ),
+        )
         second = self._normalize_chunks(response)
         self._trace_stage(
             runtime,
