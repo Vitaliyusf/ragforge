@@ -20,6 +20,7 @@ TEST_IDENTITY = AuthIdentity(tenant_id="internal", user_id="embedding-service", 
 class FakeConfig:
     rabbitmq_url = "amqp://guest:guest@localhost:5672/"
     rabbitmq_exchange = "ragapp.requests"
+    service_name = "rag"
     stream_drain_timeout_seconds = 0.1
 
 

@@ -19,13 +19,13 @@ def _client(monkeypatch, vector):
     client = MemoryEmbeddingClient(Mock())
     sent = {}
 
-    async def fake_request(text):
+    def fake_request(text):
         sent["text"] = text
         if isinstance(vector, Exception):
             raise vector
         return vector
 
-    monkeypatch.setattr(client, "_request_embedding", fake_request)
+    monkeypatch.setattr(client, "_request_embedding_sync", fake_request)
     return client, sent
 
 
@@ -111,3 +111,21 @@ def test_provenance_names_the_model_and_dimensionality_of_memory_vectors():
     assert provenance["model"] == settings.memory_embedding_model
     assert provenance["dimensions"] == settings.memory_embedding_dimensions
     assert provenance["service"] == settings.embedding_queue
+
+
+def test_repeated_embeddings_reuse_the_injected_process_transport(monkeypatch):
+    monkeypatch.setattr(
+        embedding_module,
+        "verify_internal_ticket_from_envelope",
+        lambda *args, **kwargs: None,
+    )
+    transport = Mock()
+    transport.request_from_thread.return_value = {
+        "payload": {"embedding": [0.1] * settings.memory_embedding_dimensions}
+    }
+    client = MemoryEmbeddingClient(Mock(), transport)
+
+    client.embed_query("first")
+    client.embed_memory("second")
+
+    assert transport.request_from_thread.call_count == 2

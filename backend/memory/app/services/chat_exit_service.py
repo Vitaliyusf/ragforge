@@ -1,13 +1,9 @@
 """Chat-exit orchestration through typed llm_agent requests."""
 from __future__ import annotations
 
-import asyncio
-import json
 import time
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
-
-import aio_pika
 
 from app.agent.memory_agent import AgentRunResult, AgentScope, MemoryAgent, MemoryAgentLLMError, RetryBudgets
 from app.core.config import settings
@@ -16,8 +12,9 @@ from app.services.chat_service import ChatService
 from app.services.memory_service import LongTermMemoryService
 from app.services.message_service import MessageService
 from app.services.tenant_scope import current_identity
-from shared.auth import attach_internal_auth_context, verify_internal_ticket_from_envelope
+from shared.auth import verify_internal_ticket_from_envelope
 from shared.logging import ServiceLogger
+from shared.rabbitmq_rpc import MultiplexedRabbitMQRPCClient
 
 
 class ChatExitService:
@@ -29,11 +26,13 @@ class ChatExitService:
         message_service: MessageService,
         memory_service: LongTermMemoryService,
         logger: ServiceLogger,
+        rpc_client: Optional[MultiplexedRabbitMQRPCClient] = None,
     ) -> None:
         self.chat_service = chat_service
         self.message_service = message_service
         self.memory_service = memory_service
         self.logger = logger
+        self._rpc_client = rpc_client
 
     def _request_typed_llm(
         self,
@@ -42,102 +41,69 @@ class ChatExitService:
         timeout: float,
     ) -> Dict[str, Any]:
         """Run one typed llm_agent RPC from the handler's worker thread."""
-        return asyncio.run(self._request_typed_llm_async(request_type, input_payload, timeout))
-
-    async def _request_typed_llm_async(
-        self,
-        request_type: str,
-        input_payload: Dict[str, Any],
-        timeout: float,
-    ) -> Dict[str, Any]:
-        connection = await aio_pika.connect_robust(settings.rabbitmq_url)
+        if self._rpc_client is None:
+            raise MemoryAgentLLMError("memory RPC transport is not configured", kind="provider")
+        message_id = uuid4().hex
+        envelope = {
+            "message_id": message_id,
+            "message_type": "command",
+            "action": request_type,
+            "source_service": settings.service_name,
+            "target_service": settings.llm_agent_queue,
+            "request_id": message_id,
+            "trace_id": message_id,
+            "correlation_id": message_id,
+            "timestamp": int(time.time() * 1000),
+            "payload": {
+                "request_type": request_type,
+                "input": input_payload,
+                "timeout": timeout,
+                "metadata": {"source": "chat_exit"},
+            },
+        }
         try:
-            async with connection.channel() as channel:
-                exchange = await channel.declare_exchange(
-                    settings.rabbitmq_exchange,
-                    aio_pika.ExchangeType.DIRECT,
-                    durable=True,
-                )
-                reply_queue = await channel.declare_queue(exclusive=True, auto_delete=True)
-                message_id = uuid4().hex
-                envelope = attach_internal_auth_context(
-                    {
-                        "message_id": message_id,
-                        "message_type": "command",
-                        "action": request_type,
-                        "source_service": settings.service_name,
-                        "target_service": settings.llm_agent_queue,
-                        "request_id": message_id,
-                        "trace_id": message_id,
-                        "correlation_id": message_id,
-                        "reply_to": reply_queue.name,
-                        "timestamp": int(time.time() * 1000),
-                        "payload": {
-                            "request_type": request_type,
-                            "input": input_payload,
-                            "timeout": timeout,
-                            "metadata": {"source": "chat_exit"},
-                        },
-                    }
-                )
-                await exchange.publish(
-                    aio_pika.Message(
-                        body=json.dumps(envelope).encode("utf-8"),
-                        correlation_id=message_id,
-                        reply_to=reply_queue.name,
-                        content_type="application/json",
-                        delivery_mode=aio_pika.DeliveryMode.PERSISTENT,
-                    ),
-                    routing_key=settings.llm_agent_queue,
-                )
-                try:
-                    async with asyncio.timeout(timeout):
-                        async with reply_queue.iterator() as iterator:
-                            async for message in iterator:
-                                async with message.process():
-                                    if message.correlation_id and message.correlation_id != message_id:
-                                        continue
-                                    reply = json.loads(message.body)
-                                    verify_internal_ticket_from_envelope(reply, required=True)
-                                    payload = reply.get("payload") or {}
-                                    if not reply.get("success"):
-                                        error = reply.get("error") or {}
-                                        application_status = str(payload.get("application_status") or "provider_error")
-                                        kind = (
-                                            "structured_output"
-                                            if application_status in {"structured_output_invalid", "validation_error"}
-                                            else "provider"
-                                        )
-                                        raise MemoryAgentLLMError(
-                                            error.get("message") or "llm_agent request failed",
-                                            kind=kind,
-                                        )
-                                    parsed = payload.get("parsed_output")
-                                    if not isinstance(parsed, dict):
-                                        raise MemoryAgentLLMError(
-                                            "llm_agent returned no parsed output",
-                                            kind="structured_output",
-                                        )
-                                    result = dict(parsed)
-                                    result["__llm_provenance__"] = {
-                                        "operation": request_type,
-                                        "model": payload.get("model"),
-                                        "prompt_version": payload.get("prompt_version"),
-                                        "schema_sha256": payload.get("output_schema_sha256"),
-                                        "structured_output_transport": "json_schema",
-                                        "latency_ms": payload.get("latency_ms"),
-                                        "usage": payload.get("usage") or {},
-                                        "application_status": payload.get("application_status"),
-                                    }
-                                    return result
-                except TimeoutError as exc:
-                    raise MemoryAgentLLMError(
-                        f"llm_agent request timed out after {timeout:.1f}s",
-                        kind="provider",
-                    ) from exc
-        finally:
-            await connection.close()
-        raise RuntimeError("llm_agent reply queue closed before a response arrived")
+            reply = self._rpc_client.request_from_thread(
+                settings.llm_agent_queue,
+                envelope,
+                timeout=timeout,
+            )
+        except TimeoutError as exc:
+            raise MemoryAgentLLMError(
+                f"llm_agent request timed out after {timeout:.1f}s",
+                kind="provider",
+            ) from exc
+        verify_internal_ticket_from_envelope(reply, required=True)
+        payload = reply.get("payload") or {}
+        if not reply.get("success"):
+            error = reply.get("error") or {}
+            application_status = str(payload.get("application_status") or "provider_error")
+            kind = (
+                "structured_output"
+                if application_status in {"structured_output_invalid", "validation_error"}
+                else "provider"
+            )
+            raise MemoryAgentLLMError(
+                error.get("message") or "llm_agent request failed",
+                kind=kind,
+            )
+        parsed = payload.get("parsed_output")
+        if not isinstance(parsed, dict):
+            raise MemoryAgentLLMError(
+                "llm_agent returned no parsed output",
+                kind="structured_output",
+            )
+        result = dict(parsed)
+        result["__llm_provenance__"] = {
+            "operation": request_type,
+            "model": payload.get("model"),
+            "prompt_version": payload.get("prompt_version"),
+            "schema_sha256": payload.get("output_schema_sha256"),
+            "structured_output_transport": "json_schema",
+            "latency_ms": payload.get("latency_ms"),
+            "usage": payload.get("usage") or {},
+            "application_status": payload.get("application_status"),
+        }
+        return result
 
     @staticmethod
     def _conversation_history(messages: List[Dict[str, Any]]) -> List[Dict[str, str]]:

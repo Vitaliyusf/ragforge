@@ -16,28 +16,32 @@
     },
     {
       "id": "CON-002",
-      "name": "Gateway → backend RPC",
-      "owner": "gateway/shared",
-      "caller": "gateway",
+      "name": "Service outbound RPC",
+      "owner": "shared/gateway/rag/memory",
+      "caller": "gateway/rag/memory",
       "callee": "backend services",
       "transport": "RabbitMQ",
       "canonical_locations": [
-        "backend/gateway/app",
-        "backend/shared"
+        "backend/shared/rabbitmq_rpc.py",
+        "backend/gateway/app/core/rpc_client.py",
+        "backend/rag/app/messaging/rpc_client.py",
+        "backend/memory/app/bootstrap/runtime.py"
       ],
-      "rule": "Reuse existing RPC/envelope/auth path."
+      "rule": "Reuse the bounded multiplexed process transport: one robust connection, channel, exchange and callback queue per outbound client; route replies and streams by unique hop correlation IDs, clean waiter state on every terminal path, and preserve signed identity plus request/trace context."
     },
     {
       "id": "CON-003",
       "name": "RAG downstream calls",
-      "owner": "rag",
+      "owner": "rag/shared",
       "caller": "rag",
       "callee": "embedding/vector_db/memory/llm_agent",
       "transport": "service RPC",
       "canonical_locations": [
-        "backend/rag/app/services/conversation_backend_client.py"
+        "backend/rag/app/services/conversation_backend_client.py",
+        "backend/rag/app/messaging/rpc_client.py",
+        "backend/shared/rabbitmq_rpc.py"
       ],
-      "rule": "Extend existing backend client when adding RAG downstream operations."
+      "rule": "Extend the existing backend client for RAG downstream operations and use the shared multiplexed transport; streaming shares its bounded callback resource and routes ordered events by hop correlation ID."
     },
     {
       "id": "CON-004",

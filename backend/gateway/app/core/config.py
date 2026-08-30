@@ -49,6 +49,7 @@ class GatewayConfig(BaseSettings):
     )
     rabbitmq_exchange: str = Field(default="ragapp.requests")
     rabbitmq_prefetch_count: int = Field(default=1)
+    rabbitmq_rpc_max_inflight: int = Field(default=64, ge=1)
 
     # Routing keys (one per downstream service / handler group)
     llm_agent_routing_key: str = Field(default="llm_agent")

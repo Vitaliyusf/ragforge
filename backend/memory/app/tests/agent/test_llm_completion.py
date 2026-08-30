@@ -1,14 +1,21 @@
 """Typed llm_agent requests used by chat-exit orchestration."""
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import Mock
 
 from app.services.chat_exit_service import ChatExitService
 
 
-def test_request_typed_llm_runs_the_async_rpc(monkeypatch):
-    service = ChatExitService(Mock(), Mock(), Mock(), Mock())
-    transport = AsyncMock(return_value={"title": "Beta launch"})
-    monkeypatch.setattr(service, "_request_typed_llm_async", transport)
+def test_repeated_typed_llm_calls_reuse_the_injected_process_transport(monkeypatch):
+    monkeypatch.setattr(
+        "app.services.chat_exit_service.verify_internal_ticket_from_envelope",
+        lambda *_args, **_kwargs: None,
+    )
+    transport = Mock()
+    transport.request_from_thread.return_value = {
+        "success": True,
+        "payload": {"parsed_output": {"title": "Beta launch"}},
+    }
+    service = ChatExitService(Mock(), Mock(), Mock(), Mock(), transport)
 
     result = service._request_typed_llm(
         "chat_title",
@@ -16,8 +23,15 @@ def test_request_typed_llm_runs_the_async_rpc(monkeypatch):
         15.0,
     )
 
-    assert result == {"title": "Beta launch"}
-    transport.assert_awaited_once()
+    second = service._request_typed_llm(
+        "chat_title",
+        {"conversation_history": []},
+        15.0,
+    )
+
+    assert result["title"] == "Beta launch"
+    assert second["title"] == "Beta launch"
+    assert transport.request_from_thread.call_count == 2
 
 
 def test_conversation_history_normalizes_sender_roles():
