@@ -82,6 +82,32 @@ Do not derive labels from the system output.
 
 Ground truth must be authored by the deterministic scenario generator.
 
+## Evaluation layers
+
+Keep the benchmark decomposed into distinct stages so failures are attributable.
+
+### Stage A — Memory generation / extraction
+
+Measure whether the system decided to store the right information.
+
+### Stage B — Persistence / lifecycle
+
+Measure whether the resulting active, historical, superseded, and deleted state matches ground truth.
+
+### Stage C — Memory retrieval
+
+Measure whether later queries retrieve the correct memories.
+
+### Stage D — Agent memory use / trajectory
+
+Measure whether the Memory Agent chose the correct tools/actions given the retrieved memory.
+
+### Stage E — Final response use
+
+Where an end-to-end scenario exists, measure whether the retrieved memory was used correctly in the final answer.
+
+Do not collapse these stages into one score.
+
 ## Core metrics
 
 ### Memory creation/action quality
@@ -129,6 +155,36 @@ Report:
 
 Any leakage is a critical failure.
 
+### Agent trajectory quality
+
+Use LangSmith AgentEvals/OpenEvals-style trajectory matching where practical.
+
+Support deterministic trajectory checks such as:
+
+- strict ordered match
+- subset/superset where appropriate
+- forbidden action detection
+- destructive action detection
+- allowed tool sequence validation
+
+Example expected trajectory:
+
+`search_memory -> compare_existing -> update_memory`
+
+must not silently pass if the agent performs:
+
+`search_memory -> delete_memory -> create_memory`
+
+Report:
+
+- trajectory exact-match rate
+- allowed-sequence rate
+- forbidden-action count
+- unnecessary-tool count
+- unsafe destructive trajectory count
+
+LangSmith may be used as a secondary experiment/analysis plane, but the RagForge benchmark artifacts remain the authoritative source of truth.
+
 ### Operational metrics
 
 Report where available:
@@ -166,12 +222,29 @@ Diagnostic subsets:
 
 ## Important evaluation rules
 
+- Keep memory generation quality separate from memory retrieval quality and memory-use quality.
 - Never count evaluator/parser failures as memory correctness failures without separate attribution.
 - Show denominators.
 - Keep generation/action accuracy separate from retrieval accuracy.
 - Keep leakage/security failures separate and explicit.
 - Do not tune prompts/models against the full test set after seeing results.
 - If tuning becomes necessary, create a train/dev split and preserve a held-out test set.
+
+## Evaluation tooling rule
+
+Prefer deterministic evaluators first.
+
+Use LLM-as-judge only for properties that cannot be reliably scored from labels.
+
+Possible supporting tools:
+
+- LangSmith datasets/experiments for experiment tracking and comparison
+- AgentEvals/OpenEvals for agent trajectory evaluation
+- existing RagForge evaluators for production-aligned metrics
+
+Do not make LangSmith availability a prerequisite for running the benchmark locally.
+
+The benchmark must still emit local/exportable authoritative artifacts.
 
 ## Reproducibility
 
@@ -258,6 +331,13 @@ Security:
 - tenant leakage
 - user leakage
 - forbidden retrieval
+
+Agent trajectory:
+- trajectory exact-match
+- allowed-sequence rate
+- forbidden actions
+- unnecessary tools
+- unsafe destructive trajectories
 
 Performance:
 - extraction latency

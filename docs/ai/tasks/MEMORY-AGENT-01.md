@@ -58,13 +58,60 @@ Operations should be explicit and schema-driven, such as:
 
 Do not use scattered free-form JSON parsing.
 
+### 2A. LangMem comparison spike
+
+Run a bounded, evidence-driven LangMem spike before finalizing custom extraction/consolidation behavior.
+
+Goal:
+
+Compare RagForge's Memory Agent policy against LangMem primitives for:
+
+- memory candidate extraction
+- memory-worthiness decisions
+- duplicate/update behavior
+- correction / temporal update handling
+- Hebrew and mixed-language input
+- local vLLM/Qwen compatibility
+- structured-output reliability
+- latency/token cost
+
+Important:
+
+- LangMem must not become the persistence owner
+- MongoDB/Qdrant remain behind the canonical Memory V2 service
+- do not adopt LangMem merely because it reduces code
+- adoption requires measurable correctness or maintainability benefit
+- if LangMem cannot fit the local/self-hosted runtime cleanly, record the result and keep the custom policy
+
+Evaluate both hot-path and background-memory patterns conceptually:
+
+`conversation -> immediate memory tool`
+
+versus
+
+`conversation/events -> background extraction/consolidation`
+
+Choose based on measured UX/correctness/latency trade-offs.
+
 ### 3. Business-valid output
 
 Valid JSON is not enough.
 
+Use PydanticAI-style validation/retry concepts as a design reference without automatically adopting PydanticAI as a runtime dependency.
+
+Separate:
+
+- schema validation
+- business validation
+- tool/action validation
+- retry budget
+
+A business-invalid response should be eligible for a bounded correction retry when safe, rather than being accepted because it parsed successfully.
+
 Validate:
 
 - allowed action
+- action-specific required/forbidden fields
 - required IDs for update/supersede/delete
 - tenant/user scope
 - candidate text constraints
@@ -72,6 +119,21 @@ Validate:
 - no action referring to memory outside the bounded candidate set
 
 Reject structurally valid but business-invalid decisions.
+
+### 3A. Typed validation and retry budgets
+
+Keep distinct bounded retry budgets for:
+
+- invalid structured output
+- business-invalid output
+- tool/action validation failure
+- provider/network failure
+
+Do not retry destructive actions blindly.
+
+Any corrected model response must pass deterministic validation again.
+
+The Memory Agent must never be allowed to reference/update/delete a memory ID outside the bounded candidate set supplied by the server.
 
 ### 4. Bounded context/tools
 
@@ -155,6 +217,20 @@ The LLM must never be trusted to choose authorization scope.
 Delete/supersede actions require deterministic validation.
 
 A model suggestion alone is not sufficient authority.
+
+## Framework decision
+
+At task closeout, explicitly choose one:
+
+- `CUSTOM POLICY KEPT`
+- `LANGMEM PARTIALLY ADOPTED`
+- `LANGMEM ADOPTED BEHIND RAGFORGE SERVICE BOUNDARY`
+
+If LangMem is adopted, document exactly which primitive is used and which responsibilities remain RagForge-owned.
+
+PydanticAI remains a design reference unless a measured implementation benefit justifies a separate dependency.
+
+Do not add CrewAI or LlamaIndex agent orchestration.
 
 ## Non-goals
 
@@ -242,6 +318,7 @@ Validation:
 
 Measurement:
 - scenarios
+- custom-vs-LangMem comparison where the spike is executable
 - correct actions
 - incorrect actions
 - no-op correctness

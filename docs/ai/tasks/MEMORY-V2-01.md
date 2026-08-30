@@ -50,18 +50,54 @@ identify the canonical owner for each responsibility and remove/deprecate obsole
 
 ### 2. Real semantic representation
 
-Memory retrieval must not depend on weak placeholder hashing or non-semantic vectorization when the production repository already has an embedding service/model.
+The current memory Qdrant path uses a lightweight SHA256/token-hashing vector rather than a neural semantic embedding. Replace that production retrieval representation.
 
-Use the canonical production embedding path where architecturally appropriate.
+Use the canonical existing RagForge embedding service instead of loading a second embedding model inside the Memory service.
+
+Target baseline:
+
+- model: `intfloat/multilingual-e5-small`
+- vector size: `384`
+- transport: existing authenticated/internal Embedding service contract
+- languages: English, Hebrew, mixed Hebrew/English
+
+Required behavior:
+
+- remove/retire the SHA256 pseudo-embedding path from production semantic retrieval
+- do not keep pseudo-vector fallback that can silently masquerade as semantic retrieval
+- Memory service must not download or load its own embedding model if the canonical Embedding service is available
+- explicit embedding model/version and vector-size provenance
+- deterministic embedding failure behavior
+- bounded request size and timeout
+- vector collection configuration must match the real embedding dimensionality
+- migration/reindex behavior must be explicit if the existing 128-dimension collection cannot be reused safely
+
+### 2A. Store boundary inspired by LangGraph
+
+RagForge already uses LangGraph in the RAG service. Use the useful separation between graph checkpoints and long-term Store semantics as an architectural reference, without moving Memory persistence into LangGraph.
+
+The canonical Memory V2 service boundary should expose equivalent concepts:
+
+- namespace/scope
+- stable key / memory_id
+- value/content
+- metadata
+- bounded search
+- put/create
+- update
+- delete
+- filtering
+
+A useful namespace model is equivalent to:
+
+`(tenant_id, user_id, owner_type, owner_id, memory_domain)`
 
 Requirements:
 
-- same embedding dimensionality expected by the memory vector store
-- explicit model/version provenance
-- deterministic error behavior
-- bounded request size
-- no silent fallback to random/non-semantic vectors
-- no direct external model download in production runtime unless already part of canonical runtime ownership
+- keep MongoDB + Qdrant as RagForge-owned persistence/index implementations
+- do not replace the current system with LangGraph Store merely for framework adoption
+- keep authorization scope server-derived rather than model-derived
+- design the service boundary so another store implementation could be substituted without changing Memory Agent policy code
 
 ### 3. Explicit memory model
 
@@ -189,6 +225,12 @@ This task may perform behavior-neutral cleanup in code it already needs to touch
 - Avoid broad repository cleanup unrelated to memory.
 - Preserve public contracts unless a current contract is concretely wrong and migration is included in scope.
 
+## External framework adoption rule
+
+Do not add LangChain, LlamaIndex, CrewAI, Mem0, Zep, LangMem, or PydanticAI as runtime dependencies in this task unless a concrete measured requirement cannot be met cleanly with current RagForge services.
+
+Use external frameworks as design references only in MEMORY-V2-01.
+
 ## Non-goals
 
 - No autonomous Memory Agent policy redesign yet.
@@ -293,6 +335,8 @@ Validation:
 
 Measurement:
 - retrieval quality sample
+- Hebrew / mixed-language retrieval sample
+- real embedding model/vector provenance
 - latency
 - leakage count
 

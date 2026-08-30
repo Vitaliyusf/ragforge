@@ -40,6 +40,10 @@ Use bounded candidate comparison.
 
 ### 2. Temporal updates
 
+Use temporal-memory design principles similar to systems such as Zep as a reference, while keeping the implementation RagForge-owned.
+
+Prefer representing current-vs-historical truth explicitly rather than destructively replacing every older fact.
+
 Support cases such as:
 
 Old:
@@ -54,6 +58,17 @@ The system must be able to distinguish:
 - scope-specific coexistence
 - historical fact
 - true contradiction
+
+The memory schema/lifecycle should support equivalent semantics for:
+
+- `valid_from`
+- `valid_to`
+- `supersedes`
+- `superseded_by`
+- current/active status
+- scope/context where facts may validly coexist
+
+Exact field names may follow repository conventions.
 
 Do not blindly delete all older related memories.
 
@@ -71,6 +86,24 @@ Define explicit outcomes such as:
 Exact enum names may follow current architecture.
 
 The policy must be deterministic at this layer. LLM-based reasoning belongs to MEMORY-AGENT-01 unless already required by an existing contract.
+
+### 3A. Current-truth retrieval
+
+Normal retrieval must prefer the currently valid fact.
+
+Examples:
+
+- old deployment target = GCP
+- current deployment target = AWS
+
+A current-state query should return AWS as authoritative/current while preserving GCP as historical evidence when explicitly requested.
+
+Required:
+
+- temporal filtering/ranking is deterministic
+- historical facts cannot outrank current facts merely because of embedding similarity
+- valid coexisting scope-specific facts remain retrievable under the correct scope
+- temporal metadata is preserved in provenance/diagnostics
 
 ### 4. Index reconciliation
 
@@ -134,6 +167,14 @@ Expose reconciliation evidence:
 - retries/idempotent no-op
 
 No memory text in metric labels.
+
+## External framework adoption rule
+
+Zep and Mem0 may be used as design/benchmark references only.
+
+Do not replace RagForge Memory persistence with either product/library in this task.
+
+A later experiment may compare hybrid memory retrieval (semantic + lexical/exact/entity), but MEMORY-V2-02 must not add that complexity unless MEMORY-V2-01 measurements show a concrete need.
 
 ## Non-goals
 

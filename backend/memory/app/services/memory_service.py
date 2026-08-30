@@ -234,8 +234,15 @@ class LongTermMemoryService:
         return seen
 
     def _tokenize(self, text: str) -> List[str]:
-        """Tokenize text into lightweight keywords."""
-        return list(dict.fromkeys(re.findall(r"[a-z0-9_+-]+", text.lower())))
+        """Tokenize text into lightweight keywords.
+
+        The class pattern is Unicode-aware on purpose: memory is written in
+        English, Hebrew and mixed Hebrew/English, and an ASCII-only pattern
+        silently produced zero keywords for Hebrew text. That cost the
+        keyword leg of ranking, near-duplicate detection and the degraded
+        retrieval path for every non-Latin memory.
+        """
+        return list(dict.fromkeys(re.findall(r"[\w+-]+", text.lower())))
 
     def _content_hash(self, owner_id: str, owner_type: str, memory_class: str, text: str) -> str:
         """Return the deterministic identity of one memory's normalized content.

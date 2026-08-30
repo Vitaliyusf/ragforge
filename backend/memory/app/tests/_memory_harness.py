@@ -260,6 +260,11 @@ class BagOfWordsEmbeddingClient:
     similar vectors, which is what makes a retrieval-quality number meaningful
     rather than a coin flip. It is emphatically NOT the production model, and
     every number measured with it must be reported as such.
+
+    Tokenization is Unicode-aware so a Hebrew or mixed Hebrew/English corpus
+    produces real vectors instead of an all-zero one; an ASCII-only stub would
+    have reported the multilingual path as broken no matter how the service
+    behaved.
     """
 
     model = "bag-of-words-measurement-stub"
@@ -276,7 +281,7 @@ class BagOfWordsEmbeddingClient:
 
     def _vector(self, text):
         vector = [0.0] * self._dimensions
-        for token in re.findall(r"[a-z0-9]+", text.lower()):
+        for token in re.findall(r"[\w+-]+", text.lower()):
             digest = hashlib.sha256(token.encode("utf-8")).hexdigest()
             vector[int(digest[:8], 16) % self._dimensions] += 1.0
         return vector

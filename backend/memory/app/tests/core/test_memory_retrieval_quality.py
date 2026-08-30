@@ -35,6 +35,24 @@ LABELLED_CORPUS = [
 ]
 
 
+# Hebrew and mixed Hebrew/English memories, each with the query that should
+# retrieve it first. Memory is written in all three registers in production,
+# and an ASCII-only tokenizer used to strip Hebrew memories of every keyword.
+#
+# The queries reuse the memory's own surface forms, exactly as the English
+# corpus above does. The measurement stub is bag-of-words, so it has no
+# morphology: matching "מפתחים" to "מפתחי" is the production e5 model's
+# job, and asking the stub for it would measure the stub, not the path.
+MULTILINGUAL_CORPUS = [
+    ("המשתמש העביר את מסד הנתונים לפוסטגרס", "מסד הנתונים לפוסטגרס"),
+    ("המשתמש גייס שני מפתחי בקאנד לצוות התשלומים", "גייס מפתחי בקאנד התשלומים"),
+    ("המשתמש ביטל את שדרוג האשכול אחרי תקלה", "ביטל שדרוג האשכול תקלה"),
+    ("המשתמש העלה לאוויר את עיצוב ה-onboarding המחודש במובייל", "onboarding המחודש במובייל"),
+    ("המשתמש אימץ OpenTelemetry tracing בכל השירותים", "OpenTelemetry tracing השירותים"),
+    ("המשתמש קבע מבדק חדירות security שנתי", "מבדק חדירות security שנתי"),
+]
+
+
 def _candidate(text):
     return {
         "content": {"text": text},
@@ -109,3 +127,47 @@ def test_reseeding_the_corpus_adds_no_duplicate_active_memories():
 
     active = [doc for doc in database["episodic_memories"].docs if doc["status"] == "active"]
     assert len(active) == len(LABELLED_CORPUS)
+
+
+def test_hebrew_and_mixed_language_memories_are_retrieved_at_rank_one():
+    """The multilingual measurement sample required by MEMORY-V2-01.
+
+    The vectors come from the bag-of-words stub, so this proves the Hebrew and
+    mixed Hebrew/English path is wired end to end — tokenized, embedded,
+    indexed, filtered and ranked — not that the production e5 model scores
+    this well on Hebrew.
+    """
+    service, _, _ = _build()
+    _seed(service, TENANT_A, MULTILINGUAL_CORPUS, "quality-he")
+
+    hits_at_1 = 0
+    recall_at_3 = 0
+    with bound_context(**TENANT_A):
+        for text, query in MULTILINGUAL_CORPUS:
+            result = service.get_relevant_memories({"text": query, "limit": 3})
+            returned = [memory["content"]["text"] for memory in result["memories"]]
+            assert result["retrieval_mode"] == "semantic"
+            if returned and returned[0] == text:
+                hits_at_1 += 1
+            if text in returned[:3]:
+                recall_at_3 += 1
+
+    assert hits_at_1 == len(MULTILINGUAL_CORPUS)
+    assert recall_at_3 == len(MULTILINGUAL_CORPUS)
+
+
+def test_hebrew_memories_carry_keywords_for_the_degraded_retrieval_path():
+    """Hebrew text must survive tokenization, or ranking loses its keyword leg.
+
+    Keyword overlap is 25% of the ranking score and is the only signal left
+    when the vector index or embedding service is unavailable, so a Hebrew
+    memory stored with an empty keyword list is unretrievable exactly when
+    retrieval is already degraded.
+    """
+    service, database, _ = _build()
+    _seed(service, TENANT_A, MULTILINGUAL_CORPUS, "quality-he-keywords")
+
+    documents = database["episodic_memories"].docs
+    assert len(documents) == len(MULTILINGUAL_CORPUS)
+    for document in documents:
+        assert document["retrieval"]["keywords"], document["content"]["text"]
