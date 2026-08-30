@@ -234,6 +234,16 @@ class LongTermMemoryService:
                     ("fact_key", 1),
                 ]
             )
+            self._deletion_tombstone_collection().create_index(
+                [
+                    ("tenant_id", 1),
+                    ("owner_user_id", 1),
+                    ("owner_id", 1),
+                    ("owner_type", 1),
+                    ("memory_class", 1),
+                    ("preference_key", 1),
+                ]
+            )
             self._indexes_ready = True
         except Exception as exc:
             self.logger.log(
@@ -988,6 +998,21 @@ class LongTermMemoryService:
                 if tombstone:
                     return tombstone, match_rule
 
+        # A semantic preference key holds exactly one authoritative value for an
+        # owner, which is the same identity `_upsert_semantic_preference` uses
+        # to decide that a new value replaces the old one in place. Deleting the
+        # preference therefore deletes that slot, not one particular wording of
+        # it, and the slot is owner-scoped with no context scope of its own.
+        if normalized["memory_class"] == "semantic_preference":
+            preference_key = normalized.get("preference_key")
+            if preference_key:
+                tombstone = collection.find_one(
+                    scope_filter({**base, "preference_key": preference_key}),
+                    {"_id": 0},
+                )
+                if tombstone:
+                    return tombstone, "preference_key_same_owner"
+
         scoped_base = {**base, "scope_key": normalized.get("scope_key") or ""}
         tombstone = collection.find_one(
             scope_filter({**scoped_base, "content_hash": normalized["content_hash"]}),
@@ -1020,6 +1045,7 @@ class LongTermMemoryService:
             "memory_class": doc.get("memory_class"),
             "content_hash": doc.get("content_hash"),
             "fact_key": doc.get("fact_key"),
+            "preference_key": doc.get("preference_key"),
             "scope_key": doc.get("scope_key") or "",
             "deleted_at": self._now_fn(),
             "deletion_provenance": "explicit_delete",

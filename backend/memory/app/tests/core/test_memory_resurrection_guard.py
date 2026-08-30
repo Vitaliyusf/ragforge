@@ -22,6 +22,7 @@ from app.tests._memory_harness import (
     build_memory_service,
     build_reconciliation_service,
     episodic_candidate,
+    preference_candidate,
 )
 
 IDENTITY = dict(tenant_id="tenant-a", user_id="user-1", role="user")
@@ -31,6 +32,9 @@ OTHER_USER = dict(tenant_id="tenant-a", user_id="user-2", role="user")
 BETA = "The user launched the beta milestone."
 OFFICE = "The user works from the Tel Aviv office."
 OFFICE_REWORDED = "The user is based out of the Tel Aviv office building."
+
+CONCISE = "The user explicitly prefers concise answers with citations."
+CONCISE_REWORDED = "The user likes short, direct responses."
 
 
 def _candidate(text=BETA, fact_key=None, scope=None):
@@ -53,6 +57,27 @@ def _write(service, identity, request_id, **kwargs):
 def _delete(service, identity, memory_id):
     with bound_context(**identity):
         return service.delete_memory(memory_id)
+
+
+def _preference(text=CONCISE, preference_key="response_style", value="concise"):
+    candidate = dict(preference_candidate(text))
+    candidate["preference_key"] = preference_key
+    candidate["value"] = value
+    return candidate
+
+
+def _write_preference(service, identity, request_id, **kwargs):
+    with bound_context(**identity):
+        return service.write_memory(
+            _preference(**kwargs),
+            {"owner_type": "user", "request_id": request_id},
+        )
+
+
+def _seed_and_delete_preference(service, identity=IDENTITY, request_id="req-pref-seed", **kwargs):
+    written = _write_preference(service, identity, request_id, **kwargs)
+    _delete(service, identity, written["memory_id"])
+    return written
 
 
 def _tombstones(database):
@@ -354,6 +379,70 @@ def test_an_agent_supersede_aimed_at_a_deleted_memory_cannot_bring_it_back():
 
 
 # ----------------------------------------------------------------------
+# A preference key is the preference's identity
+# ----------------------------------------------------------------------
+
+
+def test_a_deleted_preference_key_is_not_recreated_under_different_wording():
+    # A preference key holds exactly one authoritative value, so deleting it
+    # deletes the slot rather than one particular sentence describing it.
+    service, database, _ = build_memory_service()
+    _seed_and_delete_preference(service)
+
+    again = _write_preference(
+        service,
+        IDENTITY,
+        "req-pref-1",
+        text=CONCISE_REWORDED,
+        value="short",
+    )
+
+    assert again["status"] == "rejected"
+    assert again["outcome"] == "resurrection_suppressed"
+    assert again["tombstone_match"] == "preference_key_same_owner"
+    assert again["restore_allowed"] is False
+    assert database["semantic_preferences"].docs == []
+
+
+def test_deleting_one_preference_key_leaves_every_other_key_writable():
+    service, database, _ = build_memory_service()
+    _seed_and_delete_preference(service)
+
+    other = _write_preference(
+        service,
+        IDENTITY,
+        "req-pref-2",
+        text="The user always wants sources cited.",
+        preference_key="citations",
+        value="always",
+    )
+
+    stored = database["semantic_preferences"].docs
+    assert other["status"] == "accepted"
+    assert [doc["preference_key"] for doc in stored] == ["citations"]
+
+
+def test_one_tenants_deleted_preference_key_says_nothing_about_anothers():
+    service, database, _ = build_memory_service()
+    _seed_and_delete_preference(service)
+
+    elsewhere = _write_preference(service, OTHER_TENANT, "req-pref-3")
+
+    assert elsewhere["status"] == "accepted"
+    assert [doc["tenant_id"] for doc in database["semantic_preferences"].docs] == ["tenant-b"]
+
+
+def test_one_users_deleted_preference_key_says_nothing_about_anothers():
+    service, database, _ = build_memory_service()
+    _seed_and_delete_preference(service)
+
+    elsewhere = _write_preference(service, OTHER_USER, "req-pref-4")
+
+    assert elsewhere["status"] == "accepted"
+    assert [doc["owner_user_id"] for doc in database["semantic_preferences"].docs] == ["user-2"]
+
+
+# ----------------------------------------------------------------------
 # What the deletion identity is allowed to keep
 # ----------------------------------------------------------------------
 
@@ -371,6 +460,7 @@ def test_the_deletion_identity_keeps_no_memory_text_and_is_not_retrievable():
         "memory_class",
         "content_hash",
         "fact_key",
+        "preference_key",
         "scope_key",
         "deleted_at",
         "deletion_provenance",
@@ -383,3 +473,19 @@ def test_the_deletion_identity_keeps_no_memory_text_and_is_not_retrievable():
     with bound_context(**IDENTITY):
         assert service.get_all_memories() == []
         assert service.get_relevant_memories({"text": "Tel Aviv office", "limit": 10})["memories"] == []
+
+
+def test_the_preference_deletion_identity_keeps_the_key_but_no_preference_text():
+    service, database, _ = build_memory_service()
+    _seed_and_delete_preference(service)
+
+    tombstone = _tombstones(database)[0]
+
+    assert tombstone["memory_class"] == "semantic_preference"
+    assert tombstone["preference_key"] == "response_style"
+    assert tombstone["fact_key"] is None
+    serialized = repr(tombstone)
+    assert CONCISE not in serialized
+    assert "concise" not in serialized
+    with bound_context(**IDENTITY):
+        assert service.get_all_memories() == []

@@ -266,10 +266,11 @@
       "id": "DEC-014",
       "status": "accepted",
       "title": "Deletion is a durable identity, not a memory state",
-      "decision": "An explicit memory delete writes a content-free deletion identity to `memory_deletion_tombstones` before removing the canonical row and its vector point. Every later write candidate is matched against those identities with bounded exact queries — canonical memory id, declared `supersedes` target, content hash within the same scope, declared fact_key within the same scope — and a match is rejected with outcome `resurrection_suppressed`. Supersession and expiry write no deletion identity and keep their normal successor path.",
+      "decision": "An explicit memory delete writes a content-free deletion identity to `memory_deletion_tombstones` before removing the canonical row and its vector point. Every later write candidate is matched against those identities with bounded exact queries — canonical memory id, declared `supersedes` target, content hash within the same scope, declared fact_key within the same scope, and — for `semantic_preference` — the canonical `preference_key` for the same owner, which is the same identity `_upsert_semantic_preference` uses and therefore carries no context scope of its own — and a match is rejected with outcome `resurrection_suppressed`. Supersession and expiry write no deletion identity and keep their normal successor path.",
       "reason": "MEMORY-EVAL-01 measured 0 of 24 resurrection-after-delete scenarios prevented: every deleted fact was recreated by the next equivalent candidate and then answered queries it had been removed from. Deletion state stored on the canonical row cannot survive the row itself, so the identity has to outlive it.",
       "do_not_do": [
         "Do not suppress a future candidate on embedding similarity alone; only identity, normalized content hash and declared fact slots may match a deletion identity.",
+        "Do not match a preference deletion identity on wording; a preference key is the slot, and content equality is not required for it.",
         "Do not store memory text in a deletion identity or make deletion identities reachable from any retrieval path.",
         "Do not add an implicit restore: no create, update, supersede or reconciliation pass may bring back a fact that carries a deletion identity.",
         "Do not treat supersession or expiry as deletion; a superseded fact keeps its history and its successor stays legal."
