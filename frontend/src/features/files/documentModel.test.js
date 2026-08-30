@@ -131,6 +131,15 @@ describe('selectDocuments', () => {
     expect(selectDocuments(files, { query: 'PDF' }).map((f) => f.file_id)).toEqual(['a'])
   })
 
+  it('searches the file id, which is what a cross-screen link carries', () => {
+    const withId = [
+      doc({ file_id: 'file-7f2c', filename: 'delta.pdf', updated_at: '2026-08-29T10:00:00Z' }),
+      ...files,
+    ]
+    expect(selectDocuments(withId, { query: 'file-7f2c' }).map((f) => f.file_id))
+      .toEqual(['file-7f2c'])
+  })
+
   it('filters by the UI status model', () => {
     expect(selectDocuments(files, { status: DOCUMENT_STATUSES.FAILED }).map((f) => f.file_id))
       .toEqual(['b'])

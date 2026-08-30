@@ -1,4 +1,5 @@
 import { createSlice } from '@reduxjs/toolkit'
+import { LOG_SEVERITIES } from '@/lib/observability/deepLinks'
 
 const initialState = {
   entries: [],
@@ -6,7 +7,9 @@ const initialState = {
   lines: 100,
   autoRefresh: false,
   textFilter: '',
-  severityFilter: ['error', 'warning', 'info', 'debug', 'trace', 'unknown'],
+  // Every severity, i.e. no severity filter. The vocabulary is the
+  // observability module's so a deep link cannot set one this slice rejects.
+  severityFilter: [...LOG_SEVERITIES],
   pinnedToBottom: true
 }
 

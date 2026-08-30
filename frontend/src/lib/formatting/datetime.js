@@ -96,6 +96,25 @@ const RELATIVE_UNITS = [
 ]
 
 /**
+ * Format an elapsed span as a bare compact age ("20s", "4m", "3d").
+ *
+ * No "ago": the caller supplies whatever phrasing its surface needs, which is
+ * why the observability surfaces can say "delayed 4m" without a second copy
+ * of these unit thresholds. Anything a month or older returns `null` — at
+ * that distance a duration says less than a date.
+ *
+ * @param {number} elapsedMs
+ * @returns {string|null}
+ */
+export function formatCompactAge(elapsedMs) {
+  if (!Number.isFinite(elapsedMs) || elapsedMs < 0) return null
+  for (const { limit, divisor, suffix } of RELATIVE_UNITS) {
+    if (elapsedMs < limit) return `${Math.floor(elapsedMs / divisor)}${suffix}`
+  }
+  return null
+}
+
+/**
  * Format a timestamp as a compact age ("20s ago", "4m ago", "3d ago").
  *
  * Built for a dense table column, where an absolute date would cost more
@@ -115,8 +134,7 @@ export function formatRelativeTime(value, now = new Date()) {
   if (elapsed < 0) return 'just now'
   if (elapsed < 5000) return 'just now'
 
-  for (const { limit, divisor, suffix } of RELATIVE_UNITS) {
-    if (elapsed < limit) return `${Math.floor(elapsed / divisor)}${suffix} ago`
-  }
+  const age = formatCompactAge(elapsed)
+  if (age) return `${age} ago`
   return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
 }

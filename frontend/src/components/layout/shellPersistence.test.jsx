@@ -6,7 +6,7 @@
  * expensive to rebuild, and still stops the work of a workspace nobody is
  * looking at.
  */
-import { render, screen } from '@testing-library/react'
+import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -16,6 +16,10 @@ const mockProbe = {
   logsMounts: 0,
 }
 
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), prefetch: vi.fn() }),
+  usePathname: () => '/',
+}))
 vi.mock('@/context/ThemeContext', () => ({
   useTheme: () => ({ resolvedTheme: 'dark', toggleTheme: vi.fn() }),
 }))
@@ -86,9 +90,12 @@ vi.mock('@/features/config/components/ConfigTab', () => ({
 
 import TabbedPageLayout from './TabbedPageLayout'
 import { ActivityProvider } from '@/features/activity/ActivityContext'
+import { renderWithProviders } from '@/test/render'
 
+// The shell owns the deep-link executor, so it needs the store the executor
+// dispatches log filters into.
 function renderShell(props = {}) {
-  return render(
+  return renderWithProviders(
     <ActivityProvider>
       <TabbedPageLayout defaultTab="chat" {...props} />
     </ActivityProvider>

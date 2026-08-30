@@ -180,6 +180,16 @@ describe('FilesTab documents table', () => {
     expect(screen.getByText('1 of 3 documents')).toBeInTheDocument()
   })
 
+  it('arrives from a deep link already narrowed to the document in question', async () => {
+    // A file wedged in the ingestion funnel is only actionable here, and the
+    // operator must not have to retype the id they just clicked.
+    renderWithProviders(<FilesTab intent={{ kind: 'document', query: 'file-3', at: 1 }} />)
+
+    await waitFor(() => expect(rows()).toHaveLength(1))
+    expect(screen.getByText('manual.docx')).toBeInTheDocument()
+    expect(screen.getByLabelText('Search documents')).toHaveValue('file-3')
+  })
+
   it('offers a way out when a search matches nothing', async () => {
     const user = userEvent.setup()
     renderWithProviders(<FilesTab />)
@@ -255,6 +265,17 @@ describe('FilesTab documents table', () => {
     expect(within(drawer).getByText('Upload the document again after correcting the issue.')).toBeInTheDocument()
     expect(within(drawer).getByRole('button', { name: /Delete/i })).toBeInTheDocument()
     expect(rerunRequests).toEqual([])
+  })
+
+  it('makes an ingestion failure traceable to the services that logged it', async () => {
+    const user = userEvent.setup()
+    renderWithProviders(<FilesTab />)
+    await waitFor(() => expect(rows()).toHaveLength(3))
+
+    await user.click(within(rows()[2]).getAllByRole('button')[0])
+
+    const link = await screen.findByRole('button', { name: /Find in Logs/i })
+    expect(link).toHaveAttribute('title', expect.stringMatching(/ingestion task id/i))
   })
 
   it('omits a Retrieval section, which the files API has no data for', async () => {

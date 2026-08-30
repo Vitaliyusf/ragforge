@@ -5,8 +5,10 @@
  * Each tab controls its own padding and layout.
  */
 
-import { Activity, useEffect, useMemo, useRef, useState } from 'react'
+import { Activity, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import dynamic from 'next/dynamic'
+import { useRouter } from 'next/navigation'
+import { useDispatch } from 'react-redux'
 import Header from '@/components/layout/Header'
 import TabSkeleton from '@/components/ui/TabSkeleton'
 import ErrorBoundary from '@/components/ErrorBoundary'
@@ -14,6 +16,13 @@ import { config as appConfig } from '@/lib/config'
 import { useAuth } from '@/features/auth'
 import { ACTIVITY_FEATURES, isTerminalState, useActivity } from '@/features/activity'
 import { FALLBACK_TAB, allowedTabsForRole } from './navigationModel'
+import { NavigationProvider } from './NavigationContext'
+import { createDeepLinkFollower } from '@/lib/observability/followDeepLink'
+import {
+  setSelectedServices,
+  setSeverityFilter,
+  setTextFilter,
+} from '@/store/slices/logsSlice'
 
 const ChatTab = dynamic(() => import('@/features/chat/components/ChatTab'), {
   loading: () => <TabSkeleton />, ssr: false,
@@ -122,12 +131,18 @@ const ACKNOWLEDGEABLE = new Set(Object.values(ACTIVITY_FEATURES))
  */
 export default function TabbedPageLayout({ defaultTab = 'chat', routeTab = null }) {
   const { user, isAdmin } = useAuth()
+  const dispatch = useDispatch()
+  const router = useRouter()
   const { activities, acknowledge } = useActivity()
   const initialTab = resolveTab(routeTab || defaultTab)
   const [activeTab, setActiveTab] = useState(initialTab)
   const [retainedTabs, setRetainedTabs] = useState(() =>
     STATE_PRESERVING_TABS.has(initialTab) ? [initialTab] : []
   )
+  // Why the destination was opened, when a deep link had a reason. Held here
+  // rather than in each feature because a retained tab is already mounted
+  // when the jump happens and would otherwise never see it.
+  const [intent, setIntent] = useState(null)
   // What may be opened comes from the same navigation model the header
   // renders from, so a destination cannot be listed but unreachable — or,
   // worse, unlisted but still openable. It mirrors server authorization; it
@@ -140,6 +155,28 @@ export default function TabbedPageLayout({ defaultTab = 'chat', routeTab = null 
   const requestedTab = resolveTab(activeTab)
   const safeActiveTab = allowedTabs.has(requestedTab) ? requestedTab : FALLBACK_TAB
   const TabComponent = TAB_COMPONENTS[safeActiveTab]
+
+  // One entry point for every cross-screen jump. `at` gives each jump its own
+  // identity, so following the same link twice is two arrivals rather than
+  // one the destination silently ignores as an unchanged prop.
+  const navigate = useCallback((destination, nextIntent = null) => {
+    const resolved = resolveTab(destination)
+    setIntent(nextIntent ? { ...nextIntent, destination: resolved, at: Date.now() } : null)
+    setActiveTab(resolved)
+  }, [])
+  // Following a link is the shell's job, not a panel's: only here are the
+  // store, the router and the tab state all in reach.
+  const followDeepLink = useMemo(
+    () => createDeepLinkFollower({
+      dispatch,
+      router,
+      navigate,
+      logActions: { setSelectedServices, setSeverityFilter, setTextFilter },
+    }),
+    [dispatch, router, navigate]
+  )
+  const navigation = useMemo(() => ({ navigate, followDeepLink }), [navigate, followDeepLink])
+  const activeIntent = intent && intent.destination === safeActiveTab ? intent : null
 
   useEffect(() => {
     if (!allowedTabs.has(resolveTab(activeTab))) setActiveTab(FALLBACK_TAB)
@@ -171,6 +208,7 @@ export default function TabbedPageLayout({ defaultTab = 'chat', routeTab = null 
   }, [safeActiveTab, visibleActivityState, acknowledge])
 
   return (
+    <NavigationProvider value={navigation}>
     <div
       className="app-backdrop isolate flex h-[100dvh] flex-col overflow-hidden"
       style={{ color: 'var(--fg)' }}
@@ -192,7 +230,10 @@ export default function TabbedPageLayout({ defaultTab = 'chat', routeTab = null 
             <Activity key={id} mode={id === safeActiveTab ? 'visible' : 'hidden'}>
               <div className="flex min-h-0 flex-1 animate-fade-in flex-col overflow-hidden">
                 <ErrorBoundary name={id}>
-                  <RetainedTab onNavigate={setActiveTab} />
+                  <RetainedTab
+                    onNavigate={setActiveTab}
+                    intent={id === safeActiveTab ? activeIntent : null}
+                  />
                 </ErrorBoundary>
               </div>
             </Activity>
@@ -210,7 +251,7 @@ export default function TabbedPageLayout({ defaultTab = 'chat', routeTab = null 
               className="flex min-h-0 flex-1 animate-fade-in flex-col overflow-hidden"
             >
               <ErrorBoundary name={safeActiveTab}>
-                <TabComponent onNavigate={setActiveTab} />
+                <TabComponent onNavigate={setActiveTab} intent={activeIntent} />
               </ErrorBoundary>
             </div>
           ) : (
@@ -221,5 +262,6 @@ export default function TabbedPageLayout({ defaultTab = 'chat', routeTab = null 
         )}
       </main>
     </div>
+    </NavigationProvider>
   )
 }

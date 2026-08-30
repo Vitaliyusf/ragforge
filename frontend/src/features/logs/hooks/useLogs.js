@@ -4,15 +4,18 @@
 import { useState, useEffect, useEffectEvent, useCallback, useMemo } from 'react'
 import logService from '@/features/logs/services/logService'
 import { detectLogSeverity } from '@/lib/formatting/logs'
+import { LOG_SERVICES, LOG_SEVERITIES } from '@/lib/observability/deepLinks'
 
 export function useLogs(
   selectedServices = ['gateway'],
   lines = 100,
   autoRefresh = false,
   textFilter = '',
-  severityFilter = ['error', 'warning', 'info', 'debug', 'trace', 'unknown']
+  severityFilter = LOG_SEVERITIES
 ) {
-  const services = ['gateway', 'files', 'embedding', 'llm_agent', 'memory', 'rag', 'reranker', 'vector_db']
+  // The service and severity vocabularies are the observability module's, so
+  // a deep link cannot name a service this viewer refuses to select.
+  const services = LOG_SERVICES
   const [logs, setLogs] = useState({})
   const [loading, setLoading] = useState(false)
 

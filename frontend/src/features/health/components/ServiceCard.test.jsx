@@ -29,6 +29,14 @@ describe('ServiceCard', () => {
     expect(status).toHaveAttribute('data-state', 'degraded')
   })
 
+  it('offers the log stream for the service, which is what a failing probe raises', () => {
+    render(<ServiceCard name="rag" info={{ status: 'unhealthy', live: false, ready: false }} />)
+
+    const link = screen.getByRole('button', { name: /View Logs/i })
+    expect(link).toHaveAttribute('title', expect.stringMatching(/RAG Orchestrator/))
+    expect(link).toHaveAttribute('title', expect.stringMatching(/errors and warnings/))
+  })
+
   it('says Unknown rather than inventing a health state the backend never sent', () => {
     render(<ServiceCard name="rag" info={{}} />)
     expect(screen.getByText('Unknown')).toBeInTheDocument()

@@ -5,6 +5,8 @@ import { motion } from 'framer-motion'
 import { Server } from 'lucide-react'
 import DomainStatus from '@/components/status/DomainStatus'
 import { STATUS_DOMAINS } from '@/components/status/statusDomains'
+import DeepLink from '@/components/observability/DeepLink'
+import { logsLinkForService } from '@/lib/observability/deepLinks'
 import { STATUS_CONFIG, SERVICE_LABELS } from './healthConfig'
 
 function ServiceCard({ name, info, index = 0 }) {
@@ -50,9 +52,15 @@ function ServiceCard({ name, info, index = 0 }) {
         <span className="flex items-center gap-1.5 text-xs text-text-muted">
           <Icon size={11} style={{ color: cfg.iconColor }} /> Liveness / readiness probes
         </span>
-        {info.port && (
-          <span className="rounded-md bg-bg-tertiary px-1.5 py-0.5 font-mono text-xs text-text-muted">:{info.port}</span>
-        )}
+        <span className="flex items-center gap-1.5">
+          {info.port && (
+            <span className="rounded-md bg-bg-tertiary px-1.5 py-0.5 font-mono text-xs text-text-muted">:{info.port}</span>
+          )}
+          {/* The question a failing probe raises is always "what is it
+              saying?", and the answer is one screen away. Offered on every
+              card so the route is learned before it is needed. */}
+          <DeepLink link={logsLinkForService(name)} />
+        </span>
       </div>
     </motion.div>
   )

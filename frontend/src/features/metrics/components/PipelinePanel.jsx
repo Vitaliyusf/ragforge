@@ -6,6 +6,8 @@ import Card, { CardHeader } from '@/components/ui/Card'
 import EmptyState from '@/components/feedback/EmptyState'
 import ProgressBar from '@/components/ui/ProgressBar'
 import TabSkeleton from '@/components/ui/TabSkeleton'
+import DeepLink from '@/components/observability/DeepLink'
+import { documentLink } from '@/lib/observability/deepLinks'
 import {
   COST_ESTIMATE_NOTE,
   EMPTY,
@@ -261,7 +263,10 @@ export default function PipelinePanel({ data, loading, error, promAvailable = tr
                   <tr style={{ color: 'var(--fg-muted)' }}>
                     <th scope="col" className="py-1.5 pr-3 text-left font-medium">File</th>
                     <th scope="col" className="py-1.5 pr-3 text-left font-medium">Status</th>
-                    <th scope="col" className="py-1.5 text-left font-medium">Last updated</th>
+                    <th scope="col" className="py-1.5 pr-3 text-left font-medium">Last updated</th>
+                    <th scope="col" className="py-1.5 text-left font-medium">
+                      <span className="sr-only">Open the document</span>
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -282,8 +287,13 @@ export default function PipelinePanel({ data, loading, error, promAvailable = tr
                       <td className="py-1.5 pr-3" style={{ color: 'var(--fg-muted)' }}>
                         {file.status || EMPTY}
                       </td>
-                      <td className="py-1.5" style={{ color: 'var(--fg-muted)' }}>
+                      <td className="py-1.5 pr-3" style={{ color: 'var(--fg-muted)' }}>
                         {file.updated_at ? new Date(file.updated_at).toLocaleString() : EMPTY}
+                      </td>
+                      {/* A wedged file is only actionable where it can be
+                          retried or deleted, which is Knowledge. */}
+                      <td className="py-1.5">
+                        <DeepLink link={documentLink(file.file_id, file.filename)} />
                       </td>
                     </tr>
                   ))}

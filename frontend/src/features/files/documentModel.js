@@ -273,8 +273,17 @@ export function selectDocuments(files, view = {}) {
   const filtered = (files || []).filter((file) => {
     if (status !== 'all' && getDocumentStatus(file) !== status) return false
     if (!needle) return true
-    return [file.filename, file.content_type, file.owner_display_name, file.owner_email]
-      .some((field) => String(field || '').toLocaleLowerCase().includes(needle))
+    // The id is searchable because it is what a cross-screen link carries: a
+    // file wedged in the ingestion funnel is named by id on the metrics side
+    // and by filename here, and the jump has to land on the row either way.
+    return [
+      file.filename,
+      file.content_type,
+      file.owner_display_name,
+      file.owner_email,
+      file.file_id,
+      file.document_id,
+    ].some((field) => String(field || '').toLocaleLowerCase().includes(needle))
   })
 
   const sign = direction === 'asc' ? 1 : -1
