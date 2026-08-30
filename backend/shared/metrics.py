@@ -466,6 +466,30 @@ class ServiceMetrics:
             buckets=[0, 1, 2, 3, 5, 8, 13, 21],
         )
 
+        # outcome is the fixed consolidation vocabulary (create,
+        # duplicate_exact, duplicate_semantic, supersede, coexist, historical,
+        # needs_review) — never memory text, and never a free-form reason.
+        self.memory_consolidation_total = Counter(
+            "ragapp_memory_consolidation_total",
+            "Memory write consolidation decisions, by outcome",
+            ["service", "outcome", "comparison"],  # comparison: semantic | lexical
+        )
+
+        # drift_class and outcome are both closed sets: the reconciler knows
+        # every kind of divergence it can find and every way it can end.
+        self.memory_reconciliation_total = Counter(
+            "ragapp_memory_reconciliation_total",
+            "Memory index reconciliation actions, by drift class and outcome",
+            ["service", "drift_class", "outcome"],  # outcome: repaired | failed | skipped
+        )
+
+        self.memory_reconciliation_duration = Histogram(
+            "ragapp_memory_reconciliation_duration_seconds",
+            "Duration of one bounded memory reconciliation run",
+            ["service"],
+            buckets=[0.01, 0.05, 0.1, 0.5, 1.0, 5.0, 15.0, 60.0],
+        )
+
     def __getattr__(self, name: str) -> Any:
         """Return no-op for any metric access when Prometheus is not installed."""
         if self._noop:

@@ -10,6 +10,7 @@ from app.messaging.implementations.rabbitmq import RabbitMQConsumerImpl
 from app.services.chat_exit_service import ChatExitService
 from app.services.chat_service import ChatService
 from app.services.memory_handler_service import MemoryHandlerService
+from app.services.memory_reconciliation import MemoryReconciliationService
 from app.services.memory_service import LongTermMemoryService
 from app.services.message_service import MessageService
 from app.db.session import ensure_tenant_indexes, get_client
@@ -25,6 +26,7 @@ class MemoryApplicationRuntime:
         self.chat_service = ChatService(self.logger)
         self.message_service = MessageService(self.logger, self.chat_service)
         self.memory_service = LongTermMemoryService(self.logger)
+        self.reconciliation_service = MemoryReconciliationService(self.memory_service, self.logger)
         self.chat_exit_service = ChatExitService(
             self.chat_service,
             self.message_service,
@@ -37,6 +39,7 @@ class MemoryApplicationRuntime:
             self.memory_service,
             self.chat_exit_service,
             self.logger,
+            self.reconciliation_service,
         )
 
     def should_start_background_consumers(self) -> bool:

@@ -170,7 +170,9 @@
         "memory mutation semantics",
         "validated memory mutation application",
         "memory lifecycle state (active/superseded/archived/deleted)",
-        "memory vector synchronization state"
+        "memory vector synchronization state",
+        "deterministic memory consolidation and temporal conflict policy",
+        "bounded canonical-memory/vector-index reconciliation"
       ],
       "calls": [
         "llm_agent typed title/summary/curation requests",
@@ -184,6 +186,8 @@
         "backend/memory/app/services/memory_service.py",
         "backend/memory/app/services/memory_embedding_client.py",
         "backend/memory/app/services/memory_vector_index.py",
+        "backend/memory/app/services/memory_consolidation.py",
+        "backend/memory/app/services/memory_reconciliation.py",
         "backend/memory/app/services/chat_exit_service.py",
         "backend/memory/app/db"
       ],

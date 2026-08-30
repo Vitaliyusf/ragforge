@@ -17,6 +17,17 @@ from app.core.errors import DatabaseError
 from shared.logging import ServiceLogger
 from shared.metrics import METRICS
 from app.db.session import get_db
+from app.services.memory_consolidation import (
+    COMPARISON_LEXICAL,
+    COMPARISON_SEMANTIC,
+    OUTCOME_DUPLICATE_EXACT,
+    OUTCOME_DUPLICATE_SEMANTIC,
+    OUTCOME_NEEDS_REVIEW,
+    OUTCOME_SUPERSEDE,
+    ConsolidationDecision,
+    ConsolidationPolicy,
+    scope_key,
+)
 from app.services.memory_embedding_client import MemoryEmbeddingClient, MemoryEmbeddingError
 from app.services.memory_vector_index import MemoryVectorIndex, MemoryVectorIndexError
 from app.services.tenant_scope import current_identity, ownership_fields, scope_filter
@@ -90,6 +101,10 @@ class LongTermMemoryService:
         self._embedding_client = embedding_client or MemoryEmbeddingClient(logger)
         self._now_fn = now_fn or _utc_now
         self._indexes_ready = False
+        self._consolidation_policy = ConsolidationPolicy(
+            duplicate_threshold=settings.memory_duplicate_similarity_threshold,
+            conflict_threshold=settings.memory_conflict_similarity_threshold,
+        )
 
     def _db(self) -> Any:
         """Return the configured database handle."""
@@ -399,6 +414,7 @@ class LongTermMemoryService:
         ).lower()
 
         provenance = self._normalize_provenance(candidate.get("provenance"), request_context, candidate)
+        scope = candidate.get("scope") if isinstance(candidate.get("scope"), dict) else {}
         tags = self._as_string_list(candidate.get("tags"))
         retrieval = candidate.get("retrieval", {}) if isinstance(candidate.get("retrieval"), dict) else {}
         keywords = self._as_string_list(retrieval.get("keywords") or candidate.get("keywords"))
@@ -433,6 +449,21 @@ class LongTermMemoryService:
             "supersedes": self._normalize_text(candidate.get("supersedes")) or None,
             "superseded_by": None,
             "content_hash": self._content_hash(owner_id, owner_type, memory_class, text),
+            # Temporal validity. `valid_from` is when the fact started being
+            # true, which is not the same as when it was written down;
+            # `valid_to` is None while it is still the current answer. A closed
+            # interval is history: readable, but never a current fact.
+            "valid_from": candidate.get("valid_from") or candidate.get("event_at") or now,
+            "valid_to": candidate.get("valid_to"),
+            # The context a fact is true in. Two facts that would contradict
+            # each other globally coexist happily in different scopes.
+            "scope": scope if isinstance(scope, dict) else {},
+            "scope_key": scope_key(scope),
+            # The slot of truth this memory occupies. Declared by the caller,
+            # never inferred: it is what allows a new value to retire an old
+            # one instead of merely sitting next to it.
+            "fact_key": self._normalize_text(candidate.get("fact_key")).lower() or None,
+            "consolidation": None,
             "provenance": provenance,
             "retrieval": {
                 "keywords": keywords,
@@ -447,6 +478,7 @@ class LongTermMemoryService:
                 "embedding_dimensions": None,
                 "vector_collection": None,
                 "vector_synced_at": None,
+                "indexed_revision": None,
             },
             **ownership_fields(),
         }
@@ -610,6 +642,13 @@ class LongTermMemoryService:
             "revision": doc.get("revision", 1),
             "supersedes": doc.get("supersedes"),
             "superseded_by": doc.get("superseded_by"),
+            "valid_from": doc.get("valid_from"),
+            "valid_to": doc.get("valid_to"),
+            "is_current": doc.get("valid_to") is None,
+            "scope": copy.deepcopy(doc.get("scope") or {}),
+            "fact_key": doc.get("fact_key"),
+            "consolidation": copy.deepcopy(doc.get("consolidation")),
+            "conflict": copy.deepcopy(doc.get("conflict")),
             "provenance": self._safe_provenance(doc.get("provenance")),
             "retrieval": {
                 "keywords": copy.deepcopy(doc.get("retrieval", {}).get("keywords", [])),
@@ -619,6 +658,7 @@ class LongTermMemoryService:
                 "embedding_dimensions": doc.get("retrieval", {}).get("embedding_dimensions"),
                 "vector_collection": doc.get("retrieval", {}).get("vector_collection"),
                 "vector_synced_at": doc.get("retrieval", {}).get("vector_synced_at"),
+                "indexed_revision": doc.get("retrieval", {}).get("indexed_revision"),
             },
         }
         if doc["memory_class"] == "episodic":
@@ -681,12 +721,38 @@ class LongTermMemoryService:
             return str(status)
         return MEMORY_STATUS_ARCHIVED if doc.get("archived_at") else MEMORY_STATUS_ACTIVE
 
+    def _is_valid_at(self, doc: Dict[str, Any], as_of: Optional[datetime]) -> bool:
+        """Return whether a memory is the answer at a given moment.
+
+        With no moment given the question is "is this true now", which is
+        simply whether the fact was ever closed: a memory with no ``valid_to``
+        is current, and one that was replaced is history from that instant on
+        — even while its own text remains a perfectly good sentence, which is
+        exactly why similarity alone must never be allowed to surface it.
+
+        With a moment given the question is what was true then, so a fact
+        counts only inside its own ``[valid_from, valid_to)`` window: a fact
+        that had not started yet is no more the answer than one that had
+        already ended.
+        """
+        if as_of is None:
+            return not doc.get("valid_to")
+
+        valid_from = _parse_datetime(doc.get("valid_from"))
+        if valid_from is not None and valid_from > as_of:
+            return False
+        valid_to = _parse_datetime(doc.get("valid_to"))
+        return valid_to is None or valid_to > as_of
+
     def _active_memory_documents(
         self,
         owner_id: Optional[str] = None,
         owner_type: Optional[str] = None,
         memory_classes: Optional[List[str]] = None,
         include_archived: bool = False,
+        include_history: bool = False,
+        as_of: Optional[datetime] = None,
+        scope: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """Filter canonical memory documents in Python to keep fake-test support simple."""
         classes = set(memory_classes or ALLOWED_MEMORY_CLASSES)
@@ -698,24 +764,127 @@ class LongTermMemoryService:
                 continue
             if owner_type and doc.get("owner_type") != owner_type:
                 continue
+            if scope is not None and str(doc.get("scope_key") or "") != scope:
+                continue
             if not include_archived and doc.get("archived_at"):
                 continue
-            if not include_archived and self._memory_status(doc) not in RETRIEVABLE_STATUSES:
+            # Asking about a past moment is a historical question by
+            # definition: a fact that has since been superseded may well be
+            # the correct answer for the moment asked about.
+            historical = include_history or as_of is not None
+            if not include_archived and not historical:
+                if self._memory_status(doc) not in RETRIEVABLE_STATUSES:
+                    continue
+            if self._memory_status(doc) == MEMORY_STATUS_DELETED:
+                continue
+            if not include_history and not self._is_valid_at(doc, as_of):
                 continue
             documents.append(doc)
         return documents
 
-    def _find_active_duplicate(self, normalized: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        """Return an existing active memory with identical normalized content."""
-        for doc in self._active_memory_documents(
+    def _comparable_memories(
+        self,
+        normalized: Dict[str, Any],
+    ) -> Tuple[List[Tuple[Dict[str, Any], float]], str, Optional[List[float]]]:
+        """Return the bounded set of memories a candidate is compared against.
+
+        The comparison is semantic when the vector index can answer and keyword
+        overlap when it cannot, and which one ran is reported rather than
+        assumed — a lexical decision presented as a semantic one would make the
+        consolidation numbers meaningless.
+
+        The candidate's own vector is returned alongside so the caller can
+        reuse it for indexing instead of embedding the same text twice.
+
+        Exact content matches are always included regardless of how the
+        comparison ran: an identical fact must never become a second active
+        memory just because the index was unavailable.
+        """
+        active = self._active_memory_documents(
             owner_id=normalized["owner_id"],
             owner_type=normalized["owner_type"],
             memory_classes=[normalized["memory_class"]],
             include_archived=False,
-        ):
-            if doc.get("content_hash") and doc["content_hash"] == normalized["content_hash"]:
-                return doc
-        return None
+        )
+        by_id = {doc["id"]: doc for doc in active}
+        limit = max(1, settings.memory_dedupe_candidate_limit)
+        text = normalized["content"]["text"]
+
+        candidate_vector: Optional[List[float]] = None
+        scored: List[Tuple[Dict[str, Any], float]] = []
+        comparison = COMPARISON_LEXICAL
+
+        if self._index_client.is_enabled() and text:
+            try:
+                vector = self._embedding_client.embed_memory(text)
+                candidate_vector = vector
+                hits = self._index_client.search(
+                    vector,
+                    normalized["owner_id"],
+                    normalized["owner_type"],
+                    limit=limit,
+                    statuses=sorted(RETRIEVABLE_STATUSES),
+                )
+                comparison = COMPARISON_SEMANTIC
+                for hit in hits:
+                    doc = by_id.get(hit.get("memory_id"))
+                    if doc is not None:
+                        scored.append((doc, float(hit.get("score", 0.0))))
+            except (MemoryEmbeddingError, MemoryVectorIndexError) as exc:
+                self.logger.log(
+                    "memory_service:_comparable_memories",
+                    "Consolidation fell back to keyword comparison",
+                    {"error": str(exc)},
+                    "W",
+                )
+                candidate_vector = None
+                comparison = COMPARISON_LEXICAL
+                scored = []
+
+        if comparison == COMPARISON_LEXICAL:
+            candidate_tokens = normalized["retrieval"]["keywords"] or self._tokenize(text)
+            for doc in active:
+                doc_tokens = doc.get("retrieval", {}).get("keywords", []) or self._tokenize(
+                    doc.get("content", {}).get("text", "")
+                )
+                scored.append((doc, self._text_similarity(candidate_tokens, doc_tokens)))
+            scored.sort(key=lambda item: (-item[1], str(item[0].get("id") or "")))
+            scored = scored[:limit]
+
+        # Declared identity outranks inferred similarity. Ensure an exact
+        # in-scope match or a prior value for the same fact slot cannot fall
+        # outside the semantic top-K, while keeping the final comparison set
+        # strictly bounded. A forced fact-key match uses its semantic score
+        # when the index returned it and 0 otherwise; the policy never relies
+        # on that score to establish the declared identity.
+        scored_by_id = {str(doc["id"]): (doc, score) for doc, score in scored}
+        candidate_scope = str(normalized.get("scope_key") or "")
+        candidate_fact_key = str(normalized.get("fact_key") or "")
+        forced: List[Tuple[int, str, Dict[str, Any], float]] = []
+        for doc in active:
+            if str(doc.get("scope_key") or "") != candidate_scope:
+                continue
+            exact = doc.get("content_hash") == normalized["content_hash"]
+            same_fact = bool(candidate_fact_key) and str(doc.get("fact_key") or "") == candidate_fact_key
+            if not exact and not same_fact:
+                continue
+            existing = scored_by_id.get(str(doc["id"]))
+            score = existing[1] if existing is not None else (1.0 if exact else 0.0)
+            forced.append((0 if exact else 1, str(doc["id"]), doc, score))
+
+        bounded: List[Tuple[Dict[str, Any], float]] = []
+        seen: set[str] = set()
+        for _, doc_id, doc, score in sorted(forced):
+            if doc_id not in seen and len(bounded) < limit:
+                bounded.append((doc, score))
+                seen.add(doc_id)
+        for doc, score in scored:
+            doc_id = str(doc["id"])
+            if doc_id not in seen and len(bounded) < limit:
+                bounded.append((doc, score))
+                seen.add(doc_id)
+
+        return bounded, comparison, candidate_vector
 
     def _find_memory_document(
         self,
@@ -757,30 +926,6 @@ class LongTermMemoryService:
                     merged[key] = bool(merged[key] or value)
         return merged
 
-    def _find_similar_episodic_memory(self, normalized: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        """Find a similar episodic memory to merge with."""
-        candidate_tokens = normalized["retrieval"]["keywords"] or self._tokenize(normalized["content"]["text"])
-        candidate_time = _parse_datetime(normalized.get("event_at"))
-        for existing in self._active_memory_documents(
-            owner_id=normalized["owner_id"],
-            owner_type=normalized["owner_type"],
-            memory_classes=["episodic"],
-            include_archived=False,
-        ):
-            existing_tokens = existing.get("retrieval", {}).get("keywords", []) or self._tokenize(
-                existing.get("content", {}).get("text", "")
-            )
-            similarity = self._text_similarity(candidate_tokens, existing_tokens)
-            if similarity < 0.65:
-                continue
-            existing_time = _parse_datetime(existing.get("event_at"))
-            if candidate_time and existing_time:
-                day_gap = abs((candidate_time - existing_time).days)
-                if day_gap > 30 and similarity < 0.8:
-                    continue
-            return existing
-        return None
-
     def _persist_memory(self, collection: Collection, doc: Dict[str, Any], is_update: bool) -> Dict[str, Any]:
         """Insert or update a canonical memory document."""
         if is_update:
@@ -802,7 +947,11 @@ class LongTermMemoryService:
             },
         )
 
-    def _sync_vector_index(self, doc: Dict[str, Any]) -> Tuple[Optional[bool], Optional[str]]:
+    def _sync_vector_index(
+        self,
+        doc: Dict[str, Any],
+        vector: Optional[List[float]] = None,
+    ) -> Tuple[Optional[bool], Optional[str]]:
         """Embed one memory and upsert it into the vector index.
 
         MongoDB already holds the authoritative record by the time this runs,
@@ -817,11 +966,12 @@ class LongTermMemoryService:
             return None, None
 
         text = doc.get("content", {}).get("text", "")
-        try:
-            vector = self._embedding_client.embed_memory(text)
-        except MemoryEmbeddingError as exc:
-            self._record_failure("write_memory", FAILURE_CLASS_EMBEDDING)
-            return self._record_vector_failure(doc, EMBEDDING_STATUS_FAILED, str(exc))
+        if vector is None:
+            try:
+                vector = self._embedding_client.embed_memory(text)
+            except MemoryEmbeddingError as exc:
+                self._record_failure("write_memory", FAILURE_CLASS_EMBEDDING)
+                return self._record_vector_failure(doc, EMBEDDING_STATUS_FAILED, str(exc))
 
         try:
             point_id = self._index_client.upsert_memory(doc, vector)
@@ -837,6 +987,10 @@ class LongTermMemoryService:
                 "embedding_dimensions": self._embedding_client.dimensions,
                 "vector_collection": self._index_client.collection_name,
                 "vector_synced_at": self._now_fn(),
+                # The revision this point was built from. Reconciliation
+                # compares it to the document's own revision to spot a vector
+                # describing wording the memory no longer has.
+                "indexed_revision": doc.get("revision", 1),
             }
         )
         doc["updated_at"] = self._now_fn()
@@ -858,6 +1012,7 @@ class LongTermMemoryService:
                 "embedding_dimensions": self._embedding_client.dimensions,
                 "vector_collection": self._index_client.collection_name,
                 "vector_synced_at": None,
+                "indexed_revision": None,
             }
         )
         doc["updated_at"] = self._now_fn()
@@ -976,16 +1131,22 @@ class LongTermMemoryService:
             "embedding_dimensions": existing_retrieval.get("embedding_dimensions"),
             "vector_collection": existing_retrieval.get("vector_collection"),
             "vector_synced_at": existing_retrieval.get("vector_synced_at"),
+            "indexed_revision": existing_retrieval.get("indexed_revision"),
         }
 
-    def _apply_supersession(self, normalized: Dict[str, Any]) -> Optional[str]:
-        """Retire the memory this candidate explicitly replaces.
+    def _apply_supersession(self, normalized: Dict[str, Any], superseded_id: str) -> Optional[str]:
+        """Retire the memory this candidate replaces, closing its validity.
 
         Returns the retired memory id, or ``None`` when nothing was superseded.
         The lookup is scope-filtered, so a candidate cannot retire another
         tenant's or user's memory by naming its id.
+
+        The old memory is not deleted. It keeps its text and gains a
+        ``valid_to`` equal to the moment the replacement became true, so a
+        historical query can still answer what used to be the case while a
+        current query cannot see it at all.
         """
-        superseded_id = self._normalize_text(normalized.get("supersedes"))
+        superseded_id = self._normalize_text(superseded_id)
         if not superseded_id:
             return None
         collection, doc = self._find_memory_document(superseded_id)
@@ -997,6 +1158,7 @@ class LongTermMemoryService:
                 "$set": {
                     "status": MEMORY_STATUS_SUPERSEDED,
                     "superseded_by": normalized["id"],
+                    "valid_to": normalized.get("valid_from") or self._now_fn(),
                     "updated_at": self._now_fn(),
                 }
             },
@@ -1019,43 +1181,55 @@ class LongTermMemoryService:
         self._record_operation("supersede_memory")
         return superseded_id
 
-    def _merge_episodic_memory(self, normalized: Dict[str, Any]) -> Tuple[Dict[str, Any], str, str]:
-        """Insert or merge episodic memories."""
-        collection = self._episodic_collection()
-        existing = self._find_similar_episodic_memory(normalized)
-        if existing:
-            merged = copy.deepcopy(existing)
-            incoming_text = normalized["content"]["text"]
-            current_text = existing.get("content", {}).get("text", "")
-            merged["content"] = {
-                "text": incoming_text if len(incoming_text) > len(current_text) else current_text,
-                "summary": normalized["content"]["summary"]
-                if len(normalized["content"]["summary"]) >= len(existing.get("content", {}).get("summary", ""))
-                else existing.get("content", {}).get("summary", normalized["content"]["summary"]),
-            }
-            merged["confidence"] = max(existing.get("confidence", 0.0), normalized["confidence"])
-            merged["importance"] = max(existing.get("importance", 0.0), normalized["importance"])
-            merged["stability"] = max(existing.get("stability", 0.0), normalized["stability"])
-            merged["tags"] = self._as_string_list(existing.get("tags", []) + normalized["tags"])
-            merged["source"] = normalized["source"] or existing.get("source")
-            merged["updated_at"] = self._now_fn()
+    def _collection_for(self, memory_class: str) -> Collection:
+        """Return the collection one memory class is stored in."""
+        return self._semantic_collection() if memory_class == "semantic_preference" else self._episodic_collection()
+
+    def _reinforce_existing_memory(
+        self,
+        existing: Dict[str, Any],
+        normalized: Dict[str, Any],
+    ) -> Tuple[Dict[str, Any], str, str]:
+        """Fold a near-duplicate candidate into the memory it repeats.
+
+        The owner keeps one record of the fact, and the repetition is not
+        thrown away: confidence, importance and stability take the stronger of
+        the two, tags and provenance are merged so every source that reported
+        the fact stays attributable, and the longer wording wins because it is
+        the one that carries more of the fact.
+        """
+        collection = self._collection_for(existing["memory_class"])
+        merged = copy.deepcopy(existing)
+        incoming_text = normalized["content"]["text"]
+        current_text = existing.get("content", {}).get("text", "")
+        merged["content"] = {
+            "text": incoming_text if len(incoming_text) > len(current_text) else current_text,
+            "summary": normalized["content"]["summary"]
+            if len(normalized["content"]["summary"]) >= len(existing.get("content", {}).get("summary", ""))
+            else existing.get("content", {}).get("summary", normalized["content"]["summary"]),
+        }
+        merged["confidence"] = max(existing.get("confidence", 0.0), normalized["confidence"])
+        merged["importance"] = max(existing.get("importance", 0.0), normalized["importance"])
+        if existing["memory_class"] == "episodic":
+            merged["stability"] = max(existing.get("stability", 0.0), normalized.get("stability", 0.0))
             merged["event_at"] = normalized.get("event_at") or existing.get("event_at")
             merged["expires_at"] = normalized.get("expires_at") or existing.get("expires_at")
-            merged["provenance"] = self._merge_provenance(existing.get("provenance"), normalized.get("provenance"))
-            merged["retrieval"] = self._merged_retrieval_state(existing, normalized)
-            merged["status"] = MEMORY_STATUS_ACTIVE
-            merged["revision"] = self._coerce_int(existing.get("revision"), 1) + 1
-            merged["content_hash"] = self._content_hash(
-                merged["owner_id"],
-                merged["owner_type"],
-                merged["memory_class"],
-                merged["content"]["text"],
-            )
-            self._persist_memory(collection, merged, is_update=True)
-            return merged, "merged", "merged with similar episodic memory"
-
-        self._persist_memory(collection, normalized, is_update=False)
-        return normalized, "accepted", "stored episodic memory"
+        merged["tags"] = self._as_string_list(existing.get("tags", []) + normalized["tags"])
+        merged["source"] = normalized["source"] or existing.get("source")
+        merged["updated_at"] = self._now_fn()
+        merged["provenance"] = self._merge_provenance(existing.get("provenance"), normalized.get("provenance"))
+        merged["retrieval"] = self._merged_retrieval_state(existing, normalized)
+        merged["status"] = MEMORY_STATUS_ACTIVE
+        merged["revision"] = self._coerce_int(existing.get("revision"), 1) + 1
+        merged["fact_key"] = existing.get("fact_key") or normalized.get("fact_key")
+        merged["content_hash"] = self._content_hash(
+            merged["owner_id"],
+            merged["owner_type"],
+            merged["memory_class"],
+            merged["content"]["text"],
+        )
+        self._persist_memory(collection, merged, is_update=True)
+        return merged, "merged", "reinforced an existing near-duplicate memory"
 
     def _upsert_semantic_preference(self, normalized: Dict[str, Any]) -> Tuple[Dict[str, Any], str, str]:
         """Insert or upsert semantic preference memories."""
@@ -1106,6 +1280,65 @@ class LongTermMemoryService:
         self._persist_memory(collection, normalized, is_update=False)
         return normalized, "accepted", "stored semantic preference"
 
+    def _record_consolidation(self, decision: ConsolidationDecision) -> None:
+        """Count one consolidation decision by its bounded outcome."""
+        METRICS.memory_consolidation_total.labels(
+            service=settings.service_name,
+            outcome=decision.outcome,
+            comparison=decision.comparison,
+        ).inc()
+
+    @staticmethod
+    def _decision_target(
+        comparable: List[Tuple[Dict[str, Any], float]],
+        decision: ConsolidationDecision,
+    ) -> Optional[Dict[str, Any]]:
+        """Return the existing memory a decision points at, if any."""
+        for doc, _ in comparable:
+            if str(doc.get("id")) == decision.target_id:
+                return doc
+        return None
+
+    def _apply_decision(
+        self,
+        normalized: Dict[str, Any],
+        comparable: List[Tuple[Dict[str, Any], float]],
+        decision: ConsolidationDecision,
+    ) -> Tuple[Dict[str, Any], str, str]:
+        """Persist one candidate according to its consolidation decision.
+
+        Retiring the memory a supersession replaces happens in the caller,
+        after this returns, so a failure to store the replacement can never
+        leave the owner with the old fact already closed and nothing current
+        in its place.
+        """
+        # A preference key holds exactly one authoritative value, so a second
+        # value for the same key is the same fact by definition and updates it
+        # in place — no similarity threshold is involved.
+        if normalized["memory_class"] == "semantic_preference":
+            return self._upsert_semantic_preference(normalized)
+
+        if decision.outcome == OUTCOME_DUPLICATE_SEMANTIC:
+            existing = self._decision_target(comparable, decision)
+            if existing is not None:
+                return self._reinforce_existing_memory(existing, normalized)
+
+        if decision.outcome == OUTCOME_NEEDS_REVIEW:
+            # Both memories are kept. The link records that a later policy —
+            # not this layer — has to decide whether they are one fact.
+            normalized["conflict"] = {
+                "status": OUTCOME_NEEDS_REVIEW,
+                "related_id": decision.target_id,
+                "similarity": None if decision.similarity is None else round(decision.similarity, 6),
+                "detected_at": self._now_fn(),
+            }
+            self._persist_memory(self._episodic_collection(), normalized, is_update=False)
+            return normalized, "accepted", decision.reason
+
+        self._persist_memory(self._episodic_collection(), normalized, is_update=False)
+        status = "accepted"
+        return normalized, status, decision.reason
+
     def write_memory(
         self,
         candidate: Optional[Dict[str, Any]],
@@ -1153,40 +1386,53 @@ class LongTermMemoryService:
                     "reconciliation_required": False,
                 }
 
-            # Exact duplicates never become a second active memory: the
+            comparable, comparison, candidate_vector = self._comparable_memories(normalized)
+            decision = self._consolidation_policy.decide(
+                normalized,
+                comparable,
+                comparison=comparison,
+            )
+            self._record_consolidation(decision)
+
+            # An exact duplicate never becomes a second active memory: the
             # existing record is returned untouched so the owner keeps exactly
             # one authoritative copy of a fact it already stores.
-            duplicate = self._find_active_duplicate(normalized)
-            if duplicate is not None:
+            if decision.outcome == OUTCOME_DUPLICATE_EXACT:
+                existing = self._decision_target(comparable, decision)
                 self._log_outcome(
                     request_context,
                     candidate_snapshot,
                     normalized,
                     "duplicate",
-                    duplicate["id"],
-                    duplicate["memory_class"],
-                    "identical active memory already stored",
+                    decision.target_id,
+                    normalized["memory_class"],
+                    decision.reason,
                     checks,
                 )
                 self._record_duration("write_memory", started)
                 return {
                     "status": "duplicate",
-                    "memory_id": duplicate["id"],
-                    "memory_class": duplicate["memory_class"],
-                    "reason": "identical active memory already stored",
+                    "memory_id": decision.target_id,
+                    "memory_class": normalized["memory_class"],
+                    "reason": decision.reason,
                     "qdrant_indexed": None,
-                    "embedding_status": duplicate.get("retrieval", {}).get("embedding_status"),
+                    "embedding_status": (existing or {}).get("retrieval", {}).get("embedding_status"),
                     "reconciliation_required": False,
+                    "consolidation": decision.as_provenance(),
+                    "superseded_memory_id": None,
                 }
 
-            superseded_id = self._apply_supersession(normalized)
+            normalized["consolidation"] = decision.as_provenance()
+            superseded_id: Optional[str] = None
+            stored_doc, status, reason = self._apply_decision(normalized, comparable, decision)
+            if decision.outcome == OUTCOME_SUPERSEDE and stored_doc["id"] == normalized["id"]:
+                superseded_id = self._apply_supersession(normalized, decision.target_id or "")
 
-            if normalized["memory_class"] == "semantic_preference":
-                stored_doc, status, reason = self._upsert_semantic_preference(normalized)
-            else:
-                stored_doc, status, reason = self._merge_episodic_memory(normalized)
-
-            qdrant_indexed, qdrant_error = self._sync_vector_index(stored_doc)
+            # A reinforced or superseding write changed the stored text, so the
+            # candidate vector no longer describes it and the document is
+            # embedded from what was actually persisted.
+            reuse_vector = candidate_vector if stored_doc["id"] == normalized["id"] else None
+            qdrant_indexed, qdrant_error = self._sync_vector_index(stored_doc, reuse_vector)
             embedding_status = stored_doc["retrieval"]["embedding_status"]
 
             self._log_outcome(
@@ -1211,6 +1457,8 @@ class LongTermMemoryService:
                 "embedding_status": embedding_status,
                 "reconciliation_required": embedding_status in RECONCILIATION_STATUSES,
                 "superseded_memory_id": superseded_id,
+                "consolidation": decision.as_provenance(),
+                "is_current": stored_doc.get("valid_to") is None,
             }
         except Exception as exc:
             self._record_failure("write_memory", FAILURE_CLASS_DATABASE)
@@ -1415,11 +1663,22 @@ class LongTermMemoryService:
         limit = max(1, self._coerce_int(query_context.get("limit"), settings.memory_retrieval_default_limit))
         include_debug = bool(query_context.get("include_debug"))
 
+        # Historical retrieval is explicit. A caller that does not ask for it
+        # sees only what is true now, so a superseded fact cannot answer a
+        # current question no matter how well its wording matches.
+        include_history = bool(query_context.get("include_history"))
+        as_of = _parse_datetime(query_context.get("as_of"))
+        requested_scope = query_context.get("scope")
+        scope_filter_key = scope_key(requested_scope) if isinstance(requested_scope, dict) else None
+
         mongo_candidates = self._active_memory_documents(
             owner_id=owner_id,
             owner_type=owner_type,
             memory_classes=memory_classes,
             include_archived=False,
+            include_history=include_history,
+            as_of=as_of,
+            scope=scope_filter_key,
         )
 
         qdrant_hits, qdrant_scores, retrieval_mode, degraded_reason = self._semantic_candidates(
@@ -1440,11 +1699,15 @@ class LongTermMemoryService:
             for doc in mongo_candidates:
                 ranked.append((doc, self._score_document(doc, [], qdrant_scores)))
 
-        # Ties break on updated_at and then on id, so an identical corpus and
-        # query always produce the same ordering — the property the retrieval
-        # measurement depends on.
+        # Current facts outrank historical ones categorically, not by score.
+        # A closed fact that happens to embed closer to the query than its
+        # replacement must still never be presented above it — that is the
+        # whole point of tracking validity. Ties below that break on
+        # updated_at and then on id, so an identical corpus and query always
+        # produce the same ordering.
         ranked.sort(
             key=lambda item: (
+                1 if self._is_valid_at(item[0], as_of) else 0,
                 item[1]["score"],
                 item[0].get("updated_at") or "",
                 item[0]["id"],
@@ -1481,6 +1744,11 @@ class LongTermMemoryService:
                     "owner_type": owner_type,
                     "memory_classes": sorted(memory_classes),
                     "statuses": sorted(RETRIEVABLE_STATUSES),
+                    "scope": scope_filter_key,
+                },
+                "temporal": {
+                    "include_history": include_history,
+                    "as_of": None if as_of is None else as_of.isoformat(),
                 },
             },
         }

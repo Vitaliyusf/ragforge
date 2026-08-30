@@ -127,6 +127,10 @@ def test_retrieval_uses_the_embedded_query_when_the_vector_index_is_available():
         episodic_candidate(),
         {"owner_id": "owner-1", "owner_type": "user", "request_id": "req-sem-1"},
     )
+    # The write already searched the index for near-duplicates; this test is
+    # about what retrieval itself does.
+    index.searched_vectors.clear()
+    embedding.embedded_queries.clear()
 
     result = service.get_relevant_memories(
         {"owner_id": "owner-1", "owner_type": "user", "text": "beta launch", "limit": 3}
