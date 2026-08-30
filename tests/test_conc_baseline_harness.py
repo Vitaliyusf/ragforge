@@ -8,6 +8,7 @@ that later runs against live services.
 import asyncio
 import json
 import sys
+import threading
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -334,6 +335,209 @@ def test_the_config_snapshot_carries_no_secret_shaped_names():
         assert not _is_secret_shaped(name), name
 
 
+# Files that between them define every environment variable the running
+# system reads for concurrency: the two Compose topologies, and the service
+# configs that declare settings fields or call `os.getenv` directly.
+_CONFIG_SOURCES = (
+    "docker-compose.yml",
+    "docker-compose.prod.yml",
+    "backend/llm_agent/app/core/config.py",
+    "backend/embedding/app/config.py",
+    "backend/rag/app/core/config.py",
+)
+
+
+def _runtime_readable_env_names() -> set:
+    """Re-derive, from current source, the env names the runtime can read.
+
+    Three shapes, because the repository uses three: `${NAME...}`
+    substitutions and `NAME:` keys in Compose, `os.getenv("NAME")` calls, and
+    pydantic settings fields — readable uppercased, because every one of these
+    configs sets `case_sensitive=False` with no `env_prefix`.
+    """
+    import re
+
+    names = set()
+    for relative in _CONFIG_SOURCES:
+        path = REPO_ROOT / relative
+        if not path.exists():
+            continue
+        text = path.read_text(encoding="utf-8")
+        names.update(re.findall(r"\$\{([A-Z][A-Z0-9_]*)", text))
+        if path.suffix in {".yml", ".yaml"}:
+            names.update(re.findall(r"^\s+([A-Z][A-Z0-9_]*):", text, re.MULTILINE))
+        else:
+            names.update(re.findall(r'os\.getenv\(\s*"([A-Z][A-Z0-9_]*)"', text))
+            fields = re.findall(r"^    ([a-z][a-z0-9_]*)\s*:\s*[A-Za-z]", text, re.MULTILINE)
+            names.update(field.upper() for field in fields)
+    return names
+
+
+def test_every_allowlisted_config_name_is_one_the_runtime_actually_reads():
+    """The defect this exists for: an allowlist of plausible-looking names.
+
+    `LLM_MAX_CONCURRENT_REQUESTS` and `LLM_RABBITMQ_PREFETCH` read like the
+    right knobs and are read by nothing — the runtime uses
+    `MAX_CONCURRENT_REQUESTS` and `LLM_REQUEST_PREFETCH`. A snapshot of names
+    nothing reads records `null` for knobs that are in force, which makes two
+    differently-configured runs compare as identical.
+    """
+    from perf.runtime import CONFIG_ALLOWLIST
+
+    readable = _runtime_readable_env_names()
+    assert readable, "config sources moved: the derivation found nothing"
+
+    unread = sorted(set(CONFIG_ALLOWLIST) - readable)
+    assert not unread, (
+        f"allowlisted names no current config or Compose file reads: {unread}. "
+        "Record the name the runtime uses, or drop the entry."
+    )
+
+
+@pytest.mark.parametrize(
+    "area, expected",
+    [
+        ("llm agent concurrency", "MAX_CONCURRENT_REQUESTS"),
+        ("rabbitmq prefetch", "RABBITMQ_PREFETCH_COUNT"),
+        ("llm queue prefetch", "LLM_REQUEST_PREFETCH"),
+        ("vllm max_num_seqs", "VLLM_MAX_NUM_SEQS"),
+        ("vllm batched tokens", "VLLM_MAX_NUM_BATCHED_TOKENS"),
+        ("embedding batch", "EMBEDDING_BATCH_SIZE"),
+        ("reranker batch", "RERANKER_BATCH_SIZE"),
+        ("rag eval concurrency", "EVAL_RUN_CONCURRENCY"),
+        ("rag persistence concurrency", "PERSISTENCE_MAX_CONCURRENCY"),
+        ("kafka polling", "KAFKA_CONSUMER_TIMEOUT_MS"),
+    ],
+)
+def test_the_allowlist_covers_every_area_the_track_will_move(area, expected):
+    from perf.runtime import CONFIG_ALLOWLIST
+
+    assert expected in CONFIG_ALLOWLIST, f"{area} is unrecorded"
+
+
+def test_the_snapshot_reports_an_unset_knob_as_null_not_a_default(monkeypatch):
+    """A baseline must not silently substitute the Compose default: the run
+    either had the variable set or it did not."""
+    from perf.runtime import config_snapshot
+
+    monkeypatch.delenv("VLLM_MAX_NUM_SEQS", raising=False)
+    monkeypatch.setenv("EVAL_RUN_CONCURRENCY", "9")
+    snapshot = config_snapshot()
+
+    assert snapshot["VLLM_MAX_NUM_SEQS"] is None
+    assert snapshot["EVAL_RUN_CONCURRENCY"] == "9"
+
+
+# ── source provenance ───────────────────────────────────────
+
+
+def test_a_clean_tree_is_identified_by_its_sha_with_no_fingerprint(monkeypatch):
+    from perf import runtime as runtime_module
+
+    monkeypatch.setattr(runtime_module, "_git_output", lambda *args: "")
+    monkeypatch.setattr(
+        runtime_module,
+        "_git",
+        lambda *args: "a" * 40 if args == ("rev-parse", "HEAD") else "main",
+    )
+    source = runtime_module.source_fingerprint()
+
+    assert source["dirty"] is False
+    assert source["git_sha"] == "a" * 40
+    # A hash of an empty diff would be identical on every clean run and could
+    # be mistaken for a reading. The SHA is already the identity.
+    assert source["source_fingerprint_sha256"] is None
+
+
+def test_a_tree_git_cannot_describe_reports_unknown_rather_than_clean(monkeypatch):
+    """Empty `git status` output means clean; git failing to answer means
+    nothing is known. Reporting the second as `dirty: false` would claim a
+    reproducibility the run does not have."""
+    from perf import runtime as runtime_module
+
+    monkeypatch.setattr(runtime_module, "_git_output", lambda *args: None)
+    monkeypatch.setattr(runtime_module, "_git", lambda *args: None)
+    source = runtime_module.source_fingerprint()
+
+    assert source["dirty"] is None
+    assert source["git_sha"] is None
+    assert source["source_fingerprint_sha256"] is None
+
+
+def test_a_dirty_tree_carries_a_deterministic_fingerprint_beside_the_sha():
+    from perf.runtime import source_fingerprint
+
+    source = source_fingerprint()
+    if not source["dirty"]:
+        pytest.skip("clean working tree: the dirty path cannot be exercised here")
+
+    fingerprint = source["source_fingerprint_sha256"]
+    assert isinstance(fingerprint, str) and len(fingerprint) == 64
+    assert (
+        fingerprint == source_fingerprint()["source_fingerprint_sha256"]
+    ), "the fingerprint must be stable while the source is"
+
+
+def test_the_fingerprint_moves_when_the_source_moves(tmp_path, monkeypatch):
+    """Reuses the repository's existing dirty-source digest rather than a
+    second provenance scheme, so an artifact and a built image agree on what
+    "this source" means."""
+    import importlib.util
+    import subprocess
+
+    spec = importlib.util.spec_from_file_location(
+        "_fingerprint_under_test", REPO_ROOT / "scripts" / "build_rag_image.py"
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    def git(*args):
+        subprocess.run(["git", *args], cwd=tmp_path, check=True, capture_output=True)
+
+    try:
+        git("init", "-q")
+    except (OSError, subprocess.CalledProcessError):  # pragma: no cover
+        pytest.skip("git unavailable")
+    git("config", "user.email", "t@example.com")
+    git("config", "user.name", "t")
+    (tmp_path / "source.py").write_text("x = 1\n", encoding="utf-8")
+    git("add", "-A")
+    git("commit", "-qm", "base")
+    sha = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=tmp_path, check=True, capture_output=True, text=True
+    ).stdout.strip()
+
+    monkeypatch.setattr(module, "ROOT", tmp_path)
+    (tmp_path / "source.py").write_text("x = 2\n", encoding="utf-8")
+    before = module.dirty_source_fingerprint(sha)
+    assert before == module.dirty_source_fingerprint(sha), "stable while the source is"
+
+    (tmp_path / "source.py").write_text("x = 3\n", encoding="utf-8")
+    assert module.dirty_source_fingerprint(sha) != before, "a tracked edit must move it"
+
+    after_tracked = module.dirty_source_fingerprint(sha)
+    (tmp_path / "added.py").write_text("y = 1\n", encoding="utf-8")
+    assert (
+        module.dirty_source_fingerprint(sha) != after_tracked
+    ), "an untracked file must move it"
+
+
+def test_provenance_exports_a_digest_and_never_source_content():
+    """A digest is shareable; a diff is not. Nothing that could carry secrets,
+    file paths or private content may travel with an artifact."""
+    from perf.runtime import source_fingerprint
+
+    source = source_fingerprint()
+    assert set(source) == {
+        "git_sha",
+        "git_branch",
+        "dirty",
+        "source_fingerprint_sha256",
+    }
+    for value in source.values():
+        assert not isinstance(value, (bytes, bytearray, list, dict))
+
+
 def test_the_secret_guard_catches_credentials_without_rejecting_token_budgets():
     """`TOKEN` is a credential; `..._BATCHED_TOKENS` is a scheduler budget and
     one of the knobs this whole track moves."""
@@ -357,7 +561,7 @@ def test_the_artifact_round_trips_as_json(tmp_path):
 
     reloaded = json.loads(path.read_text(encoding="utf-8"))
     assert reloaded["load"]["concurrency_ladder"] == [1, 4, 8, 16, 32]
-    assert reloaded["source"].keys() == {"git_sha", "git_branch", "dirty"}
+    assert reloaded["source"].keys() == {"git_sha", "git_branch", "dirty", "source_fingerprint_sha256"}
 
 
 def test_the_required_concurrency_ladder_is_the_default():
@@ -440,7 +644,7 @@ def test_queue_wait_is_not_recorded_when_the_caller_did_not_measure_it():
     assert wait._sum.get() == before
 
 
-def test_a_thread_pool_snapshot_reports_its_ceiling_and_idle_workers():
+def test_a_thread_pool_snapshot_reports_its_ceiling_and_queue_depth():
     pytest.importorskip("prometheus_client")
     from shared.concurrency_probe import snapshot_thread_pool
 
@@ -450,7 +654,60 @@ def test_a_thread_pool_snapshot_reports_its_ceiling_and_idle_workers():
 
     assert snapshot.max_workers == 3
     assert snapshot.queued == 0
-    assert snapshot.active is not None and 0 <= snapshot.active <= 3
+
+
+def test_an_idle_pool_never_claims_its_spawned_threads_are_active():
+    """The regression this exists for: a pool that has finished all its work
+    still holds every thread it ever spawned, so any count derived from
+    `_threads` — including *spawned minus queued* — reports three busy workers
+    for a pool doing nothing. An unmeasured active count is `None`."""
+    from shared.concurrency_probe import read_thread_pool
+
+    # Force all three threads into existence, then let every task finish, so
+    # the pool is provably idle while still holding three spawned threads —
+    # the exact state the old arithmetic reported as three active workers.
+    release = threading.Event()
+    barrier = threading.Barrier(4)
+
+    def occupy(_n):
+        barrier.wait(timeout=10)
+        release.wait(timeout=10)
+
+    with ThreadPoolExecutor(max_workers=3) as executor:
+        futures = [executor.submit(occupy, n) for n in range(3)]
+        barrier.wait(timeout=10)
+        release.set()
+        for future in futures:
+            future.result(timeout=10)
+
+        assert len(executor._threads) == 3, "precondition: threads outlive their work"
+        snapshot = read_thread_pool(executor)
+
+    assert snapshot.queued == 0
+    assert snapshot.active is None
+
+
+def test_an_unobserved_active_count_never_reaches_the_gauge():
+    """`executor_active_workers` must stay absent rather than read zero or
+    three: a gauge nobody set is honest, a gauge set from a guess is not."""
+    pytest.importorskip("prometheus_client")
+    from shared.concurrency_probe import snapshot_thread_pool
+    from shared.metrics import METRICS
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        list(executor.map(lambda n: n, range(2)))
+        snapshot_thread_pool("test_active", "idle", executor)
+
+    labels = {
+        sample.labels.get("pool")
+        for metric in METRICS.executor_active_workers.collect()
+        for sample in metric.samples
+        if sample.labels.get("service") == "test_active"
+    }
+    assert "idle" not in labels
+    assert (
+        METRICS.executor_max_workers.labels(service="test_active", pool="idle")._value.get() == 2
+    )
 
 
 def test_a_pool_without_the_expected_internals_degrades_to_null():

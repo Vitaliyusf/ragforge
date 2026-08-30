@@ -26,9 +26,13 @@ from .scenarios import ScenarioSpec
 ARTIFACT_KIND = "conc_baseline"
 
 # Bumped when the document's shape changes, so an artifact read back later is
-# interpreted under the rules it was written with. Version 1 is the CONC-00
-# schema: source/config/hardware/load/scenarios/limitations.
-ARTIFACT_SCHEMA_VERSION = 1
+# interpreted under the rules it was written with.
+#
+# 1 — source/config/hardware/load/scenarios/limitations.
+# 2 — `source` gains `source_fingerprint_sha256`, so a run recorded from a
+#     dirty tree carries a reproducible source identity rather than only the
+#     admission that it has none.
+ARTIFACT_SCHEMA_VERSION = 2
 
 STATUS_MEASURED = "measured"
 STATUS_DEFERRED = "deferred"
@@ -92,10 +96,20 @@ def build_artifact(
     limitations: List[str] = list(extra_limitations)
 
     if source.get("dirty"):
-        limitations.append(
-            "recorded from a working tree with uncommitted changes: the git "
-            "SHA alone does not reproduce these numbers"
-        )
+        fingerprint = source.get("source_fingerprint_sha256")
+        if fingerprint:
+            limitations.append(
+                "recorded from a working tree with uncommitted changes: the "
+                "git SHA alone does not reproduce these numbers, so compare "
+                "only against runs carrying source_fingerprint_sha256 "
+                f"{fingerprint}"
+            )
+        else:
+            limitations.append(
+                "recorded from a working tree with uncommitted changes and no "
+                "source fingerprint could be computed: the source that "
+                "produced these numbers is not reproducible"
+            )
     if source.get("git_sha") is None:
         limitations.append(
             "no git SHA available in this environment: the source that "

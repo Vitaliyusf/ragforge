@@ -30,6 +30,7 @@ from .auth import (
     verify_internal_ticket_from_envelope,
 )
 from .context import bound_context
+from .metrics import METRICS
 
 logger = logging.getLogger(__name__)
 
@@ -96,6 +97,28 @@ class BaseRabbitMQConsumer:
         handler: HandlerFn,
     ) -> None:
         """Process one message: call handler, publish reply if returned, nack on error."""
+        # Consumer-side saturation, recorded at the one boundary every RPC
+        # service already shares rather than in each service separately.
+        # `queue` is the declared queue name from config, so the series stays
+        # bounded by the topology and never by message content.
+        service = str(getattr(self.config, "service_name", "unknown"))
+        queue_name = self.config.rabbitmq_queue
+        METRICS.rabbitmq_deliveries_total.labels(service=service, queue=queue_name).inc()
+        inflight = METRICS.rabbitmq_inflight_deliveries.labels(service=service, queue=queue_name)
+        inflight.inc()
+        try:
+            await self._dispatch_message(message, handler)
+        finally:
+            # `finally`, so a handler that raises into the nack path still
+            # releases the gauge. One that only decrements on success drifts
+            # upward forever and reads as permanent saturation.
+            inflight.dec()
+
+    async def _dispatch_message(
+        self,
+        message: aio_pika.abc.AbstractIncomingMessage,
+        handler: HandlerFn,
+    ) -> None:
         async with message.process(requeue=False):
             body = json.loads(message.body)
             reply_to = message.reply_to or ""

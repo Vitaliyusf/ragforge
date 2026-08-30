@@ -32,27 +32,66 @@ asserts the two lists stay identical, so they cannot drift apart.
 
 All metrics live in `backend/shared/metrics.py` under the
 *Concurrency / saturation baseline* section. The service-side probes that
-record them live in `backend/shared/concurrency_probe.py` and are **opt-in**:
-importing them starts no task and wires no handler, so a service that has not
-adopted them yet behaves exactly as before.
+record them live in `backend/shared/concurrency_probe.py`.
 
-| Signal | Metric |
-|---|---|
-| in-flight per request class | `ragapp_inflight_by_stage` |
-| queue wait before execution | `ragapp_queue_wait_seconds` |
-| handler duration (non-HTTP entry points) | `ragapp_handler_duration_seconds` |
-| executor submitted / rejected | `ragapp_executor_tasks_{submitted,rejected}_total` |
-| executor active / queued / ceiling | `ragapp_executor_{active_workers,queue_depth,max_workers}` |
-| RPC latency / timeouts / in-flight | `ragapp_rpc_roundtrip_seconds`, `ragapp_rpc_timeouts_total`, `ragapp_rpc_inflight` |
-| RabbitMQ consumer delivery / in-flight | `ragapp_rabbitmq_deliveries_total`, `ragapp_rabbitmq_inflight_deliveries` |
-| Kafka lag / processing duration | `ragapp_kafka_consumer_lag`, `ragapp_kafka_message_processing_seconds` |
-| event-loop lag | `ragapp_event_loop_lag_seconds` |
-| background task count | `ragapp_background_tasks` |
-| fallback / degraded path | `ragapp_degraded_path_total` |
-| embedding batch size | `ragapp_embedding_batch_size` |
-| reranker status / batch size | `ragapp_reranker_status_total`, `ragapp_reranker_batch_size` |
-| vLLM concurrency / TTFT / tokens per second | `ragapp_vllm_inflight_requests`, `ragapp_vllm_ttft_seconds`, `ragapp_vllm_output_tokens_per_second` |
-| Mongo / Qdrant hot-path latency | `ragapp_mongo_operation_duration_seconds`, `ragapp_qdrant_operation_duration_seconds` |
+**A declared metric is not an instrumented one.** `CONC-00` fixes the
+vocabulary for the whole track, which means most of these names exist before
+anything records them. Reading the table as "instrumented" would be the most
+expensive mistake this document could invite: a later task would compare
+against a series that was never populated and conclude the path was quiet.
+So every metric carries its status, and the statuses mean:
+
+- **WIRED** — a production path records it today, at a boundary `CONC-00`
+  instrumented.
+- **EXISTING / REUSED** — already recorded before `CONC-00`; the baseline
+  adopts it rather than adding a parallel series.
+- **DECLARED / NOT YET WIRED** — the metric and, where useful, an opt-in probe
+  exist, but no production path calls it. The adopting task is named.
+- **DEFERRED** — cannot be measured correctly until a later architectural
+  change lands. Recording something in the meantime would mean inventing it.
+
+### Wired in CONC-00
+
+Instrumented at shared boundaries rather than in each service, so one edit
+covers every service that already routes through them:
+
+| Signal | Metric | Boundary |
+|---|---|---|
+| RabbitMQ consumer delivery / in-flight | `ragapp_rabbitmq_deliveries_total`, `ragapp_rabbitmq_inflight_deliveries` | `shared.rabbitmq_base.BaseRabbitMQConsumer._dispatch` |
+| Kafka processing duration | `ragapp_kafka_message_processing_seconds` | `shared.kafka_base.BaseKafkaConsumer.consume` |
+| RPC in-flight / timeouts | `ragapp_rpc_inflight`, `ragapp_rpc_timeouts_total` | `rag…conversation_backend_client._send_request`, beside the round-trip histogram it already owned |
+
+### Existing / reused
+
+| Signal | Metric | Where |
+|---|---|---|
+| RPC round-trip latency | `ragapp_rpc_roundtrip_seconds` | the same RAG dispatcher, pre-`CONC-00` |
+| Kafka consumer lag | `ragapp_kafka_consumer_lag` | `BaseKafkaConsumer._record_lag`, from offsets the fetch already carried |
+
+### Declared / not yet wired
+
+The probe exists and is tested; no production path calls it yet.
+
+| Signal | Metric | Adopting task |
+|---|---|---|
+| in-flight per request class | `ragapp_inflight_by_stage` | `CONC-01` (per-path adoption of `track_stage`) |
+| queue wait before execution | `ragapp_queue_wait_seconds` | `CONC-01` |
+| handler duration (non-HTTP entry points) | `ragapp_handler_duration_seconds` | `CONC-01` |
+| executor ceiling / queue depth | `ragapp_executor_max_workers`, `ragapp_executor_queue_depth` | `CONC-02` (no service owns a snapshot call site yet) |
+| executor submitted / rejected | `ragapp_executor_tasks_submitted_total`, `ragapp_executor_tasks_rejected_total` | `CONC-02` |
+| event-loop lag | `ragapp_event_loop_lag_seconds` | `CONC-01` (the sampler owns a task; no service starts one) |
+| background task count | `ragapp_background_tasks` | `CONC-04` — there is no task registry to count from today, and inventing one is a behavior change, not a measurement |
+| fallback / degraded path | `ragapp_degraded_path_total` | `CONC-01`, `CONC-05` |
+| embedding batch size | `ragapp_embedding_batch_size` | `CONC-06` |
+| reranker status / batch size | `ragapp_reranker_status_total`, `ragapp_reranker_batch_size` | `CONC-05` |
+| Mongo / Qdrant hot-path latency | `ragapp_mongo_operation_duration_seconds`, `ragapp_qdrant_operation_duration_seconds` | `CONC-07` |
+
+### Deferred
+
+| Signal | Metric | Why it cannot be measured yet |
+|---|---|---|
+| executor active workers | `ragapp_executor_active_workers` | `ThreadPoolExecutor` exposes no count of executing tasks. It spawns threads lazily and never retires them, so an idle pool still holds every thread it ever spawned and any arithmetic over `_threads` reports work that is not happening. `read_thread_pool` therefore returns `active=None` and the gauge is never set. `CONC-02` takes ownership of the executors and can then count submissions and completions exactly. |
+| vLLM concurrency / TTFT / tokens per second | `ragapp_vllm_inflight_requests`, `ragapp_vllm_ttft_seconds`, `ragapp_vllm_output_tokens_per_second` | These are properties of the vLLM server's scheduler. Reading them needs the generation boundary `CONC-03` introduces; anything derived client-side today would measure the caller's queueing, not the model's. |
 
 ### Label rules
 
@@ -115,7 +154,7 @@ JSON under `logs/perf/` (gitignored), one timestamped file per run,
 
 ```
 artifact, schema_version, created_at
-source            git sha / branch / dirty
+source            git sha / branch / dirty / dirty-source fingerprint
 config            allowlisted concurrency env only, never os.environ
 hardware_runtime  platform, cpus, ram, whether resource sampling was possible
 load              ladder, requests, warmup, timeout, load model, dataset
@@ -139,7 +178,34 @@ limitations.
 3. **An unmeasured resource is `null`, never `0`.** Without psutil the CPU and
    RAM fields are null and the run says so — a gauge reading zero because
    nothing looked is indistinguishable from a healthy zero, which is the
-   reading an operator would trust.
+   reading an operator would trust. The same rule governs the metric statuses
+   above and `executor_active_workers`: a value nobody measured is absent.
+4. **A dirty tree is identified, not just confessed.** `dirty: true` alone
+   tells a later reader their comparison is unsound without telling them
+   which source produced the numbers, so a dirty run also carries
+   `source_fingerprint_sha256` — the same content-addressed digest
+   `scripts/build_rag_image.py` stamps into image provenance, reused rather
+   than reinvented so an artifact and an image from one tree agree. It covers
+   the tracked diff against `HEAD` plus every non-ignored untracked path and
+   its content, so it moves when the source moves and holds still when it does
+   not. It is a digest only: no diff, no file content, no path list and no
+   environment travels with the artifact. A clean tree carries `null` there,
+   because the SHA is already the identity and a hash of an empty diff would
+   be a constant masquerading as a reading.
+
+### The config allowlist is names the runtime reads
+
+Every name in `perf.runtime.CONFIG_ALLOWLIST` is a variable current source
+actually consults — a Compose `${...}` substitution, an `os.getenv` call, or a
+pydantic settings field (readable uppercased: these configs set
+`case_sensitive=False` with no `env_prefix`). A plausible name nothing reads is
+worse than an absent one: it records `null` for a knob that is in force, and
+two differently-configured runs then compare as identical.
+`test_conc_baseline_harness.py` re-derives the readable names from
+`docker-compose*.yml` and the service configs and fails when the list drifts.
+
+Unset names are recorded as `null` rather than filled in from the Compose
+default: the run either had the variable set or it did not.
 
 ## Running without a live stack
 
@@ -158,6 +224,10 @@ CHECKPOINT B and the `CONC-99` campaign.
 ## Validation
 
 ```bash
-py -3.12 scripts/ai/check.py lane perf-baseline   # harness, offline
-py -3.12 scripts/ai/check.py lane shared          # metric label contract
+py -3.12 scripts/ai/check.py lane perf-baseline   # harness, provenance, offline
+py -3.12 scripts/ai/check.py lane shared          # metric contract and wiring
 ```
+
+The metric contract and the two shared wiring boundaries are covered by
+`backend/shared/tests/test_concurrency_metrics.py`; the harness, the config
+allowlist and the source fingerprint by `tests/test_conc_baseline_harness.py`.

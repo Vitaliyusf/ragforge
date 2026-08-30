@@ -22,9 +22,11 @@ for an HTTP handler the middleware entry.
 
 **Pool snapshots** (:func:`snapshot_thread_pool`) read a live
 ``ThreadPoolExecutor`` into gauges. ``ThreadPoolExecutor`` exposes no public
-saturation API, so this reads two private attributes defensively: a CPython
+saturation API, so this reads its private attributes defensively: a CPython
 change should degrade the snapshot to ``None``, never raise into a request
-path.
+path. It publishes the pool ceiling and the queue depth only — the count of
+workers actually executing is not derivable from what the executor exposes,
+so it stays unobserved until `CONC-02` owns the executors outright.
 
 **The loop sampler** (:class:`EventLoopLagSampler`) is the one probe that owns
 a task of its own, so it is a class the caller starts and stops explicitly.
@@ -116,8 +118,17 @@ def record_degraded_path(service: str, stage: str, reason: str) -> None:
 class PoolSnapshot:
     """One reading of a thread pool's saturation.
 
-    ``active`` and ``queued`` are ``None`` when the running interpreter does
-    not expose them in the shape this module reads.
+    ``queued`` is ``None`` when the running interpreter does not expose the
+    work queue in the shape this module reads.
+
+    ``active`` is *always* ``None`` here, and that is the point.
+    ``ThreadPoolExecutor`` exposes no count of the tasks currently executing:
+    it spawns threads lazily and never retires them, so a pool that has gone
+    completely idle still reports every thread it ever spawned. Any arithmetic
+    over ``len(_threads)`` and ``qsize()`` — including *spawned minus queued* —
+    reports a busy pool when nothing is running at all. The field is kept so
+    the snapshot shape does not change when `CONC-02` takes ownership of the
+    executors and can count submissions and completions exactly.
     """
 
     max_workers: int
@@ -129,18 +140,16 @@ def read_thread_pool(executor: ThreadPoolExecutor) -> PoolSnapshot:
     """Read a live ``ThreadPoolExecutor`` without disturbing it.
 
     ``ThreadPoolExecutor`` has no public introspection API, so this reads
-    ``_threads`` and ``_work_queue`` behind ``getattr`` guards. A CPython
+    ``_max_workers`` and ``_work_queue`` behind ``getattr`` guards. A CPython
     change makes the affected field ``None`` — a degraded snapshot — rather
     than raising into whatever path asked for it.
 
-    ``active`` is derived as *threads spawned minus items still queued*,
-    clamped at zero: the pool spawns threads lazily, so the thread count alone
-    over-reports a pool that has gone idle.
+    Only the ceiling and the queue depth are readings. The count of workers
+    actually executing is not instrumented and is therefore reported as
+    ``None``; see :class:`PoolSnapshot` for why no arithmetic over the private
+    attributes can stand in for it.
     """
     max_workers = int(getattr(executor, "_max_workers", 0) or 0)
-
-    threads = getattr(executor, "_threads", None)
-    spawned = len(threads) if threads is not None else None
 
     work_queue = getattr(executor, "_work_queue", None)
     queued: Optional[int]
@@ -150,13 +159,7 @@ def read_thread_pool(executor: ThreadPoolExecutor) -> PoolSnapshot:
         # qsize() is documented as unreliable/absent on some platforms.
         queued = None
 
-    active: Optional[int]
-    if spawned is None or queued is None:
-        active = None
-    else:
-        active = max(0, min(spawned, max_workers or spawned) - queued)
-
-    return PoolSnapshot(max_workers=max_workers, active=active, queued=queued)
+    return PoolSnapshot(max_workers=max_workers, active=None, queued=queued)
 
 
 def snapshot_thread_pool(service: str, pool: str, executor: ThreadPoolExecutor) -> PoolSnapshot:

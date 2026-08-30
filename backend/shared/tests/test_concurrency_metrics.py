@@ -134,3 +134,117 @@ def test_reranker_batch_size_is_distinct_from_candidate_count():
     """CONC-05 changes the batch, not the candidate pool; one metric for both
     would hide exactly the change it is meant to prove."""
     assert METRICS.reranker_batch_size is not METRICS.reranker_candidate_count
+
+
+# ── wiring at the shared boundaries ─────────────────────────
+#
+# A declared metric is not an instrumented one. These prove the two shared
+# consumer boundaries actually record, so `CONCURRENCY_BASELINE.md` can call
+# them WIRED rather than DECLARED.
+
+
+def _gauge_value(metric: Any, **labels: str) -> float:
+    return cast(Any, metric).labels(**labels)._value.get()
+
+
+def _counter_value(metric: Any, **labels: str) -> float:
+    return cast(Any, metric).labels(**labels)._value.get()
+
+
+def test_the_shared_rabbitmq_consumer_records_delivery_and_inflight():
+    pytest.importorskip("aio_pika")
+    import asyncio
+
+    from shared.rabbitmq_base import BaseRabbitMQConsumer
+
+    class Config:
+        rabbitmq_url = "amqp://localhost"
+        rabbitmq_exchange = "ragapp.requests"
+        rabbitmq_queue = "probe_queue"
+        rabbitmq_prefetch_count = 1
+        service_name = "probe_service"
+
+    seen: list[float] = []
+
+    class Consumer(BaseRabbitMQConsumer):
+        async def _dispatch_message(self, message, handler):  # type: ignore[override]
+            seen.append(
+                _gauge_value(
+                    METRICS.rabbitmq_inflight_deliveries,
+                    service="probe_service",
+                    queue="probe_queue",
+                )
+            )
+
+    labels = {"service": "probe_service", "queue": "probe_queue"}
+    delivered_before = _counter_value(METRICS.rabbitmq_deliveries_total, **labels)
+    inflight_before = _gauge_value(METRICS.rabbitmq_inflight_deliveries, **labels)
+
+    asyncio.run(Consumer(Config())._dispatch(object(), None))  # type: ignore[arg-type]
+
+    assert _counter_value(METRICS.rabbitmq_deliveries_total, **labels) == delivered_before + 1
+    assert seen == [inflight_before + 1], "the delivery must be in flight while it runs"
+    assert _gauge_value(METRICS.rabbitmq_inflight_deliveries, **labels) == inflight_before
+
+
+def test_a_failed_rabbitmq_delivery_still_releases_the_inflight_gauge():
+    """A gauge that only decrements on success drifts upward forever and reads
+    as permanent saturation — the reading an operator would act on."""
+    pytest.importorskip("aio_pika")
+    import asyncio
+
+    from shared.rabbitmq_base import BaseRabbitMQConsumer
+
+    class Config:
+        rabbitmq_url = "amqp://localhost"
+        rabbitmq_exchange = "ragapp.requests"
+        rabbitmq_queue = "failing_queue"
+        rabbitmq_prefetch_count = 1
+        service_name = "probe_service"
+
+    class Consumer(BaseRabbitMQConsumer):
+        async def _dispatch_message(self, message, handler):  # type: ignore[override]
+            raise RuntimeError("handler failed")
+
+    labels = {"service": "probe_service", "queue": "failing_queue"}
+    before = _gauge_value(METRICS.rabbitmq_inflight_deliveries, **labels)
+
+    with pytest.raises(RuntimeError):
+        asyncio.run(Consumer(Config())._dispatch(object(), None))  # type: ignore[arg-type]
+
+    assert _gauge_value(METRICS.rabbitmq_inflight_deliveries, **labels) == before
+
+
+def test_the_shared_kafka_consumer_times_the_work_it_hands_out():
+    pytest.importorskip("kafka")
+
+    from shared.kafka_base import BaseKafkaConsumer
+
+    class Message:
+        topic = "probe_topic"
+        partition = 0
+        offset = 0
+        value = {"payload": 1}
+
+    consumer = BaseKafkaConsumer.__new__(BaseKafkaConsumer)
+    consumer.config = type("C", (), {"service_name": "probe_service"})()
+    consumer._consumer = [Message()]
+    consumer._init_consumer = lambda: True  # type: ignore[method-assign]
+    consumer._record_lag = lambda message: None  # type: ignore[method-assign]
+
+    histogram = cast(Any, METRICS.kafka_message_processing_duration)
+    labels = {"service": "probe_service", "topic": "probe_topic"}
+    before = histogram.labels(**labels)._sum.get()
+
+    assert [message for message in consumer.consume()] == [{"payload": 1}]
+
+    # Observed at all, and not the broker's wait: the timer starts when the
+    # message leaves the generator, so it measures the consumer's own work.
+    assert histogram.labels(**labels)._sum.get() >= before
+    observations = [
+        sample.value
+        for metric in histogram.collect()
+        for sample in metric.samples
+        if sample.name.endswith("_count") and sample.labels.get("topic") == "probe_topic"
+    ]
+    assert observations == [1.0], "exactly one message, exactly one observation"

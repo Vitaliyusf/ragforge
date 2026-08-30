@@ -19,6 +19,7 @@ paste into pull requests.
 """
 from __future__ import annotations
 
+import importlib.util
 import os
 import platform
 import subprocess
@@ -27,6 +28,7 @@ import threading
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Dict, List, Optional
 
 try:  # pragma: no cover - exercised by absence, not by branch
@@ -41,22 +43,49 @@ except ImportError:  # pragma: no cover
 # Concurrency-relevant configuration only. These are the knobs the whole
 # `CONC-*` track moves, so a baseline that does not record them cannot be
 # compared against anything.
+#
+# Every name here is a variable the running system actually reads: a Compose
+# `${...}` substitution, or a pydantic/`os.getenv` field on a service config.
+# A plausible-looking name that nothing reads is worse than an absent one — it
+# records `null` for a knob that is in force, and a later comparison then
+# calls two differently-configured runs identical. `test_conc_baseline_
+# harness.py` re-derives the readable names from the repository and fails when
+# the allowlist drifts away from them.
 CONFIG_ALLOWLIST = (
+    # vLLM scheduler: docker-compose.yml passes these to the server args and
+    # re-exports them to the services that reason about the ceiling.
     "VLLM_MAX_NUM_SEQS",
-    "VLLM_GPU_MEMORY_UTILIZATION",
     "VLLM_MAX_NUM_BATCHED_TOKENS",
+    "VLLM_GPU_MEMORY_UTILIZATION",
     "VLLM_MODEL",
     "DEFAULT_MODEL",
-    "LLM_MAX_CONCURRENT_REQUESTS",
-    "LLM_RABBITMQ_PREFETCH",
-    "EMBEDDING_RABBITMQ_PREFETCH",
+    # LLM Agent concurrency. `MAX_CONCURRENT_REQUESTS` is unprefixed: the
+    # service config declares `max_concurrent_requests` with no env prefix.
+    "MAX_CONCURRENT_REQUESTS",
+    # RabbitMQ prefetch. `RABBITMQ_PREFETCH_COUNT` is the shared consumer knob
+    # every RPC service reads; `LLM_REQUEST_PREFETCH` is the separate prefetch
+    # on llm_agent's primary typed request queue.
+    "RABBITMQ_PREFETCH_COUNT",
+    "LLM_REQUEST_PREFETCH",
+    # Embedding batching.
     "EMBEDDING_BATCH_SIZE",
-    "RERANKER_MAX_WORKERS",
+    "EMBEDDING_MAX_BATCH_SIZE",
+    # Reranker. There is no worker-count knob today — the reranker's
+    # concurrency is whatever the calling path grants it — so what the runtime
+    # exposes is the forward-pass batch and the deadline. `CONC-05` adds a
+    # concurrency setting; this list follows it then, not before.
+    "RERANKER_ENABLED",
+    "RERANKER_BATCH_SIZE",
+    "RERANKER_TIMEOUT_SECONDS",
+    # RAG background and persistence concurrency (unprefixed, as declared).
     "EVAL_RUN_CONCURRENCY",
-    "RAG_PERSISTENCE_MAX_CONCURRENCY",
-    "UVICORN_WORKERS",
-    "KAFKA_MAX_RECORDS",
+    "PERSISTENCE_MAX_CONCURRENCY",
+    "EXTENDED_RETRIEVAL_MAX_CONCURRENCY",
+    # Kafka polling. `max_poll_records` is hard-coded to 1 in
+    # `embedding_kafka.py` and so is not configuration; the poll deadline is.
+    "KAFKA_CONSUMER_TIMEOUT_MS",
 )
+
 
 # A name with any of these as a whole underscore-delimited word must never
 # reach an artifact. Matching whole words rather than substrings is what lets
@@ -99,8 +128,14 @@ def utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _git(*args: str) -> Optional[str]:
-    """Run a read-only git command, or return ``None`` if git cannot answer."""
+def _git_output(*args: str) -> Optional[str]:
+    """Run a read-only git command.
+
+    Returns the trimmed stdout — *including the empty string* — or ``None``
+    when git could not answer at all. The distinction is the whole point for
+    `git status --porcelain`, where empty output is the answer "clean" and
+    collapsing it into ``None`` would report every clean tree as unknown.
+    """
     try:
         result = subprocess.run(
             ["git", *args],
@@ -113,23 +148,75 @@ def _git(*args: str) -> Optional[str]:
         return None
     if result.returncode != 0:
         return None
-    return result.stdout.strip() or None
+    return result.stdout.strip()
+
+
+def _git(*args: str) -> Optional[str]:
+    """`_git_output` for the commands where empty output carries no meaning."""
+    return _git_output(*args) or None
 
 
 def source_fingerprint() -> Dict[str, Optional[object]]:
-    """Identify the source tree that produced this baseline.
+    """Identify the source tree that produced this baseline, reproducibly.
 
     ``dirty`` matters more than the SHA: a baseline recorded from a working
     tree with uncommitted changes cannot be reproduced from the SHA alone, and
     a later comparison against it would silently attribute the difference to
-    the wrong change.
+    the wrong change. Recording ``dirty: true`` and stopping there states the
+    problem without giving a reader anything to do about it — two runs from
+    two different dirty trees still look identical.
+
+    So a dirty tree also carries ``source_fingerprint_sha256``: the same
+    content-addressed identity the RAG image build stamps into its provenance,
+    reused from :func:`scripts.build_rag_image.dirty_source_fingerprint` rather
+    than reimplemented, so an artifact and an image built from the same tree
+    agree on what "this source" means. It hashes the tracked diff against
+    ``HEAD`` plus every non-ignored untracked path and its content, so it moves
+    whenever the source moves and is stable when the source is not. It is a
+    digest: no diff, no file content and no path list survives into the
+    artifact.
+
+    On a clean tree the SHA *is* the identity, so the fingerprint is ``None``
+    rather than a hash of an empty diff — a value that would be constant
+    across every clean run and could be mistaken for a real reading.
     """
-    status = _git("status", "--porcelain")
+    status = _git_output("status", "--porcelain=v1", "--untracked-files=all")
+    git_sha = _git("rev-parse", "HEAD")
+    dirty = None if status is None else bool(status)
+
+    fingerprint: Optional[str] = None
+    if dirty and git_sha is not None:
+        fingerprint = _dirty_fingerprint(git_sha)
+
     return {
-        "git_sha": _git("rev-parse", "HEAD"),
+        "git_sha": git_sha,
         "git_branch": _git("rev-parse", "--abbrev-ref", "HEAD"),
-        "dirty": None if status is None else bool(status),
+        "dirty": dirty,
+        "source_fingerprint_sha256": fingerprint,
     }
+
+
+_BUILD_SCRIPT = Path(__file__).resolve().parents[1] / "build_rag_image.py"
+
+
+def _dirty_fingerprint(git_sha: str) -> Optional[str]:
+    """The shared dirty-source digest, or ``None`` if it cannot be computed.
+
+    Loaded from its file rather than imported by name: `scripts/` is not a
+    package, so the sibling module is only importable when a caller has
+    already put `scripts/` on `sys.path`, and the harness must not depend on
+    that. Everything still degrades to ``None`` — an artifact from a tree with
+    no git is worth less, but it is still worth writing.
+    """
+    try:
+        spec = importlib.util.spec_from_file_location("_perf_build_provenance", _BUILD_SCRIPT)
+        if spec is None or spec.loader is None:
+            return None
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return str(module.dirty_source_fingerprint(git_sha))
+    except (OSError, AttributeError, subprocess.SubprocessError):
+        return None
 
 
 def config_snapshot() -> Dict[str, Optional[str]]:

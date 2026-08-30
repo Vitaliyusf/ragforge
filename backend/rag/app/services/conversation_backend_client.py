@@ -177,13 +177,24 @@ class ConversationBackendClient:
             traffic_class=traffic_class(),
         )
         started = time.monotonic()
+        # In-flight and timeouts sit on the same dispatcher as the existing
+        # round-trip histogram: one RPC boundary, three signals. A timeout
+        # never produces a reply, so counting it separately is what stops the
+        # histogram from under-reporting exactly the failure that matters
+        # under load.
+        inflight = METRICS.rpc_inflight.labels(service="rag", downstream=target_service)
+        inflight.inc()
         try:
             reply = await self.service_client.request(
                 routing_key,
                 envelope,
                 timeout if timeout is not None else self.config.internal_request_timeout,
             )
+        except (asyncio.TimeoutError, TimeoutError):
+            METRICS.rpc_timeouts_total.labels(service="rag", downstream=target_service).inc()
+            raise
         finally:
+            inflight.dec()
             # try/finally so a timed-out or failed RPC is measured too, not just
             # the calls that happened to succeed.
             METRICS.rpc_roundtrip_seconds.labels(
