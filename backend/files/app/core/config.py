@@ -67,6 +67,9 @@ class Settings(BaseSettings):
         default=1,
         description="RabbitMQ consumer prefetch count"
     )
+    executor_workers: int = Field(default=1, ge=1)
+    executor_queue_bound: int = Field(default=0, ge=0)
+    executor_submit_timeout_seconds: float = Field(default=1.0, gt=0)
 
     # MongoDB configuration
     mongodb_url: str = Field(

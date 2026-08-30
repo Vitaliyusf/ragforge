@@ -1,16 +1,15 @@
 """Memory handler service for RabbitMQ-backed requests."""
 from __future__ import annotations
 
-import asyncio
 import copy
 import uuid
-from contextvars import copy_context
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
 from app.core.config import settings
 from app.core.errors import ChatNotFoundError, public_service_error
 from shared.errors import ServiceException
+from shared.bounded_executor import BoundedExecutor
 from shared.logging import ServiceLogger
 from app.services.chat_exit_service import ChatExitService
 from app.services.chat_service import ChatService
@@ -664,16 +663,15 @@ class MemoryHandlerService:
         body: Dict[str, Any],
         reply_to: str,
         correlation_id: str,
+        executor: BoundedExecutor,
     ) -> Optional[Dict[str, Any]]:
         """Async entry point for RabbitMQ consumer. Returns reply dict."""
-        loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(
-            None,
-            copy_context().run,
+        return await executor.run(
             self._process_and_build_reply,
             body,
             reply_to,
             correlation_id,
+            stage="memory_operation",
         )
 
     def _process_and_build_reply(

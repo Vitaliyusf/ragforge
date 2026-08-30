@@ -14,6 +14,7 @@ from shared.auth import (
     verify_internal_ticket_from_envelope,
 )
 from shared.context import bound_context
+from shared.bounded_executor import ExecutorOverloaded
 from shared.rabbitmq_base import BaseRabbitMQConsumer, BaseRabbitMQProducer
 
 
@@ -250,3 +251,29 @@ async def test_unexpected_handler_failure_still_raises_without_reply() -> None:
         await consumer._dispatch(mock_incoming_message(signed_message({"action": "test"})), handler)
 
     mock_channel.default_exchange.publish.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_executor_overload_publishes_typed_retryable_reply() -> None:
+    consumer = BaseRabbitMQConsumer(FakeConfig())
+    mock_channel = AsyncMock()
+    mock_channel.default_exchange = AsyncMock()
+    consumer._channel = mock_channel
+    handler = AsyncMock(side_effect=ExecutorOverloaded("files", "rpc"))
+
+    await consumer._dispatch(
+        mock_incoming_message(signed_message({"action": "test"})),
+        handler,
+    )
+
+    mock_channel.default_exchange.publish.assert_awaited_once()
+    call = mock_channel.default_exchange.publish.call_args
+    published = json.loads(call.args[0].body)
+    assert call.kwargs["routing_key"] == "amq.rabbitmq.reply.auth"
+    assert published["success"] is False
+    assert published["error"] == {
+        "code": "service_overloaded",
+        "message": "Service is busy; retry later",
+        "retryable": True,
+    }
+    assert published["auth_context"]

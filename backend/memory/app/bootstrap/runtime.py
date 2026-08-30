@@ -16,6 +16,7 @@ from app.services.message_service import MessageService
 from app.services.memory_embedding_client import MemoryEmbeddingClient
 from app.db.session import ensure_tenant_indexes, get_client
 from shared.rabbitmq_rpc import MultiplexedRabbitMQRPCClient
+from shared.bounded_executor import BoundedExecutor
 
 
 class MemoryApplicationRuntime:
@@ -25,6 +26,13 @@ class MemoryApplicationRuntime:
         self.startup_time: int = 0
         self.logger = ServiceLogger(settings.service_name)
         self.consumer: RabbitMQConsumerImpl = MessageQueueFactory.create_consumer(settings)
+        self.executor = BoundedExecutor(
+            service=settings.service_name,
+            pool="rpc",
+            max_workers=settings.executor_workers,
+            queue_bound=settings.executor_queue_bound,
+            submit_timeout_seconds=settings.executor_submit_timeout_seconds,
+        )
         self.rpc_client = MultiplexedRabbitMQRPCClient(
             settings.rabbitmq_url,
             settings.rabbitmq_exchange,
@@ -76,12 +84,18 @@ class MemoryApplicationRuntime:
         self, body: Dict[str, Any], reply_to: str, correlation_id: str
     ) -> Optional[Dict[str, Any]]:
         """Route message to handler and return the reply envelope."""
-        return await self.handler.process_request_async(body, reply_to, correlation_id)
+        return await self.handler.process_request_async(
+            body,
+            reply_to,
+            correlation_id,
+            self.executor,
+        )
 
     async def shutdown(self) -> None:
         self.logger.log("main:shutdown", "Memory service shutting down")
         await self.consumer.stop()
         await self.rpc_client.close()
+        await self.executor.shutdown()
         self.logger.log("main:shutdown", "Memory service shutdown complete")
 
     def live_payload(self) -> dict:

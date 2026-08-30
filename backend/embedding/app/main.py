@@ -1,7 +1,6 @@
 """FastAPI entrypoint for query embeddings and typed passage jobs."""
 import asyncio
 from contextlib import asynccontextmanager
-from contextvars import copy_context
 from dataclasses import dataclass
 from functools import partial
 from threading import Event, Thread
@@ -31,6 +30,7 @@ from app.services.embedding_job_tracing import EmbeddingLangSmithTracer
 from app.services.embedding_job_worker import EmbeddingJobConsumerWorker
 from app.services.extraction_handler import ExtractionHandler
 from shared.logging import ServiceLogger
+from shared.bounded_executor import BoundedExecutor
 
 
 @dataclass
@@ -130,17 +130,21 @@ async def lifespan(app: FastAPI):
         thread.start()
 
     rpc_consumer = MessageQueueFactory.create_rabbitmq_consumer(config)
+    executor = BoundedExecutor(
+        service=config.service_name,
+        pool="query",
+        max_workers=config.executor_workers,
+        queue_bound=config.executor_queue_bound,
+        submit_timeout_seconds=config.executor_submit_timeout_seconds,
+    )
 
     async def handle_rpc(body, reply_to, correlation_id):
-        loop = asyncio.get_running_loop()
-        context = copy_context()
-        return await loop.run_in_executor(
-            None,
-            context.run,
+        return await executor.run(
             query_handler.process_request_with_reply,
             body,
             reply_to,
             correlation_id,
+            stage="embedding_query",
         )
 
     await rpc_consumer.start(handle_rpc)
@@ -173,6 +177,7 @@ async def lifespan(app: FastAPI):
         logger.log("main:shutdown", "Embedding service shutting down", {})
         stop_event.set()
         await rpc_consumer.stop()
+        await executor.shutdown()
         await rpc_producer.close()
         for consumer in (extract_consumer, job_consumer):
             try:
