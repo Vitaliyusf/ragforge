@@ -17,6 +17,7 @@ from app.services.conversation_messages import (
 )
 from app.services.conversation_types import ConversationRequest
 from shared.metrics import METRICS, traffic_class
+from shared.sparse_retrieval import sparse_lexical_vector
 
 
 class ConversationBackendClient:
@@ -288,9 +289,15 @@ class ConversationBackendClient:
         if not query_vector:
             raise RuntimeError("Embedding query returned no query_vector")
 
+        requested_top_k = self.config.top_k_documents if top_k is None else top_k
+        hybrid_active = bool(self.config.hybrid_search_enabled)
         payload = {
             "query_vector": query_vector,
-            "top_k": self.config.top_k_documents if top_k is None else top_k,
+            "top_k": requested_top_k,
+            "retrieval_strategy": "hybrid" if hybrid_active else "dense",
+            "dense_candidate_k": max(self.config.dense_candidate_k, requested_top_k),
+            "sparse_candidate_k": max(self.config.sparse_candidate_k, requested_top_k),
+            "rrf_k": self.config.hybrid_rrf_k,
             "filters": {},
             "include_payload": True,
             "include_vector": False,
@@ -303,6 +310,8 @@ class ConversationBackendClient:
             "graph_run_id": request.graph_run_id,
             "retrieval_plan": retrieval_plan or {},
         }
+        if hybrid_active:
+            payload["query_sparse"] = sparse_lexical_vector(query)
         return await self._send_request(
             routing_key=self.config.vector_db_routing_key,
             target_service="vector_db",

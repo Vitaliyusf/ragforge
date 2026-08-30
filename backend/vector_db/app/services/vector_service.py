@@ -28,6 +28,7 @@ from app.schemas.vector import (
     VerifyChunkIdsRequest,
 )
 from app.services.base import BaseVectorService
+from app.services.hybrid_retrieval import reciprocal_rank_fusion
 from shared.auth import AuthError, ROLE_SERVICE, identity_from_context
 from shared.metrics import METRICS, traffic_class
 
@@ -177,6 +178,11 @@ class VectorService(BaseVectorService):
         filters: Optional[Dict[str, Any]] = None,
         include_payload: bool = True,
         include_vector: bool = False,
+        query_sparse: Optional[Dict[str, List[Any]]] = None,
+        retrieval_strategy: str = "dense",
+        dense_candidate_k: int = 20,
+        sparse_candidate_k: int = 20,
+        rrf_k: int = 60,
     ) -> List[Dict[str, Any]]:
         """Search for chunks using the mandatory internal retrieval safety filter."""
         if not query_vector:
@@ -186,13 +192,33 @@ class VectorService(BaseVectorService):
         started = time.monotonic()
         try:
             query = np.asarray(query_vector, dtype=np.float32)
-            results = self.vector_store.search_chunks(
+            scoped_filters = self._scoped_filters(filters)
+            dense_results = self.vector_store.search_chunks(
                 query_vector=query,
-                top_k=top_k,
-                filters=self._scoped_filters(filters),
+                top_k=dense_candidate_k if retrieval_strategy == "hybrid" else top_k,
+                filters=scoped_filters,
                 include_payload=include_payload,
                 include_vector=include_vector,
             )
+            if retrieval_strategy == "hybrid":
+                if query_sparse is None:
+                    raise InvalidVectorError("query_sparse is required for hybrid retrieval")
+                sparse_results = self.vector_store.search_sparse(
+                    query_sparse=query_sparse,
+                    top_k=sparse_candidate_k,
+                    filters=scoped_filters,
+                    include_payload=include_payload,
+                )
+                results = reciprocal_rank_fusion(
+                    dense_results,
+                    sparse_results,
+                    limit=top_k,
+                    rrf_k=rrf_k,
+                )
+            elif retrieval_strategy == "dense":
+                results = dense_results
+            else:
+                raise InvalidVectorError(f"Unsupported retrieval_strategy: {retrieval_strategy}")
         except AuthError:
             raise
         except ValueError as exc:
@@ -401,6 +427,15 @@ class VectorService(BaseVectorService):
                     filters=req.payload.filters.model_dump(exclude_none=True),
                     include_payload=req.payload.include_payload,
                     include_vector=req.payload.include_vector,
+                    query_sparse=(
+                        req.payload.query_sparse.model_dump()
+                        if req.payload.query_sparse is not None
+                        else None
+                    ),
+                    retrieval_strategy=req.payload.retrieval_strategy,
+                    dense_candidate_k=req.payload.dense_candidate_k,
+                    sparse_candidate_k=req.payload.sparse_candidate_k,
+                    rrf_k=req.payload.rrf_k,
                 )
                 return self._build_rpc_success(normalized_request, action, {"results": results})
 
@@ -614,6 +649,15 @@ class VectorService(BaseVectorService):
             filters=request.payload.filters.model_dump(exclude_none=True),
             include_payload=request.payload.include_payload,
             include_vector=request.payload.include_vector,
+            query_sparse=(
+                request.payload.query_sparse.model_dump()
+                if request.payload.query_sparse is not None
+                else None
+            ),
+            retrieval_strategy=request.payload.retrieval_strategy,
+            dense_candidate_k=request.payload.dense_candidate_k,
+            sparse_candidate_k=request.payload.sparse_candidate_k,
+            rrf_k=request.payload.rrf_k,
         )
         self._send_success_reply(
             request=request,

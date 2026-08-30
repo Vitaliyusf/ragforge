@@ -43,6 +43,10 @@ class RAGConfig(BaseSettings):
     generation_request_timeout: float = 120.0
     evaluation_request_timeout: float = 75.0
     top_k_documents: int = 6
+    hybrid_search_enabled: bool = True
+    dense_candidate_k: int = 20
+    sparse_candidate_k: int = 20
+    hybrid_rrf_k: int = 60
     # Final generation input is bounded independently of retrieval depth.
     # The assembler first reserves space for the question, instructions and
     # provider-owned system/chat framing, then applies this evidence ceiling.
@@ -76,8 +80,6 @@ class RAGConfig(BaseSettings):
     reranker_topic: str = "reranker_requests"
     reranker_enabled: bool = True
     reranker_top_k: int = 5
-    hybrid_search_enabled: bool = True
-    hybrid_search_alpha: float = 0.55
 
     # Collection names
     conversation_threads_collection: str = "conversation_threads"

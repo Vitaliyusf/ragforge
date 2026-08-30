@@ -9,6 +9,8 @@ from qdrant_client.models import (
     FieldCondition,
     Filter,
     PointStruct,
+    SparseVector,
+    SparseVectorParams,
     VectorParams,
 )
 
@@ -21,6 +23,11 @@ from app.core.constants import (
     SAFE_REVIEW_STATUSES,
 )
 from app.db.interfaces import IVectorStore, verify_targets
+from shared.sparse_retrieval import sparse_lexical_vector
+
+
+DENSE_VECTOR_NAME = "dense"
+SPARSE_VECTOR_NAME = "lexical"
 
 
 class QdrantVectorStore(IVectorStore):
@@ -60,11 +67,26 @@ class QdrantVectorStore(IVectorStore):
         if self._collection_name not in existing:
             self.client.create_collection(
                 collection_name=self._collection_name,
-                vectors_config=VectorParams(
-                    size=self._vector_size,
-                    distance=Distance.COSINE,
-                ),
+                vectors_config={
+                    DENSE_VECTOR_NAME: VectorParams(
+                        size=self._vector_size,
+                        distance=Distance.COSINE,
+                    )
+                },
+                sparse_vectors_config={SPARSE_VECTOR_NAME: SparseVectorParams()},
             )
+        else:
+            info = self.client.get_collection(self._collection_name)
+            params = getattr(getattr(getattr(info, "config", None), "params", None), "vectors", None)
+            sparse = getattr(
+                getattr(getattr(info, "config", None), "params", None),
+                "sparse_vectors",
+                None,
+            )
+            if not isinstance(params, dict) or DENSE_VECTOR_NAME not in params or not isinstance(sparse, dict) or SPARSE_VECTOR_NAME not in sparse:
+                raise RuntimeError(
+                    f"Collection {self._collection_name!r} lacks the required dense+sparse schema; rebuild/reindex it before enabling hybrid retrieval"
+                )
         self._ensure_payload_indexes()
         return self._collection_name
 
@@ -77,10 +99,14 @@ class QdrantVectorStore(IVectorStore):
         for chunk in chunks:
             payload = self._build_payload(chunk)
             embedding = self._normalize_embedding(chunk.get("embedding", []))
+            sparse = sparse_lexical_vector(payload["text"])
             points.append(
                 PointStruct(
                     id=str(uuid.uuid5(uuid.NAMESPACE_DNS, f"{payload['tenant_id']}:{payload['chunk_id']}")),
-                    vector=embedding,
+                    vector={
+                        DENSE_VECTOR_NAME: embedding,
+                        SPARSE_VECTOR_NAME: SparseVector(**sparse),
+                    },
                     payload=payload,
                 )
             )
@@ -108,6 +134,7 @@ class QdrantVectorStore(IVectorStore):
         search_results = self.client.query_points(
             collection_name=self._collection_name,
             query=query_list,
+            using=DENSE_VECTOR_NAME,
             limit=top_k,
             query_filter=self._build_search_filter(filters),
             with_payload=include_payload,
@@ -127,6 +154,38 @@ class QdrantVectorStore(IVectorStore):
             formatted.append(item)
 
         return formatted
+
+    def search_sparse(
+        self,
+        query_sparse: Dict[str, List[Any]],
+        top_k: int = 10,
+        filters: Optional[Dict[str, Any]] = None,
+        include_payload: bool = True,
+    ) -> List[Dict[str, Any]]:
+        """Search Qdrant's independent lexical sparse-vector arm."""
+        indices = query_sparse.get("indices", [])
+        values = query_sparse.get("values", [])
+        if not indices:
+            return []
+        if len(indices) != len(values):
+            raise ValueError("Sparse query indices and values must have equal length")
+        search_results = self.client.query_points(
+            collection_name=self._collection_name,
+            query=SparseVector(indices=indices, values=values),
+            using=SPARSE_VECTOR_NAME,
+            limit=top_k,
+            query_filter=self._build_search_filter(filters),
+            with_payload=include_payload,
+            with_vectors=False,
+        ).points
+        return [
+            {
+                "id": str(result.id),
+                "score": float(result.score),
+                **({"payload": result.payload or {}} if include_payload else {}),
+            }
+            for result in search_results
+        ]
 
     def delete_chunks(self, filters: Dict[str, Any]) -> int:
         """Hard delete chunks by file/document filter."""
@@ -361,4 +420,3 @@ class QdrantVectorStore(IVectorStore):
             offset = next_offset
 
         return ids
-

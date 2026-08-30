@@ -9,6 +9,7 @@ import numpy as np
 
 from app.core.constants import DEFAULT_COLLECTION_NAME
 from app.db.interfaces import IVectorStore, verify_targets
+from shared.sparse_retrieval import sparse_lexical_vector
 
 
 class InMemoryVectorStore(IVectorStore):
@@ -53,6 +54,7 @@ class InMemoryVectorStore(IVectorStore):
                 raise ValueError("tenant and owner fields are required")
             self._store[f"{tenant_id}:{chunk_id}"] = {
                 "embedding": np.asarray(embedding, dtype=np.float32),
+                "sparse": sparse_lexical_vector(str(chunk.get("text", ""))),
                 "payload": {k: v for k, v in chunk.items() if k != "embedding"},
             }
 
@@ -96,6 +98,35 @@ class InMemoryVectorStore(IVectorStore):
             results.append(item)
 
         results.sort(key=lambda x: x["score"], reverse=True)
+        return results[:top_k]
+
+    def search_sparse(
+        self,
+        query_sparse: Dict[str, List[Any]],
+        top_k: int = 10,
+        filters: Optional[Dict[str, Any]] = None,
+        include_payload: bool = True,
+    ) -> List[Dict[str, Any]]:
+        """Linear sparse dot-product search used by tests and local runs."""
+        query = dict(zip(query_sparse.get("indices", []), query_sparse.get("values", [])))
+        if not query:
+            return []
+        results: List[Dict[str, Any]] = []
+        for point_id, entry in self._store.items():
+            payload = entry["payload"]
+            if not payload.get("retrieval_allowed", False) or payload.get("review_status") == "removed":
+                continue
+            if filters and not self._matches_filters(payload, filters):
+                continue
+            document = dict(zip(entry["sparse"]["indices"], entry["sparse"]["values"]))
+            score = float(sum(value * document.get(index, 0.0) for index, value in query.items()))
+            if score <= 0.0:
+                continue
+            item: Dict[str, Any] = {"id": point_id, "score": score}
+            if include_payload:
+                item["payload"] = dict(payload)
+            results.append(item)
+        results.sort(key=lambda item: (-item["score"], str(item["id"])))
         return results[:top_k]
 
     def delete_chunks(self, filters: Dict[str, Any]) -> int:

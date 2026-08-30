@@ -217,6 +217,29 @@
         "frontend/src/features/activity/globalActivity.js",
         "frontend/src/lib/terminology.js"
       ]
+    },
+    {
+      "id": "DEC-012",
+      "status": "accepted",
+      "title": "Qdrant-native dense+sparse retrieval with deterministic RRF",
+      "decision": "Canonical retrieval stores named dense and lexical sparse vectors in one Qdrant collection, queries both arms with identical eligibility filters, and fuses bounded pools with stable reciprocal-rank fusion.",
+      "reason": "The sparse arm must independently surface exact-term candidates while preserving one ingestion path, one authorization boundary and explainable deterministic ranking.",
+      "do_not_do": [
+        "Do not score lexical overlap only inside dense candidates or add keyword bonuses after dense retrieval.",
+        "Do not silently call a dense-only or partially indexed collection hybrid.",
+        "Do not introduce a reranker under this fusion contract."
+      ],
+      "revisit_if": [
+        "A measured retrieval benchmark justifies a different sparse representation or deterministic fusion policy.",
+        "Qdrant can no longer satisfy the required filter parity or bounded sparse search contract."
+      ],
+      "evidence": [
+        "RAG-05",
+        "backend/shared/sparse_retrieval.py",
+        "backend/vector_db/app/services/hybrid_retrieval.py",
+        "backend/vector_db/app/db/implementations/qdrant.py",
+        "backend/rag/app/services/conversation_backend_client.py"
+      ]
     }
   ]
 }

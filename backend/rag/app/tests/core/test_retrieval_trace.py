@@ -83,6 +83,41 @@ def test_a_missing_score_stays_none():
     assert trace.stages[0]["candidates"][0]["score"] is None
 
 
+def test_a_candidate_keeps_bounded_hybrid_arm_diagnostics_without_text():
+    trace = RetrievalTrace()
+    trace.record_stage(
+        STAGE_BASE,
+        [
+            {
+                "chunk_id": "c1",
+                "score": 0.03,
+                "retrieval_diagnostics": {
+                    "dense_rank": 4,
+                    "dense_score": 0.71,
+                    "sparse_rank": 1,
+                    "sparse_score": 8.2,
+                    "fused_rank": 1,
+                    "fused_score": 0.03,
+                    "matched_arms": ["dense", "sparse"],
+                    "text": "must never escape",
+                },
+            }
+        ],
+    )
+
+    candidate = trace.stages[0]["candidates"][0]
+    assert candidate["retrieval"] == {
+        "dense_rank": 4,
+        "dense_score": 0.71,
+        "sparse_rank": 1,
+        "sparse_score": 8.2,
+        "fused_rank": 1,
+        "fused_score": 0.03,
+        "matched_arms": ["dense", "sparse"],
+    }
+    assert "must never escape" not in json.dumps(candidate)
+
+
 def test_a_truncated_candidate_list_says_so():
     """A silently shortened lineage reads as 'never a candidate'."""
     trace = RetrievalTrace(max_candidates=2)

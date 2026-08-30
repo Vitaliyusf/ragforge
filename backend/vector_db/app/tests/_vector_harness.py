@@ -85,7 +85,15 @@ def mock_qdrant_client(monkeypatch):
         collections=[SimpleNamespace(name="rag_chunks_v1")]
     )
     client.count.return_value = SimpleNamespace(count=0)
-    client.get_collection.return_value = SimpleNamespace(points_count=0)
+    client.get_collection.return_value = SimpleNamespace(
+        points_count=0,
+        config=SimpleNamespace(
+            params=SimpleNamespace(
+                vectors={"dense": SimpleNamespace(size=3)},
+                sparse_vectors={"lexical": SimpleNamespace()},
+            )
+        ),
+    )
     def build_client(**kwargs):
         client.constructor_kwargs = kwargs
         return client
@@ -108,6 +116,7 @@ def mock_vector_store():
             "payload": {"chunk_id": "chunk-1", "text": "Clean chunk text"},
         }
     ]
+    store.search_sparse.return_value = []
     store.delete_chunks.return_value = 1
     store.count.return_value = 1
     return store

@@ -61,6 +61,17 @@ class IVectorStore(ABC):
         raise NotImplementedError
 
     @abstractmethod
+    def search_sparse(
+        self,
+        query_sparse: Dict[str, List[Any]],
+        top_k: int = 10,
+        filters: Optional[Dict[str, Any]] = None,
+        include_payload: bool = True,
+    ) -> List[Dict[str, Any]]:
+        """Search the independent sparse arm with the same safety filters."""
+        raise NotImplementedError
+
+    @abstractmethod
     def delete_chunks(self, filters: Dict[str, Any]) -> int:
         """Hard delete chunks using a document/file filter."""
         raise NotImplementedError
