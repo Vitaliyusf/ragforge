@@ -159,15 +159,20 @@
       "owner": "vector_db",
       "canonical_paths": [
         "backend/vector_db/app/db/implementations/qdrant.py",
-        "backend/vector_db/app/services/vector_service.py"
+        "backend/vector_db/app/services/vector_service.py",
+        "backend/vector_db/app/services/hybrid_retrieval.py",
+        "backend/shared/sparse_retrieval.py"
       ],
       "search_terms": [
         "search",
         "upsert",
         "delete",
-        "collection"
+        "collection",
+        "sparse",
+        "hybrid",
+        "rrf"
       ],
-      "notes": "Preserve tenant/review filters."
+      "notes": "Production retrieval uses named dense and lexical sparse Qdrant vectors with bounded deterministic RRF. Both arms share tenant/review/deletion filters. Dense-only mode remains supported explicitly; a legacy collection without the named sparse schema requires rebuild/reindex."
     },
     {
       "id": "CAP-011",
@@ -240,7 +245,7 @@
         "candidate lineage",
         "final_context"
       ],
-      "notes": "Bounded ids/ranks/scores only, opt-in per eval item; extends the existing retrieval path per DEC-002. Never stores chunk text."
+      "notes": "Bounded ids/ranks/scores only, including dense/sparse/fused ranks and arm provenance when available; opt-in per eval item and never stores chunk text."
     },
     {
       "id": "CAP-015",

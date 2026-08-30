@@ -43,18 +43,21 @@ def test_a_true_legacy_flag_never_becomes_an_active_reranker():
     assert effective["reranker_implementation"] == "score_order_merge"
 
 
-def test_a_true_legacy_flag_never_becomes_active_hybrid_search():
+def test_effective_config_reports_the_real_hybrid_path():
     live = config()
     assert live.hybrid_search_enabled is True
-    assert live.hybrid_search_alpha == 0.55
 
     effective = effective_retrieval_config(live, pipeline_active=True)
 
-    assert effective["retrieval_strategy"] == "dense_vector"
-    assert effective["hybrid_search_active"] is False
-    # The configured 0.55 weights nothing: there is no lexical arm to fuse
-    # with, and reporting the number would imply a fusion that never ran.
-    assert effective["hybrid_search_alpha_applied"] is None
+    assert effective["retrieval_strategy"] == "hybrid"
+    assert effective["hybrid_search_active"] is True
+    assert effective["dense_active"] is True
+    assert effective["sparse_active"] is True
+    assert effective["fusion"] == "rrf"
+    assert effective["dense_candidate_k"] == live.dense_candidate_k
+    assert effective["sparse_candidate_k"] == live.sparse_candidate_k
+    assert effective["fused_candidate_k"] == live.top_k_documents
+    assert effective["rrf_k"] == live.hybrid_rrf_k
 
 
 def test_a_configured_similarity_floor_no_code_applies_is_reported_as_unapplied():
@@ -80,8 +83,7 @@ def test_a_run_that_never_reaches_a_stage_reports_null_not_the_production_value(
     assert effective["pass_two_active"] is False
     assert effective["pass_two_chunk_threshold"] is None
     assert effective["pass_two_score_threshold"] is None
-    # Still dense vector: the one thing it did do.
-    assert effective["retrieval_strategy"] == "dense_vector"
+    assert effective["retrieval_strategy"] == "hybrid"
 
 
 def test_the_pipeline_stage_settings_mirror_the_graph_when_it_runs():

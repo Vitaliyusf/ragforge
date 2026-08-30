@@ -374,18 +374,17 @@ def test_the_shipped_allowlist_passes_its_own_guard():
                 assert _assert_safe_name(name) == name
 
 
-def test_the_retrieval_section_reports_what_runs_not_the_legacy_flags(config):
-    """`RAGConfig` defaults `reranker_enabled` and `hybrid_search_enabled` to
-    true and no retrieval code reads either. A manifest that copied them
-    would attribute a benchmark's numbers to a reranker and a hybrid
-    retriever that were never in the request path."""
+def test_the_retrieval_section_reports_the_real_hybrid_path(config):
     assert config.reranker_enabled is True
     assert config.hybrid_search_enabled is True
 
     retrieval = build_benchmark_manifest(config, env={})["retrieval"]
 
-    assert retrieval["retrieval_strategy"] == "dense_vector"
-    assert retrieval["hybrid_search_active"] is False
+    assert retrieval["retrieval_strategy"] == "hybrid"
+    assert retrieval["hybrid_search_active"] is True
+    assert retrieval["dense_active"] is True
+    assert retrieval["sparse_active"] is True
+    assert retrieval["fusion"] == "rrf"
     assert retrieval["reranker_active"] is False
     assert retrieval["reranker_model"] is None
     # The legacy values are gone rather than recorded as inactive: a field
@@ -394,7 +393,6 @@ def test_the_retrieval_section_reports_what_runs_not_the_legacy_flags(config):
         "reranker_enabled",
         "reranker_top_k",
         "hybrid_search_enabled",
-        "hybrid_search_alpha",
         "min_similarity_threshold",
     ):
         assert legacy not in retrieval

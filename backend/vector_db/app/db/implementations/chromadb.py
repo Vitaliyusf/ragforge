@@ -138,6 +138,17 @@ class ChromaDBVectorStore(IVectorStore):
 
         return formatted
 
+    def search_sparse(
+        self,
+        query_sparse: Dict[str, List[Any]],
+        top_k: int = 10,
+        filters: Optional[Dict[str, Any]] = None,
+        include_payload: bool = True,
+    ) -> List[Dict[str, Any]]:
+        """Refuse hybrid mode: Chroma is retained for dense compatibility only."""
+        del query_sparse, top_k, filters, include_payload
+        raise RuntimeError("Sparse retrieval requires the production Qdrant backend")
+
     def delete_chunks(self, filters: Dict[str, Any]) -> int:
         """Hard delete chunks by file_id, document_id, or both."""
         file_id = filters.get("file_id")

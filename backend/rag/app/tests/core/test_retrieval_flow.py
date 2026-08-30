@@ -185,6 +185,11 @@ def test_search_chunks_embeds_query_before_vector_search():
     assert envelope["message_type"] == "query"
     assert envelope["action"] == "search_chunks"
     assert envelope["payload"]["query_vector"] == [0.1, 0.2, 0.3]
+    assert envelope["payload"]["retrieval_strategy"] == "hybrid"
+    assert envelope["payload"]["query_sparse"]["indices"]
+    assert envelope["payload"]["dense_candidate_k"] == config.dense_candidate_k
+    assert envelope["payload"]["sparse_candidate_k"] == config.sparse_candidate_k
+    assert envelope["payload"]["rrf_k"] == config.hybrid_rrf_k
     assert envelope["payload"]["query"] == "hello"
     assert envelope["payload"]["pass_name"] == "pass_one"
     # Production retrieval keeps the configured answer-context depth: the
@@ -213,6 +218,8 @@ def test_search_chunks_top_k_can_be_overridden_for_an_eval_sweep():
 
     assert config.top_k_documents == 6
     assert service_client.calls[1]["payload"]["payload"]["top_k"] == 20
+    assert service_client.calls[1]["payload"]["payload"]["dense_candidate_k"] == 20
+    assert service_client.calls[1]["payload"]["payload"]["sparse_candidate_k"] == 20
 
 
 
@@ -250,6 +257,5 @@ def test_retrieval_filters_ineligible_chunks():
     done_event = emitter.events[-1]
     source_ids = [chunk["chunk_id"] for chunk in done_event["data"]["sources"]]
     assert source_ids == ["good"]
-
 
 

@@ -90,6 +90,19 @@ class ChunkUpsertItem(ChunkPayloadModel):
     model_config = {"extra": "ignore"}
 
 
+class SparseVectorModel(BaseModel):
+    """JSON-safe Qdrant sparse vector."""
+
+    indices: List[int] = Field(default_factory=list, max_length=512)
+    values: List[float] = Field(default_factory=list, max_length=512)
+
+    @model_validator(mode="after")
+    def validate_lengths(self) -> "SparseVectorModel":
+        if len(self.indices) != len(self.values):
+            raise ValueError("indices and values must have equal length")
+        return self
+
+
 class KafkaEnvelopeBase(BaseModel):
     """Common Kafka envelope fields shared across services."""
 
@@ -112,7 +125,12 @@ class SearchChunksPayload(BaseModel):
     """Canonical search request payload."""
 
     query_vector: List[float]
+    query_sparse: Optional[SparseVectorModel] = None
+    retrieval_strategy: Literal["dense", "hybrid"] = "dense"
     top_k: int = Field(default=10, ge=1, le=100)
+    dense_candidate_k: int = Field(default=20, ge=1, le=100)
+    sparse_candidate_k: int = Field(default=20, ge=1, le=100)
+    rrf_k: int = Field(default=60, ge=1, le=1000)
     filters: ChunkFilters = Field(default_factory=ChunkFilters)
     include_payload: bool = True
     include_vector: bool = False
@@ -253,7 +271,12 @@ class ChunkSearchApiRequest(BaseModel):
     """REST request for local/admin chunk search."""
 
     query_vector: List[float]
+    query_sparse: Optional[SparseVectorModel] = None
+    retrieval_strategy: Literal["dense", "hybrid"] = "dense"
     top_k: int = Field(default=10, ge=1, le=100)
+    dense_candidate_k: int = Field(default=20, ge=1, le=100)
+    sparse_candidate_k: int = Field(default=20, ge=1, le=100)
+    rrf_k: int = Field(default=60, ge=1, le=1000)
     filters: ChunkFilters = Field(default_factory=ChunkFilters)
     include_payload: bool = True
     include_vector: bool = False

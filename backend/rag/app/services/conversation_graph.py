@@ -777,6 +777,9 @@ class ConversationGraphRunner:
                     "issue_flags": self._truncate(item.get("issue_flags") or qdrant_payload.get("issue_flags") or metadata.get("issue_flags") or []),
                     "created_at": item.get("created_at") or qdrant_payload.get("created_at") or metadata.get("created_at") or utc_now_iso(),
                     "score": item.get("score", item.get("similarity", 0.0)),
+                    "retrieval_diagnostics": self._truncate(
+                        item.get("retrieval_diagnostics") or {}
+                    ),
                     "source": source_name,
                     "metadata": self._truncate(metadata),
                 }

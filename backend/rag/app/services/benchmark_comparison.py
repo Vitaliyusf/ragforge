@@ -183,7 +183,15 @@ def _conditional_fields(
         ),
         (
             "manifest.retrieval.hybrid_search_active",
-            ("hybrid_search_strategy", "hybrid_search_alpha_applied"),
+            (
+                "fusion",
+                "dense_active",
+                "sparse_active",
+                "dense_candidate_k",
+                "sparse_candidate_k",
+                "fused_candidate_k",
+                "rrf_k",
+            ),
         ),
     ):
         if _path(baseline, active_field) is True or _path(candidate, active_field) is True:

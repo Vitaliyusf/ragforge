@@ -89,12 +89,24 @@ def _field(chunk: Dict[str, Any], name: str) -> Any:
 
 def candidate_view(chunk: Dict[str, Any], rank: int) -> Dict[str, Any]:
     """One candidate as it is stored: identity, position, score. No text."""
-    return {
+    view = {
         "rank": rank,
         "chunk_id": _clean_id(_field(chunk, "chunk_id")),
         "file_id": _clean_id(_field(chunk, "file_id") or _field(chunk, "document_id")),
         "score": _score(_field(chunk, "score")),
     }
+    diagnostics = chunk.get("retrieval_diagnostics") or {}
+    if diagnostics:
+        view["retrieval"] = {
+            "dense_rank": diagnostics.get("dense_rank"),
+            "dense_score": _score(diagnostics.get("dense_score")),
+            "sparse_rank": diagnostics.get("sparse_rank"),
+            "sparse_score": _score(diagnostics.get("sparse_score")),
+            "fused_rank": diagnostics.get("fused_rank"),
+            "fused_score": _score(diagnostics.get("fused_score")),
+            "matched_arms": list(diagnostics.get("matched_arms") or [])[:2],
+        }
+    return view
 
 
 def candidate_views(chunks: Iterable[Dict[str, Any]], limit: int) -> List[Dict[str, Any]]:

@@ -295,11 +295,10 @@ _CONFIG_RETRIEVAL_FIELDS = (
 
 # The rest of the retrieval section describes what the pipeline *does*, not
 # what config declares. `reranker_enabled`, `reranker_top_k`,
-# `hybrid_search_enabled`, `hybrid_search_alpha` and
-# `min_similarity_threshold` are deliberately absent from the list above:
-# `RAGConfig` marks the first four as legacy compatibility flags and no
-# retrieval code reads any of the five, so a manifest reporting them as this
-# benchmark's settings attributed its numbers to stages that never ran. The
+# `hybrid_search_enabled` and `min_similarity_threshold` are deliberately
+# absent from the raw allowlist above. Effective hybrid settings come from
+# the live-path description below, while the unapplied similarity threshold
+# remains excluded. The
 # honest values come from `effective_retrieval_config`, whose own nulls are
 # findings rather than gaps and are therefore exempt from `unobserved`. The
 # manifest describes the deployed pipeline, which does run the conversation

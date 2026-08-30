@@ -56,6 +56,15 @@ async def search_chunks(
             filters=request.filters.model_dump(exclude_none=True),
             include_payload=request.include_payload,
             include_vector=request.include_vector,
+            query_sparse=(
+                request.query_sparse.model_dump()
+                if request.query_sparse is not None
+                else None
+            ),
+            retrieval_strategy=request.retrieval_strategy,
+            dense_candidate_k=request.dense_candidate_k,
+            sparse_candidate_k=request.sparse_candidate_k,
+            rrf_k=request.rrf_k,
         )
         return ChunkOperationResponse(
             success=True,

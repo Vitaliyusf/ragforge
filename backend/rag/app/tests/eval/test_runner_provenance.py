@@ -21,18 +21,17 @@ def test_the_run_captures_a_config_snapshot_naming_what_it_cannot_see():
     # Recorded separately from the production depth: the run's ranking was
     # drawn from twenty candidates, not from the six an answer is built from.
     assert snapshot["candidate_k"] == 20
-    assert snapshot["retrieval_strategy"] == "dense_vector"
+    assert snapshot["retrieval_strategy"] == "hybrid"
+    assert snapshot["dense_active"] is True
+    assert snapshot["sparse_active"] is True
+    assert snapshot["fusion"] == "rrf"
     # Not stored as a silent null: a diff must not read two unknown embedding
     # models as a match.
     assert "embedding_model" in snapshot["unobserved"]
     assert "chunk_size" in snapshot["unobserved"]
 
 
-def test_a_retrieval_run_cannot_claim_a_reranker_a_legacy_flag_turned_on():
-    """The acceptance criterion at the run level. `reranker_enabled` and
-    `hybrid_search_enabled` default to true and nothing in the request path
-    reads either, so a run must not report them as what produced its
-    numbers."""
+def test_a_retrieval_run_reports_hybrid_but_no_reranker():
     store, runner, _, dataset_id = build()
     assert runner.config.reranker_enabled is True
     assert runner.config.hybrid_search_enabled is True
@@ -42,12 +41,11 @@ def test_a_retrieval_run_cannot_claim_a_reranker_a_legacy_flag_turned_on():
 
     assert snapshot["reranker_active"] is False
     assert snapshot["reranker_model"] is None
-    assert snapshot["hybrid_search_active"] is False
+    assert snapshot["hybrid_search_active"] is True
     for legacy in (
         "reranker_enabled",
         "reranker_top_k",
         "hybrid_search_enabled",
-        "hybrid_search_alpha",
         "min_similarity_threshold",
     ):
         assert legacy not in snapshot
@@ -108,5 +106,4 @@ def test_relabelling_a_dataset_does_not_rewrite_what_past_runs_scored():
 
 
 # ── Failure paths ─────────────────────────────────────────────────────────
-
 

@@ -5,8 +5,12 @@ import numpy as np
 import pytest
 import uuid
 
-from app.db.implementations.qdrant import INDEXED_FIELDS
-from app.db.implementations.qdrant import QdrantVectorStore
+from app.db.implementations.qdrant import (
+    DENSE_VECTOR_NAME,
+    INDEXED_FIELDS,
+    SPARSE_VECTOR_NAME,
+    QdrantVectorStore,
+)
 
 from app.tests._vector_harness import (
     build_chunk,
@@ -24,6 +28,9 @@ def test_initialize_collection_creates_collection_and_payload_indexes(mock_qdran
 
     assert store.collection_name == "rag_chunks_v1"
     mock_qdrant_client.create_collection.assert_called_once()
+    create_kwargs = mock_qdrant_client.create_collection.call_args.kwargs
+    assert set(create_kwargs["vectors_config"]) == {DENSE_VECTOR_NAME}
+    assert set(create_kwargs["sparse_vectors_config"]) == {SPARSE_VECTOR_NAME}
     indexed_fields = {
         call.kwargs["field_name"]
         for call in mock_qdrant_client.create_payload_index.call_args_list
@@ -62,6 +69,7 @@ def test_upsert_chunks_uses_deterministic_chunk_id_points(mock_qdrant_client):
     expected_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, "tenant-a:chunk-1"))
     assert first_points[0].id == expected_id
     assert second_points[0].id == expected_id
+    assert set(first_points[0].vector) == {DENSE_VECTOR_NAME, SPARSE_VECTOR_NAME}
 
 
 def test_upsert_chunks_rejects_dimension_mismatch(mock_qdrant_client):
@@ -74,10 +82,9 @@ def test_upsert_chunks_rejects_dimension_mismatch(mock_qdrant_client):
 
 def test_count_uses_qdrant_count_endpoint_before_collection_info(mock_qdrant_client):
     """Point count should use the dedicated count endpoint first for server compatibility."""
+    store = QdrantVectorStore(vector_size=3)
     mock_qdrant_client.count.return_value = SimpleNamespace(count=7)
     mock_qdrant_client.get_collection.side_effect = RuntimeError("should not be used")
-
-    store = QdrantVectorStore(vector_size=3)
 
     assert store.count() == 7
     mock_qdrant_client.count.assert_called_with(
@@ -88,10 +95,9 @@ def test_count_uses_qdrant_count_endpoint_before_collection_info(mock_qdrant_cli
 
 def test_count_falls_back_to_collection_info_when_count_endpoint_fails(mock_qdrant_client):
     """Older-compatible collection info can still be used if the count endpoint fails."""
+    store = QdrantVectorStore(vector_size=3)
     mock_qdrant_client.count.side_effect = RuntimeError("count unavailable")
     mock_qdrant_client.get_collection.return_value = SimpleNamespace(points_count=11)
-
-    store = QdrantVectorStore(vector_size=3)
 
     assert store.count() == 11
 
@@ -130,6 +136,32 @@ def test_search_chunks_enforces_internal_safety_filter(mock_qdrant_client):
         for condition in must_conditions
     )
     assert results[0]["payload"]["chunk_id"] == "chunk-1"
+    assert mock_qdrant_client.query_points.call_args.kwargs["using"] == DENSE_VECTOR_NAME
+
+
+def test_sparse_search_uses_the_identical_safety_filter(mock_qdrant_client):
+    store = QdrantVectorStore(vector_size=3)
+    mock_qdrant_client.query_points.return_value = SimpleNamespace(points=[])
+    filters = {"tenant_id": "tenant-a", "review_status": "clean"}
+
+    store.search_chunks(np.array([0.1, 0.2, 0.3]), filters=filters)
+    dense_filter = mock_qdrant_client.query_points.call_args.kwargs["query_filter"]
+    store.search_sparse({"indices": [1], "values": [1.0]}, filters=filters)
+    sparse_call = mock_qdrant_client.query_points.call_args
+
+    assert sparse_call.kwargs["using"] == SPARSE_VECTOR_NAME
+    assert sparse_call.kwargs["query_filter"] == dense_filter
+
+
+def test_existing_dense_only_collection_requires_explicit_reindex(mock_qdrant_client):
+    mock_qdrant_client.get_collection.return_value = SimpleNamespace(
+        config=SimpleNamespace(
+            params=SimpleNamespace(vectors={DENSE_VECTOR_NAME: object()}, sparse_vectors={})
+        )
+    )
+
+    with pytest.raises(RuntimeError, match="rebuild/reindex"):
+        QdrantVectorStore(vector_size=3)
 
 
 @pytest.mark.parametrize(

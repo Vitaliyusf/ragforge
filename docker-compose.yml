@@ -452,6 +452,10 @@ services:
       # effective context-size knob; kept modest so the RAG prompt fits the vLLM
       # context window alongside the reserved output tokens.
       TOP_K_DOCUMENTS: ${TOP_K_DOCUMENTS:-6}
+      HYBRID_SEARCH_ENABLED: ${HYBRID_SEARCH_ENABLED:-true}
+      DENSE_CANDIDATE_K: ${DENSE_CANDIDATE_K:-20}
+      SPARSE_CANDIDATE_K: ${SPARSE_CANDIDATE_K:-20}
+      HYBRID_RRF_K: ${HYBRID_RRF_K:-60}
       CONVERSATION_STORE_TYPE: ${CONVERSATION_STORE_TYPE:-mongodb}
       INTERNAL_REQUEST_TIMEOUT: ${RAG_INTERNAL_REQUEST_TIMEOUT:-75}
       GENERATION_REQUEST_TIMEOUT: ${RAG_GENERATION_REQUEST_TIMEOUT:-120}

@@ -136,7 +136,7 @@
       "path": "backend/vector_db",
       "entrypoint": "backend/vector_db/app/main.py",
       "responsibilities": [
-        "vector search",
+        "dense+sparse hybrid vector search and deterministic fusion",
         "upsert/delete/count",
         "Qdrant tenant/filter enforcement"
       ],
@@ -154,7 +154,7 @@
         "backend/vector_db/app/db/interfaces.py",
         "backend/vector_db/app/db/implementations/qdrant.py"
       ],
-      "avoid_duplicate": "Do not bypass the Vector service with new direct Qdrant clients unless architecture explicitly requires it."
+      "avoid_duplicate": "Do not bypass the Vector service with new direct Qdrant clients or post-hoc lexical bonuses. Extend the canonical dense+sparse arms and shared filters."
     },
     {
       "id": "memory",
