@@ -5,9 +5,15 @@ from __future__ import annotations
 
 
 import copy
+import hashlib
+import math
+import re
 
 
 from types import SimpleNamespace
+
+
+from typing import cast
 
 
 from unittest.mock import Mock
@@ -15,7 +21,10 @@ from unittest.mock import Mock
 
 
 
+from app.services.memory_embedding_client import MemoryEmbeddingClient, MemoryEmbeddingError
 from app.services.memory_service import LongTermMemoryService
+from app.services.memory_vector_index import MemoryVectorIndex, MemoryVectorIndexError
+from app.services.tenant_scope import current_identity
 
 
 
@@ -59,9 +68,23 @@ class FakeCollection:
 
     def _matches(self, document, query):
         for key, expected in (query or {}).items():
+            # `scope_filter` wraps the tenant/user boundary and the caller's
+            # own filter in `$and`, so the fake has to honour it or every
+            # scoped query would silently match nothing and isolation tests
+            # would pass for the wrong reason.
+            if key == "$and":
+                if not all(self._matches(document, clause) for clause in expected):
+                    return False
+                continue
+            if key == "$or":
+                if not any(self._matches(document, clause) for clause in expected):
+                    return False
+                continue
             actual = _get_nested(document, key)
             if isinstance(expected, dict):
                 if "$in" in expected and actual not in expected["$in"]:
+                    return False
+                if "$ne" in expected and actual == expected["$ne"]:
                     return False
                 continue
             if actual != expected:
@@ -121,31 +144,191 @@ class FakeDatabase(dict):
         return super().__getitem__(name)
 
 
-class FakeQdrantIndex:
-    """Fake Qdrant index used for retrieval and failure tests."""
+class FakeVectorIndex:
+    """Fake memory vector index used for retrieval and failure tests."""
 
-    def __init__(self, enabled=False, search_results=None, fail_index=False):
+    collection_name = "memory_items_test"
+
+    def __init__(self, enabled=False, search_results=None, fail_index=False, fail_delete=False):
         self.enabled = enabled
         self.search_results = list(search_results or [])
         self.fail_index = fail_index
+        self.fail_delete = fail_delete
         self.indexed_ids = []
         self.deleted_ids = []
+        self.searched_vectors = []
 
     def is_enabled(self):
         return self.enabled
 
-    def index_memory(self, memory_doc):
+    def upsert_memory(self, memory_doc, vector):
         if self.fail_index:
-            raise RuntimeError("qdrant indexing failed")
+            raise MemoryVectorIndexError("vector upsert failed")
         self.indexed_ids.append(memory_doc["id"])
-        return True
+        return f"point-{memory_doc['id']}"
 
-    def search(self, query_text, owner_id, owner_type, limit):
-        del query_text, owner_id, owner_type
+    def search(self, vector, owner_id, owner_type, limit, statuses=None):
+        del owner_id, owner_type, statuses
+        self.searched_vectors.append(list(vector))
         return self.search_results[:limit]
 
     def delete_memory(self, memory_id):
+        if self.fail_delete:
+            raise MemoryVectorIndexError("vector delete failed")
         self.deleted_ids.append(memory_id)
+
+
+class InMemoryVectorIndex:
+    """Vector index that really stores vectors and ranks by cosine similarity.
+
+    `FakeVectorIndex` is enough to test wiring and failure handling, but a
+    retrieval-quality measurement has to exercise the actual ranking path, so
+    this one keeps points, applies the same tenant/user/status filters the
+    Qdrant client applies, and scores with cosine similarity.
+    """
+
+    collection_name = "memory_items_measurement"
+
+    def __init__(self):
+        self.points = {}
+
+    def is_enabled(self):
+        return True
+
+    @staticmethod
+    def _cosine(left, right):
+        dot = sum(a * b for a, b in zip(left, right))
+        left_norm = math.sqrt(sum(a * a for a in left))
+        right_norm = math.sqrt(sum(b * b for b in right))
+        if not left_norm or not right_norm:
+            return 0.0
+        return dot / (left_norm * right_norm)
+
+    def upsert_memory(self, memory_doc, vector):
+        identity = current_identity()
+        point_id = f"{identity.tenant_id}:{identity.user_id}:{memory_doc['id']}"
+        self.points[point_id] = {
+            "vector": list(vector),
+            "payload": {
+                "memory_id": memory_doc["id"],
+                "owner_id": memory_doc["owner_id"],
+                "owner_type": memory_doc["owner_type"],
+                "status": memory_doc.get("status", "active"),
+                "archived": bool(memory_doc.get("archived_at")),
+                "tenant_id": identity.tenant_id,
+                "owner_user_id": identity.user_id,
+            },
+        }
+        return point_id
+
+    def search(self, vector, owner_id, owner_type, limit, statuses=None):
+        identity = current_identity()
+        allowed = set(statuses or ["active"])
+        hits = []
+        for point in self.points.values():
+            payload = point["payload"]
+            if payload["owner_id"] != owner_id or payload["owner_type"] != owner_type:
+                continue
+            if payload["status"] not in allowed or payload["archived"]:
+                continue
+            if identity is not None and (
+                payload["tenant_id"] != identity.tenant_id
+                or payload["owner_user_id"] != identity.user_id
+            ):
+                continue
+            hits.append(
+                {
+                    "memory_id": payload["memory_id"],
+                    "score": self._cosine(vector, point["vector"]),
+                    "payload": payload,
+                }
+            )
+        hits.sort(key=lambda hit: (hit["score"], hit["memory_id"]), reverse=True)
+        return hits[:limit]
+
+    def delete_memory(self, memory_id):
+        for point_id in [
+            key for key, point in self.points.items() if point["payload"]["memory_id"] == memory_id
+        ]:
+            del self.points[point_id]
+
+
+class BagOfWordsEmbeddingClient:
+    """Deterministic bag-of-words embedding used for measurement only.
+
+    This is a real (if weak) semantic model: texts that share vocabulary get
+    similar vectors, which is what makes a retrieval-quality number meaningful
+    rather than a coin flip. It is emphatically NOT the production model, and
+    every number measured with it must be reported as such.
+
+    Tokenization is Unicode-aware so a Hebrew or mixed Hebrew/English corpus
+    produces real vectors instead of an all-zero one; an ASCII-only stub would
+    have reported the multilingual path as broken no matter how the service
+    behaved.
+    """
+
+    model = "bag-of-words-measurement-stub"
+
+    def __init__(self, dimensions=256):
+        self._dimensions = dimensions
+
+    @property
+    def dimensions(self):
+        return self._dimensions
+
+    def provenance(self):
+        return {"model": self.model, "dimensions": self._dimensions, "service": "in-process-stub"}
+
+    def _vector(self, text):
+        vector = [0.0] * self._dimensions
+        for token in re.findall(r"[\w+-]+", text.lower()):
+            digest = hashlib.sha256(token.encode("utf-8")).hexdigest()
+            vector[int(digest[:8], 16) % self._dimensions] += 1.0
+        return vector
+
+    def embed_memory(self, text):
+        return self._vector(text)
+
+    def embed_query(self, text):
+        return self._vector(text)
+
+
+class FakeEmbeddingClient:
+    """Deterministic stand-in for the canonical embedding service RPC."""
+
+    def __init__(self, dimensions=8, fail=False, model="fake-embedding-model"):
+        self._dimensions = dimensions
+        self.fail = fail
+        self._model = model
+        self.embedded_passages = []
+        self.embedded_queries = []
+
+    @property
+    def model(self):
+        return self._model
+
+    @property
+    def dimensions(self):
+        return self._dimensions
+
+    def provenance(self):
+        return {"model": self._model, "dimensions": self._dimensions, "service": "embedding"}
+
+    def _vector(self, text):
+        if self.fail:
+            raise MemoryEmbeddingError("embedding service unavailable")
+        digest = hashlib.sha256(text.encode("utf-8")).digest()
+        return [digest[index % len(digest)] / 255.0 for index in range(self._dimensions)]
+
+    def embed_memory(self, text):
+        vector = self._vector(text)
+        self.embedded_passages.append(text)
+        return vector
+
+    def embed_query(self, text):
+        vector = self._vector(text)
+        self.embedded_queries.append(text)
+        return vector
 
 
 class FakeProducer:
@@ -199,15 +382,19 @@ def kafka_envelope(
     return envelope
 
 
-def build_memory_service(index_client=None):
+def build_memory_service(index_client=None, embedding_client=None):
     """Create a service with an isolated in-memory database."""
     database = FakeDatabase()
     logger = Mock()
+    # The fakes stand in for the real collaborators structurally, not by
+    # inheritance, so the casts say "substitute" rather than loosening the
+    # service's own annotations.
     service = LongTermMemoryService(
         logger=logger,
         db_provider=lambda: database,
-        index_client=index_client or FakeQdrantIndex(enabled=False),
+        index_client=cast(MemoryVectorIndex, index_client or FakeVectorIndex(enabled=False)),
         now_fn=lambda: "2026-03-17T12:00:00+00:00",
+        embedding_client=cast(MemoryEmbeddingClient, embedding_client or FakeEmbeddingClient()),
     )
     return service, database, logger
 

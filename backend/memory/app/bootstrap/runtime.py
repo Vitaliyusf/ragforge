@@ -90,7 +90,11 @@ class MemoryApplicationRuntime:
                 "status": "ready" if is_ready else "not_ready",
                 "service": settings.service_name,
                 "checks": {"mongodb": mongodb_ready, "rabbitmq": rabbitmq_ready},
-                "degraded": {"qdrant": "optional"},
+                # Semantic memory needs both, but neither blocks readiness:
+                # writes still land in MongoDB and retrieval reports itself as
+                # degraded rather than failing.
+                "degraded": {"qdrant": "optional", "embedding": "optional"},
+                "memory": self.memory_service.index_provenance(),
             },
             is_ready,
         )

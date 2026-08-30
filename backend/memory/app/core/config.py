@@ -37,11 +37,27 @@ class Settings(BaseSettings):
     # Memory retrieval configuration
     memory_retrieval_default_limit: int = 6
 
-    # Optional Qdrant configuration
+    # Canonical embedding boundary. Memory vectors come from the production
+    # embedding service over RPC; the memory service never loads a model or
+    # synthesises a vector of its own.
+    embedding_queue: str = "embedding"
+    memory_embedding_model: str = "intfloat/multilingual-e5-small"
+    memory_embedding_dimensions: int = 384
+    memory_embedding_timeout_seconds: float = 10.0
+    # Bound one embedding request. Longer memory text is truncated before the
+    # call so a pathological candidate cannot stall the embedding queue.
+    memory_embedding_max_chars: int = 4000
+    # E5/BGE retrieval models score asymmetrically; the stored memory is a
+    # passage and the retrieval text is a query.
+    memory_embedding_query_prefix: str = "query: "
+    memory_embedding_passage_prefix: str = "passage: "
+
+    # Memory vector index. Vector size is not configured separately: the
+    # collection is created for exactly the dimensionality the canonical
+    # embedding model produces.
     qdrant_enabled: bool = False
     qdrant_url: str = "http://localhost:6333"
-    qdrant_collection_name: str = "memory_items_v1"
-    qdrant_vector_size: int = 128
+    qdrant_collection_name: str = "memory_items_v2"
     qdrant_timeout_seconds: float = 3.0
     qdrant_api_key: str = ""
 

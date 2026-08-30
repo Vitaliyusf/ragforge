@@ -283,6 +283,25 @@
         "describeStage"
       ],
       "notes": "Default answer surface shows answer/sources/feedback/compact quality only; identifiers, prompts, evaluator payloads and per-node timings belong to the inspector. Unmeasured review scores must never render as 0%."
+    },
+    {
+      "id": "CAP-017",
+      "name": "Semantic long-term memory retrieval",
+      "status": "implemented",
+      "owner": "memory",
+      "canonical_paths": [
+        "backend/memory/app/services/memory_service.py",
+        "backend/memory/app/services/memory_embedding_client.py",
+        "backend/memory/app/services/memory_vector_index.py"
+      ],
+      "search_terms": [
+        "get_relevant_memories",
+        "MemoryEmbeddingClient",
+        "MemoryVectorIndex",
+        "retrieval_mode",
+        "embedding_status"
+      ],
+      "notes": "LongTermMemoryService is the single owner of memory persistence, lifecycle and retrieval. Memory vectors come only from the embedding service RPC (action 'embed'); there is no local model and no fallback vector. MongoDB is canonical and the Qdrant collection is derived, so a failed embedding or upsert leaves an explicit reconciliation state (retrieval.embedding_status) instead of a silent success, and retrieval reports retrieval_mode/degraded rather than passing keyword ranking off as semantic."
     }
   ]
 }
