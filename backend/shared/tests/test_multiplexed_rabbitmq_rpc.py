@@ -4,18 +4,22 @@ from __future__ import annotations
 import asyncio
 import json
 from contextlib import asynccontextmanager
-from typing import Any
+from typing import Any, cast
 from unittest.mock import AsyncMock
 
 import pytest
 
-from shared.auth import AuthIdentity, attach_internal_auth_context
+from shared.auth import AuthIdentity, ROLE_USER, attach_internal_auth_context
 from shared.context import bound_context
 from shared.rabbitmq_rpc import MultiplexedRabbitMQRPCClient
 
 
 SECRET = "multiplexed-rpc-test-secret-with-at-least-32-bytes"
-IDENTITY = AuthIdentity(tenant_id="tenant-a", user_id="user-a", role="member")
+IDENTITY = AuthIdentity(
+    tenant_id="tenant-a",
+    user_id="user-a",
+    role=ROLE_USER,
+)
 
 
 @asynccontextmanager
@@ -115,7 +119,9 @@ def _client() -> MultiplexedRabbitMQRPCClient:
 
 
 def _published_body(exchange: FakeExchange, index: int) -> dict[str, Any]:
-    return json.loads(exchange.published[index][1].body)
+    payload = json.loads(exchange.published[index][1].body)
+    assert isinstance(payload, dict)
+    return cast(dict[str, Any], payload)
 
 
 async def _wait_for_publishes(exchange: FakeExchange, count: int) -> None:

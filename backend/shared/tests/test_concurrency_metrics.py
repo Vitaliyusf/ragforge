@@ -72,57 +72,57 @@ CONCURRENCY_METRICS = (
 )
 
 
-def _labels(name: str) -> tuple:
-    return tuple(getattr(METRICS, name)._labelnames)
+def _labels(name: str) -> tuple[str, ...]:
+    return tuple(str(label) for label in getattr(METRICS, name)._labelnames)
 
 
-def test_every_required_signal_has_a_metric():
+def test_every_required_signal_has_a_metric() -> None:
     """The task names the signals; this asserts none was quietly dropped."""
     for name in CONCURRENCY_METRICS:
         assert hasattr(METRICS, name), f"missing concurrency metric: {name}"
 
 
 @pytest.mark.parametrize("name", CONCURRENCY_METRICS)
-def test_concurrency_metric_labels_stay_bounded(name: str):
+def test_concurrency_metric_labels_stay_bounded(name: str) -> None:
     labels = {label.lower() for label in _labels(name)}
     offenders = labels & FORBIDDEN_LABELS
     assert not offenders, f"{name} carries unbounded labels: {sorted(offenders)}"
 
 
 @pytest.mark.parametrize("name", CONCURRENCY_METRICS)
-def test_every_concurrency_metric_is_attributed_to_a_service(name: str):
+def test_every_concurrency_metric_is_attributed_to_a_service(name: str) -> None:
     assert "service" in _labels(name), f"{name} cannot be attributed to a service"
 
 
-def test_the_stage_label_carries_the_nine_measured_request_classes():
+def test_the_stage_label_carries_the_nine_measured_request_classes() -> None:
     for name in ("inflight_by_stage", "queue_wait_seconds", "handler_duration_seconds", "degraded_path_total"):
         assert "stage" in _labels(name)
     assert len(CONCURRENCY_REQUEST_CLASSES) == 9
 
 
-def test_the_closed_vocabularies_are_immutable():
+def test_the_closed_vocabularies_are_immutable() -> None:
     """A mutable default would let one import order change another service's
     label space."""
     for vocabulary in (CONCURRENCY_REQUEST_CLASSES, DEGRADED_PATH_REASONS, RERANKER_STATUSES):
         assert isinstance(vocabulary, frozenset)
 
 
-def test_reranker_statuses_are_exactly_the_four_the_task_names():
+def test_reranker_statuses_are_exactly_the_four_the_task_names() -> None:
     assert RERANKER_STATUSES == {"success", "busy", "timeout", "error"}
 
 
-def test_bucket_edges_are_documented_and_ascending():
+def test_bucket_edges_are_documented_and_ascending() -> None:
     for buckets in (QUEUE_WAIT_BUCKETS, EVENT_LOOP_LAG_BUCKETS, BATCH_SIZE_BUCKETS):
         assert list(buckets) == sorted(buckets)
         assert len(set(buckets)) == len(buckets)
 
 
-def test_queue_wait_histogram_uses_the_documented_buckets():
+def test_queue_wait_histogram_uses_the_documented_buckets() -> None:
     observed = tuple(METRICS.queue_wait_seconds._upper_bounds[:-1])
     assert observed == tuple(float(bucket) for bucket in QUEUE_WAIT_BUCKETS)
 
 
-def test_degraded_path_records_a_closed_reason_vocabulary():
+def test_degraded_path_records_a_closed_reason_vocabulary() -> None:
     metric = cast(Any, METRICS.degraded_path_total)
     before = metric.labels(service="s", stage="rag_extended", reason="busy")._value.get()
     metric.labels(service="s", stage="rag_extended", reason="busy").inc()
@@ -130,7 +130,7 @@ def test_degraded_path_records_a_closed_reason_vocabulary():
     assert "busy" in DEGRADED_PATH_REASONS
 
 
-def test_reranker_batch_size_is_distinct_from_candidate_count():
+def test_reranker_batch_size_is_distinct_from_candidate_count() -> None:
     """CONC-05 changes the batch, not the candidate pool; one metric for both
     would hide exactly the change it is meant to prove."""
     assert METRICS.reranker_batch_size is not METRICS.reranker_candidate_count
@@ -144,14 +144,16 @@ def test_reranker_batch_size_is_distinct_from_candidate_count():
 
 
 def _gauge_value(metric: Any, **labels: str) -> float:
-    return cast(Any, metric).labels(**labels)._value.get()
+    value = cast(Any, metric).labels(**labels)._value.get()
+    return float(value)
 
 
 def _counter_value(metric: Any, **labels: str) -> float:
-    return cast(Any, metric).labels(**labels)._value.get()
+    value = cast(Any, metric).labels(**labels)._value.get()
+    return float(value)
 
 
-def test_the_shared_rabbitmq_consumer_records_delivery_and_inflight():
+def test_the_shared_rabbitmq_consumer_records_delivery_and_inflight() -> None:
     pytest.importorskip("aio_pika")
     import asyncio
 
@@ -167,7 +169,8 @@ def test_the_shared_rabbitmq_consumer_records_delivery_and_inflight():
     seen: list[float] = []
 
     class Consumer(BaseRabbitMQConsumer):
-        async def _dispatch_message(self, message, handler):  # type: ignore[override]
+        async def _dispatch_message(self, message: Any, handler: Any) -> None:
+            del message, handler
             seen.append(
                 _gauge_value(
                     METRICS.rabbitmq_inflight_deliveries,
@@ -180,14 +183,14 @@ def test_the_shared_rabbitmq_consumer_records_delivery_and_inflight():
     delivered_before = _counter_value(METRICS.rabbitmq_deliveries_total, **labels)
     inflight_before = _gauge_value(METRICS.rabbitmq_inflight_deliveries, **labels)
 
-    asyncio.run(Consumer(Config())._dispatch(object(), None))  # type: ignore[arg-type]
+    asyncio.run(Consumer(Config())._dispatch(cast(Any, object()), cast(Any, None)))
 
     assert _counter_value(METRICS.rabbitmq_deliveries_total, **labels) == delivered_before + 1
     assert seen == [inflight_before + 1], "the delivery must be in flight while it runs"
     assert _gauge_value(METRICS.rabbitmq_inflight_deliveries, **labels) == inflight_before
 
 
-def test_a_failed_rabbitmq_delivery_still_releases_the_inflight_gauge():
+def test_a_failed_rabbitmq_delivery_still_releases_the_inflight_gauge() -> None:
     """A gauge that only decrements on success drifts upward forever and reads
     as permanent saturation — the reading an operator would act on."""
     pytest.importorskip("aio_pika")
@@ -203,19 +206,20 @@ def test_a_failed_rabbitmq_delivery_still_releases_the_inflight_gauge():
         service_name = "probe_service"
 
     class Consumer(BaseRabbitMQConsumer):
-        async def _dispatch_message(self, message, handler):  # type: ignore[override]
+        async def _dispatch_message(self, message: Any, handler: Any) -> None:
+            del message, handler
             raise RuntimeError("handler failed")
 
     labels = {"service": "probe_service", "queue": "failing_queue"}
     before = _gauge_value(METRICS.rabbitmq_inflight_deliveries, **labels)
 
     with pytest.raises(RuntimeError):
-        asyncio.run(Consumer(Config())._dispatch(object(), None))  # type: ignore[arg-type]
+        asyncio.run(Consumer(Config())._dispatch(cast(Any, object()), cast(Any, None)))
 
     assert _gauge_value(METRICS.rabbitmq_inflight_deliveries, **labels) == before
 
 
-def test_the_shared_kafka_consumer_times_the_work_it_hands_out():
+def test_the_shared_kafka_consumer_times_the_work_it_hands_out() -> None:
     pytest.importorskip("kafka")
 
     from shared.kafka_base import BaseKafkaConsumer
@@ -226,11 +230,17 @@ def test_the_shared_kafka_consumer_times_the_work_it_hands_out():
         offset = 0
         value = {"payload": 1}
 
-    consumer = BaseKafkaConsumer.__new__(BaseKafkaConsumer)
-    consumer.config = type("C", (), {"service_name": "probe_service"})()
-    consumer._consumer = [Message()]
-    consumer._init_consumer = lambda: True  # type: ignore[method-assign]
-    consumer._record_lag = lambda message: None  # type: ignore[method-assign]
+    class Consumer(BaseKafkaConsumer):
+        def _init_consumer(self) -> bool:
+            return True
+
+        def _record_lag(self, message: Any) -> None:
+            del message
+            return None
+
+    consumer = Consumer.__new__(Consumer)
+    cast(Any, consumer).config = type("C", (), {"service_name": "probe_service"})()
+    cast(Any, consumer)._consumer = [Message()]
 
     histogram = cast(Any, METRICS.kafka_message_processing_duration)
     labels = {"service": "probe_service", "topic": "probe_topic"}

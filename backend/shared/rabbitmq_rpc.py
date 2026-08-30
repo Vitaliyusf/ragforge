@@ -48,9 +48,9 @@ class MultiplexedRabbitMQRPCClient:
         self._stream_buffer_size = stream_buffer_size
         self._record_metrics = record_metrics
         self._connection: Optional[aio_pika.abc.AbstractRobustConnection] = None
-        self._channel: Optional[aio_pika.abc.AbstractRobustChannel] = None
-        self._exchange: Optional[aio_pika.abc.AbstractRobustExchange] = None
-        self._reply_queue: Optional[aio_pika.abc.AbstractRobustQueue] = None
+        self._channel: Optional[aio_pika.abc.AbstractChannel] = None
+        self._exchange: Optional[aio_pika.abc.AbstractExchange] = None
+        self._reply_queue: Optional[aio_pika.abc.AbstractQueue] = None
         self._consumer_tag: Optional[str] = None
         self._stream_routing_key = f"rpc.stream.{service_name}.{uuid4().hex}"
         self._waiters: Dict[str, _Waiter] = {}
@@ -102,23 +102,31 @@ class MultiplexedRabbitMQRPCClient:
             ):
                 return
 
-            if self._connection is None or self._connection.is_closed:
-                self._connection = await aio_pika.connect_robust(self._url)
-            self._channel = await self._connection.channel()
-            self._exchange = await self._channel.declare_exchange(
+            connection = self._connection
+            if connection is None or connection.is_closed:
+                connection = await aio_pika.connect_robust(self._url)
+                self._connection = connection
+
+            channel = await connection.channel()
+            exchange = await channel.declare_exchange(
                 self._exchange_name,
                 aio_pika.ExchangeType.DIRECT,
                 durable=True,
             )
-            self._reply_queue = await self._channel.declare_queue(
+            reply_queue = await channel.declare_queue(
                 exclusive=True,
                 auto_delete=True,
             )
-            await self._reply_queue.bind(
-                self._exchange,
+            await reply_queue.bind(
+                exchange,
                 routing_key=self._stream_routing_key,
             )
-            self._consumer_tag = await self._reply_queue.consume(self._on_message)
+            consumer_tag = await reply_queue.consume(self._on_message)
+
+            self._channel = channel
+            self._exchange = exchange
+            self._reply_queue = reply_queue
+            self._consumer_tag = consumer_tag
             self._loop = asyncio.get_running_loop()
             self._loop_thread_id = threading.get_ident()
 
