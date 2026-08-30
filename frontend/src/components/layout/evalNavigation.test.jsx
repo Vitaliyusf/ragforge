@@ -13,7 +13,11 @@ vi.mock('@/context/ThemeContext', () => ({
   useTheme: () => ({ resolvedTheme: 'dark', toggleTheme: vi.fn() }),
 }))
 vi.mock('@/features/auth', () => ({
-  useAuth: () => ({ user: { email: 'admin@example.com' }, isAdmin: true, logout: vi.fn() }),
+  useAuth: () => ({
+    user: { email: 'admin@example.com', role: 'admin' },
+    isAdmin: true,
+    logout: vi.fn(),
+  }),
 }))
 vi.mock('@/features/config', () => ({
   configService: {
@@ -50,13 +54,19 @@ describe('primary navigation', () => {
     expect(setActiveTab).toHaveBeenCalledWith('eval')
   })
 
-  it('places Eval beside Files, ahead of the administrative destinations', () => {
+  it('opens the Quality pillar, ahead of the operational destinations', () => {
     render(<Header activeTab="eval" setActiveTab={vi.fn()} />)
-    const nav = screen.getByRole('navigation', { name: 'Main navigation' })
-    const labels = [...nav.querySelectorAll('button')].map((button) =>
+    const quality = screen.getByRole('group', { name: 'Quality' })
+    const labels = [...quality.querySelectorAll('button')].map((button) =>
       button.getAttribute('aria-label')
     )
-    expect(labels.slice(0, 3)).toEqual(['Chat', 'Files', 'Eval'])
+    expect(labels[0]).toBe('Eval')
+
+    const nav = screen.getByRole('navigation', { name: 'Main navigation' })
+    const groups = [...nav.querySelectorAll('[role="group"]')].map((group) =>
+      group.getAttribute('aria-label')
+    )
+    expect(groups.indexOf('Quality')).toBeLessThan(groups.indexOf('Operations'))
   })
 
   it('marks Eval as the current page when it is selected', () => {

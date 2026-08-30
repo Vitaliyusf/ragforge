@@ -388,6 +388,17 @@
   50%      { transform: scale(1.3) }
 }
 
+/* The hairline between navigation pillars. Decorative only: the grouping a
+   screen reader hears comes from each group's aria-label, not from this. */
+.nav-pillar-divider {
+  display: inline-block;
+  width: 1px;
+  height: 18px;
+  margin-inline: 4px;
+  flex: none;
+  border-radius: 1px;
+}
+
 /* Reserved whether or not anything is happening, so a tab that starts
    working never changes the width of the nav. */
 .activity-slot {

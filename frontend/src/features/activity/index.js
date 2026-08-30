@@ -23,3 +23,8 @@ export {
 } from './sources/EvalActivityProvider'
 export { default as FilesActivityBridge } from './sources/FilesActivityBridge'
 export { default as NavActivityIndicator } from './components/NavActivityIndicator'
+export {
+  default as GlobalActivityControl,
+  ActivityDot,
+} from './components/GlobalActivityControl'
+export { GLOBAL_ACTIVITY_STATES, summarizeActivity } from './globalActivity'

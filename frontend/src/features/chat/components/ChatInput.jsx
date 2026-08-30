@@ -10,7 +10,9 @@ import Select, { SelectItem } from '@/components/ui/Select'
 // therefore absent from this table, and the badge is simply not rendered.
 const WS_STATUS_CONFIG = {
   connecting: { variant: 'warning', label: 'Connecting...', icon: Loader2, iconSpin: true },
-  failed: { variant: 'error', label: 'Offline', icon: WifiOff, iconSpin: false },
+  // Both of these are one connectivity state: the link is not there. They
+  // used to read "Offline" and "Disconnected", which looked like two things.
+  failed: { variant: 'error', label: 'Disconnected', icon: WifiOff, iconSpin: false },
   disconnected: { variant: 'default', label: 'Disconnected', icon: WifiOff, iconSpin: false },
 }
 

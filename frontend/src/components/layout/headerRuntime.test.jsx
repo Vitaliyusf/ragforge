@@ -2,9 +2,13 @@
  * Header runtime-architecture tests (REACT-19-01).
  *
  * Connectivity is read through `useSyncExternalStore` instead of being copied
- * into component state by an Effect, and the settings-popover dismissal
+ * into component state by an Effect, and the runtime-popover dismissal
  * listeners are mounted only while the popover is open rather than for the
  * whole session.
+ *
+ * Since PRODUCT-01 connectivity is reported by the one global activity
+ * control, in the connectivity domain's words, rather than by a separate
+ * "Offline" chip of its own.
  */
 import { act, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -14,7 +18,11 @@ vi.mock('@/context/ThemeContext', () => ({
   useTheme: () => ({ resolvedTheme: 'dark', toggleTheme: vi.fn() }),
 }))
 vi.mock('@/features/auth', () => ({
-  useAuth: () => ({ user: { email: 'admin@example.com' }, isAdmin: true, logout: vi.fn() }),
+  useAuth: () => ({
+    user: { email: 'admin@example.com', role: 'admin' },
+    isAdmin: true,
+    logout: vi.fn(),
+  }),
 }))
 vi.mock('@/features/config', () => ({
   configService: { getConfig: vi.fn().mockResolvedValue({}) },
@@ -49,25 +57,25 @@ describe('Header runtime', () => {
   it('tracks connectivity from the browser rather than a mirrored state copy', async () => {
     setOnline(true)
     renderHeader()
-    expect(screen.queryByText(/offline/i)).not.toBeInTheDocument()
+    expect(screen.getByTestId('global-activity')).not.toHaveTextContent('Disconnected')
 
     setOnline(false)
     await act(async () => { window.dispatchEvent(new Event('offline')) })
-    expect(screen.getByText(/offline/i)).toBeInTheDocument()
+    expect(screen.getByTestId('global-activity')).toHaveTextContent('Disconnected')
 
     setOnline(true)
     await act(async () => { window.dispatchEvent(new Event('online')) })
-    expect(screen.queryByText(/offline/i)).not.toBeInTheDocument()
+    expect(screen.getByTestId('global-activity')).not.toHaveTextContent('Disconnected')
   })
 
-  it('attaches dismissal listeners only while the settings popover is open', async () => {
+  it('attaches dismissal listeners only while the runtime popover is open', async () => {
     const addSpy = vi.spyOn(document, 'addEventListener')
     const removeSpy = vi.spyOn(document, 'removeEventListener')
     try {
       renderHeader()
       expect(dismissalCalls(addSpy)).toHaveLength(0)
 
-      await userEvent.click(screen.getByRole('button', { name: /settings/i }))
+      await userEvent.click(screen.getByRole('button', { name: 'Runtime details' }))
       expect(dismissalCalls(addSpy)).toHaveLength(2)
       expect(dismissalCalls(removeSpy)).toHaveLength(0)
 

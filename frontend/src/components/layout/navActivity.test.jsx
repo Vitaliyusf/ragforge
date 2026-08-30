@@ -9,7 +9,11 @@ vi.mock('@/context/ThemeContext', () => ({
   useTheme: () => ({ resolvedTheme: 'dark', toggleTheme: vi.fn() }),
 }))
 vi.mock('@/features/auth', () => ({
-  useAuth: () => ({ user: { email: 'admin@example.com' }, isAdmin: true, logout: vi.fn() }),
+  useAuth: () => ({
+    user: { email: 'admin@example.com', role: 'admin' },
+    isAdmin: true,
+    logout: vi.fn(),
+  }),
 }))
 vi.mock('@/features/config', () => ({
   configService: { getConfig: vi.fn().mockResolvedValue({}) },
@@ -89,11 +93,16 @@ describe('navigation activity indicators', () => {
   })
 
   it('distinguishes warning from failure', () => {
+    // Scoped to the nav item: the global activity control carries a status of
+    // its own, and the point here is what the *item* says.
+    const statusOfEvalItem = () =>
+      within(screen.getByRole('button', { name: /^Eval — / })).getByRole('status').textContent
+
     const warning = renderHeader({ entry: { state: ACTIVITY_STATES.WARNING } })
-    const warningText = screen.getByRole('status').textContent
+    const warningText = statusOfEvalItem()
     warning.unmount()
     renderHeader({ entry: { state: ACTIVITY_STATES.FAILED } })
-    expect(screen.getByRole('status').textContent).not.toBe(warningText)
+    expect(statusOfEvalItem()).not.toBe(warningText)
   })
 
   it('drops the moving rail under reduced motion but keeps the status', () => {
