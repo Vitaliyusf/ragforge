@@ -44,6 +44,9 @@ DEFAULT_TESTS = ["app/tests"]
 LANES = {
     "shared": ("shared", ["shared/tests"]),
     "repo-contract": ("repo", ["tests/test_public_repo_guardrails.py", "tests/test_repo_brain_tooling.py"]),
+    # Host-side concurrency baseline tooling. Deterministic and offline: it
+    # drives the load harness with in-process fakes, never a running stack.
+    "perf-baseline": ("repo", ["tests/test_conc_baseline_harness.py"]),
     "gateway": ("gateway", ["app/tests"]),
     "gateway-auth": ("gateway", ["app/tests/auth"]),
     "gateway-routes": ("gateway", ["app/tests/routes"]),
