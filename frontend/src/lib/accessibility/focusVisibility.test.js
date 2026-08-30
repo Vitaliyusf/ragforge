@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { readFileSync, readdirSync, statSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import path from 'node:path'
 
 /**
@@ -26,7 +26,14 @@ const RING_ON_AN_ANCESTOR = {
  */
 const FOCUS_INDICATOR = /(?:focus|focus-visible|focus-within):(?!outline-)|data-highlighted/
 
-const ROOTS = ['src', 'app', 'components']
+/**
+ * Every directory holding component source. There is no top-level
+ * `frontend/components`: jsconfig maps `@/*` to `./src/*`, so `@/components`
+ * is `src/components` and the guard already reaches it through `src`. Listing
+ * it here scanned nothing on a machine that happened to have a stale empty
+ * directory and threw ENOENT on a clean checkout.
+ */
+const ROOTS = ['src', 'app']
 const REPO = path.resolve(__dirname, '../../..')
 
 function sourceFiles() {
@@ -38,7 +45,13 @@ function sourceFiles() {
       else if (/\.jsx?$/.test(entry) && !entry.includes('.test.')) found.push(full)
     }
   }
-  for (const root of ROOTS) walk(path.join(REPO, root))
+  for (const root of ROOTS) {
+    const full = path.join(REPO, root)
+    // A root that has moved must fail by name. Skipping it silently would let
+    // this guard shrink to nothing while still reporting green.
+    if (!existsSync(full)) throw new Error(`focus-visibility guard: missing source root '${root}'`)
+    walk(full)
+  }
   return found
 }
 
