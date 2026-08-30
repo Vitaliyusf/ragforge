@@ -4,9 +4,7 @@ Owns all module-level singletons, the lifespan context manager, and app
 construction. Business logic, consumer loop, and route handlers live in
 dedicated modules.
 """
-import asyncio
 import os
-from contextvars import copy_context
 from contextlib import asynccontextmanager
 from threading import Thread
 
@@ -21,6 +19,7 @@ except ImportError:
 from app.core.config import settings
 from app.core.exception_handlers import register_exception_handlers
 from shared.logging import ServiceLogger
+from shared.bounded_executor import BoundedExecutor
 from app.consumers import run as run_pipeline_updates
 from app.db.repository import FileRepository
 from app.db.session import (
@@ -111,17 +110,21 @@ async def lifespan(app: FastAPI):
 
     # RabbitMQ consumer for gateway requests (replaces Kafka consumer thread)
     _consumer = MessageQueueFactory.create_consumer(settings)
+    executor = BoundedExecutor(
+        service=settings.service_name,
+        pool="rpc",
+        max_workers=settings.executor_workers,
+        queue_bound=settings.executor_queue_bound,
+        submit_timeout_seconds=settings.executor_submit_timeout_seconds,
+    )
 
     async def _handle(body: dict, reply_to: str, correlation_id: str):
-        loop = asyncio.get_running_loop()
-        context = copy_context()
-        return await loop.run_in_executor(
-            None,
-            context.run,
+        return await executor.run(
             _file_service.process_request_with_reply,
             body,
             reply_to,
             correlation_id,
+            stage="file_ingestion",
         )
 
     await _consumer.start(_handle)
@@ -138,6 +141,7 @@ async def lifespan(app: FastAPI):
         # --- shutdown ---
         _logger.log("main:shutdown", "Files service shutting down", {})
         await _consumer.stop()
+        await executor.shutdown()
         _running = False
         try:
             _kafka_consumer.close()

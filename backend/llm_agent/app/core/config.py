@@ -77,6 +77,8 @@ class Settings(BaseSettings):
     # Device configuration
     device: str = Field(default="auto", description="Device (auto, cuda, cpu, mps)")
     max_concurrent_requests: int = Field(default=10, description="Max concurrent requests")
+    executor_queue_bound: int = Field(default=0, ge=0)
+    executor_submit_timeout_seconds: float = Field(default=1.0, gt=0)
     
     # vLLM generation parameters
     vllm_max_tokens: int = Field(

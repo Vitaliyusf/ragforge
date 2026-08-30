@@ -26,6 +26,9 @@ class Settings(BaseSettings):
     # loads with prefetch_count=1. Dependent writes are ordered by the caller,
     # which awaits each add_message before sending the next.
     rabbitmq_prefetch_count: int = 10
+    executor_workers: int = 10
+    executor_queue_bound: int = 0
+    executor_submit_timeout_seconds: float = 1.0
     rabbitmq_rpc_max_inflight: int = 32
     llm_agent_queue: str = "llm_agent"
 

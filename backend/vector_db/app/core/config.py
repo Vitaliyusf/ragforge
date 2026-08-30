@@ -27,6 +27,9 @@ class Settings(BaseSettings):
     rabbitmq_exchange: str = "ragapp.requests"
     rabbitmq_queue: str = "vector_db"
     rabbitmq_prefetch_count: int = 1
+    executor_workers: int = 1
+    executor_queue_bound: int = 0
+    executor_submit_timeout_seconds: float = 1.0
 
     # Vector store backend — "qdrant" | "chromadb" | "in_memory"
     vector_store_type: str = "qdrant"

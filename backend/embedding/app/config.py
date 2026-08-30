@@ -50,6 +50,11 @@ class EmbeddingConfig:
         self.rabbitmq_exchange: str = os.getenv("RABBITMQ_EXCHANGE", "ragapp.requests")
         self.rabbitmq_queue: str = os.getenv("RABBITMQ_QUEUE", "embedding")
         self.rabbitmq_prefetch_count: int = int(os.getenv("RABBITMQ_PREFETCH_COUNT", "1"))
+        self.executor_workers: int = int(os.getenv("EXECUTOR_WORKERS", "1"))
+        self.executor_queue_bound: int = int(os.getenv("EXECUTOR_QUEUE_BOUND", "0"))
+        self.executor_submit_timeout_seconds: float = float(
+            os.getenv("EXECUTOR_SUBMIT_TIMEOUT_SECONDS", "1.0")
+        )
 
         # Model configuration
         # Default: multilingual-e5-small (512 tokens, retrieval-optimized, 384 dims)

@@ -30,6 +30,7 @@ from .auth import (
     verify_internal_ticket_from_envelope,
 )
 from .context import bound_context
+from .bounded_executor import ExecutorOverloaded
 from .metrics import METRICS
 
 logger = logging.getLogger(__name__)
@@ -157,11 +158,44 @@ class BaseRabbitMQConsumer:
                             ),
                             routing_key=reply_to,
                         )
+                except ExecutorOverloaded as exc:
+                    await self._handle_overload(exc, reply_to, correlation_id)
                 except Exception:
                     logger.exception(
                         "Handler failed for message on queue '%s'", self.config.rabbitmq_queue
                     )
                     raise  # triggers nack via message.process(requeue=False)
+
+    async def _handle_overload(
+        self,
+        error: ExecutorOverloaded,
+        reply_to: str,
+        correlation_id: str,
+    ) -> None:
+        """Return a typed, authenticated busy reply for request/reply traffic."""
+        if not reply_to or not correlation_id or self._channel is None:
+            raise error
+        reply: Dict[str, Any] = {
+            "message_type": "reply",
+            "source_service": str(getattr(self.config, "service_name", self.config.rabbitmq_queue)),
+            "correlation_id": correlation_id,
+            "success": False,
+            "payload": {},
+            "error": {
+                "code": "service_overloaded",
+                "message": "Service is busy; retry later",
+                "retryable": True,
+            },
+        }
+        attach_internal_auth_context(reply)
+        await self._channel.default_exchange.publish(
+            aio_pika.Message(
+                body=json.dumps(reply).encode(),
+                correlation_id=correlation_id,
+                content_type="application/json",
+            ),
+            routing_key=reply_to,
+        )
 
     async def _handle_auth_failure(
         self,

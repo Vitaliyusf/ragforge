@@ -1,6 +1,4 @@
 """FastAPI entrypoint for the vector_db service."""
-import asyncio
-from contextvars import copy_context
 from contextlib import asynccontextmanager
 from threading import Thread
 from typing import Optional
@@ -17,6 +15,7 @@ except ImportError:
 from app.core.config import settings
 from app.core.exception_handlers import register_exception_handlers
 from shared.logging import ServiceLogger
+from shared.bounded_executor import BoundedExecutor
 from app.db.interfaces import IVectorStore
 from app.db.session import get_vector_store
 from app.messaging.factories import MessageQueueFactory
@@ -93,13 +92,23 @@ async def lifespan(app: FastAPI):
 
     # Start RabbitMQ RPC consumer
     _rpc_consumer = MessageQueueFactory.create_consumer(settings)
+    executor = BoundedExecutor(
+        service=settings.service_name,
+        pool="rpc",
+        max_workers=settings.executor_workers,
+        queue_bound=settings.executor_queue_bound,
+        submit_timeout_seconds=settings.executor_submit_timeout_seconds,
+    )
 
     async def _handle(body: dict, reply_to: str, correlation_id: str):
         body = dict(body)  # shallow copy
         body.setdefault("reply_to", reply_to)
         body.setdefault("correlation_id", correlation_id)
-        loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(None, copy_context().run, _vector_service.process_request, body)
+        return await executor.run(
+            _vector_service.process_request,
+            body,
+            stage="vector_search",
+        )
 
     try:
         await _rpc_consumer.start(_handle)
@@ -111,6 +120,7 @@ async def lifespan(app: FastAPI):
 
         # Stop RabbitMQ RPC consumer
         await _rpc_consumer.stop()
+        await executor.shutdown()
 
         # Stop Kafka pipeline consumer thread
         _running[0] = False

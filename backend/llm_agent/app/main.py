@@ -1,6 +1,5 @@
 """FastAPI application entry point for the llm_agent service."""
 import asyncio
-from contextvars import copy_context
 from contextlib import asynccontextmanager
 from typing import List
 
@@ -14,6 +13,7 @@ from fastapi import FastAPI
 
 from app.core.config import get_settings, Settings
 from shared.logging import ServiceLogger, setup_logging
+from shared.bounded_executor import BoundedExecutor
 from app.messaging.factories import MessageQueueFactory
 from app.messaging.handlers import (
     LLMHandler,
@@ -117,7 +117,13 @@ async def lifespan(app: FastAPI):
         (settings.config_management_queue,   ConfigManagementHandler(producer, config_service, logger, settings)),
     ]
 
-    loop = asyncio.get_running_loop()
+    executor = BoundedExecutor(
+        service=settings.service_name,
+        pool="handler",
+        max_workers=settings.max_concurrent_requests,
+        queue_bound=settings.executor_queue_bound,
+        submit_timeout_seconds=settings.executor_submit_timeout_seconds,
+    )
 
     for queue_name, handler in handlers:
         consumer = MessageQueueFactory.create_consumer(settings, queue_name)
@@ -125,14 +131,13 @@ async def lifespan(app: FastAPI):
         # Capture handler in closure to avoid late-binding issues
         def _make_handle(h):
             async def _handle(body, reply_to, correlation_id):
-                return await loop.run_in_executor(
-                    None,
-                    copy_context().run,
+                return await executor.run(
                     h.process_request_with_reply,
                     body,
                     reply_to,
                     correlation_id,
-                    loop,
+                    asyncio.get_running_loop(),
+                    stage="gateway_chat_plain",
                 )
             return _handle
 
@@ -157,6 +162,7 @@ async def lifespan(app: FastAPI):
                 pass
 
         _consumers.clear()
+        await executor.shutdown()
 
         try:
             await producer.close()
