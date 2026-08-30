@@ -24,9 +24,9 @@ def test_full_runner_reports_no_cross_boundary_leakage(full_result):
 
     assert retrieval["tenant_leakage"] == 0
     assert retrieval["user_leakage"] == 0
-    # The known resurrection gap is also visible as a forbidden retrieval;
-    # isolation leakage remains independently zero above.
-    assert retrieval["forbidden_memory_retrieval_count"] == 24
+    # A resurrected memory used to show up here too, as a forbidden retrieval.
+    # MEMORY-V2-03 closed that; isolation leakage remains independently zero.
+    assert retrieval["forbidden_memory_retrieval_count"] == 0
 
 
 def test_agent_boundary_counts_invalid_ids_and_safe_fallbacks(full_result):
@@ -37,16 +37,20 @@ def test_agent_boundary_counts_invalid_ids_and_safe_fallbacks(full_result):
     assert trajectory["no_mutation_fallback_correctness"] == pytest.approx(1.0)
 
 
-def test_runner_attributes_known_resurrection_gap_without_mutating_production(full_result):
+def test_every_resurrection_scenario_is_now_prevented(full_result):
+    # The baseline this suite first measured was 0 of 24 prevented. The
+    # scenarios are unchanged; the durable deletion identity is what moved.
     lifecycle = full_result["metrics"]["stage_b"]
-
-    assert lifecycle["resurrection_after_delete_count"] == 24
-    failed = [
+    attempts = [
         row for row in full_result["per_scenario"]
         if "resurrection_attempt" in row["tags"]
     ]
-    assert len(failed) == 24
-    assert all(any(item["category"] == "lifecycle" for item in row["failures"]) for row in failed)
+
+    assert lifecycle["resurrection_after_delete_count"] == 0
+    assert lifecycle["resurrection_prevented"]["correct"] == 24
+    assert len(attempts) == 24
+    assert all(row["stage_b"]["actual_action"] == "resurrection_prevented" for row in attempts)
+    assert not any(item["category"] == "lifecycle" for row in attempts for item in row["failures"])
 
 
 def test_evaluator_and_memory_failures_are_separate(full_result):

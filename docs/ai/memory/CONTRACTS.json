@@ -3,7 +3,7 @@
   "contracts": [
     {
       "id": "CON-001",
-      "name": "Browser \u2192 Gateway REST",
+      "name": "Browser → Gateway REST",
       "owner": "gateway",
       "caller": "frontend",
       "callee": "gateway",
@@ -16,7 +16,7 @@
     },
     {
       "id": "CON-002",
-      "name": "Gateway \u2192 backend RPC",
+      "name": "Gateway → backend RPC",
       "owner": "gateway/shared",
       "caller": "gateway",
       "callee": "backend services",
@@ -108,6 +108,19 @@
         "backend/llm_agent/app/schemas/llm.py"
       ],
       "rule": "The model receives bounded conversation and tenant/user-scoped candidates, cannot choose scope or reference other IDs, and never persists directly. The complete plan must pass schema and deterministic business validation; background delete is unauthorized and any unvalidated/failing plan degrades to no mutation."
+    },
+    {
+      "id": "CON-009",
+      "name": "Durable deletion identity across MongoDB and Qdrant",
+      "owner": "memory",
+      "caller": "LongTermMemoryService.delete_memory / write_memory",
+      "callee": "memory_deletion_tombstones + MemoryReconciliationService",
+      "transport": "MongoDB collection scoped by tenant and owner user",
+      "canonical_locations": [
+        "backend/memory/app/services/memory_service.py",
+        "backend/memory/app/services/memory_reconciliation.py"
+      ],
+      "rule": "The deletion identity is written first and is never deleted by reconciliation. It carries only memory_id, owner, memory_class, content_hash, fact_key, scope_key, deleted_at, provenance and revision — no memory text — and is scoped like every other memory row, so one tenant's or user's deletion never suppresses another's fact. A canonical row that carries a deletion identity is finished as a delete by reconciliation and never re-embedded; a replayed delete reports the same deleted outcome instead of not-found, and an unknown id is still not-found."
     }
   ]
 }
