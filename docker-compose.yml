@@ -465,6 +465,10 @@ services:
       INTERNAL_REQUEST_TIMEOUT: ${RAG_INTERNAL_REQUEST_TIMEOUT:-75}
       GENERATION_REQUEST_TIMEOUT: ${RAG_GENERATION_REQUEST_TIMEOUT:-120}
       EVALUATION_REQUEST_TIMEOUT: ${RAG_EVALUATION_REQUEST_TIMEOUT:-75}
+      # Bounds the eval runner semaphore. The learned reranker serves one
+      # inference at a time, so a quality benchmark must run at 1 to keep
+      # concurrent queries from degrading to the `busy` RRF-only fallback.
+      EVAL_RUN_CONCURRENCY: ${EVAL_RUN_CONCURRENCY:-4}
     depends_on:
       volume_permissions:
         condition: service_completed_successfully
