@@ -83,6 +83,17 @@ class Settings(BaseSettings):
     chat_exit_headline_timeout_seconds: float = 15.0
     chat_exit_summary_timeout_seconds: float = 20.0
 
+    # Memory Agent bounds. Separate retry budgets make the safe failure mode
+    # explicit and keep provider flakiness from expanding mutation authority.
+    memory_agent_candidate_limit: int = 10
+    memory_agent_history_limit: int = 24
+    memory_agent_message_char_limit: int = 4000
+    memory_agent_content_char_limit: int = 500
+    memory_agent_structured_output_retries: int = 1
+    memory_agent_business_validation_retries: int = 1
+    memory_agent_tool_validation_retries: int = 0
+    memory_agent_provider_retries: int = 1
+
     # Runtime controls
     enable_background_consumers: bool = True
 

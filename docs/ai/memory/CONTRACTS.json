@@ -94,6 +94,20 @@
         "frontend/src/features/health"
       ],
       "rule": "/live is process-only and normally returns 200; /ready returns 503 whenever a dependency required for the service's primary workload is unavailable, while optional degraded dependencies do not gate readiness."
+    },
+    {
+      "id": "CON-008",
+      "name": "Memory Agent policy to canonical Memory V2 service",
+      "owner": "memory",
+      "caller": "MemoryAgent",
+      "callee": "LongTermMemoryService",
+      "transport": "in-process typed policy boundary",
+      "canonical_locations": [
+        "backend/memory/app/agent/memory_agent.py",
+        "backend/memory/app/services/memory_service.py",
+        "backend/llm_agent/app/schemas/llm.py"
+      ],
+      "rule": "The model receives bounded conversation and tenant/user-scoped candidates, cannot choose scope or reference other IDs, and never persists directly. The complete plan must pass schema and deterministic business validation; background delete is unauthorized and any unvalidated/failing plan degrades to no mutation."
     }
   ]
 }

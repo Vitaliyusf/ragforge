@@ -3,7 +3,7 @@ import unittest
 
 from pydantic import ValidationError
 
-from app.schemas.llm import validate_model_execution_request_message
+from app.schemas.llm import MemoryCurationAction, MemoryItem, validate_model_execution_request_message
 
 
 def _base_message():
@@ -136,3 +136,27 @@ class ModelExecutionSchemaTests(unittest.TestCase):
 
         with self.assertRaises(ValidationError):
             validate_model_execution_request_message(legacy_payload)
+
+
+class MemoryAgentOutputSchemaTests(unittest.TestCase):
+    def test_candidate_extraction_rejects_unbounded_or_untyped_values(self):
+        with self.assertRaises(ValidationError):
+            MemoryItem(type="preference", content="ok", confidence="high", action="create")
+        with self.assertRaises(ValidationError):
+            MemoryItem(type="guess", content="A durable fact", confidence=0.8, action="create")
+
+    def test_lifecycle_actions_enforce_action_specific_fields(self):
+        with self.assertRaises(ValidationError):
+            MemoryCurationAction(action="create", memory_id="existing", content="New fact")
+        with self.assertRaises(ValidationError):
+            MemoryCurationAction(action="supersede", content="Corrected fact")
+        with self.assertRaises(ValidationError):
+            MemoryCurationAction(action="delete", memory_id="existing", content="must be absent")
+
+        action = MemoryCurationAction(
+            action="update",
+            memory_id="existing",
+            content="Updated durable fact",
+            confidence=0.9,
+        )
+        self.assertEqual(action.memory_id, "existing")

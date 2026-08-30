@@ -31,6 +31,7 @@ from app.schemas.llm import (
     ChatTitleParsedOutput,
     ContentRiskScanParsedOutput,
     MemoryCurationParsedOutput,
+    MemoryCurationParsedOutputV1,
     MemoryExtractionParsedOutput,
     QueryRewriteParsedOutput,
 )
@@ -63,7 +64,7 @@ class PromptRegistry:
             "memory_extraction": "memory_extraction.v1",
             "chat_title": "chat_title.v1",
             "chat_summary": "chat_summary.v1",
-            "memory_curation": "memory_curation.v1",
+            "memory_curation": "memory_curation.v2",
         }
         self._entries: Dict[str, Dict[str, PromptRegistryEntry]] = {
             "answer_generation": {
@@ -170,13 +171,22 @@ class PromptRegistry:
                 )
             },
             "memory_curation": {
+                "memory_curation.v2": PromptRegistryEntry(
+                    request_type="memory_curation",
+                    prompt_version="memory_curation.v2",
+                    default_model=lambda settings: settings.default_model or settings.rag_chat_model or "",
+                    build_prompt=memory_maintenance.build_memory_curation_prompt_v2,
+                    parser=memory_maintenance.parse,
+                    output_model=MemoryCurationParsedOutput,
+                    structured_output_required=True,
+                ),
                 "memory_curation.v1": PromptRegistryEntry(
                     request_type="memory_curation",
                     prompt_version="memory_curation.v1",
                     default_model=lambda settings: settings.default_model or settings.rag_chat_model or "",
-                    build_prompt=memory_maintenance.build_memory_curation_prompt,
+                    build_prompt=memory_maintenance.build_memory_curation_prompt_v1,
                     parser=memory_maintenance.parse,
-                    output_model=MemoryCurationParsedOutput,
+                    output_model=MemoryCurationParsedOutputV1,
                     structured_output_required=True,
                 )
             },

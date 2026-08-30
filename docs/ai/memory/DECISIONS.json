@@ -240,6 +240,27 @@
         "backend/vector_db/app/db/implementations/qdrant.py",
         "backend/rag/app/services/conversation_backend_client.py"
       ]
+    },
+    {
+      "id": "DEC-013",
+      "status": "accepted",
+      "title": "Keep a custom bounded Memory Agent policy behind Memory V2",
+      "decision": "Use the existing typed llm_agent for extraction/curation and a Memory-owned deterministic policy layer for authorization, candidate-id validation, retry budgets, safe fallback and canonical lifecycle calls. Keep background chat-exit curation off the answer hot path and do not adopt LangMem in the current runtime.",
+      "reason": "LangMem, LangChain and LangGraph are absent from the canonical service image; LangMem stateful/tool primitives would introduce a parallel store and broader model mutation authority without measured correctness or maintenance benefit.",
+      "do_not_do": [
+        "Do not let the model choose tenant/user scope or reference a memory outside the server-supplied candidate set.",
+        "Do not let background chat exit delete memory or accept a partially valid action plan.",
+        "Do not make LangMem or another framework the persistence owner; MongoDB remains canonical and Qdrant derived."
+      ],
+      "revisit_if": [
+        "A canonical-runtime LangMem spike shows measurable gains on the committed multilingual/Qwen scenario suite without moving persistence, authorization or observability ownership."
+      ],
+      "evidence": [
+        "MEMORY-AGENT-01",
+        "backend/memory/app/agent/memory_agent.py",
+        "backend/memory/app/tests/agent/test_memory_agent_policy.py",
+        "docs/ai/tasks/MEMORY-AGENT-01-LANGMEM-SPIKE.md"
+      ]
     }
   ]
 }

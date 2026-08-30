@@ -123,8 +123,10 @@
       "status": "implemented",
       "owner": "memory/llm_agent",
       "canonical_paths": [
+        "backend/memory/app/agent/memory_agent.py",
         "backend/memory/app/services/chat_exit_service.py",
-        "backend/llm_agent/app/llm/prompts/memory_maintenance.py"
+        "backend/llm_agent/app/llm/prompts/memory_maintenance.py",
+        "backend/llm_agent/app/schemas/llm.py"
       ],
       "search_terms": [
         "memory_curation",
@@ -132,7 +134,7 @@
         "chat_summary",
         "MemoryCurationAction"
       ],
-      "notes": "llm_agent owns model execution; Memory validates and applies only mutations against tenant-scoped supplied IDs."
+      "notes": "llm_agent owns typed model execution; MemoryAgent is the bounded policy layer and LongTermMemoryService remains the persistence/lifecycle owner. The whole plan is deterministically validated before mutation, IDs must come from the tenant/user-scoped candidate set, background chat exit has no delete authority, and failures degrade to no mutation."
     },
     {
       "id": "CAP-009",

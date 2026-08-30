@@ -27,6 +27,7 @@ from app.services.execution_pipeline import ExecutionPipeline
 from app.services.text_window import ContextWindowResolver
 from shared.logging import ServiceLogger
 from shared.metrics import METRICS
+from shared.schema_provenance import canonical_schema_sha256
 
 
 StreamPublisher = Callable[[ModelExecutionStreamPayload], None]
@@ -157,6 +158,7 @@ class LLMService(BaseService):
         # Unknown until the request type resolves; never reported as a number
         # the call was not actually made with.
         resolved_max_tokens: Optional[int] = None
+        output_schema_sha256: Optional[str] = None
         provider_duration_seconds: Optional[float] = None
         token_event_count = 0
         status = "success"
@@ -186,6 +188,10 @@ class LLMService(BaseService):
                 streaming_requested=stream_publisher is not None,
             )
             entry = plan.entry
+            if entry.structured_output_required:
+                output_schema_sha256 = str(
+                    canonical_schema_sha256(entry.output_model.model_json_schema())
+                )
             resolved_prompt_version = plan.prompt_version
             resolved_model = plan.model
             resolved_max_tokens = plan.max_tokens
@@ -425,6 +431,7 @@ class LLMService(BaseService):
             latency_ms=latency_ms,
             model=resolved_model,
             prompt_version=resolved_prompt_version,
+            output_schema_sha256=output_schema_sha256,
             trace=TraceInfo(
                 trace_id=trace_snapshot.trace_id,
                 langsmith_run_id=trace_snapshot.langsmith_run_id,

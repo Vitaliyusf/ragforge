@@ -9,11 +9,13 @@ from uuid import uuid4
 
 import aio_pika
 
+from app.agent.memory_agent import AgentRunResult, AgentScope, MemoryAgent, MemoryAgentLLMError, RetryBudgets
 from app.core.config import settings
 from app.core.errors import DatabaseError
 from app.services.chat_service import ChatService
 from app.services.memory_service import LongTermMemoryService
 from app.services.message_service import MessageService
+from app.services.tenant_scope import current_identity
 from shared.auth import attach_internal_auth_context, verify_internal_ticket_from_envelope
 from shared.logging import ServiceLogger
 
@@ -97,15 +99,42 @@ class ChatExitService:
                                         continue
                                     reply = json.loads(message.body)
                                     verify_internal_ticket_from_envelope(reply, required=True)
+                                    payload = reply.get("payload") or {}
                                     if not reply.get("success"):
                                         error = reply.get("error") or {}
-                                        raise RuntimeError(error.get("message") or "llm_agent request failed")
-                                    parsed = (reply.get("payload") or {}).get("parsed_output")
+                                        application_status = str(payload.get("application_status") or "provider_error")
+                                        kind = (
+                                            "structured_output"
+                                            if application_status in {"structured_output_invalid", "validation_error"}
+                                            else "provider"
+                                        )
+                                        raise MemoryAgentLLMError(
+                                            error.get("message") or "llm_agent request failed",
+                                            kind=kind,
+                                        )
+                                    parsed = payload.get("parsed_output")
                                     if not isinstance(parsed, dict):
-                                        raise RuntimeError("llm_agent returned no parsed output")
-                                    return parsed
+                                        raise MemoryAgentLLMError(
+                                            "llm_agent returned no parsed output",
+                                            kind="structured_output",
+                                        )
+                                    result = dict(parsed)
+                                    result["__llm_provenance__"] = {
+                                        "operation": request_type,
+                                        "model": payload.get("model"),
+                                        "prompt_version": payload.get("prompt_version"),
+                                        "schema_sha256": payload.get("output_schema_sha256"),
+                                        "structured_output_transport": "json_schema",
+                                        "latency_ms": payload.get("latency_ms"),
+                                        "usage": payload.get("usage") or {},
+                                        "application_status": payload.get("application_status"),
+                                    }
+                                    return result
                 except TimeoutError as exc:
-                    raise RuntimeError(f"llm_agent request timed out after {timeout:.1f}s") from exc
+                    raise MemoryAgentLLMError(
+                        f"llm_agent request timed out after {timeout:.1f}s",
+                        kind="provider",
+                    ) from exc
         finally:
             await connection.close()
         raise RuntimeError("llm_agent reply queue closed before a response arrived")
@@ -151,41 +180,89 @@ class ChatExitService:
             return {"status": "success", "title": headline}
         return {"status": "success", "title": None}
 
-    def _curate_memories(self, messages: List[Dict[str, Any]], chat_id: str) -> None:
-        if len(messages) < 2:
-            return
-        existing = [
-            {
-                "id": memory.get("id"),
-                "content": memory.get("content"),
-                "category": memory.get("category", ""),
-            }
-            for memory in self.memory_service.get_all_memories()
-            if memory.get("category") != "user_insight"
-        ]
-        result = self._request_typed_llm(
-            "memory_curation",
-            {
-                "conversation_history": self._conversation_history(messages),
-                "existing_memory": existing,
-            },
-            settings.chat_exit_llm_timeout_seconds,
+    def _agent_scope(
+        self,
+        chat_id: str,
+        request_context: Optional[Dict[str, Any]],
+    ) -> Optional[AgentScope]:
+        identity = current_identity()
+        context = request_context or {}
+        # Identity is intentionally not reconstructed from payload fields. The
+        # Rabbit/HTTP boundary has already verified and installed this context.
+        if identity is None:
+            return None
+        return AgentScope(
+            tenant_id=identity.tenant_id,
+            user_id=identity.user_id,
+            role=identity.role,
+            request_id=str(context.get("request_id") or uuid4().hex),
+            trace_id=str(context.get("trace_id") or context.get("request_id") or uuid4().hex),
+            chat_id=chat_id,
+            # Background chat-exit curation never carries product delete authority.
+            delete_authorized=False,
         )
-        existing_ids = {str(memory["id"]) for memory in existing if memory.get("id")}
-        for action in result.get("actions", []):
-            action_type = action.get("action")
-            memory_id = str(action.get("memory_id") or "")
-            content = str(action.get("content") or "").strip()[:120]
-            if action_type == "add" and content:
-                self.memory_service.create_memory(
-                    content,
-                    action.get("category") or "chat_insight",
-                    {"source": "llm_agent", "chat_id": chat_id},
-                )
-            elif action_type == "update" and memory_id in existing_ids and content:
-                self.memory_service.update_memory(memory_id, content=content)
-            elif action_type == "delete" and memory_id in existing_ids:
-                self.memory_service.delete_memory(memory_id)
+
+    def _curate_memories(
+        self,
+        messages: List[Dict[str, Any]],
+        chat_id: str,
+        request_context: Optional[Dict[str, Any]] = None,
+    ) -> AgentRunResult:
+        if len(messages) < 2:
+            return AgentRunResult(status="no_op")
+        scope = self._agent_scope(chat_id, request_context)
+        if scope is None:
+            self.logger.log(
+                "chat_exit_service:_curate_memories",
+                "Skipping memory curation without trusted tenant/user scope",
+                {"chat_id": chat_id},
+                "E",
+            )
+            return AgentRunResult(status="fallback", errors=["trusted scope unavailable"])
+
+        history = self._conversation_history(messages)
+        query_text = "\n".join(
+            message["content"] for message in history if message["role"] == "user"
+        )[-settings.memory_agent_message_char_limit :]
+        try:
+            retrieval = self.memory_service.get_relevant_memories(
+                {
+                    "text": query_text,
+                    "limit": settings.memory_agent_candidate_limit,
+                    "include_history": False,
+                }
+            )
+            existing = list(retrieval.get("memories") or [])[: settings.memory_agent_candidate_limit]
+        except Exception as exc:
+            self.logger.log(
+                "chat_exit_service:_curate_memories",
+                "Memory candidate retrieval failed; curation skipped",
+                {"error_type": type(exc).__name__},
+                "E",
+            )
+            return AgentRunResult(status="fallback", errors=["bounded candidate retrieval failed"])
+
+        agent = MemoryAgent(
+            self.memory_service,
+            self._request_typed_llm,
+            self.logger,
+            candidate_limit=settings.memory_agent_candidate_limit,
+            history_limit=settings.memory_agent_history_limit,
+            message_char_limit=settings.memory_agent_message_char_limit,
+            content_char_limit=settings.memory_agent_content_char_limit,
+            retry_budgets=RetryBudgets(
+                structured_output=settings.memory_agent_structured_output_retries,
+                business_validation=settings.memory_agent_business_validation_retries,
+                tool_validation=settings.memory_agent_tool_validation_retries,
+                provider=settings.memory_agent_provider_retries,
+            ),
+        )
+        return agent.curate(
+            history,
+            existing,
+            scope,
+            timeout=settings.chat_exit_llm_timeout_seconds,
+        )
 
     def _compress_history(self, messages: List[Dict[str, Any]]) -> Optional[str]:
         if not messages:
@@ -209,7 +286,11 @@ class ChatExitService:
             {},
         )
 
-    def process_chat_exit(self, chat_id: str) -> Dict[str, Any]:
+    def process_chat_exit(
+        self,
+        chat_id: str,
+        request_context: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
         try:
             try:
                 current_chat = self.chat_service.get_chat(chat_id)
@@ -224,7 +305,7 @@ class ChatExitService:
                 headline = self._generate_headline(messages)
                 if headline and headline != "New Chat":
                     self.chat_service.update_title(chat_id, headline)
-            self._curate_memories(messages, chat_id)
+            curation = self._curate_memories(messages, chat_id, request_context)
             summary = self._compress_history(messages)
             if summary:
                 self.chat_service.update_compressed_summary(chat_id, summary)
@@ -234,7 +315,12 @@ class ChatExitService:
                 "Chat exit processed",
                 {"chat_id": chat_id, "headline": headline, "compressed": bool(summary)},
             )
-            return {"status": "success", "headline": headline, "memories_updated": True}
+            return {
+                "status": "success",
+                "headline": headline,
+                "memories_updated": bool(curation.mutations),
+                "memory_agent_status": curation.status,
+            }
         except Exception as exc:
             self.logger.log("chat_exit_service:process_chat_exit", "Error", {"chat_id": chat_id, "error": str(exc)}, "E")
             raise DatabaseError(f"Failed to process chat exit: {exc}")

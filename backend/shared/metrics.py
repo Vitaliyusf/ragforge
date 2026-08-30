@@ -475,6 +475,27 @@ class ServiceMetrics:
             ["service", "outcome", "comparison"],  # comparison: semantic | lexical
         )
 
+        # All labels below use closed vocabularies. Memory content, ids,
+        # tenant ids, and model error text are deliberately excluded.
+        self.memory_agent_runs_total = Counter(
+            "ragapp_memory_agent_runs_total",
+            "Bounded Memory Agent policy runs by outcome",
+            ["service", "operation", "outcome"],
+        )
+
+        self.memory_agent_retries_total = Counter(
+            "ragapp_memory_agent_retries_total",
+            "Memory Agent correction retries by failure class",
+            ["service", "retry_class"],
+        )
+
+        self.memory_agent_duration = Histogram(
+            "ragapp_memory_agent_duration_seconds",
+            "End-to-end Memory Agent policy latency",
+            ["service", "operation"],
+            buckets=[0.01, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 15.0, 30.0],
+        )
+
         # drift_class and outcome are both closed sets: the reconciler knows
         # every kind of divergence it can find and every way it can end.
         self.memory_reconciliation_total = Counter(

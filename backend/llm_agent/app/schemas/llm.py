@@ -133,9 +133,9 @@ class QueryRewriteInput(StrictSchema):
 class MemoryExtractionInput(StrictSchema):
     """Input fields for extracting durable memory candidates from chat history."""
 
-    conversation_history: List[ConversationMessage]
-    existing_memory: Optional[List[Dict[str, Any]]] = None
-    extraction_scope: Optional[str] = None
+    conversation_history: List[ConversationMessage] = Field(max_length=24)
+    existing_memory: Optional[List[Dict[str, Any]]] = Field(default=None, max_length=10)
+    extraction_scope: Optional[str] = Field(default=None, max_length=200)
 
 
 class ChatUtilityInput(StrictSchema):
@@ -147,7 +147,10 @@ class ChatUtilityInput(StrictSchema):
 class MemoryCurationInput(ChatUtilityInput):
     """Conversation and current state used to plan bounded memory mutations."""
 
-    existing_memory: List[Dict[str, Any]] = Field(default_factory=list)
+    conversation_history: List[ConversationMessage] = Field(max_length=24)
+    existing_memory: List[Dict[str, Any]] = Field(default_factory=list, max_length=10)
+    deletion_authorized: bool = False
+    validation_feedback: Optional[str] = Field(default=None, max_length=1000)
 
 
 class ModelExecutionRequestBase(StrictSchema):
@@ -344,10 +347,11 @@ class RiskFlag(StrictSchema):
 class MemoryItem(StrictSchema):
     """One extracted memory candidate returned by memory extraction."""
 
-    type: str
-    content: str
-    confidence: Union[float, str]
-    action: str
+    type: Literal["preference", "project_fact", "personal_fact", "temporal_fact", "scope_fact", "other"]
+    content: str = Field(min_length=3, max_length=500)
+    confidence: float = Field(ge=0, le=1)
+    action: Literal["ignore", "create"]
+    source_role: Literal["user", "product"] = "user"
 
 
 class AnswerGenerationParsedOutput(StrictSchema):
@@ -403,8 +407,8 @@ class ChatSummaryParsedOutput(StrictSchema):
     summary: str
 
 
-class MemoryCurationAction(StrictSchema):
-    """One bounded mutation proposed against the caller's current memories."""
+class MemoryCurationActionV1(StrictSchema):
+    """Legacy v1 chat-exit action retained for explicit prompt replay."""
 
     action: Literal["add", "update", "delete"]
     memory_id: Optional[str] = None
@@ -412,13 +416,47 @@ class MemoryCurationAction(StrictSchema):
     category: Optional[str] = None
 
     @model_validator(mode="after")
-    def validate_action_fields(self) -> "MemoryCurationAction":
+    def validate_action_fields(self) -> "MemoryCurationActionV1":
         if self.action == "add" and not self.content:
             raise ValueError("add actions require content")
         if self.action == "update" and (not self.memory_id or not self.content):
             raise ValueError("update actions require memory_id and content")
         if self.action == "delete" and not self.memory_id:
             raise ValueError("delete actions require memory_id")
+        return self
+
+
+class MemoryCurationParsedOutputV1(StrictSchema):
+    """Legacy output contract used only when memory_curation.v1 is requested."""
+
+    actions: List[MemoryCurationActionV1] = Field(default_factory=list, max_length=10)
+    summary: str
+
+
+class MemoryCurationAction(StrictSchema):
+    """One bounded mutation proposed against the caller's current memories."""
+
+    action: Literal["ignore", "create", "update", "supersede", "merge_suggestion", "delete"]
+    memory_id: Optional[str] = None
+    content: Optional[str] = Field(default=None, min_length=3, max_length=500)
+    category: Optional[str] = Field(default=None, max_length=80)
+    confidence: Optional[float] = Field(default=None, ge=0, le=1)
+    reason: Optional[str] = Field(default=None, max_length=240)
+    fact_key: Optional[str] = Field(default=None, max_length=120)
+    scope: Dict[str, str] = Field(default_factory=dict, max_length=8)
+
+    @model_validator(mode="after")
+    def validate_action_fields(self) -> "MemoryCurationAction":
+        if self.action == "create" and (not self.content or self.memory_id):
+            raise ValueError("create requires content and forbids memory_id")
+        if self.action in {"update", "supersede"} and (not self.memory_id or not self.content):
+            raise ValueError("update and supersede require memory_id and content")
+        if self.action == "merge_suggestion" and not self.memory_id:
+            raise ValueError("merge_suggestion requires memory_id")
+        if self.action == "delete" and (not self.memory_id or self.content):
+            raise ValueError("delete requires memory_id and forbids content")
+        if self.action == "ignore" and (self.memory_id or self.content):
+            raise ValueError("ignore forbids memory_id and content")
         return self
 
 
@@ -437,6 +475,7 @@ ParsedOutput = Union[
     MemoryExtractionParsedOutput,
     ChatTitleParsedOutput,
     ChatSummaryParsedOutput,
+    MemoryCurationParsedOutputV1,
     MemoryCurationParsedOutput,
 ]
 
@@ -491,6 +530,7 @@ class ModelExecutionResponsePayload(StrictSchema):
     latency_ms: int
     model: str
     prompt_version: str
+    output_schema_sha256: Optional[str] = Field(default=None, min_length=64, max_length=64)
     trace: TraceInfo
     errors: List[ErrorEntry] = Field(default_factory=list)
 
