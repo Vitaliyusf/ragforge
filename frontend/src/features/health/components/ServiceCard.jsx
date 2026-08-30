@@ -3,7 +3,8 @@
 import { memo } from 'react'
 import { motion } from 'framer-motion'
 import { Server } from 'lucide-react'
-import Badge from '@/components/ui/Badge'
+import DomainStatus from '@/components/status/DomainStatus'
+import { STATUS_DOMAINS } from '@/components/status/statusDomains'
 import { STATUS_CONFIG, SERVICE_LABELS } from './healthConfig'
 
 function ServiceCard({ name, info, index = 0 }) {
@@ -30,21 +31,24 @@ function ServiceCard({ name, info, index = 0 }) {
         <div className="min-w-0 flex-1">
           <div className="flex items-center justify-between gap-2">
             <span className="truncate text-[13px] font-semibold text-text-primary">{SERVICE_LABELS[name] || name}</span>
-            <Badge variant={cfg.badgeVariant} size="xs" dot>{cfg.label}</Badge>
+            <DomainStatus domain={STATUS_DOMAINS.SERVICE} state={info.status} />
           </div>
           <p className="mt-1 truncate text-xs text-text-muted">
             {info.message || (info.status === 'healthy' ? 'Responding normally' : 'Service requires attention')}
           </p>
+          {/* Probe results, named for what they are. "Live" used to appear
+              here, on the log stream and on the composer meaning three
+              different things; a liveness probe is not a live connection. */}
           <div className="mt-2 flex items-center gap-2 text-xs text-text-muted">
-            <span>Live: <strong className="text-text-primary">{info.live ? 'yes' : 'no'}</strong></span>
-            <span>Ready: <strong className="text-text-primary">{info.ready ? 'yes' : 'no'}</strong></span>
+            <span>Liveness: <strong className="text-text-primary">{info.live ? 'passing' : 'failing'}</strong></span>
+            <span>Readiness: <strong className="text-text-primary">{info.ready ? 'passing' : 'failing'}</strong></span>
           </div>
         </div>
       </div>
 
       <div className="mt-3 flex items-center justify-between border-t border-border pt-2.5">
         <span className="flex items-center gap-1.5 text-xs text-text-muted">
-          <Icon size={11} style={{ color: cfg.iconColor }} /> Live / ready checks
+          <Icon size={11} style={{ color: cfg.iconColor }} /> Liveness / readiness probes
         </span>
         {info.port && (
           <span className="rounded-md bg-bg-tertiary px-1.5 py-0.5 font-mono text-xs text-text-muted">:{info.port}</span>

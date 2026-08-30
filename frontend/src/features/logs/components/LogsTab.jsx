@@ -7,7 +7,6 @@ import {
   Activity,
   FileStack,
   Filter,
-  Loader2,
   Pause,
   Pin,
   Play,
@@ -31,6 +30,7 @@ import {
   toggleSeverity,
 } from '@/store/slices/logsSlice'
 import Badge from '@/components/ui/Badge'
+import { serviceLabel } from '@/lib/terminology'
 import Button from '@/components/ui/Button'
 import Card from '@/components/ui/Card'
 import Input from '@/components/ui/Input'
@@ -190,7 +190,7 @@ export default function LogsTab() {
                       className="sr-only"
                     />
                     <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: serviceColor, opacity: selected ? 1 : 0.45 }} />
-                    <span className="min-w-0 flex-1 truncate capitalize">{service.replace(/_/g, ' ')}</span>
+                    <span className="min-w-0 flex-1 truncate">{serviceLabel(service)}</span>
                     {selected ? <span className="text-xs" style={{ color: serviceColor }}>✓</span> : null}
                   </label>
                 )
@@ -324,7 +324,7 @@ export default function LogsTab() {
                 <span className="h-2 w-2 rounded-full bg-success" />
                 <h2 className="truncate text-[15px] font-semibold text-text-primary">
                   {selectedServices.length === 1
-                    ? `${selectedServices[0].replace(/_/g, ' ')} output`
+                    ? `${serviceLabel(selectedServices[0])} output`
                     : `${selectedServices.length} service streams`}
                 </h2>
               </div>
@@ -332,7 +332,9 @@ export default function LogsTab() {
             </div>
             <div className="flex items-center gap-1.5">
               {hasActiveFilters ? <Badge variant="primary" size="xs" icon={Filter}>Filtered</Badge> : null}
-              {autoRefresh ? <Badge variant="success" size="xs" icon={Loader2} spin>Live</Badge> : null}
+              {/* The auto-refresh toggle beside this already says whether the
+                  stream is following; a second "Live" chip here was one of
+                  four things in the app claiming liveness in its own words. */}
               {pinnedToBottom ? <Badge variant="accent" size="xs" icon={Pin}>Pinned</Badge> : null}
             </div>
           </div>
@@ -384,7 +386,7 @@ export default function LogsTab() {
                   >
                     <div className="sticky top-0 z-10 mb-1.5 flex items-center gap-2 rounded-xl border border-border px-3 py-2 backdrop-blur">
                       <span className="h-2 w-2 rounded-full" style={{ background: getServiceColor(service) }} />
-                      <span className="text-xs font-semibold capitalize text-text-primary">{service.replace(/_/g, ' ')}</span>
+                      <span className="text-xs font-semibold text-text-primary">{serviceLabel(service)}</span>
                       <span className="ml-auto text-xs text-text-muted">{serviceLogs.length} events</span>
                     </div>
 

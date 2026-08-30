@@ -1,6 +1,7 @@
 /** Section definitions, labels, units, formatters and thresholds. */
 
 import { Activity, Gauge, Search, ShieldCheck, Workflow } from 'lucide-react'
+import { SERVICE_LABELS } from '@/lib/terminology'
 
 /** Shown wherever the API returned null — "not measured", not "zero". */
 export const EMPTY = '—'
@@ -143,15 +144,8 @@ export const STAGE_LABELS = {
   judge: 'Judge',
 }
 
-export const SERVICE_LABELS = {
-  gateway: 'Gateway',
-  rag: 'RAG Orchestrator',
-  files: 'File Service',
-  llm_agent: 'LLM Agent',
-  embedding: 'Embedding',
-  reranker: 'Reranker',
-  memory: 'Memory',
-}
+/** Re-exported from the shared terminology so metrics cannot drift from health. */
+export { SERVICE_LABELS }
 
 export const FUNNEL_STEP_LABELS = {
   uploaded: 'Uploaded',

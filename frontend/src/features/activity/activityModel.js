@@ -8,6 +8,8 @@
  * mapping, so it can be tested without a DOM.
  */
 
+import { PRODUCT_LABELS } from '@/lib/terminology'
+
 export const ACTIVITY_STATES = Object.freeze({
   IDLE: 'idle',
   QUEUED: 'queued',
@@ -152,9 +154,9 @@ export const FILE_FAILED_STATUSES = new Set(['error', 'rejected'])
 /* ── Accessible status text ────────────────────────────────────────────── */
 
 const FEATURE_LABELS = {
-  [ACTIVITY_FEATURES.EVAL]: 'Eval',
-  [ACTIVITY_FEATURES.CHAT]: 'Chat',
-  [ACTIVITY_FEATURES.FILES]: 'Files',
+  [ACTIVITY_FEATURES.EVAL]: PRODUCT_LABELS.eval,
+  [ACTIVITY_FEATURES.CHAT]: PRODUCT_LABELS.chat,
+  [ACTIVITY_FEATURES.FILES]: PRODUCT_LABELS.knowledge,
 }
 
 /**
@@ -191,10 +193,10 @@ const DEFAULT_PHRASES = {
     failed: 'last request failed',
   },
   [ACTIVITY_FEATURES.FILES]: {
-    queued: 'processing queued',
-    running: 'processing files',
-    success: 'processing finished',
+    queued: 'indexing queued',
+    running: 'indexing documents',
+    success: 'indexing finished',
     warning: 'needs review',
-    failed: 'file processing failed',
+    failed: 'indexing failed',
   },
 }

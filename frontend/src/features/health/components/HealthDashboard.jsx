@@ -5,7 +5,6 @@ import {
   Server, RefreshCw, AlertTriangle, CheckCircle2, XCircle, Gauge, HeartPulse, ShieldCheck,
 } from 'lucide-react'
 import Button from '@/components/ui/Button'
-import Badge from '@/components/ui/Badge'
 import PageHeader from '@/components/ui/PageHeader'
 import StatCard from '@/components/ui/StatCard'
 import EmptyState from '@/components/feedback/EmptyState'
@@ -16,6 +15,8 @@ import ServiceCard from './ServiceCard'
 import CircuitBreakerPanel from './CircuitBreakerPanel'
 import RateLimiterPanel from './RateLimiterPanel'
 import MiniSparkline from './MiniSparkline'
+import DomainStatus from '@/components/status/DomainStatus'
+import { STATUS_DOMAINS } from '@/components/status/statusDomains'
 import { STATUS_CONFIG, SERVICE_LABELS } from './healthConfig'
 
 export default function HealthDashboard() {
@@ -49,13 +50,11 @@ export default function HealthDashboard() {
         title="System health"
         description={health?.timestamp
           ? `Last updated ${new Date(health.timestamp * 1000).toLocaleTimeString()}`
-          : 'A live view of service availability and platform protection'}
+          : 'Service availability and platform protection'}
         icon={HeartPulse}
         badge={
           health && (
-            <Badge variant={overallCfg.badgeVariant} dot>
-              {overallCfg.label}
-            </Badge>
+            <DomainStatus domain={STATUS_DOMAINS.SERVICE} state={health.status} size="md" />
           )
         }
         actions={
@@ -104,7 +103,7 @@ export default function HealthDashboard() {
                       ? 'Platform intervention is required'
                       : 'Waiting for platform telemetry'}
               </h2>
-              <Badge variant={overallCfg.badgeVariant} dot>{overallCfg.label}</Badge>
+              <DomainStatus domain={STATUS_DOMAINS.SERVICE} state={health?.status} size="md" />
             </div>
             <p className="mt-1 text-[15px] text-text-muted">
               {healthyCount} of {totalServices} services are responding normally.
@@ -151,7 +150,7 @@ export default function HealthDashboard() {
           <Server size={14} style={{ color: 'var(--fg-soft)' }} />
           <div>
             <span className="text-[15px] font-semibold" style={{ color: 'var(--fg)' }}>Service map</span>
-            <p className="mt-0.5 text-xs text-text-muted">Live status for every platform dependency</p>
+            <p className="mt-0.5 text-xs text-text-muted">Reported health for every platform dependency</p>
           </div>
           <span className="ml-auto text-[13px]" style={{ color: 'var(--fg-soft)' }}>
             {healthyCount}/{totalServices} online

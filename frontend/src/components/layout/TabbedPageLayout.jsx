@@ -5,7 +5,7 @@
  * Each tab controls its own padding and layout.
  */
 
-import { Activity, useEffect, useRef, useState } from 'react'
+import { Activity, useEffect, useMemo, useRef, useState } from 'react'
 import dynamic from 'next/dynamic'
 import Header from '@/components/layout/Header'
 import TabSkeleton from '@/components/ui/TabSkeleton'
@@ -13,6 +13,7 @@ import ErrorBoundary from '@/components/ErrorBoundary'
 import { config as appConfig } from '@/lib/config'
 import { useAuth } from '@/features/auth'
 import { ACTIVITY_FEATURES, isTerminalState, useActivity } from '@/features/activity'
+import { FALLBACK_TAB, allowedTabsForRole } from './navigationModel'
 
 const ChatTab = dynamic(() => import('@/features/chat/components/ChatTab'), {
   loading: () => <TabSkeleton />, ssr: false,
@@ -120,23 +121,29 @@ const ACKNOWLEDGEABLE = new Set(Object.values(ACTIVITY_FEATURES))
  *   moves to a URL that names a different destination.
  */
 export default function TabbedPageLayout({ defaultTab = 'chat', routeTab = null }) {
-  const { isAdmin } = useAuth()
+  const { user, isAdmin } = useAuth()
   const { activities, acknowledge } = useActivity()
   const initialTab = resolveTab(routeTab || defaultTab)
   const [activeTab, setActiveTab] = useState(initialTab)
   const [retainedTabs, setRetainedTabs] = useState(() =>
     STATE_PRESERVING_TABS.has(initialTab) ? [initialTab] : []
   )
-  const allowedTabs = isAdmin
-    ? new Set(['chat', 'files', 'logs', 'models', 'config', 'memory', 'health', 'metrics', 'eval', 'users', ...(appConfig.enableTrainingTab ? ['training'] : [])])
-    : new Set(['chat', 'upload', 'memory'])
+  // What may be opened comes from the same navigation model the header
+  // renders from, so a destination cannot be listed but unreachable — or,
+  // worse, unlisted but still openable. It mirrors server authorization; it
+  // does not replace it.
+  const role = user?.role || (isAdmin ? 'admin' : 'user')
+  const allowedTabs = useMemo(
+    () => allowedTabsForRole(role, { features: { training: appConfig.enableTrainingTab } }),
+    [role]
+  )
   const requestedTab = resolveTab(activeTab)
-  const safeActiveTab = allowedTabs.has(requestedTab) ? requestedTab : 'chat'
+  const safeActiveTab = allowedTabs.has(requestedTab) ? requestedTab : FALLBACK_TAB
   const TabComponent = TAB_COMPONENTS[safeActiveTab]
 
   useEffect(() => {
-    if (!allowedTabs.has(resolveTab(activeTab))) setActiveTab('chat')
-  }, [activeTab, isAdmin])
+    if (!allowedTabs.has(resolveTab(activeTab))) setActiveTab(FALLBACK_TAB)
+  }, [activeTab, allowedTabs])
 
   // The URL steers the shell only when the route itself moves to a different
   // named destination. Switching tabs by hand leaves the pathname alone, so

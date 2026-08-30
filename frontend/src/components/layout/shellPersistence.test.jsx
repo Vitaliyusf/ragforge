@@ -108,13 +108,13 @@ describe('workspace state preservation', () => {
     const user = userEvent.setup()
     renderShell()
 
-    await user.click(screen.getByRole('button', { name: 'Files' }))
+    await user.click(screen.getByRole('button', { name: 'Knowledge' }))
     await user.type(await screen.findByLabelText('files search'), 'invoice')
 
     await user.click(screen.getByRole('button', { name: 'Logs' }))
     await screen.findByText('logs workspace')
 
-    await user.click(screen.getByRole('button', { name: 'Files' }))
+    await user.click(screen.getByRole('button', { name: 'Knowledge' }))
     expect(await screen.findByLabelText('files search')).toHaveValue('invoice')
   })
 
@@ -139,7 +139,7 @@ describe('hidden workspace lifecycle', () => {
     const user = userEvent.setup()
     renderShell()
 
-    await user.click(screen.getByRole('button', { name: 'Files' }))
+    await user.click(screen.getByRole('button', { name: 'Knowledge' }))
     await screen.findByLabelText('files search')
     expect(mockProbe.filesEffects).toBe(1)
     expect(mockProbe.filesCleanups).toBe(0)
@@ -148,7 +148,7 @@ describe('hidden workspace lifecycle', () => {
     await screen.findByText('logs workspace')
     expect(mockProbe.filesCleanups).toBe(1)
 
-    await user.click(screen.getByRole('button', { name: 'Files' }))
+    await user.click(screen.getByRole('button', { name: 'Knowledge' }))
     await screen.findByLabelText('files search')
     expect(mockProbe.filesEffects).toBe(2)
   })

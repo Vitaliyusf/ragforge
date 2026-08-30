@@ -193,6 +193,30 @@
         "frontend/src/features/eval/runReport.test.js",
         "frontend/src/features/eval/components/report/RunReport.test.jsx"
       ]
+    },
+    {
+      "id": "DEC-011",
+      "status": "accepted",
+      "title": "One product model: four navigation pillars, five status domains, one global activity control",
+      "decision": "Navigation destinations, their canonical labels and their role visibility live in a single frontend model (components/layout/navigationModel.js) that both the header and the shell read; status words come from five non-overlapping domains (resource, service, execution, connectivity, review) in components/status/statusDomains.js; and the header carries exactly one activity control, derived from published activity only.",
+      "reason": "Every subsystem used to be an equal top-level button, three surfaces spelled liveness their own way, and service names diverged between health, metrics and logs.",
+      "do_not_do": [
+        "Do not add a navigation destination anywhere but the navigation model; header and shell must not diverge.",
+        "Do not mix status domains — a document is never Healthy, a service is never Queued.",
+        "Do not add a second liveness badge; the global activity control is the only one.",
+        "Do not treat role visibility as authorization: the server still authorizes every call.",
+        "Do not synthesize activity the backend has not published."
+      ],
+      "revisit_if": [
+        "The gateway begins issuing roles beyond admin/user and the pillar policy needs real evaluator/operator wiring.",
+        "The shell moves to URL-driven destinations rather than shell-owned tab state."
+      ],
+      "evidence": [
+        "frontend/src/components/layout/navigationModel.js",
+        "frontend/src/components/status/statusDomains.js",
+        "frontend/src/features/activity/globalActivity.js",
+        "frontend/src/lib/terminology.js"
+      ]
     }
   ]
 }
