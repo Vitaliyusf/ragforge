@@ -285,6 +285,25 @@
         "backend/memory/app/tests/core/test_memory_resurrection_guard.py",
         "MEMORY-EVAL-01 resurrection prevention 0/24 -> 24/24, forbidden retrievals 24 -> 0"
       ]
+    },
+    {
+      "id": "DEC-015",
+      "status": "accepted",
+      "title": "The deterministic Memory benchmark owns its memory ids",
+      "decision": "`app/eval/runner.py` mints every memory id it writes with `uuid.uuid5(EVAL_MEMORY_ID_NAMESPACE, request_id)` instead of letting the service fall back to `uuid.uuid4()`. Production retrieval breaks a fully tied ranking on the memory id, so ids are ranking input, not opaque labels, and a random id makes the order of two equally scored memories a per-run coin flip. `app/eval/determinism.py` states which output that guarantee covers: everything except wall-clock timing (`provenance.wall_time_ms`, `provenance.operational_metrics`, the latency means inside `summary.operational_metrics`, and per-scenario `stage_d.agent_latency_ms`).",
+      "reason": "MEMORY-EVAL-02 measured Stage-C nDCG varying between identical runs (0.98922 / 0.99191 / 0.99345) on an unchanged dataset hash and source revision, while the benchmark labelled itself AUTHORITATIVE DETERMINISTIC. The tie-break was the only nondeterministic input; hit@1, MRR and recall were unaffected because they are set-membership over the same ids, and graded nDCG is the one metric that reads their order.",
+      "do_not_do": [
+        "Do not restore reproducibility by rounding metrics, by pinning PYTHONHASHSEED for callers, or by changing production ranking; the benchmark must be deterministic on its own.",
+        "Do not compare wall-clock latency, benchmark wall time, or export ZIP metadata as deterministic evaluation output; compare `deterministic_projection` instead.",
+        "Do not change dataset labels, scenario meanings or scenario counts to stabilise a metric; the dataset stayed at 624 scenarios and sha256 d0c5f050c4bb9882a30f0ddcafc014a590ff9fcab281b041d6628107c1ba49d4."
+      ],
+      "revisit_if": [
+        "Production ranking gains a stable secondary key ahead of the memory id, which would make the id irrelevant to order and this constraint merely tidy.",
+        "The benchmark starts measuring a live runtime, where ids are assigned by the service under test and reproducibility has to be argued differently."
+      ],
+      "evidence": [
+        "MEMORY-EVAL-02"
+      ]
     }
   ]
 }
