@@ -37,6 +37,23 @@ class Settings(BaseSettings):
     # Memory retrieval configuration
     memory_retrieval_default_limit: int = 6
 
+    # Consolidation and conflict policy. Comparison is always bounded: one
+    # write inspects at most `memory_dedupe_candidate_limit` existing memories,
+    # so write cost does not grow with the size of an owner's memory.
+    memory_dedupe_candidate_limit: int = 10
+    # At or above this similarity two memories in the same scope are the same
+    # fact and the new one reinforces the old rather than adding a second.
+    memory_duplicate_similarity_threshold: float = 0.92
+    # Between the conflict and duplicate thresholds the memories are related;
+    # what happens then depends on their scope and declared fact key, never on
+    # similarity alone.
+    memory_conflict_similarity_threshold: float = 0.75
+
+    # Reconciliation between MongoDB and the vector index. Every run is
+    # bounded and resumable rather than a global rebuild.
+    memory_reconciliation_batch_limit: int = 100
+    memory_reconciliation_scan_orphans: bool = True
+
     # Canonical embedding boundary. Memory vectors come from the production
     # embedding service over RPC; the memory service never loads a model or
     # synthesises a vector of its own.

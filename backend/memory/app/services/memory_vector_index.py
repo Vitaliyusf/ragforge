@@ -9,7 +9,7 @@ reconciliation state when the index and MongoDB disagree.
 from __future__ import annotations
 
 import uuid
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import httpx
 
@@ -119,6 +119,11 @@ class MemoryVectorIndex:
             "importance": memory_doc.get("importance", 0.0),
             "updated_at": memory_doc.get("updated_at"),
             "status": memory_doc.get("status", "active"),
+            # The revision the point was built from. Reconciliation compares it
+            # to the canonical document to find vectors that describe wording
+            # the memory no longer has.
+            "revision": memory_doc.get("revision", 1),
+            "valid_to": memory_doc.get("valid_to"),
             "archived": bool(memory_doc.get("archived_at")),
             "tenant_id": identity.tenant_id,
             "owner_user_id": identity.user_id,
@@ -186,6 +191,71 @@ class MemoryVectorIndex:
             }
             for item in results
         ]
+
+    def scroll_points(
+        self,
+        limit: int,
+        offset: Optional[str] = None,
+    ) -> Tuple[List[Dict[str, Any]], Optional[str]]:
+        """Page through the caller's own points, newest page cursor last.
+
+        Reconciliation needs to see what the index actually holds in order to
+        find points whose canonical memory is gone. The scroll is filtered to
+        the caller's tenant and user like every other operation here, and it is
+        bounded and resumable: it returns one page plus the cursor for the
+        next, never the whole collection.
+        """
+        if not self._enabled:
+            raise MemoryVectorIndexError("memory vector index is disabled")
+        identity = self._require_identity("scrolling")
+        self._ensure_collection()
+        body: Dict[str, Any] = {
+            "limit": limit,
+            "with_payload": True,
+            "with_vector": False,
+            "filter": {
+                "must": [
+                    {"key": "tenant_id", "match": {"value": identity.tenant_id}},
+                    {"key": "owner_user_id", "match": {"value": identity.user_id}},
+                ]
+            },
+        }
+        if offset is not None:
+            body["offset"] = offset
+        try:
+            response = self._request("POST", f"{self._collection_url()}/points/scroll", body)
+        except httpx.HTTPError as exc:
+            raise MemoryVectorIndexError(str(exc)) from exc
+        result = response.get("result") or {}
+        points = [
+            {
+                "point_id": item.get("id"),
+                "payload": item.get("payload") or {},
+            }
+            for item in (result.get("points") or [])
+        ]
+        next_offset = result.get("next_page_offset")
+        return points, None if next_offset is None else str(next_offset)
+
+    def delete_point(self, point_id: str) -> None:
+        """Delete one point by its id, inside the caller's tenant/user scope.
+
+        Used only by reconciliation, which finds points by id rather than by
+        memory: an orphaned or duplicated point may have no canonical memory
+        left to name it.
+        """
+        if not self._enabled:
+            raise MemoryVectorIndexError("memory vector index is disabled")
+        self._require_identity("deletion")
+        self._ensure_collection()
+        try:
+            self._request(
+                "POST",
+                f"{self._collection_url()}/points/delete?wait=true",
+                {"points": [point_id]},
+            )
+        except httpx.HTTPError as exc:
+            raise MemoryVectorIndexError(str(exc)) from exc
 
     def delete_memory(self, memory_id: str) -> None:
         """Delete one memory point inside the caller's tenant/user scope."""

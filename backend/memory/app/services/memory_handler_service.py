@@ -14,6 +14,7 @@ from shared.errors import ServiceException
 from shared.logging import ServiceLogger
 from app.services.chat_exit_service import ChatExitService
 from app.services.chat_service import ChatService
+from app.services.memory_reconciliation import MemoryReconciliationService
 from app.services.memory_service import LongTermMemoryService
 from app.services.message_service import MessageService
 from app.services.tenant_scope import current_identity
@@ -42,6 +43,7 @@ QUERY_ACTIONS = {
     "get_long_term_memories",
     "get_user_insight",
     "get_compressed_history",
+    "memory_drift_report",
 }
 
 
@@ -55,12 +57,16 @@ class MemoryHandlerService:
         memory_service: LongTermMemoryService,
         chat_exit_service: ChatExitService,
         logger: ServiceLogger,
+        reconciliation_service: Optional[MemoryReconciliationService] = None,
     ):
         self.chat_service = chat_service
         self.message_service = message_service
         self.memory_service = memory_service
         self.chat_exit_service = chat_exit_service
         self.logger = logger
+        self.reconciliation_service = reconciliation_service or MemoryReconciliationService(
+            memory_service, logger
+        )
 
     def _now_iso(self) -> str:
         """Return the current UTC timestamp."""
@@ -303,6 +309,10 @@ class MemoryHandlerService:
                 return self._handle_get_relevant_memories(request)
             elif action == "list_memory_for_debug":
                 return self._handle_list_memory_for_debug(request)
+            elif action == "reconcile_memory_index":
+                return self._handle_reconcile_memory_index(request)
+            elif action == "memory_drift_report":
+                return self._handle_memory_drift_report(request)
             elif action == "create_chat":
                 return self._handle_create_chat(request)
             elif action == "add_message":
@@ -424,6 +434,25 @@ class MemoryHandlerService:
         filters = dict(request.get("payload") or {})
         result = self.memory_service.list_memory_for_debug(filters)
         return self._send_response(request, result)
+
+    def _handle_reconcile_memory_index(self, request: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Handle reconcile_memory_index action.
+
+        One bounded, resumable pass. The caller controls how much work a single
+        request does and gets back the cursor to continue from, so a large
+        collection is repaired across several calls rather than one sweep that
+        holds the queue.
+        """
+        payload = request.get("payload") or {}
+        result = self.reconciliation_service.reconcile(
+            limit=payload.get("limit"),
+            cursor=payload.get("cursor"),
+        )
+        return self._send_response(request, result)
+
+    def _handle_memory_drift_report(self, request: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Handle memory_drift_report action — read-only consistency check."""
+        return self._send_response(request, self.reconciliation_service.drift_report())
 
     def _handle_create_chat(self, request: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Handle create_chat action."""

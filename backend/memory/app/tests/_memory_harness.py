@@ -22,6 +22,7 @@ from unittest.mock import Mock
 
 
 from app.services.memory_embedding_client import MemoryEmbeddingClient, MemoryEmbeddingError
+from app.services.memory_reconciliation import MemoryReconciliationService
 from app.services.memory_service import LongTermMemoryService
 from app.services.memory_vector_index import MemoryVectorIndex, MemoryVectorIndexError
 from app.services.tenant_scope import current_identity
@@ -149,13 +150,24 @@ class FakeVectorIndex:
 
     collection_name = "memory_items_test"
 
-    def __init__(self, enabled=False, search_results=None, fail_index=False, fail_delete=False):
+    def __init__(
+        self,
+        enabled=False,
+        search_results=None,
+        fail_index=False,
+        fail_delete=False,
+        points=None,
+        fail_scroll=False,
+    ):
         self.enabled = enabled
         self.search_results = list(search_results or [])
         self.fail_index = fail_index
         self.fail_delete = fail_delete
+        self.fail_scroll = fail_scroll
+        self.points = list(points or [])
         self.indexed_ids = []
         self.deleted_ids = []
+        self.deleted_point_ids = []
         self.searched_vectors = []
 
     def is_enabled(self):
@@ -176,6 +188,25 @@ class FakeVectorIndex:
         if self.fail_delete:
             raise MemoryVectorIndexError("vector delete failed")
         self.deleted_ids.append(memory_id)
+        self.points = [
+            point for point in self.points
+            if (point.get("payload") or {}).get("memory_id") != memory_id
+        ]
+
+    def point_id(self, tenant_id, user_id, memory_id):
+        return f"point-{tenant_id}:{user_id}:{memory_id}"
+
+    def scroll_points(self, limit, offset=None):
+        if self.fail_scroll:
+            raise MemoryVectorIndexError("vector scroll failed")
+        del offset
+        return list(self.points[:limit]), None
+
+    def delete_point(self, point_id):
+        if self.fail_delete:
+            raise MemoryVectorIndexError("vector point delete failed")
+        self.deleted_point_ids.append(point_id)
+        self.points = [point for point in self.points if point.get("point_id") != point_id]
 
 
 class InMemoryVectorIndex:
@@ -214,6 +245,8 @@ class InMemoryVectorIndex:
                 "owner_id": memory_doc["owner_id"],
                 "owner_type": memory_doc["owner_type"],
                 "status": memory_doc.get("status", "active"),
+                "revision": memory_doc.get("revision", 1),
+                "valid_to": memory_doc.get("valid_to"),
                 "archived": bool(memory_doc.get("archived_at")),
                 "tenant_id": identity.tenant_id,
                 "owner_user_id": identity.user_id,
@@ -251,6 +284,26 @@ class InMemoryVectorIndex:
             key for key, point in self.points.items() if point["payload"]["memory_id"] == memory_id
         ]:
             del self.points[point_id]
+
+    def point_id(self, tenant_id, user_id, memory_id):
+        return f"{tenant_id}:{user_id}:{memory_id}"
+
+    def scroll_points(self, limit, offset=None):
+        del offset
+        identity = current_identity()
+        mine = [
+            {"point_id": point_id, "payload": point["payload"]}
+            for point_id, point in sorted(self.points.items())
+            if identity is None
+            or (
+                point["payload"]["tenant_id"] == identity.tenant_id
+                and point["payload"]["owner_user_id"] == identity.user_id
+            )
+        ]
+        return mine[:limit], None
+
+    def delete_point(self, point_id):
+        self.points.pop(point_id, None)
 
 
 class BagOfWordsEmbeddingClient:
@@ -422,3 +475,8 @@ def preference_candidate(text="The user explicitly prefers concise answers with 
         "provenance": {"explicit_user_signal": True, "stable_feedback_count": 2},
         "tags": ["preference", "concise", "citations"],
     }
+
+
+def build_reconciliation_service(service, logger=None):
+    """Wrap a memory service in its reconciler, sharing the same fakes."""
+    return MemoryReconciliationService(service, logger or Mock())
