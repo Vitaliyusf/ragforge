@@ -22,6 +22,12 @@ IDENTITY = AuthIdentity(
 )
 
 
+@pytest.fixture(autouse=True)
+def configure_internal_auth(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("INTERNAL_AUTH_REQUIRED", "true")
+    monkeypatch.setenv("INTERNAL_AUTH_SECRET", SECRET)
+
+
 @asynccontextmanager
 async def _processed() -> Any:
     yield
