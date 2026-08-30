@@ -17,6 +17,7 @@ class RAGConfig(BaseSettings):
     rabbitmq_exchange: str = "ragapp.requests"
     rabbitmq_queue: str = "rag"
     rabbitmq_prefetch_count: int = 1
+    rabbitmq_rpc_max_inflight: int = 64
 
     # Direct-exchange routing keys for downstream service calls.
     memory_routing_key: str = "memory"

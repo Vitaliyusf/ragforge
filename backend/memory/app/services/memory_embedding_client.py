@@ -8,17 +8,14 @@ with a non-semantic vector is worse than a memory that is not indexed at all.
 """
 from __future__ import annotations
 
-import asyncio
-import json
 import time
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
-import aio_pika
-
 from app.core.config import settings
-from shared.auth import attach_internal_auth_context, verify_internal_ticket_from_envelope
+from shared.auth import verify_internal_ticket_from_envelope
 from shared.logging import ServiceLogger
+from shared.rabbitmq_rpc import MultiplexedRabbitMQRPCClient
 
 
 class MemoryEmbeddingError(RuntimeError):
@@ -28,8 +25,13 @@ class MemoryEmbeddingError(RuntimeError):
 class MemoryEmbeddingClient:
     """Embed memory text through the canonical embedding service."""
 
-    def __init__(self, logger: ServiceLogger) -> None:
+    def __init__(
+        self,
+        logger: ServiceLogger,
+        rpc_client: Optional[MultiplexedRabbitMQRPCClient] = None,
+    ) -> None:
         self.logger = logger
+        self._rpc_client = rpc_client
 
     # ------------------------------------------------------------------
     # Provenance
@@ -82,7 +84,7 @@ class MemoryEmbeddingClient:
         """Run one embedding RPC and validate the returned vector."""
         payload_text = f"{prefix}{self._bounded_text(text)}"
         try:
-            vector = asyncio.run(self._request_embedding(payload_text))
+            vector = self._request_embedding_sync(payload_text)
         except MemoryEmbeddingError:
             raise
         except Exception as exc:
@@ -99,59 +101,41 @@ class MemoryEmbeddingClient:
         except (TypeError, ValueError) as exc:
             raise MemoryEmbeddingError("embedding service returned a non-numeric vector") from exc
 
-    async def _request_embedding(self, text: str) -> List[float]:
-        """Publish one ``embed`` request and await its reply."""
+    def _embedding_envelope(self, text: str) -> Dict[str, Any]:
+        """Build one unsigned envelope; the transport adds reply/auth fields."""
+        message_id = uuid4().hex
+        return {
+            "message_id": message_id,
+            "message_type": "query",
+            "action": "embed",
+            "source_service": settings.service_name,
+            "target_service": settings.embedding_queue,
+            "request_id": message_id,
+            "trace_id": message_id,
+            "correlation_id": message_id,
+            "timestamp": int(time.time() * 1000),
+            "payload": {"action": "embed", "text": text},
+        }
+
+    def _require_rpc_client(self) -> MultiplexedRabbitMQRPCClient:
+        if self._rpc_client is None:
+            raise MemoryEmbeddingError("memory RPC transport is not configured")
+        return self._rpc_client
+
+    def _request_embedding_sync(self, text: str) -> List[float]:
+        """Schedule one embedding RPC on the service event loop."""
         timeout = settings.memory_embedding_timeout_seconds
-        connection = await aio_pika.connect_robust(settings.rabbitmq_url)
         try:
-            async with connection.channel() as channel:
-                exchange = await channel.declare_exchange(
-                    settings.rabbitmq_exchange,
-                    aio_pika.ExchangeType.DIRECT,
-                    durable=True,
-                )
-                reply_queue = await channel.declare_queue(exclusive=True, auto_delete=True)
-                message_id = uuid4().hex
-                envelope = attach_internal_auth_context(
-                    {
-                        "message_id": message_id,
-                        "message_type": "query",
-                        "action": "embed",
-                        "source_service": settings.service_name,
-                        "target_service": settings.embedding_queue,
-                        "request_id": message_id,
-                        "trace_id": message_id,
-                        "correlation_id": message_id,
-                        "reply_to": reply_queue.name,
-                        "timestamp": int(time.time() * 1000),
-                        "payload": {"action": "embed", "text": text},
-                    }
-                )
-                await exchange.publish(
-                    aio_pika.Message(
-                        body=json.dumps(envelope).encode("utf-8"),
-                        correlation_id=message_id,
-                        reply_to=reply_queue.name,
-                        content_type="application/json",
-                        delivery_mode=aio_pika.DeliveryMode.PERSISTENT,
-                    ),
-                    routing_key=settings.embedding_queue,
-                )
-                try:
-                    async with asyncio.timeout(timeout):
-                        async with reply_queue.iterator() as iterator:
-                            async for message in iterator:
-                                async with message.process():
-                                    if message.correlation_id and message.correlation_id != message_id:
-                                        continue
-                                    return self._vector_from_reply(json.loads(message.body))
-                except TimeoutError as exc:
-                    raise MemoryEmbeddingError(
-                        f"embedding request timed out after {timeout:.1f}s"
-                    ) from exc
-        finally:
-            await connection.close()
-        raise MemoryEmbeddingError("embedding reply queue closed before a response arrived")
+            reply = self._require_rpc_client().request_from_thread(
+                settings.embedding_queue,
+                self._embedding_envelope(text),
+                timeout=timeout,
+            )
+        except TimeoutError as exc:
+            raise MemoryEmbeddingError(
+                f"embedding request timed out after {timeout:.1f}s"
+            ) from exc
+        return self._vector_from_reply(reply)
 
     def _vector_from_reply(self, reply: Optional[Dict[str, Any]]) -> List[float]:
         """Extract the vector from the embedding service reply."""

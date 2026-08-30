@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     # loads with prefetch_count=1. Dependent writes are ordered by the caller,
     # which awaits each add_message before sending the next.
     rabbitmq_prefetch_count: int = 10
+    rabbitmq_rpc_max_inflight: int = 32
     llm_agent_queue: str = "llm_agent"
 
     # MongoDB configuration
