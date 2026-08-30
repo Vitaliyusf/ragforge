@@ -2,8 +2,10 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import math
 import re
+import time
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Callable, Dict, List, Optional, Tuple
@@ -13,13 +15,45 @@ from pymongo.collection import Collection
 from app.core.config import settings
 from app.core.errors import DatabaseError
 from shared.logging import ServiceLogger
+from shared.metrics import METRICS
 from app.db.session import get_db
-from app.services.memory_qdrant_service import MemoryQdrantIndex
+from app.services.memory_embedding_client import MemoryEmbeddingClient, MemoryEmbeddingError
+from app.services.memory_vector_index import MemoryVectorIndex, MemoryVectorIndexError
 from app.services.tenant_scope import current_identity, ownership_fields, scope_filter
 
 
 ALLOWED_OWNER_TYPES = {"user", "session", "conversation"}
 ALLOWED_MEMORY_CLASSES = {"episodic", "semantic_preference"}
+
+# Memory lifecycle. Exactly one of these is authoritative for a given fact:
+# `active`. `superseded` and `archived` stay readable for history and audit but
+# never answer a current-fact query; `deleted` is a tombstone that exists only
+# until the vector index has confirmed the point is gone.
+MEMORY_STATUS_ACTIVE = "active"
+MEMORY_STATUS_SUPERSEDED = "superseded"
+MEMORY_STATUS_ARCHIVED = "archived"
+MEMORY_STATUS_DELETED = "deleted"
+RETRIEVABLE_STATUSES = {MEMORY_STATUS_ACTIVE}
+
+# Vector synchronisation state. MongoDB is the canonical store and the vector
+# index is derived, so a divergence is recorded rather than hidden: anything
+# other than `indexed`/`disabled` is a reconciliation obligation.
+EMBEDDING_STATUS_DISABLED = "disabled"
+EMBEDDING_STATUS_INDEXED = "indexed"
+EMBEDDING_STATUS_PENDING = "pending"
+EMBEDDING_STATUS_FAILED = "failed"
+EMBEDDING_STATUS_DELETE_PENDING = "delete_pending"
+RECONCILIATION_STATUSES = {
+    EMBEDDING_STATUS_PENDING,
+    EMBEDDING_STATUS_FAILED,
+    EMBEDDING_STATUS_DELETE_PENDING,
+}
+
+# Bounded failure classes for metrics labels — never a raw exception string.
+FAILURE_CLASS_EMBEDDING = "embedding"
+FAILURE_CLASS_VECTOR_INDEX = "vector_index"
+FAILURE_CLASS_DATABASE = "database"
+FAILURE_CLASS_VALIDATION = "validation"
 
 
 def _utc_now() -> str:
@@ -46,18 +80,58 @@ class LongTermMemoryService:
         self,
         logger: ServiceLogger,
         db_provider: Optional[Callable[[], Any]] = None,
-        index_client: Optional[MemoryQdrantIndex] = None,
+        index_client: Optional[MemoryVectorIndex] = None,
         now_fn: Optional[Callable[[], str]] = None,
+        embedding_client: Optional[MemoryEmbeddingClient] = None,
     ):
         self.logger = logger
         self._db_provider = db_provider or get_db
-        self._index_client = index_client or MemoryQdrantIndex(logger)
+        self._index_client = index_client or MemoryVectorIndex(logger)
+        self._embedding_client = embedding_client or MemoryEmbeddingClient(logger)
         self._now_fn = now_fn or _utc_now
         self._indexes_ready = False
 
     def _db(self) -> Any:
         """Return the configured database handle."""
         return self._db_provider()
+
+    # ------------------------------------------------------------------
+    # Observability
+    # ------------------------------------------------------------------
+
+    def _record_operation(self, operation: str) -> None:
+        """Count one memory operation. Labels stay a fixed, small set."""
+        METRICS.memory_operations_total.labels(
+            service=settings.service_name,
+            operation=operation,
+        ).inc()
+
+    def _record_duration(self, operation: str, started: float) -> None:
+        """Observe how long one memory operation took."""
+        METRICS.memory_operation_duration.labels(
+            service=settings.service_name,
+            operation=operation,
+        ).observe(time.monotonic() - started)
+
+    def _record_failure(self, operation: str, failure_class: str) -> None:
+        """Count one failed memory operation by bounded failure class."""
+        METRICS.memory_operation_failures_total.labels(
+            service=settings.service_name,
+            operation=operation,
+            failure_class=failure_class,
+        ).inc()
+
+    def index_provenance(self) -> Dict[str, Any]:
+        """Return the runtime evidence describing the active retrieval path."""
+        return {
+            "implementation": "app.services.memory_service.LongTermMemoryService",
+            "persistence": "mongodb",
+            "vector_index": {
+                "enabled": self._index_client.is_enabled(),
+                "collection": getattr(self._index_client, "collection_name", None),
+            },
+            "embedding": self._embedding_client.provenance(),
+        }
 
     def _episodic_collection(self) -> Collection:
         """Return episodic memories collection."""
@@ -85,7 +159,19 @@ class LongTermMemoryService:
             self._episodic_collection().create_index(
                 [("tenant_id", 1), ("owner_user_id", 1), ("owner_id", 1), ("owner_type", 1), ("event_at", -1)]
             )
+            self._episodic_collection().create_index(
+                [("tenant_id", 1), ("owner_user_id", 1), ("owner_id", 1), ("owner_type", 1), ("status", 1)]
+            )
+            self._episodic_collection().create_index(
+                [("tenant_id", 1), ("owner_user_id", 1), ("content_hash", 1)]
+            )
             self._episodic_collection().create_index([("tags", 1)])
+            self._semantic_collection().create_index(
+                [("tenant_id", 1), ("owner_user_id", 1), ("owner_id", 1), ("owner_type", 1), ("status", 1)]
+            )
+            self._semantic_collection().create_index(
+                [("tenant_id", 1), ("owner_user_id", 1), ("content_hash", 1)]
+            )
             self._semantic_collection().create_index(
                 [("tenant_id", 1), ("owner_user_id", 1), ("owner_id", 1), ("owner_type", 1), ("preference_key", 1)],
                 unique=True,
@@ -150,6 +236,16 @@ class LongTermMemoryService:
     def _tokenize(self, text: str) -> List[str]:
         """Tokenize text into lightweight keywords."""
         return list(dict.fromkeys(re.findall(r"[a-z0-9_+-]+", text.lower())))
+
+    def _content_hash(self, owner_id: str, owner_type: str, memory_class: str, text: str) -> str:
+        """Return the deterministic identity of one memory's normalized content.
+
+        Exact-duplicate detection has to survive casing and whitespace noise,
+        so identity is computed from the same normalized text that is stored,
+        lowercased, and scoped to the owner and memory class.
+        """
+        material = "|".join([owner_id, owner_type, memory_class, text.strip().lower()])
+        return hashlib.sha256(material.encode("utf-8")).hexdigest()
 
     def _build_summary(self, text: str) -> str:
         """Create a short summary from the main text."""
@@ -325,12 +421,25 @@ class LongTermMemoryService:
             "updated_at": candidate.get("updated_at") or now,
             "last_accessed_at": candidate.get("last_accessed_at"),
             "archived_at": candidate.get("archived_at"),
+            "status": MEMORY_STATUS_ACTIVE,
+            "revision": max(1, self._coerce_int(candidate.get("revision"), 1)),
+            "supersedes": self._normalize_text(candidate.get("supersedes")) or None,
+            "superseded_by": None,
+            "content_hash": self._content_hash(owner_id, owner_type, memory_class, text),
             "provenance": provenance,
             "retrieval": {
                 "keywords": keywords,
                 "embedding_status": retrieval.get("embedding_status")
-                or ("pending" if self._index_client.is_enabled() else "disabled"),
+                or (
+                    EMBEDDING_STATUS_PENDING
+                    if self._index_client.is_enabled()
+                    else EMBEDDING_STATUS_DISABLED
+                ),
                 "qdrant_point_id": retrieval.get("qdrant_point_id"),
+                "embedding_model": None,
+                "embedding_dimensions": None,
+                "vector_collection": None,
+                "vector_synced_at": None,
             },
             **ownership_fields(),
         }
@@ -490,11 +599,19 @@ class LongTermMemoryService:
             "updated_at": doc.get("updated_at"),
             "last_accessed_at": doc.get("last_accessed_at"),
             "archived_at": doc.get("archived_at"),
+            "status": doc.get("status", MEMORY_STATUS_ACTIVE),
+            "revision": doc.get("revision", 1),
+            "supersedes": doc.get("supersedes"),
+            "superseded_by": doc.get("superseded_by"),
             "provenance": self._safe_provenance(doc.get("provenance")),
             "retrieval": {
                 "keywords": copy.deepcopy(doc.get("retrieval", {}).get("keywords", [])),
                 "embedding_status": doc.get("retrieval", {}).get("embedding_status"),
                 "qdrant_point_id": doc.get("retrieval", {}).get("qdrant_point_id"),
+                "embedding_model": doc.get("retrieval", {}).get("embedding_model"),
+                "embedding_dimensions": doc.get("retrieval", {}).get("embedding_dimensions"),
+                "vector_collection": doc.get("retrieval", {}).get("vector_collection"),
+                "vector_synced_at": doc.get("retrieval", {}).get("vector_synced_at"),
             },
         }
         if doc["memory_class"] == "episodic":
@@ -532,11 +649,30 @@ class LongTermMemoryService:
             legacy["metadata"]["value"] = copy.deepcopy(doc.get("value"))
         return legacy
 
-    def _all_memory_documents(self) -> List[Dict[str, Any]]:
-        """Return all canonical memory documents across collections."""
+    def _all_memory_documents(self, include_tombstones: bool = False) -> List[Dict[str, Any]]:
+        """Return canonical memory documents across collections.
+
+        Tombstones are documents whose delete has been accepted but whose
+        vector point is not confirmed gone yet. They are invisible to every
+        caller except reconciliation.
+        """
         episodic = list(self._episodic_collection().find(scope_filter(), {"_id": 0}))
         semantic = list(self._semantic_collection().find(scope_filter(), {"_id": 0}))
-        return episodic + semantic
+        documents = episodic + semantic
+        if include_tombstones:
+            return documents
+        return [doc for doc in documents if doc.get("status") != MEMORY_STATUS_DELETED]
+
+    def _memory_status(self, doc: Dict[str, Any]) -> str:
+        """Return a document's lifecycle status.
+
+        Documents written before the status field existed are `active` unless
+        they carry an `archived_at`, which is how archival used to be encoded.
+        """
+        status = doc.get("status")
+        if status:
+            return str(status)
+        return MEMORY_STATUS_ARCHIVED if doc.get("archived_at") else MEMORY_STATUS_ACTIVE
 
     def _active_memory_documents(
         self,
@@ -557,17 +693,36 @@ class LongTermMemoryService:
                 continue
             if not include_archived and doc.get("archived_at"):
                 continue
+            if not include_archived and self._memory_status(doc) not in RETRIEVABLE_STATUSES:
+                continue
             documents.append(doc)
         return documents
 
-    def _find_memory_document(self, memory_id: str) -> Tuple[Optional[Collection], Optional[Dict[str, Any]]]:
-        """Find a memory by id across both collections."""
-        episodic = self._episodic_collection().find_one(scope_filter({"id": memory_id}), {"_id": 0})
-        if episodic:
-            return self._episodic_collection(), episodic
-        semantic = self._semantic_collection().find_one(scope_filter({"id": memory_id}), {"_id": 0})
-        if semantic:
-            return self._semantic_collection(), semantic
+    def _find_active_duplicate(self, normalized: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Return an existing active memory with identical normalized content."""
+        for doc in self._active_memory_documents(
+            owner_id=normalized["owner_id"],
+            owner_type=normalized["owner_type"],
+            memory_classes=[normalized["memory_class"]],
+            include_archived=False,
+        ):
+            if doc.get("content_hash") and doc["content_hash"] == normalized["content_hash"]:
+                return doc
+        return None
+
+    def _find_memory_document(
+        self,
+        memory_id: str,
+        include_tombstones: bool = False,
+    ) -> Tuple[Optional[Collection], Optional[Dict[str, Any]]]:
+        """Find a memory by id across both collections, inside the caller's scope."""
+        for collection in (self._episodic_collection(), self._semantic_collection()):
+            doc = collection.find_one(scope_filter({"id": memory_id}), {"_id": 0})
+            if not doc:
+                continue
+            if not include_tombstones and doc.get("status") == MEMORY_STATUS_DELETED:
+                continue
+            return collection, doc
         return None, None
 
     def _text_similarity(self, left_tokens: List[str], right_tokens: List[str]) -> float:
@@ -640,25 +795,73 @@ class LongTermMemoryService:
             },
         )
 
-    def _sync_qdrant(self, doc: Dict[str, Any]) -> Tuple[Optional[bool], Optional[str]]:
-        """Index memory in Qdrant when enabled."""
+    def _sync_vector_index(self, doc: Dict[str, Any]) -> Tuple[Optional[bool], Optional[str]]:
+        """Embed one memory and upsert it into the vector index.
+
+        MongoDB already holds the authoritative record by the time this runs,
+        so a failure here is not fatal — but it is never hidden: the document
+        keeps an explicit ``pending``/``failed`` embedding status that marks it
+        as owing reconciliation, and the write result reports it. A vector is
+        never synthesised locally when the embedding service is unavailable.
+        """
         if not self._index_client.is_enabled():
-            doc["retrieval"]["embedding_status"] = "disabled"
+            doc["retrieval"]["embedding_status"] = EMBEDDING_STATUS_DISABLED
             self._persist_retrieval_state(doc)
             return None, None
 
+        text = doc.get("content", {}).get("text", "")
         try:
-            indexed = self._index_client.index_memory(doc)
-            doc["retrieval"]["embedding_status"] = "indexed" if indexed else "pending"
-            doc["retrieval"]["qdrant_point_id"] = doc["id"] if indexed else None
-            doc["updated_at"] = self._now_fn()
-            self._persist_retrieval_state(doc)
-            return bool(indexed), None
-        except Exception as exc:
-            doc["retrieval"]["embedding_status"] = "failed"
-            doc["updated_at"] = self._now_fn()
-            self._persist_retrieval_state(doc)
-            return False, str(exc)
+            vector = self._embedding_client.embed_memory(text)
+        except MemoryEmbeddingError as exc:
+            self._record_failure("write_memory", FAILURE_CLASS_EMBEDDING)
+            return self._record_vector_failure(doc, EMBEDDING_STATUS_FAILED, str(exc))
+
+        try:
+            point_id = self._index_client.upsert_memory(doc, vector)
+        except MemoryVectorIndexError as exc:
+            self._record_failure("write_memory", FAILURE_CLASS_VECTOR_INDEX)
+            return self._record_vector_failure(doc, EMBEDDING_STATUS_PENDING, str(exc))
+
+        doc["retrieval"].update(
+            {
+                "embedding_status": EMBEDDING_STATUS_INDEXED,
+                "qdrant_point_id": point_id,
+                "embedding_model": self._embedding_client.model,
+                "embedding_dimensions": self._embedding_client.dimensions,
+                "vector_collection": self._index_client.collection_name,
+                "vector_synced_at": self._now_fn(),
+            }
+        )
+        doc["updated_at"] = self._now_fn()
+        self._persist_retrieval_state(doc)
+        return True, None
+
+    def _record_vector_failure(
+        self,
+        doc: Dict[str, Any],
+        status: str,
+        error: str,
+    ) -> Tuple[bool, str]:
+        """Persist an explicit reconciliation state after a failed vector sync."""
+        doc["retrieval"].update(
+            {
+                "embedding_status": status,
+                "qdrant_point_id": None,
+                "embedding_model": self._embedding_client.model,
+                "embedding_dimensions": self._embedding_client.dimensions,
+                "vector_collection": self._index_client.collection_name,
+                "vector_synced_at": None,
+            }
+        )
+        doc["updated_at"] = self._now_fn()
+        self._persist_retrieval_state(doc)
+        self.logger.log(
+            "memory_service:_sync_vector_index",
+            "Memory stored without a synchronised vector; reconciliation required",
+            {"memory_id": doc.get("id"), "embedding_status": status, "error": error},
+            "W",
+        )
+        return False, error
 
     def _log_outcome(
         self,
@@ -718,14 +921,96 @@ class LongTermMemoryService:
         self._write_log_collection().insert_one(log_doc)
 
     def _result_from_log(self, log_doc: Dict[str, Any]) -> Dict[str, Any]:
-        """Convert a stored log document back into a write result."""
+        """Convert a stored log document back into a write result.
+
+        Replaying a logged outcome must report the same reconciliation state
+        the original call did, so a retried request_id cannot turn a pending
+        vector sync into an apparent success.
+        """
+        memory_id = log_doc.get("memory_id")
+        embedding_status = None
+        if memory_id:
+            _, doc = self._find_memory_document(memory_id)
+            if doc:
+                embedding_status = doc.get("retrieval", {}).get("embedding_status")
         return {
             "status": log_doc.get("status"),
-            "memory_id": log_doc.get("memory_id"),
+            "memory_id": memory_id,
             "memory_class": log_doc.get("memory_class"),
             "reason": log_doc.get("reason"),
             "qdrant_indexed": log_doc.get("qdrant_indexed"),
+            "embedding_status": embedding_status,
+            "reconciliation_required": embedding_status in RECONCILIATION_STATUSES,
         }
+
+    def _merged_retrieval_state(
+        self,
+        existing: Dict[str, Any],
+        normalized: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """Combine keywords and reset vector state after content changed.
+
+        The stored text is about to change, so whatever vector the index holds
+        is stale: the merged document goes back to `pending` and is re-embedded
+        by the caller.
+        """
+        existing_retrieval = existing.get("retrieval", {}) or {}
+        return {
+            "keywords": self._as_string_list(
+                existing_retrieval.get("keywords", []) + normalized["retrieval"]["keywords"]
+            ),
+            "embedding_status": (
+                EMBEDDING_STATUS_PENDING
+                if self._index_client.is_enabled()
+                else EMBEDDING_STATUS_DISABLED
+            ),
+            "qdrant_point_id": existing_retrieval.get("qdrant_point_id"),
+            "embedding_model": existing_retrieval.get("embedding_model"),
+            "embedding_dimensions": existing_retrieval.get("embedding_dimensions"),
+            "vector_collection": existing_retrieval.get("vector_collection"),
+            "vector_synced_at": existing_retrieval.get("vector_synced_at"),
+        }
+
+    def _apply_supersession(self, normalized: Dict[str, Any]) -> Optional[str]:
+        """Retire the memory this candidate explicitly replaces.
+
+        Returns the retired memory id, or ``None`` when nothing was superseded.
+        The lookup is scope-filtered, so a candidate cannot retire another
+        tenant's or user's memory by naming its id.
+        """
+        superseded_id = self._normalize_text(normalized.get("supersedes"))
+        if not superseded_id:
+            return None
+        collection, doc = self._find_memory_document(superseded_id)
+        if collection is None or not doc:
+            return None
+        collection.update_one(
+            scope_filter({"id": superseded_id}),
+            {
+                "$set": {
+                    "status": MEMORY_STATUS_SUPERSEDED,
+                    "superseded_by": normalized["id"],
+                    "updated_at": self._now_fn(),
+                }
+            },
+        )
+        if self._index_client.is_enabled():
+            try:
+                self._index_client.delete_memory(superseded_id)
+            except MemoryVectorIndexError as exc:
+                self._record_failure("supersede_memory", FAILURE_CLASS_VECTOR_INDEX)
+                collection.update_one(
+                    scope_filter({"id": superseded_id}),
+                    {"$set": {"retrieval.embedding_status": EMBEDDING_STATUS_DELETE_PENDING}},
+                )
+                self.logger.log(
+                    "memory_service:_apply_supersession",
+                    "Superseded memory still has a vector point; reconciliation required",
+                    {"memory_id": superseded_id, "error": str(exc)},
+                    "W",
+                )
+        self._record_operation("supersede_memory")
+        return superseded_id
 
     def _merge_episodic_memory(self, normalized: Dict[str, Any]) -> Tuple[Dict[str, Any], str, str]:
         """Insert or merge episodic memories."""
@@ -750,13 +1035,15 @@ class LongTermMemoryService:
             merged["event_at"] = normalized.get("event_at") or existing.get("event_at")
             merged["expires_at"] = normalized.get("expires_at") or existing.get("expires_at")
             merged["provenance"] = self._merge_provenance(existing.get("provenance"), normalized.get("provenance"))
-            merged["retrieval"] = {
-                "keywords": self._as_string_list(
-                    existing.get("retrieval", {}).get("keywords", []) + normalized["retrieval"]["keywords"]
-                ),
-                "embedding_status": existing.get("retrieval", {}).get("embedding_status", "pending"),
-                "qdrant_point_id": existing.get("retrieval", {}).get("qdrant_point_id"),
-            }
+            merged["retrieval"] = self._merged_retrieval_state(existing, normalized)
+            merged["status"] = MEMORY_STATUS_ACTIVE
+            merged["revision"] = self._coerce_int(existing.get("revision"), 1) + 1
+            merged["content_hash"] = self._content_hash(
+                merged["owner_id"],
+                merged["owner_type"],
+                merged["memory_class"],
+                merged["content"]["text"],
+            )
             self._persist_memory(collection, merged, is_update=True)
             return merged, "merged", "merged with similar episodic memory"
 
@@ -794,13 +1081,18 @@ class LongTermMemoryService:
             merged["updated_at"] = self._now_fn()
             merged["source"] = normalized["source"] or existing.get("source")
             merged["provenance"] = self._merge_provenance(existing.get("provenance"), normalized.get("provenance"))
-            merged["retrieval"] = {
-                "keywords": self._as_string_list(
-                    existing.get("retrieval", {}).get("keywords", []) + normalized["retrieval"]["keywords"]
-                ),
-                "embedding_status": existing.get("retrieval", {}).get("embedding_status", "pending"),
-                "qdrant_point_id": existing.get("retrieval", {}).get("qdrant_point_id"),
-            }
+            merged["retrieval"] = self._merged_retrieval_state(existing, normalized)
+            # A preference key holds exactly one authoritative value, so a new
+            # value supersedes the old one in place rather than creating a
+            # second active memory that contradicts it.
+            merged["status"] = MEMORY_STATUS_ACTIVE
+            merged["revision"] = self._coerce_int(existing.get("revision"), 1) + 1
+            merged["content_hash"] = self._content_hash(
+                merged["owner_id"],
+                merged["owner_type"],
+                merged["memory_class"],
+                merged["content"]["text"],
+            )
             self._persist_memory(collection, merged, is_update=True)
             return merged, "merged", "upserted semantic preference"
 
@@ -812,8 +1104,10 @@ class LongTermMemoryService:
         candidate: Optional[Dict[str, Any]],
         request_context: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
-        """Validate, persist, and optionally index a memory candidate."""
+        """Validate, persist, and index a memory candidate."""
         self._ensure_indexes()
+        started = time.monotonic()
+        self._record_operation("write_memory")
         request_context = copy.deepcopy(request_context or {})
         candidate_snapshot = copy.deepcopy(candidate or {})
 
@@ -830,6 +1124,7 @@ class LongTermMemoryService:
 
             accepted, checks, reason = self._evaluate_write_policy(normalized)
             if not accepted:
+                self._record_failure("write_memory", FAILURE_CLASS_VALIDATION)
                 self._log_outcome(
                     request_context,
                     candidate_snapshot,
@@ -840,20 +1135,52 @@ class LongTermMemoryService:
                     reason,
                     checks,
                 )
+                self._record_duration("write_memory", started)
                 return {
                     "status": "rejected",
                     "memory_id": None,
                     "memory_class": normalized.get("memory_class"),
                     "reason": reason,
                     "qdrant_indexed": None,
+                    "embedding_status": None,
+                    "reconciliation_required": False,
                 }
+
+            # Exact duplicates never become a second active memory: the
+            # existing record is returned untouched so the owner keeps exactly
+            # one authoritative copy of a fact it already stores.
+            duplicate = self._find_active_duplicate(normalized)
+            if duplicate is not None:
+                self._log_outcome(
+                    request_context,
+                    candidate_snapshot,
+                    normalized,
+                    "duplicate",
+                    duplicate["id"],
+                    duplicate["memory_class"],
+                    "identical active memory already stored",
+                    checks,
+                )
+                self._record_duration("write_memory", started)
+                return {
+                    "status": "duplicate",
+                    "memory_id": duplicate["id"],
+                    "memory_class": duplicate["memory_class"],
+                    "reason": "identical active memory already stored",
+                    "qdrant_indexed": None,
+                    "embedding_status": duplicate.get("retrieval", {}).get("embedding_status"),
+                    "reconciliation_required": False,
+                }
+
+            superseded_id = self._apply_supersession(normalized)
 
             if normalized["memory_class"] == "semantic_preference":
                 stored_doc, status, reason = self._upsert_semantic_preference(normalized)
             else:
                 stored_doc, status, reason = self._merge_episodic_memory(normalized)
 
-            qdrant_indexed, qdrant_error = self._sync_qdrant(stored_doc)
+            qdrant_indexed, qdrant_error = self._sync_vector_index(stored_doc)
+            embedding_status = stored_doc["retrieval"]["embedding_status"]
 
             self._log_outcome(
                 request_context,
@@ -867,14 +1194,20 @@ class LongTermMemoryService:
                 qdrant_indexed=qdrant_indexed,
                 qdrant_error=qdrant_error,
             )
+            self._record_duration("write_memory", started)
             return {
                 "status": status,
                 "memory_id": stored_doc["id"],
                 "memory_class": stored_doc["memory_class"],
                 "reason": reason,
                 "qdrant_indexed": qdrant_indexed,
+                "embedding_status": embedding_status,
+                "reconciliation_required": embedding_status in RECONCILIATION_STATUSES,
+                "superseded_memory_id": superseded_id,
             }
         except Exception as exc:
+            self._record_failure("write_memory", FAILURE_CLASS_DATABASE)
+            self._record_duration("write_memory", started)
             self._log_outcome(
                 request_context,
                 candidate_snapshot,
@@ -990,9 +1323,66 @@ class LongTermMemoryService:
                 {"$set": {"last_accessed_at": timestamp}},
             )
 
+    def _semantic_candidates(
+        self,
+        query_text: str,
+        owner_id: str,
+        owner_type: str,
+        limit: int,
+    ) -> Tuple[List[Dict[str, Any]], Dict[str, float], str, Optional[str]]:
+        """Run the semantic leg of retrieval.
+
+        Returns the hits, their scores, the mode actually used, and — when the
+        semantic path could not run — why. Callers report that reason instead
+        of presenting keyword-only results as if they were semantic ones.
+        """
+        if not query_text:
+            return [], {}, "lexical", "no query text supplied"
+        if not self._index_client.is_enabled():
+            return [], {}, "lexical", "vector index disabled"
+
+        try:
+            query_vector = self._embedding_client.embed_query(query_text)
+        except MemoryEmbeddingError as exc:
+            self._record_failure("get_relevant_memories", FAILURE_CLASS_EMBEDDING)
+            self.logger.log(
+                "memory_service:get_relevant_memories",
+                "Query embedding failed; retrieval degraded to keyword ranking",
+                {"error": str(exc)},
+                "E",
+            )
+            return [], {}, "lexical", f"embedding unavailable: {exc}"
+
+        try:
+            hits = self._index_client.search(
+                query_vector,
+                owner_id,
+                owner_type,
+                limit=max(limit * 2, limit),
+                statuses=sorted(RETRIEVABLE_STATUSES),
+            )
+        except MemoryVectorIndexError as exc:
+            self._record_failure("get_relevant_memories", FAILURE_CLASS_VECTOR_INDEX)
+            self.logger.log(
+                "memory_service:get_relevant_memories",
+                "Vector search failed; retrieval degraded to keyword ranking",
+                {"error": str(exc)},
+                "E",
+            )
+            return [], {}, "lexical", f"vector search unavailable: {exc}"
+
+        scores = {
+            hit["memory_id"]: float(hit.get("score", 0.0))
+            for hit in hits
+            if hit.get("memory_id")
+        }
+        return hits, scores, "semantic", None
+
     def get_relevant_memories(self, query_context: Optional[Dict[str, Any]]) -> Dict[str, Any]:
         """Retrieve and rank relevant episodic and semantic preference memories."""
         self._ensure_indexes()
+        started = time.monotonic()
+        self._record_operation("get_relevant_memories")
         query_context = copy.deepcopy(query_context or {})
 
         identity = current_identity()
@@ -1025,23 +1415,12 @@ class LongTermMemoryService:
             include_archived=False,
         )
 
-        qdrant_hits: List[Dict[str, Any]] = []
-        qdrant_scores: Dict[str, float] = {}
-        if self._index_client.is_enabled() and query_text:
-            try:
-                qdrant_hits = self._index_client.search(query_text, owner_id, owner_type, limit=max(limit * 2, limit))
-                qdrant_scores = {
-                    hit["memory_id"]: float(hit.get("score", 0.0))
-                    for hit in qdrant_hits
-                    if hit.get("memory_id")
-                }
-            except Exception as exc:
-                self.logger.log(
-                    "memory_service:get_relevant_memories",
-                    "Qdrant search failed, continuing with Mongo-only retrieval",
-                    {"error": str(exc)},
-                    "E",
-                )
+        qdrant_hits, qdrant_scores, retrieval_mode, degraded_reason = self._semantic_candidates(
+            query_text,
+            owner_id,
+            owner_type,
+            limit,
+        )
 
         ranked: List[Tuple[Dict[str, Any], Dict[str, Any]]] = []
         for doc in mongo_candidates:
@@ -1054,10 +1433,14 @@ class LongTermMemoryService:
             for doc in mongo_candidates:
                 ranked.append((doc, self._score_document(doc, [], qdrant_scores)))
 
+        # Ties break on updated_at and then on id, so an identical corpus and
+        # query always produce the same ordering — the property the retrieval
+        # measurement depends on.
         ranked.sort(
             key=lambda item: (
                 item[1]["score"],
                 item[0].get("updated_at") or "",
+                item[0]["id"],
             ),
             reverse=True,
         )
@@ -1070,9 +1453,29 @@ class LongTermMemoryService:
             ranking_payload["rank"] = rank
             memories.append(self._normalize_output_memory(doc, ranking_payload))
 
+        METRICS.memory_retrieval_results.labels(
+            service=settings.service_name,
+            retrieval_mode=retrieval_mode,
+        ).observe(len(memories))
+        self._record_duration("get_relevant_memories", started)
+
         response: Dict[str, Any] = {
             "status": "success",
             "memories": memories,
+            "retrieval_mode": retrieval_mode,
+            "degraded": retrieval_mode != "semantic",
+            "degraded_reason": degraded_reason,
+            "provenance": {
+                **self.index_provenance(),
+                "scope": {
+                    "tenant_scoped": identity is not None,
+                    "user_scoped": identity is not None,
+                    "owner_id": owner_id,
+                    "owner_type": owner_type,
+                    "memory_classes": sorted(memory_classes),
+                    "statuses": sorted(RETRIEVABLE_STATUSES),
+                },
+            },
         }
         if include_debug:
             response["debug"] = {
@@ -1191,6 +1594,7 @@ class LongTermMemoryService:
             raise ValueError(f"Memory {memory_id} not found")
 
         updated = copy.deepcopy(doc)
+        content_changed = False
         if content is not None:
             updated["content"] = {
                 "text": self._normalize_text(content),
@@ -1199,6 +1603,13 @@ class LongTermMemoryService:
             updated["retrieval"]["keywords"] = self._as_string_list(
                 updated["tags"] + self._tokenize(updated["content"]["text"])[:12]
             )
+            updated["content_hash"] = self._content_hash(
+                updated["owner_id"],
+                updated["owner_type"],
+                updated["memory_class"],
+                updated["content"]["text"],
+            )
+            content_changed = True
         if metadata:
             if "tags" in metadata:
                 updated["tags"] = self._as_string_list(metadata["tags"])
@@ -1219,41 +1630,90 @@ class LongTermMemoryService:
                     updated["expires_at"] = metadata["expires_at"]
                 if "stability" in metadata:
                     updated["stability"] = self._coerce_float(metadata["stability"], updated.get("stability", 0.6))
+        # An update replaces the fact in place, so the record stays the single
+        # authoritative memory and only its revision moves forward.
         updated["updated_at"] = self._now_fn()
+        updated["revision"] = self._coerce_int(updated.get("revision"), 1) + 1
+        updated["status"] = MEMORY_STATUS_ACTIVE
+        if content_changed and self._index_client.is_enabled():
+            updated["retrieval"]["embedding_status"] = EMBEDDING_STATUS_PENDING
         collection.update_one(scope_filter({"id": memory_id}), {"$set": updated})
+        self._record_operation("update_memory")
         if self._index_client.is_enabled():
-            self._sync_qdrant(updated)
+            self._sync_vector_index(updated)
         return self.get_memory(memory_id)
 
-    def delete_memory(self, memory_id: str) -> bool:
-        """Delete a canonical memory and best-effort remove it from Qdrant."""
+    def delete_memory(self, memory_id: str) -> Dict[str, Any]:
+        """Delete a memory from both canonical persistence and the index.
+
+        Deletion is only complete when both sides are gone. If the vector point
+        cannot be removed, the canonical document is kept as a `deleted`
+        tombstone — invisible to every read path but still carrying the id the
+        index needs — and the caller is told the delete is partial rather than
+        being handed a success it did not get.
+        """
+        started = time.monotonic()
+        self._record_operation("delete_memory")
         collection, doc = self._find_memory_document(memory_id)
         if not collection or not doc:
             raise ValueError(f"Memory {memory_id} not found")
-        result = collection.delete_one(scope_filter({"id": memory_id}))
-        if result.deleted_count == 0:
-            raise ValueError(f"Memory {memory_id} not found")
+
         if self._index_client.is_enabled():
             try:
                 self._index_client.delete_memory(memory_id)
-            except Exception as exc:
+            except MemoryVectorIndexError as exc:
+                self._record_failure("delete_memory", FAILURE_CLASS_VECTOR_INDEX)
+                collection.update_one(
+                    scope_filter({"id": memory_id}),
+                    {
+                        "$set": {
+                            "status": MEMORY_STATUS_DELETED,
+                            "deleted_at": self._now_fn(),
+                            "updated_at": self._now_fn(),
+                            "retrieval.embedding_status": EMBEDDING_STATUS_DELETE_PENDING,
+                        }
+                    },
+                )
                 self.logger.log(
                     "memory_service:delete_memory",
-                    "Failed to delete Qdrant point",
+                    "Vector point survived a memory delete; reconciliation required",
                     {"memory_id": memory_id, "error": str(exc)},
                     "E",
                 )
-        return True
+                self._record_duration("delete_memory", started)
+                return {
+                    "status": "partial",
+                    "memory_id": memory_id,
+                    "vector_deleted": False,
+                    "reconciliation_required": True,
+                    "reason": str(exc),
+                }
+
+        result = collection.delete_one(scope_filter({"id": memory_id}))
+        if result.deleted_count == 0:
+            raise ValueError(f"Memory {memory_id} not found")
+        self._record_duration("delete_memory", started)
+        return {
+            "status": "deleted",
+            "memory_id": memory_id,
+            "vector_deleted": self._index_client.is_enabled(),
+            "reconciliation_required": False,
+            "reason": None,
+        }
 
     def delete_memories_by_chat_id(self, chat_id: str) -> int:
-        """Delete memories associated with a conversation owner or provenance.chat_id."""
+        """Delete memories associated with a conversation owner or provenance.chat_id.
+
+        Returns the number fully deleted; a memory left as a tombstone by a
+        failed vector delete is not counted as deleted.
+        """
         deleted = 0
         for doc in self._all_memory_documents():
             provenance = doc.get("provenance", {})
             if (doc.get("owner_type") == "conversation" and doc.get("owner_id") == chat_id) or provenance.get("chat_id") == chat_id:
                 try:
-                    self.delete_memory(doc["id"])
-                    deleted += 1
+                    if self.delete_memory(doc["id"])["status"] == "deleted":
+                        deleted += 1
                 except ValueError:
                     continue
         return deleted

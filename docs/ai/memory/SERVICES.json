@@ -7,8 +7,8 @@
       "entrypoint": "backend/gateway/app/main.py",
       "responsibilities": [
         "browser-facing REST",
-        "auth/session fa\u00e7ade",
-        "service RPC fa\u00e7ade",
+        "auth/session façade",
+        "service RPC façade",
         "admin metrics/eval API"
       ],
       "owns": [
@@ -168,18 +168,23 @@
       "owns": [
         "memory records",
         "memory mutation semantics",
-        "validated memory mutation application"
+        "validated memory mutation application",
+        "memory lifecycle state (active/superseded/archived/deleted)",
+        "memory vector synchronization state"
       ],
       "calls": [
-        "llm_agent typed title/summary/curation requests"
+        "llm_agent typed title/summary/curation requests",
+        "embedding service query/passage vectors for memory retrieval"
       ],
       "transports": [
         "RabbitMQ RPC",
         "events/projections where configured"
       ],
       "look_first": [
+        "backend/memory/app/services/memory_service.py",
+        "backend/memory/app/services/memory_embedding_client.py",
+        "backend/memory/app/services/memory_vector_index.py",
         "backend/memory/app/services/chat_exit_service.py",
-        "backend/memory/app/services",
         "backend/memory/app/db"
       ],
       "avoid_duplicate": "Long-term memory belongs here; RAG should query/call Memory rather than create another store."

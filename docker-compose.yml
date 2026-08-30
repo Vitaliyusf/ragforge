@@ -243,6 +243,10 @@ services:
       QDRANT_ENABLED: ${MEMORY_QDRANT_ENABLED:-true}
       QDRANT_URL: http://qdrant:6333
       QDRANT_API_KEY: ${QDRANT_API_KEY:-}
+      # Memory vectors come from the same embedding model document retrieval
+      # uses, so the memory collection is created for exactly its dimensions.
+      MEMORY_EMBEDDING_MODEL: ${EMBEDDING_MODEL:-intfloat/multilingual-e5-small}
+      MEMORY_EMBEDDING_DIMENSIONS: ${VECTOR_DB_VECTOR_SIZE:-384}
       LOG_DIR: /app/logs
     volumes:
       - logs_data:/app/logs
@@ -255,6 +259,8 @@ services:
         condition: service_healthy
       qdrant:
         condition: service_started
+      embedding:
+        condition: service_healthy
       llm_agent:
         condition: service_healthy
     healthcheck:

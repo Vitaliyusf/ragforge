@@ -566,8 +566,30 @@ class MemoryHandlerService:
         memory_id = request.get("memory_id")
         if not memory_id:
             return self._send_error(request, "memory_id is required")
-        self.memory_service.delete_memory(memory_id)
-        return self._send_response(request, {"status": "success", "message": "Memory deleted"})
+        result = self.memory_service.delete_memory(memory_id)
+        # A delete the vector index did not confirm is reported as partial, not
+        # as a success the caller can trust.
+        if result.get("status") != "deleted":
+            return self._send_response(
+                request,
+                {
+                    "status": "partial",
+                    "message": "Memory removed from storage but its vector point could not be deleted",
+                    "memory_id": memory_id,
+                    "vector_deleted": False,
+                    "reconciliation_required": True,
+                },
+            )
+        return self._send_response(
+            request,
+            {
+                "status": "success",
+                "message": "Memory deleted",
+                "memory_id": memory_id,
+                "vector_deleted": result.get("vector_deleted"),
+                "reconciliation_required": False,
+            },
+        )
 
     def _handle_get_user_insight(self, request: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Handle get_user_insight action."""

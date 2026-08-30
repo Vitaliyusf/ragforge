@@ -1,7 +1,8 @@
 """What may be written to long-term memory, and what is refused."""
 
 from app.tests._memory_harness import (
-    FakeQdrantIndex,
+    FakeEmbeddingClient,
+    FakeVectorIndex,
     build_memory_service,
     episodic_candidate,
     preference_candidate,
@@ -93,8 +94,8 @@ def test_write_memory_rejects_hidden_reasoning_candidates():
     assert "hidden reasoning" in result["reason"]
 
 
-def test_write_memory_preserves_accepted_status_when_qdrant_fails():
-    index = FakeQdrantIndex(enabled=True, fail_index=True)
+def test_write_memory_reports_reconciliation_when_the_vector_upsert_fails():
+    index = FakeVectorIndex(enabled=True, fail_index=True)
     service, database, _ = build_memory_service(index_client=index)
 
     result = service.write_memory(
@@ -102,7 +103,70 @@ def test_write_memory_preserves_accepted_status_when_qdrant_fails():
         {"owner_id": "owner-1", "owner_type": "user", "request_id": "req-10"},
     )
 
+    # MongoDB is canonical, so the memory is stored — but the write result says
+    # plainly that the derived index does not have it yet.
     assert result["status"] == "accepted"
     assert result["qdrant_indexed"] is False
-    assert database["episodic_memories"].docs[0]["retrieval"]["embedding_status"] == "failed"
-    assert database["memory_write_log"].docs[0]["qdrant_error"] == "qdrant indexing failed"
+    assert result["embedding_status"] == "pending"
+    assert result["reconciliation_required"] is True
+    assert database["episodic_memories"].docs[0]["retrieval"]["embedding_status"] == "pending"
+    assert database["memory_write_log"].docs[0]["qdrant_error"] == "vector upsert failed"
+
+
+def test_write_memory_reports_reconciliation_when_embedding_is_unavailable():
+    index = FakeVectorIndex(enabled=True)
+    service, database, _ = build_memory_service(
+        index_client=index,
+        embedding_client=FakeEmbeddingClient(fail=True),
+    )
+
+    result = service.write_memory(
+        episodic_candidate(),
+        {"owner_id": "owner-1", "owner_type": "user", "request_id": "req-embed-fail"},
+    )
+
+    assert result["status"] == "accepted"
+    assert result["embedding_status"] == "failed"
+    assert result["reconciliation_required"] is True
+    # No vector was invented to keep the happy path looking green.
+    assert index.indexed_ids == []
+    assert database["episodic_memories"].docs[0]["retrieval"]["qdrant_point_id"] is None
+
+
+def test_write_memory_records_embedding_provenance_on_indexed_memories():
+    index = FakeVectorIndex(enabled=True)
+    service, database, _ = build_memory_service(
+        index_client=index,
+        embedding_client=FakeEmbeddingClient(dimensions=8, model="test-e5"),
+    )
+
+    result = service.write_memory(
+        episodic_candidate(),
+        {"owner_id": "owner-1", "owner_type": "user", "request_id": "req-provenance"},
+    )
+
+    stored = database["episodic_memories"].docs[0]["retrieval"]
+    assert result["reconciliation_required"] is False
+    assert stored["embedding_status"] == "indexed"
+    assert stored["embedding_model"] == "test-e5"
+    assert stored["embedding_dimensions"] == 8
+    assert stored["vector_collection"] == "memory_items_test"
+    assert stored["vector_synced_at"]
+
+
+def test_write_memory_rejects_an_exact_duplicate_of_an_active_memory():
+    service, database, _ = build_memory_service()
+
+    first = service.write_memory(
+        episodic_candidate(),
+        {"owner_id": "owner-1", "owner_type": "user", "request_id": "req-dup-1"},
+    )
+    duplicate = service.write_memory(
+        episodic_candidate("  the USER launched the beta milestone.  "),
+        {"owner_id": "owner-1", "owner_type": "user", "request_id": "req-dup-2"},
+    )
+
+    assert first["status"] == "accepted"
+    assert duplicate["status"] == "duplicate"
+    assert duplicate["memory_id"] == first["memory_id"]
+    assert len(database["episodic_memories"].docs) == 1

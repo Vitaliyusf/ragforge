@@ -1,7 +1,8 @@
 """Owner-scoped retrieval and the episodic/semantic balance it returns."""
 
 from app.tests._memory_harness import (
-    FakeQdrantIndex,
+    FakeEmbeddingClient,
+    FakeVectorIndex,
     build_memory_service,
     episodic_candidate,
     preference_candidate,
@@ -36,7 +37,7 @@ def test_get_relevant_memories_returns_owner_scoped_results_and_excludes_archive
 
 
 def test_get_relevant_memories_balances_episodic_and_semantic_preference():
-    index = FakeQdrantIndex(
+    index = FakeVectorIndex(
         enabled=True,
         search_results=[
             {"memory_id": "episodic-1", "score": 0.95},
@@ -116,3 +117,84 @@ def test_retrieval_honors_owner_id_and_owner_type():
     assert len(result["memories"]) == 1
     assert result["memories"][0]["owner_type"] == "conversation"
     assert result["memories"][0]["owner_id"] == "conv-1"
+
+
+def test_retrieval_uses_the_embedded_query_when_the_vector_index_is_available():
+    index = FakeVectorIndex(enabled=True, search_results=[])
+    embedding = FakeEmbeddingClient()
+    service, _, _ = build_memory_service(index_client=index, embedding_client=embedding)
+    service.write_memory(
+        episodic_candidate(),
+        {"owner_id": "owner-1", "owner_type": "user", "request_id": "req-sem-1"},
+    )
+
+    result = service.get_relevant_memories(
+        {"owner_id": "owner-1", "owner_type": "user", "text": "beta launch", "limit": 3}
+    )
+
+    assert embedding.embedded_queries == ["beta launch"]
+    assert len(index.searched_vectors) == 1
+    assert result["retrieval_mode"] == "semantic"
+    assert result["degraded"] is False
+    assert result["degraded_reason"] is None
+
+
+def test_retrieval_reports_degradation_instead_of_passing_keyword_results_off_as_semantic():
+    index = FakeVectorIndex(enabled=True)
+    service, _, _ = build_memory_service(
+        index_client=index,
+        embedding_client=FakeEmbeddingClient(fail=True),
+    )
+    service.write_memory(
+        episodic_candidate(),
+        {"owner_id": "owner-1", "owner_type": "user", "request_id": "req-sem-2"},
+    )
+
+    result = service.get_relevant_memories(
+        {"owner_id": "owner-1", "owner_type": "user", "text": "beta launch", "limit": 3}
+    )
+
+    assert result["status"] == "success"
+    assert result["retrieval_mode"] == "lexical"
+    assert result["degraded"] is True
+    assert "embedding unavailable" in result["degraded_reason"]
+    # Degraded is not empty: the caller still gets the keyword ranking, clearly
+    # labelled as such.
+    assert len(result["memories"]) == 1
+
+
+def test_retrieval_reports_the_embedding_and_index_provenance_it_used():
+    index = FakeVectorIndex(enabled=True)
+    service, _, _ = build_memory_service(
+        index_client=index,
+        embedding_client=FakeEmbeddingClient(dimensions=8, model="test-e5"),
+    )
+    service.write_memory(
+        episodic_candidate(),
+        {"owner_id": "owner-1", "owner_type": "user", "request_id": "req-sem-3"},
+    )
+
+    provenance = service.get_relevant_memories(
+        {"owner_id": "owner-1", "owner_type": "user", "text": "beta launch", "limit": 3}
+    )["provenance"]
+
+    assert provenance["persistence"] == "mongodb"
+    assert provenance["embedding"]["model"] == "test-e5"
+    assert provenance["embedding"]["dimensions"] == 8
+    assert provenance["vector_index"]["collection"] == "memory_items_test"
+
+
+def test_retrieval_ordering_is_stable_for_tied_scores():
+    service, _, _ = build_memory_service()
+    for index in range(4):
+        service.write_memory(
+            episodic_candidate(f"Milestone number {index} for the launch."),
+            {"owner_id": "owner-1", "owner_type": "user", "request_id": f"req-tie-{index}"},
+        )
+
+    query = {"owner_id": "owner-1", "owner_type": "user", "text": "milestone launch", "limit": 4}
+    first = [memory["id"] for memory in service.get_relevant_memories(query)["memories"]]
+    second = [memory["id"] for memory in service.get_relevant_memories(query)["memories"]]
+
+    assert first == second
+    assert len(first) == len(set(first))

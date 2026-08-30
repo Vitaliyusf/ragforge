@@ -443,6 +443,29 @@ class ServiceMetrics:
             ["service", "operation"],  # create_chat, add_message, delete_chat, write_memory
         )
 
+        self.memory_operation_duration = Histogram(
+            "ragapp_memory_operation_duration_seconds",
+            "Memory service operation latency",
+            ["service", "operation"],
+            buckets=[0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0],
+        )
+
+        # failure_class is a fixed vocabulary (embedding, vector_index,
+        # database, validation) — never a raw exception message, which would
+        # make this series unbounded.
+        self.memory_operation_failures_total = Counter(
+            "ragapp_memory_operation_failures_total",
+            "Memory service operations that failed, by failure class",
+            ["service", "operation", "failure_class"],
+        )
+
+        self.memory_retrieval_results = Histogram(
+            "ragapp_memory_retrieval_results",
+            "Memories returned per retrieval call",
+            ["service", "retrieval_mode"],  # semantic | lexical
+            buckets=[0, 1, 2, 3, 5, 8, 13, 21],
+        )
+
     def __getattr__(self, name: str) -> Any:
         """Return no-op for any metric access when Prometheus is not installed."""
         if self._noop:
