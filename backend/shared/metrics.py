@@ -44,6 +44,74 @@ LLM_OUTPUT_TOKEN_BUCKETS = (
 )
 
 
+# ── Concurrency / saturation baseline vocabulary (CONC-00) ───────────────────
+#
+# The concurrency track compares every later `CONC-*` change against one
+# baseline, so the label vocabularies below are the contract that makes those
+# comparisons possible. They are deliberately *closed* sets: a saturation
+# dashboard is read while something is on fire, and a series that splits on a
+# tenant id, a filename or an exception message is both unreadable and a
+# cardinality incident. Nothing here may ever carry tenant ids, user ids,
+# request ids, memory ids, filenames, raw exception text or prompts.
+#
+# These constants are the documented vocabulary, not a runtime validator:
+# checking a string on every observation would put a set lookup on the hot
+# paths this track exists to make faster. `test_concurrency_metrics.py` holds
+# the contract instead, asserting the label *names* stay bounded.
+
+# The nine request classes CONC-00 measures. A `stage` label carries one of
+# these, so a baseline artifact and a live dashboard slice the same way.
+CONCURRENCY_REQUEST_CLASSES = frozenset({
+    "gateway_chat_plain",       # 1. Gateway chat without RAG
+    "gateway_chat_rag",         # 2. Gateway/RAG regular chat
+    "rag_extended",             # 3. RAG extended retrieval
+    "embedding_query",          # 4. embedding query RPC
+    "embedding_ingestion",      # 5. embedding ingestion job
+    "vector_search",            # 6. vector dense and hybrid search
+    "memory_operation",         # 7. Memory read/write/retrieval
+    "file_ingestion",           # 8. file upload + ingestion handoff
+    "eval_background",          # 9. eval/benchmark background execution
+})
+
+# Why a request left the fast path. `unavailable` covers a downstream that was
+# not reachable at all; `downstream_error` covers one that answered badly.
+DEGRADED_PATH_REASONS = frozenset({
+    "busy",
+    "timeout",
+    "circuit_open",
+    "rate_limited",
+    "downstream_error",
+    "unavailable",
+})
+
+# The reranker's four terminal states. `busy` is the one that matters for this
+# track: it means a concurrent caller was turned away and the pipeline fell
+# back to RRF, which is a quality regression that latency numbers alone hide.
+RERANKER_STATUSES = frozenset({"success", "busy", "timeout", "error"})
+
+# Queue wait separates "the service is slow" from "the service never started".
+# The dense sub-10ms buckets exist because a healthy in-process handoff should
+# be invisible there; anything above 100ms is already backpressure evidence.
+QUEUE_WAIT_BUCKETS = (0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0)
+
+# Event-loop lag is the async equivalent: a loop blocked past ~50ms is running
+# something synchronous it should have offloaded.
+EVENT_LOOP_LAG_BUCKETS = (0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0)
+
+# Powers of two: batching work is chosen in doublings, so the buckets should
+# be able to show a batch size of exactly 1 collapsing into 32.
+BATCH_SIZE_BUCKETS = (1, 2, 4, 8, 16, 32, 64, 128, 256, 512)
+
+# Mongo/Qdrant operations on a healthy hot path finish in single-digit
+# milliseconds; the long tail is kept so a full-collection scan is visible.
+STORE_OPERATION_BUCKETS = (0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0)
+
+# Decode throughput for one vLLM request. Recorded only when the provider
+# actually reported both a token count and a decode duration — a rate this
+# process guessed is worse than no rate at all.
+OUTPUT_TOKENS_PER_SECOND_BUCKETS = (1, 2, 5, 10, 20, 40, 80, 160, 320, 640)
+
+
 def traffic_class() -> str:
     """Return the bounded traffic class for the current trusted execution."""
     return TRAFFIC_CLASS_EVAL if get_context().get("traffic_class") == TRAFFIC_CLASS_EVAL else TRAFFIC_CLASS_LIVE
@@ -509,6 +577,199 @@ class ServiceMetrics:
             "Duration of one bounded memory reconciliation run",
             ["service"],
             buckets=[0.01, 0.05, 0.1, 0.5, 1.0, 5.0, 15.0, 60.0],
+        )
+
+        # ── Concurrency / saturation baseline (CONC-00) ──────────────
+        # Everything below is measurement, not control. No handler
+        # branches on these; they exist so a later CONC task can prove
+        # what it changed. `stage` is always one of
+        # CONCURRENCY_REQUEST_CLASSES.
+        #
+        # `active_requests` above already counts in-flight HTTP work per
+        # service. This one is per *request class*, which is what the
+        # baseline compares, and covers non-HTTP entry points (RPC
+        # handlers, Kafka consumers, background eval) that the HTTP
+        # instrumentator never sees.
+        self.inflight_by_stage = Gauge(
+            "ragapp_inflight_by_stage",
+            "Requests/jobs currently executing for one measured request class",
+            ["service", "stage"],
+        )
+
+        # Time between admission and the handler actually starting. The
+        # single most useful saturation signal in the track: it separates
+        # a slow handler from a handler that never got a worker.
+        self.queue_wait_seconds = Histogram(
+            "ragapp_queue_wait_seconds",
+            "Wait between accepting work and starting to execute it",
+            ["service", "stage"],
+            buckets=list(QUEUE_WAIT_BUCKETS),
+        )
+
+        # Handler-level duration for entry points that are not HTTP, so
+        # RPC and consumer work is comparable with `request_duration`.
+        self.handler_duration_seconds = Histogram(
+            "ragapp_handler_duration_seconds",
+            "Handler execution time for one measured request class",
+            ["service", "stage"],
+            buckets=[0.005, 0.01, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0, 60.0, 120.0],
+        )
+
+        # Executor saturation. `pool` is a fixed operator-chosen pool
+        # name (e.g. "default", "embedding", "reranker"), never a task
+        # description. Submitted/rejected are counters because the
+        # interesting question is "did we ever shed work"; active/queued/
+        # max are gauges sampled from the live pool.
+        self.executor_tasks_submitted_total = Counter(
+            "ragapp_executor_tasks_submitted_total",
+            "Work items handed to a bounded executor",
+            ["service", "pool"],
+        )
+
+        self.executor_tasks_rejected_total = Counter(
+            "ragapp_executor_tasks_rejected_total",
+            "Work items refused by a bounded executor (backpressure)",
+            ["service", "pool"],
+        )
+
+        self.executor_active_workers = Gauge(
+            "ragapp_executor_active_workers",
+            "Executor workers currently running a task",
+            ["service", "pool"],
+        )
+
+        self.executor_queue_depth = Gauge(
+            "ragapp_executor_queue_depth",
+            "Work items waiting for an executor worker",
+            ["service", "pool"],
+        )
+
+        self.executor_max_workers = Gauge(
+            "ragapp_executor_max_workers",
+            "Configured worker ceiling for an executor",
+            ["service", "pool"],
+        )
+
+        # RPC saturation alongside the existing rpc_roundtrip_seconds.
+        # A timeout is counted separately because it never produces a
+        # round-trip observation, so the histogram alone under-reports
+        # exactly the failure the track is trying to remove.
+        self.rpc_timeouts_total = Counter(
+            "ragapp_rpc_timeouts_total",
+            "RabbitMQ RPC calls that expired without a reply",
+            ["service", "downstream"],
+        )
+
+        self.rpc_inflight = Gauge(
+            "ragapp_rpc_inflight",
+            "RPC calls awaiting a reply from one downstream service",
+            ["service", "downstream"],
+        )
+
+        # Consumer-side RabbitMQ. `queue` is a fixed declared queue name.
+        self.rabbitmq_deliveries_total = Counter(
+            "ragapp_rabbitmq_deliveries_total",
+            "Messages delivered to a RabbitMQ consumer",
+            ["service", "queue"],
+        )
+
+        self.rabbitmq_inflight_deliveries = Gauge(
+            "ragapp_rabbitmq_inflight_deliveries",
+            "Delivered RabbitMQ messages not yet acked/nacked",
+            ["service", "queue"],
+        )
+
+        # Async health. Sampled by a probe, never by a request path.
+        self.event_loop_lag_seconds = Histogram(
+            "ragapp_event_loop_lag_seconds",
+            "Delay beyond the requested sleep for a service's event loop",
+            ["service"],
+            buckets=list(EVENT_LOOP_LAG_BUCKETS),
+        )
+
+        # `kind` is a fixed operator vocabulary ("persistence", "eval",
+        # "reconciliation", ...), never a task name or an id.
+        self.background_tasks = Gauge(
+            "ragapp_background_tasks",
+            "Background tasks currently alive, by fixed kind",
+            ["service", "kind"],
+        )
+
+        # Every departure from the fast path. `reason` is one of
+        # DEGRADED_PATH_REASONS — a closed set, never an exception string.
+        self.degraded_path_total = Counter(
+            "ragapp_degraded_path_total",
+            "Requests served by a fallback/degraded path",
+            ["service", "stage", "reason"],
+        )
+
+        # `mode` is "query" or "ingestion": the two embedding call shapes
+        # have opposite batching economics and must not be averaged.
+        self.embedding_batch_size = Histogram(
+            "ragapp_embedding_batch_size",
+            "Texts embedded per encode call",
+            ["service", "mode"],
+            buckets=list(BATCH_SIZE_BUCKETS),
+        )
+
+        # Distinct from reranker_candidate_count: that is how many
+        # candidates the pipeline had, this is how many were sent to the
+        # model in one forward pass. CONC-05 changes the second, not the
+        # first, and conflating them would hide the change.
+        self.reranker_batch_size = Histogram(
+            "ragapp_reranker_batch_size",
+            "Pairs scored per reranker forward pass",
+            ["service"],
+            buckets=list(BATCH_SIZE_BUCKETS),
+        )
+
+        # `status` is one of RERANKER_STATUSES. `busy` is the reason this
+        # metric exists: it is a silent quality regression under load.
+        self.reranker_status_total = Counter(
+            "ragapp_reranker_status_total",
+            "Reranker outcomes by terminal status",
+            ["service", "status"],
+        )
+
+        # Provider-level vLLM evidence, separate from the RAG-level
+        # rag_ttft_seconds: one measures the model, the other the whole
+        # pipeline, and CONC-03 must be able to tell them apart.
+        self.vllm_inflight_requests = Gauge(
+            "ragapp_vllm_inflight_requests",
+            "Requests this service currently has open against vLLM",
+            ["service"],
+        )
+
+        self.vllm_ttft_seconds = Histogram(
+            "ragapp_vllm_ttft_seconds",
+            "Time to first token from vLLM, when the provider streams it",
+            ["service"],
+            buckets=[0.05, 0.1, 0.25, 0.5, 1.0, 2.0, 4.0, 8.0, 16.0, 32.0],
+        )
+
+        self.vllm_output_tokens_per_second = Histogram(
+            "ragapp_vllm_output_tokens_per_second",
+            "Decode throughput for one vLLM request, when measurable",
+            ["service"],
+            buckets=list(OUTPUT_TOKENS_PER_SECOND_BUCKETS),
+        )
+
+        # Store latency around the hot paths CONC-07 and VECTOR-02 own.
+        # `collection` is a fixed schema collection name; it is never a
+        # tenant-scoped or per-document name.
+        self.mongo_operation_duration = Histogram(
+            "ragapp_mongo_operation_duration_seconds",
+            "Mongo operation latency on an identified hot path",
+            ["service", "collection", "operation"],
+            buckets=list(STORE_OPERATION_BUCKETS),
+        )
+
+        # Complements vector_search_duration, which covers search only.
+        self.qdrant_operation_duration = Histogram(
+            "ragapp_qdrant_operation_duration_seconds",
+            "Qdrant operation latency on an identified hot path",
+            ["service", "operation"],
+            buckets=list(STORE_OPERATION_BUCKETS),
         )
 
     def __getattr__(self, name: str) -> Any:

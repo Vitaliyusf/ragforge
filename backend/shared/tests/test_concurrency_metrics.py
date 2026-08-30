@@ -1,0 +1,250 @@
+"""The CONC-00 metric contract: bounded labels and a stable vocabulary.
+
+The whole concurrency track compares later runs against one baseline, so these
+label names are an interface. They are also the repository's cardinality
+guard: a saturation dashboard is read while something is on fire, and a series
+that splits on a tenant id, a filename or an exception message is both
+unreadable and an incident of its own.
+"""
+from typing import Any, cast
+
+import pytest
+
+from shared.metrics import (
+    BATCH_SIZE_BUCKETS,
+    CONCURRENCY_REQUEST_CLASSES,
+    DEGRADED_PATH_REASONS,
+    EVENT_LOOP_LAG_BUCKETS,
+    METRICS,
+    QUEUE_WAIT_BUCKETS,
+    RERANKER_STATUSES,
+)
+
+prometheus = pytest.importorskip("prometheus_client")
+
+
+# Label names that would make a series unbounded. Checked against every
+# concurrency metric below, so a later task cannot add one by accident.
+FORBIDDEN_LABELS = frozenset(
+    {
+        "tenant",
+        "tenant_id",
+        "user",
+        "user_id",
+        "request_id",
+        "trace_id",
+        "memory_id",
+        "document_id",
+        "file_id",
+        "filename",
+        "prompt",
+        "query",
+        "error",
+        "exception",
+        "message",
+    }
+)
+
+CONCURRENCY_METRICS = (
+    "inflight_by_stage",
+    "queue_wait_seconds",
+    "handler_duration_seconds",
+    "executor_tasks_submitted_total",
+    "executor_tasks_rejected_total",
+    "executor_active_workers",
+    "executor_queue_depth",
+    "executor_max_workers",
+    "rpc_timeouts_total",
+    "rpc_inflight",
+    "rabbitmq_deliveries_total",
+    "rabbitmq_inflight_deliveries",
+    "event_loop_lag_seconds",
+    "background_tasks",
+    "degraded_path_total",
+    "embedding_batch_size",
+    "reranker_batch_size",
+    "reranker_status_total",
+    "vllm_inflight_requests",
+    "vllm_ttft_seconds",
+    "vllm_output_tokens_per_second",
+    "mongo_operation_duration",
+    "qdrant_operation_duration",
+)
+
+
+def _labels(name: str) -> tuple:
+    return tuple(getattr(METRICS, name)._labelnames)
+
+
+def test_every_required_signal_has_a_metric():
+    """The task names the signals; this asserts none was quietly dropped."""
+    for name in CONCURRENCY_METRICS:
+        assert hasattr(METRICS, name), f"missing concurrency metric: {name}"
+
+
+@pytest.mark.parametrize("name", CONCURRENCY_METRICS)
+def test_concurrency_metric_labels_stay_bounded(name: str):
+    labels = {label.lower() for label in _labels(name)}
+    offenders = labels & FORBIDDEN_LABELS
+    assert not offenders, f"{name} carries unbounded labels: {sorted(offenders)}"
+
+
+@pytest.mark.parametrize("name", CONCURRENCY_METRICS)
+def test_every_concurrency_metric_is_attributed_to_a_service(name: str):
+    assert "service" in _labels(name), f"{name} cannot be attributed to a service"
+
+
+def test_the_stage_label_carries_the_nine_measured_request_classes():
+    for name in ("inflight_by_stage", "queue_wait_seconds", "handler_duration_seconds", "degraded_path_total"):
+        assert "stage" in _labels(name)
+    assert len(CONCURRENCY_REQUEST_CLASSES) == 9
+
+
+def test_the_closed_vocabularies_are_immutable():
+    """A mutable default would let one import order change another service's
+    label space."""
+    for vocabulary in (CONCURRENCY_REQUEST_CLASSES, DEGRADED_PATH_REASONS, RERANKER_STATUSES):
+        assert isinstance(vocabulary, frozenset)
+
+
+def test_reranker_statuses_are_exactly_the_four_the_task_names():
+    assert RERANKER_STATUSES == {"success", "busy", "timeout", "error"}
+
+
+def test_bucket_edges_are_documented_and_ascending():
+    for buckets in (QUEUE_WAIT_BUCKETS, EVENT_LOOP_LAG_BUCKETS, BATCH_SIZE_BUCKETS):
+        assert list(buckets) == sorted(buckets)
+        assert len(set(buckets)) == len(buckets)
+
+
+def test_queue_wait_histogram_uses_the_documented_buckets():
+    observed = tuple(METRICS.queue_wait_seconds._upper_bounds[:-1])
+    assert observed == tuple(float(bucket) for bucket in QUEUE_WAIT_BUCKETS)
+
+
+def test_degraded_path_records_a_closed_reason_vocabulary():
+    metric = cast(Any, METRICS.degraded_path_total)
+    before = metric.labels(service="s", stage="rag_extended", reason="busy")._value.get()
+    metric.labels(service="s", stage="rag_extended", reason="busy").inc()
+    assert metric.labels(service="s", stage="rag_extended", reason="busy")._value.get() == before + 1
+    assert "busy" in DEGRADED_PATH_REASONS
+
+
+def test_reranker_batch_size_is_distinct_from_candidate_count():
+    """CONC-05 changes the batch, not the candidate pool; one metric for both
+    would hide exactly the change it is meant to prove."""
+    assert METRICS.reranker_batch_size is not METRICS.reranker_candidate_count
+
+
+# ── wiring at the shared boundaries ─────────────────────────
+#
+# A declared metric is not an instrumented one. These prove the two shared
+# consumer boundaries actually record, so `CONCURRENCY_BASELINE.md` can call
+# them WIRED rather than DECLARED.
+
+
+def _gauge_value(metric: Any, **labels: str) -> float:
+    return cast(Any, metric).labels(**labels)._value.get()
+
+
+def _counter_value(metric: Any, **labels: str) -> float:
+    return cast(Any, metric).labels(**labels)._value.get()
+
+
+def test_the_shared_rabbitmq_consumer_records_delivery_and_inflight():
+    pytest.importorskip("aio_pika")
+    import asyncio
+
+    from shared.rabbitmq_base import BaseRabbitMQConsumer
+
+    class Config:
+        rabbitmq_url = "amqp://localhost"
+        rabbitmq_exchange = "ragapp.requests"
+        rabbitmq_queue = "probe_queue"
+        rabbitmq_prefetch_count = 1
+        service_name = "probe_service"
+
+    seen: list[float] = []
+
+    class Consumer(BaseRabbitMQConsumer):
+        async def _dispatch_message(self, message, handler):  # type: ignore[override]
+            seen.append(
+                _gauge_value(
+                    METRICS.rabbitmq_inflight_deliveries,
+                    service="probe_service",
+                    queue="probe_queue",
+                )
+            )
+
+    labels = {"service": "probe_service", "queue": "probe_queue"}
+    delivered_before = _counter_value(METRICS.rabbitmq_deliveries_total, **labels)
+    inflight_before = _gauge_value(METRICS.rabbitmq_inflight_deliveries, **labels)
+
+    asyncio.run(Consumer(Config())._dispatch(object(), None))  # type: ignore[arg-type]
+
+    assert _counter_value(METRICS.rabbitmq_deliveries_total, **labels) == delivered_before + 1
+    assert seen == [inflight_before + 1], "the delivery must be in flight while it runs"
+    assert _gauge_value(METRICS.rabbitmq_inflight_deliveries, **labels) == inflight_before
+
+
+def test_a_failed_rabbitmq_delivery_still_releases_the_inflight_gauge():
+    """A gauge that only decrements on success drifts upward forever and reads
+    as permanent saturation — the reading an operator would act on."""
+    pytest.importorskip("aio_pika")
+    import asyncio
+
+    from shared.rabbitmq_base import BaseRabbitMQConsumer
+
+    class Config:
+        rabbitmq_url = "amqp://localhost"
+        rabbitmq_exchange = "ragapp.requests"
+        rabbitmq_queue = "failing_queue"
+        rabbitmq_prefetch_count = 1
+        service_name = "probe_service"
+
+    class Consumer(BaseRabbitMQConsumer):
+        async def _dispatch_message(self, message, handler):  # type: ignore[override]
+            raise RuntimeError("handler failed")
+
+    labels = {"service": "probe_service", "queue": "failing_queue"}
+    before = _gauge_value(METRICS.rabbitmq_inflight_deliveries, **labels)
+
+    with pytest.raises(RuntimeError):
+        asyncio.run(Consumer(Config())._dispatch(object(), None))  # type: ignore[arg-type]
+
+    assert _gauge_value(METRICS.rabbitmq_inflight_deliveries, **labels) == before
+
+
+def test_the_shared_kafka_consumer_times_the_work_it_hands_out():
+    pytest.importorskip("kafka")
+
+    from shared.kafka_base import BaseKafkaConsumer
+
+    class Message:
+        topic = "probe_topic"
+        partition = 0
+        offset = 0
+        value = {"payload": 1}
+
+    consumer = BaseKafkaConsumer.__new__(BaseKafkaConsumer)
+    consumer.config = type("C", (), {"service_name": "probe_service"})()
+    consumer._consumer = [Message()]
+    consumer._init_consumer = lambda: True  # type: ignore[method-assign]
+    consumer._record_lag = lambda message: None  # type: ignore[method-assign]
+
+    histogram = cast(Any, METRICS.kafka_message_processing_duration)
+    labels = {"service": "probe_service", "topic": "probe_topic"}
+    before = histogram.labels(**labels)._sum.get()
+
+    assert [message for message in consumer.consume()] == [{"payload": 1}]
+
+    # Observed at all, and not the broker's wait: the timer starts when the
+    # message leaves the generator, so it measures the consumer's own work.
+    assert histogram.labels(**labels)._sum.get() >= before
+    observations = [
+        sample.value
+        for metric in histogram.collect()
+        for sample in metric.samples
+        if sample.name.endswith("_count") and sample.labels.get("topic") == "probe_topic"
+    ]
+    assert observations == [1.0], "exactly one message, exactly one observation"

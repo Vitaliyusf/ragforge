@@ -33,7 +33,7 @@ from typing import Any, Dict, Iterator, Optional, Tuple
 from kafka import KafkaConsumer, KafkaProducer
 from kafka.structs import TopicPartition
 from .auth import attach_internal_auth_context
-from .metrics import observe_kafka_consumer_lag
+from .metrics import METRICS, observe_kafka_consumer_lag
 
 logger = logging.getLogger(__name__)
 
@@ -223,13 +223,29 @@ class BaseKafkaConsumer:
     # ------------------------------------------------------------------
 
     def consume(self, timeout_ms: int = 1000) -> Iterator[Dict[str, Any]]:
-        """Yield decoded messages from the configured Kafka topic."""
+        """Yield decoded messages from the configured Kafka topic.
+
+        Processing duration is timed across the ``yield``: the generator hands
+        a message to the caller and the clock stops when the caller comes back
+        for the next one, so the histogram measures the consumer's own work
+        rather than the broker's. Measured here because this is the single
+        boundary every Kafka consumer in the repository already goes through.
+        """
         if not self._init_consumer() or self._consumer is None:
             raise RuntimeError("Kafka consumer not available")
+        service = str(getattr(self.config, "service_name", "unknown"))
         try:
             for message in self._consumer:
                 self._record_lag(message)
-                yield message.value
+                started = time.perf_counter()
+                try:
+                    yield message.value
+                finally:
+                    # `finally`, so a handler that raises or a caller that
+                    # abandons the generator still records the work it did.
+                    METRICS.kafka_message_processing_duration.labels(
+                        service=service, topic=message.topic
+                    ).observe(max(0.0, time.perf_counter() - started))
         except StopIteration:
             return
 
