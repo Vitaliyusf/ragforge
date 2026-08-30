@@ -75,11 +75,16 @@ class RAGConfig(BaseSettings):
     stream_drain_timeout_seconds: float = 1.0
     approved_stream_emit_timeout_seconds: float = 5.0
 
-    # Legacy fields retained for compatibility with the current codebase/tests.
+    # Learned reranker. The production compose profile enables it after baking
+    # the pinned model into the image; local source-only runs degrade cleanly.
     vector_store_type: str = "in_memory"
-    reranker_topic: str = "reranker_requests"
-    reranker_enabled: bool = True
-    reranker_top_k: int = 5
+    reranker_enabled: bool = False
+    reranker_model: str = "BAAI/bge-reranker-v2-m3"
+    reranker_model_revision: str = "b5160aeac3c6c8fe7beaaaf04c9e0142826b58d1"
+    reranker_candidate_k: int = 20
+    reranker_timeout_seconds: float = 5.0
+    reranker_batch_size: int = 8
+    reranker_max_length: int = 512
 
     # Collection names
     conversation_threads_collection: str = "conversation_threads"

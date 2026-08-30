@@ -77,7 +77,9 @@ def build_config(**overrides: Any) -> SimpleNamespace:
         "mongodb_retry_delay": 0,
         "top_k_documents": 6,
         "reranker_enabled": True,
-        "reranker_top_k": 5,
+        "reranker_model": "BAAI/bge-reranker-v2-m3",
+        "reranker_model_revision": "test-revision",
+        "reranker_candidate_k": 20,
         "hybrid_search_enabled": True,
         "hybrid_search_alpha": 0.55,
         "min_similarity_threshold": 0.4,
@@ -205,5 +207,4 @@ class FakeSnapshotter:
         result = self.snapshots[self.calls]
         self.calls += 1
         return result
-
 

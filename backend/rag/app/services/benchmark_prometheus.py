@@ -31,6 +31,7 @@ SNAPSHOT_QUERIES: Dict[str, Dict[str, str]] = {
         "vector_search_p95": 'histogram_quantile(0.95, sum by (collection, le) (rate(ragapp_vector_search_duration_seconds_bucket{traffic_class="live"}[5m])))',
         "vector_search_rate": 'sum by (collection) (rate(ragapp_vector_searches_total{traffic_class="live"}[5m]))',
         "reranker_p95": 'histogram_quantile(0.95, sum by (le) (rate(ragapp_reranker_duration_seconds_bucket{traffic_class="live"}[5m])))',
+        "reranker_candidate_count_p95": 'histogram_quantile(0.95, sum by (le) (rate(ragapp_reranker_candidate_count_bucket{traffic_class="live"}[5m])))',
     },
     "quality": {},
     "pipeline": {

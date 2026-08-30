@@ -60,7 +60,7 @@ DATASET = {
 
 @pytest.fixture
 def config() -> RAGConfig:
-    return RAGConfig()
+    return RAGConfig(reranker_enabled=True)
 
 
 def manifest_text(manifest: Dict[str, Any]) -> str:
@@ -385,8 +385,9 @@ def test_the_retrieval_section_reports_the_real_hybrid_path(config):
     assert retrieval["dense_active"] is True
     assert retrieval["sparse_active"] is True
     assert retrieval["fusion"] == "rrf"
-    assert retrieval["reranker_active"] is False
-    assert retrieval["reranker_model"] is None
+    assert retrieval["reranker_active"] is True
+    assert retrieval["reranker_model"] == config.reranker_model
+    assert retrieval["reranker_model_revision"] == config.reranker_model_revision
     # The legacy values are gone rather than recorded as inactive: a field
     # naming a stage that does not exist has no honest value.
     for legacy in (
@@ -403,9 +404,9 @@ def test_the_manifest_describes_the_pipeline_stages_a_benchmark_drives(config):
     its merge and pass-two settings are the production ones."""
     retrieval = build_benchmark_manifest(config, env={})["retrieval"]
 
-    assert retrieval["reranker_implementation"] == "score_order_merge"
+    assert retrieval["reranker_implementation"] == "sentence_transformers_cross_encoder"
     assert retrieval["context_k"] == config.top_k_documents
-    assert retrieval["merge_kept_k"] == config.top_k_documents * 2
+    assert retrieval["merge_kept_k"] == config.reranker_candidate_k
     assert retrieval["pass_two_active"] is True
     assert retrieval["pass_two_score_threshold"] == config.pass_two_score_threshold
 
@@ -659,7 +660,10 @@ def test_a_prompt_version_that_is_not_a_version_label_is_rejected(config, value)
     )
 
     assert manifest["llm"]["prompt_version"]["answer_evaluation"] is None
-    assert value not in manifest_text(manifest)
+    # Matched as a complete JSON value, not as a bare substring: a rejected
+    # label would be recorded whole, while `v2` also occurs inside the pinned
+    # reranker model name the retrieval section legitimately reports.
+    assert f'"{value}"' not in manifest_text(manifest)
 
 
 def test_no_raw_prompt_text_reaches_the_manifest(config):

@@ -163,7 +163,7 @@ def test_ttft_is_recorded_for_non_admin_users():
     )
 
 
-def test_reranker_top1_change_is_recorded_in_the_extended_flow():
+def test_disabled_reranker_does_not_invent_a_top1_change_measurement():
     before_true = counter_value(
         METRICS.rag_reranker_changed_top1, service="rag", changed="true"
     )
@@ -173,7 +173,7 @@ def test_reranker_top1_change_is_recorded_in_the_extended_flow():
     # Global Pass1 + Pass2 ranking promotes Pass2's higher-scoring chunk.
     assert (
         counter_value(METRICS.rag_reranker_changed_top1, service="rag", changed="true")
-        == before_true + 1
+        == before_true
     )
 
 

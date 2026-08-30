@@ -294,8 +294,8 @@ _CONFIG_RETRIEVAL_FIELDS = (
 )
 
 # The rest of the retrieval section describes what the pipeline *does*, not
-# what config declares. `reranker_enabled`, `reranker_top_k`,
-# `hybrid_search_enabled` and `min_similarity_threshold` are deliberately
+# what config declares. Raw reranker/hybrid flags and
+# `min_similarity_threshold` are deliberately
 # absent from the raw allowlist above. Effective hybrid settings come from
 # the live-path description below, while the unapplied similarity threshold
 # remains excluded. The

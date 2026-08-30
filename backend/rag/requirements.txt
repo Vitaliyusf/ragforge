@@ -8,3 +8,6 @@ python-socketio[asyncio]==5.16.4
 aiohttp==3.14.3
 # See backend/files/requirements.txt for why langgraph is not in the base file.
 langgraph==1.2.11
+# CrossEncoder is the production learned-reranker adapter. Keep the same 5.x
+# line as embedding so the repository has one transformers/torch dependency set.
+sentence-transformers==5.7.0

@@ -13,6 +13,7 @@ from app.services.conversation_backend_client import ConversationBackendClient
 from app.services.conversation_persistence import BaseConversationStore
 from app.services.conversation_tracing import ConversationTracer
 from app.services.conversation_types import ConversationRequest, normalize_mode, utc_now_iso
+from app.services.learned_reranker import CrossEncoderReranker
 from shared.auth import identity_from_context
 
 
@@ -26,6 +27,7 @@ class RAGService(BaseRAGService):
         logger: Any,
         config: RAGConfig,
         tracer: Optional[ConversationTracer] = None,
+        reranker: Optional[CrossEncoderReranker] = None,
     ):
         super().__init__(config, logger)
         self.backend_client = backend_client
@@ -37,6 +39,7 @@ class RAGService(BaseRAGService):
             store=conversation_store,
             tracer=self.tracer,
             logger=logger,
+            reranker=reranker,
         )
 
     def build_request(

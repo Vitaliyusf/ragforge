@@ -79,7 +79,7 @@ jobs:
         # runtime (~2 GB); the CPU build satisfies `torch==2.13.0` and is a
         # fraction of the size. Nothing under test needs a GPU, and installing
         # it first means the service layer resolves against it.
-        if: matrix.service == 'llm_agent' || matrix.service == 'embedding'
+        if: matrix.service == 'llm_agent' || matrix.service == 'embedding' || matrix.service == 'rag'
         run: pip install torch==2.13.0 --index-url https://download.pytorch.org/whl/cpu
       - name: Install dependencies
         # Three deterministic layers: base runtime, service runtime, canonical

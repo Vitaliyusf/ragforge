@@ -466,12 +466,12 @@ def test_end_to_end_mode_is_recorded_in_the_config_snapshot():
     # Scored over the graph's own sources, so the depth recorded is the
     # production one — claiming the eval depth would name a candidate pool
     # this run never saw.
-    assert stored["config_snapshot"]["candidate_k"] == 6
-    # This mode does drive the graph, so the stages it reaches are recorded
-    # with their real settings rather than as null.
+    assert stored["config_snapshot"]["candidate_k"] == 20
+    # Regular mode reaches reranking and context selection, but not the
+    # extended merge or second retrieval pass.
     assert stored["config_snapshot"]["context_k"] == 6
-    assert stored["config_snapshot"]["reranker_implementation"] == "score_order_merge"
-    assert stored["config_snapshot"]["pass_two_active"] is True
+    assert stored["config_snapshot"]["reranker_implementation"] == "sentence_transformers_cross_encoder"
+    assert stored["config_snapshot"]["pass_two_active"] is False
 
 
 def test_end_to_end_respects_the_phase_five_concurrency_bound():
@@ -537,6 +537,4 @@ def test_retrieval_results_carry_no_answer_quality_section():
 # scoring the label as a miss reports a recall regression that never
 # happened. These cover the three states a label can be in and what a run
 # does about each.
-
-
 

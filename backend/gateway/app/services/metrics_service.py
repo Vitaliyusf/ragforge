@@ -163,6 +163,7 @@ class MetricsService(BaseRPCService):
                 "retrieval_filtered_rate",
                 "retrieval_filtered_by_reason",
                 "reranker_p95",
+                "reranker_candidate_count_p95",
                 "reranker_top_score_buckets",
             ],
             window,
@@ -182,7 +183,10 @@ class MetricsService(BaseRPCService):
                 metrics.get("retrieval_filtered_by_reason"), "reason"
             ),
             "reranker_p95_seconds": _scalar(metrics.get("reranker_p95")),
-            # Scored 0-10 by the reranker model, not 0-1 like the judge scores.
+            "reranker_candidate_count_p95": _scalar(
+                metrics.get("reranker_candidate_count_p95")
+            ),
+            # BGE's CrossEncoder activation maps scores into the 0-1 range.
             "reranker_top_score_histogram": _histogram_from_le(
                 metrics.get("reranker_top_score_buckets")
             ),

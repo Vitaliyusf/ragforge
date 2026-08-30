@@ -129,11 +129,10 @@ _ENV_SNAPSHOT_FIELDS = {
 # later can be interpreted under the rules it was written with. Version 1 is
 # the pre-versioning shape, which reported `reranker_enabled`,
 # `reranker_top_k`, `hybrid_search_enabled` and `hybrid_search_alpha`
-# straight from config. Those four are gone from version 2: they were legacy
-# compatibility flags no retrieval code reads, and a snapshot claiming an
-# active reranker on their authority described a stage that never ran. See
-# :mod:`app.services.effective_retrieval`.
-CONFIG_SNAPSHOT_VERSION = 2
+# straight from config. Version 2 removed the nonexistent reranker claim;
+# version 3 records the real implementation, pinned model revision and bounded
+# candidate depth introduced by RAG-04. See :mod:`app.services.effective_retrieval`.
+CONFIG_SNAPSHOT_VERSION = 3
 
 # How much of the stack a run measured. Defined here rather than in
 # `eval_runner` because `build_config_snapshot` branches on it and
@@ -261,7 +260,11 @@ def build_config_snapshot(
         # run's single `search_chunks` call reaches no merge stage, no pass
         # two and no answer context, so those are recorded as null rather
         # than as production settings this run never exercised.
-        **effective_retrieval_config(config, pipeline_active=mode == MODE_END_TO_END),
+        **effective_retrieval_config(
+            config,
+            pipeline_active=mode == MODE_END_TO_END,
+            pipeline_mode=pipeline_mode,
+        ),
     }
     unobserved: List[str] = []
     for field, env_names in _ENV_SNAPSHOT_FIELDS.items():

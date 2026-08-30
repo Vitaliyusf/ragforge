@@ -83,10 +83,11 @@ INSTANT_QUERIES: dict[str, str] = {
     "retrieval_filtered_by_reason": "sum by (reason) (rate(ragapp_rag_chunks_filtered_total[${window}]))",
     # Phase 1 records both of these; nothing queried them until now. The lift
     # number alone cannot answer "is the reranker earning its latency".
-    "reranker_p95": "histogram_quantile(0.95, sum by (le) (rate(ragapp_reranker_duration_seconds_bucket[${window}])))",
+    "reranker_p95": 'histogram_quantile(0.95, sum by (le) (rate(ragapp_reranker_duration_seconds_bucket{traffic_class="live"}[${window}])))',
+    "reranker_candidate_count_p95": 'histogram_quantile(0.95, sum by (le) (rate(ragapp_reranker_candidate_count_bucket{traffic_class="live"}[${window}])))',
     # Cumulative-by-`le` counts over the whole window; the gateway converts
     # them to discrete buckets before they reach the UI.
-    "reranker_top_score_buckets": "sum by (le) (increase(ragapp_reranker_top_score_bucket[${range}]))",
+    "reranker_top_score_buckets": 'sum by (le) (increase(ragapp_reranker_top_score_bucket{traffic_class="live"}[${range}]))',
 
     # ── Embedding and generation ──────────────────────────────────────
     "embedding_p95": 'histogram_quantile(0.95, sum by (le) (rate(ragapp_embedding_duration_seconds_bucket{traffic_class="live"}[${window}])))',
