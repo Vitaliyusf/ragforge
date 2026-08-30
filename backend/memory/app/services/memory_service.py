@@ -8,7 +8,7 @@ import re
 import time
 import uuid
 from datetime import datetime, timezone
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 from pymongo.collection import Collection
 
@@ -38,8 +38,9 @@ ALLOWED_MEMORY_CLASSES = {"episodic", "semantic_preference"}
 
 # Memory lifecycle. Exactly one of these is authoritative for a given fact:
 # `active`. `superseded` and `archived` stay readable for history and audit but
-# never answer a current-fact query; `deleted` is a tombstone that exists only
-# until the vector index has confirmed the point is gone.
+# never answer a current-fact query. A `deleted` canonical row is temporary
+# reconciliation state; the durable, content-free deletion identity lives in
+# `memory_deletion_tombstones` after the row and its vector are gone.
 MEMORY_STATUS_ACTIVE = "active"
 MEMORY_STATUS_SUPERSEDED = "superseded"
 MEMORY_STATUS_ARCHIVED = "archived"
@@ -160,6 +161,10 @@ class LongTermMemoryService:
         """Return write log collection."""
         return self._db()["memory_write_log"]
 
+    def _deletion_tombstone_collection(self) -> Collection:
+        """Return durable deletion identities, which are never retrievable."""
+        return self._db()["memory_deletion_tombstones"]
+
     def _ensure_indexes(self) -> None:
         """Create Mongo indexes used by the memory service."""
         if self._indexes_ready:
@@ -203,6 +208,42 @@ class LongTermMemoryService:
                 [("tenant_id", 1), ("owner_user_id", 1), ("owner_id", 1), ("owner_type", 1), ("created_at", -1)]
             )
             self._write_log_collection().create_index([("status", 1), ("created_at", -1)])
+            self._deletion_tombstone_collection().create_index(
+                [("tenant_id", 1), ("owner_user_id", 1), ("memory_id", 1)],
+                unique=True,
+            )
+            self._deletion_tombstone_collection().create_index(
+                [
+                    ("tenant_id", 1),
+                    ("owner_user_id", 1),
+                    ("owner_id", 1),
+                    ("owner_type", 1),
+                    ("memory_class", 1),
+                    ("scope_key", 1),
+                    ("content_hash", 1),
+                ]
+            )
+            self._deletion_tombstone_collection().create_index(
+                [
+                    ("tenant_id", 1),
+                    ("owner_user_id", 1),
+                    ("owner_id", 1),
+                    ("owner_type", 1),
+                    ("memory_class", 1),
+                    ("scope_key", 1),
+                    ("fact_key", 1),
+                ]
+            )
+            self._deletion_tombstone_collection().create_index(
+                [
+                    ("tenant_id", 1),
+                    ("owner_user_id", 1),
+                    ("owner_id", 1),
+                    ("owner_type", 1),
+                    ("memory_class", 1),
+                    ("preference_key", 1),
+                ]
+            )
             self._indexes_ready = True
         except Exception as exc:
             self.logger.log(
@@ -901,6 +942,123 @@ class LongTermMemoryService:
             return collection, doc
         return None, None
 
+    def _deletion_tombstone_by_memory_id(self, memory_id: str) -> Optional[Dict[str, Any]]:
+        """Find one durable deletion identity inside the caller's boundary."""
+        if not memory_id:
+            return None
+        tombstone: Optional[Dict[str, Any]] = self._deletion_tombstone_collection().find_one(
+            scope_filter({"memory_id": memory_id}),
+            {"_id": 0},
+        )
+        return tombstone
+
+    def _deletion_tombstone_ids(self, memory_ids: Set[str]) -> Set[str]:
+        """Return which of these ids carry a durable deletion identity.
+
+        Reconciliation asks about a whole page of documents at once, so this is
+        one bounded query per pass rather than one lookup per document.
+        """
+        wanted = [memory_id for memory_id in memory_ids if memory_id]
+        if not wanted:
+            return set()
+        return {
+            str(row["memory_id"])
+            for row in self._deletion_tombstone_collection().find(
+                scope_filter({"memory_id": {"$in": wanted}}),
+                {"_id": 0, "memory_id": 1},
+            )
+        }
+
+    def _matching_deletion_tombstone(
+        self,
+        normalized: Dict[str, Any],
+    ) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+        """Match a candidate to a durable deletion with bounded exact queries.
+
+        The guard deliberately does not use embeddings. Identity, normalized
+        content and declared fact slots are deterministic; content and fact
+        matches also require the same context scope.
+        """
+        collection = self._deletion_tombstone_collection()
+        base = {
+            "owner_id": normalized["owner_id"],
+            "owner_type": normalized["owner_type"],
+            "memory_class": normalized["memory_class"],
+        }
+        identity_queries = (
+            (normalized.get("id"), "canonical_memory_id"),
+            (normalized.get("supersedes"), "supersedes_deleted_memory"),
+        )
+        for memory_id, match_rule in identity_queries:
+            if memory_id:
+                tombstone = collection.find_one(
+                    scope_filter({**base, "memory_id": memory_id}),
+                    {"_id": 0},
+                )
+                if tombstone:
+                    return tombstone, match_rule
+
+        # A semantic preference key holds exactly one authoritative value for an
+        # owner, which is the same identity `_upsert_semantic_preference` uses
+        # to decide that a new value replaces the old one in place. Deleting the
+        # preference therefore deletes that slot, not one particular wording of
+        # it, and the slot is owner-scoped with no context scope of its own.
+        if normalized["memory_class"] == "semantic_preference":
+            preference_key = normalized.get("preference_key")
+            if preference_key:
+                tombstone = collection.find_one(
+                    scope_filter({**base, "preference_key": preference_key}),
+                    {"_id": 0},
+                )
+                if tombstone:
+                    return tombstone, "preference_key_same_owner"
+
+        scoped_base = {**base, "scope_key": normalized.get("scope_key") or ""}
+        tombstone = collection.find_one(
+            scope_filter({**scoped_base, "content_hash": normalized["content_hash"]}),
+            {"_id": 0},
+        )
+        if tombstone:
+            return tombstone, "exact_content_same_scope"
+
+        fact_key = normalized.get("fact_key")
+        if fact_key:
+            tombstone = collection.find_one(
+                scope_filter({**scoped_base, "fact_key": fact_key}),
+                {"_id": 0},
+            )
+            if tombstone:
+                return tombstone, "fact_key_same_scope"
+        return None, None
+
+    def _store_deletion_tombstone(self, doc: Dict[str, Any]) -> Dict[str, Any]:
+        """Persist the minimum identity needed to prevent resurrection."""
+        memory_id = str(doc["id"])
+        existing = self._deletion_tombstone_by_memory_id(memory_id)
+        if existing:
+            return existing
+
+        tombstone = {
+            "memory_id": memory_id,
+            "owner_id": doc.get("owner_id"),
+            "owner_type": doc.get("owner_type"),
+            "memory_class": doc.get("memory_class"),
+            "content_hash": doc.get("content_hash"),
+            "fact_key": doc.get("fact_key"),
+            "preference_key": doc.get("preference_key"),
+            "scope_key": doc.get("scope_key") or "",
+            "deleted_at": self._now_fn(),
+            "deletion_provenance": "explicit_delete",
+            "revision": doc.get("revision", 1),
+            **ownership_fields(),
+        }
+        self._deletion_tombstone_collection().update_one(
+            scope_filter({"memory_id": memory_id}),
+            {"$setOnInsert": tombstone},
+            upsert=True,
+        )
+        return tombstone
+
     def _text_similarity(self, left_tokens: List[str], right_tokens: List[str]) -> float:
         """Compute Jaccard similarity between token sets."""
         left_set = set(left_tokens)
@@ -1384,6 +1542,34 @@ class LongTermMemoryService:
                     "qdrant_indexed": None,
                     "embedding_status": None,
                     "reconciliation_required": False,
+                }
+
+            tombstone, tombstone_match = self._matching_deletion_tombstone(normalized)
+            if tombstone:
+                reason = f"resurrection suppressed by deletion tombstone ({tombstone_match})"
+                self._record_operation("resurrection_suppressed")
+                self._log_outcome(
+                    request_context,
+                    candidate_snapshot,
+                    normalized,
+                    "rejected",
+                    None,
+                    normalized["memory_class"],
+                    reason,
+                    checks,
+                )
+                self._record_duration("write_memory", started)
+                return {
+                    "status": "rejected",
+                    "outcome": "resurrection_suppressed",
+                    "memory_id": None,
+                    "memory_class": normalized["memory_class"],
+                    "reason": reason,
+                    "tombstone_match": tombstone_match,
+                    "qdrant_indexed": None,
+                    "embedding_status": None,
+                    "reconciliation_required": False,
+                    "restore_allowed": False,
                 }
 
             comparable, comparison, candidate_vector = self._comparable_memories(normalized)
@@ -1921,17 +2107,48 @@ class LongTermMemoryService:
     def delete_memory(self, memory_id: str) -> Dict[str, Any]:
         """Delete a memory from both canonical persistence and the index.
 
-        Deletion is only complete when both sides are gone. If the vector point
-        cannot be removed, the canonical document is kept as a `deleted`
-        tombstone — invisible to every read path but still carrying the id the
-        index needs — and the caller is told the delete is partial rather than
-        being handed a success it did not get.
+        The durable deletion identity is written first and outlives everything
+        else, because the one thing a delete has to survive is the same fact
+        arriving again. Deletion is only complete when both sides are gone: if
+        the vector point cannot be removed, the canonical document is kept as a
+        `deleted` row — invisible to every read path but still carrying the id
+        the index needs — and the caller is told the delete is partial rather
+        than being handed a success it did not get.
+
+        Deleting something already deleted is not an error. The identity says
+        the fact is gone, which is exactly what the caller asked for, so a
+        replayed delete reports the same outcome instead of a spurious
+        not-found.
         """
+        self._ensure_indexes()
         started = time.monotonic()
         self._record_operation("delete_memory")
-        collection, doc = self._find_memory_document(memory_id)
+        collection, doc = self._find_memory_document(memory_id, include_tombstones=True)
         if not collection or not doc:
+            if self._deletion_tombstone_by_memory_id(memory_id):
+                self._record_duration("delete_memory", started)
+                return {
+                    "status": "deleted",
+                    "memory_id": memory_id,
+                    "vector_deleted": None,
+                    "reconciliation_required": False,
+                    "already_deleted": True,
+                    "reason": None,
+                }
             raise ValueError(f"Memory {memory_id} not found")
+
+        if self._memory_status(doc) == MEMORY_STATUS_DELETED:
+            self._record_duration("delete_memory", started)
+            return {
+                "status": "partial",
+                "memory_id": memory_id,
+                "vector_deleted": False,
+                "reconciliation_required": True,
+                "already_deleted": True,
+                "reason": "vector deletion remains pending reconciliation",
+            }
+
+        self._store_deletion_tombstone(doc)
 
         if self._index_client.is_enabled():
             try:

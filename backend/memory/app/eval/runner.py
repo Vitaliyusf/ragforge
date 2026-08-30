@@ -4,6 +4,7 @@ from __future__ import annotations
 import copy
 import subprocess
 import time
+import uuid
 from dataclasses import dataclass
 from typing import Any, Dict, List, Mapping, MutableMapping, Optional, Sequence, Tuple
 
@@ -21,6 +22,12 @@ from app.tests._memory_harness import (
 )
 
 MEASUREMENT_CLASS = "AUTHORITATIVE DETERMINISTIC"
+# Memory ids are the last tie-break in production ranking, so leaving them to
+# `uuid.uuid4()` made the order of two equally scored memories a coin flip and
+# nDCG irreproducible between identical runs. The benchmark therefore mints its
+# own ids from the scenario and the write that produced them: still opaque
+# UUIDs to the service, but the same ones on every execution.
+EVAL_MEMORY_ID_NAMESPACE = uuid.UUID("6f1f5a5e-2f2b-5c8a-9a3f-0f2a7c4d1b90")
 EMBEDDING_DISCLAIMER = (
     "Retrieval uses the deterministic Unicode bag-of-words measurement stub; "
     "it does not measure production multilingual E5 quality."
@@ -60,9 +67,20 @@ def _identity(scenario: MemoryScenario) -> Dict[str, str]:
     return {"tenant_id": scenario.tenant_id, "user_id": scenario.user_id, "role": "user"}
 
 
-def _payload(spec: Mapping[str, Any], labels: Mapping[str, str]) -> Dict[str, Any]:
+def eval_memory_id(request_id: str) -> str:
+    """Return the stable memory id this benchmark assigns to one write.
+
+    Request ids already carry the scenario id and the position of the write
+    inside it, so a UUID5 over them is unique per written memory and identical
+    across processes and runs.
+    """
+    return str(uuid.uuid5(EVAL_MEMORY_ID_NAMESPACE, request_id))
+
+
+def _payload(spec: Mapping[str, Any], labels: Mapping[str, str], request_id: str) -> Dict[str, Any]:
     candidate = copy.deepcopy(dict(spec))
     candidate.pop("label", None)
+    candidate.setdefault("id", eval_memory_id(request_id))
     supersedes_label = candidate.pop("supersedes_label", None)
     if supersedes_label:
         candidate["supersedes"] = next(
@@ -81,7 +99,7 @@ def _write(
     labels: MutableMapping[str, str],
 ) -> Dict[str, Any]:
     result = service.write_memory(
-        _payload(spec, labels),
+        _payload(spec, labels, request_id),
         {"owner_type": "user", "request_id": request_id},
     )
     memory_id = result.get("memory_id")
@@ -201,9 +219,10 @@ def _run_memory_scenario(scenario: MemoryScenario) -> Tuple[Dict[str, Any], List
             with bound_context(**collision_identity):
                 foreign = dict(scenario.candidate or scenario.seed_memories[0])
                 foreign["label"] = "foreign"
+                foreign_request_id = f"{scenario.scenario_id}:foreign"
                 foreign_result = service.write_memory(
-                    _payload(foreign, labels),
-                    {"owner_type": "user", "request_id": f"{scenario.scenario_id}:foreign"},
+                    _payload(foreign, labels, foreign_request_id),
+                    {"owner_type": "user", "request_id": foreign_request_id},
                 )
                 if foreign_result.get("memory_id"):
                     labels[str(foreign_result["memory_id"])] = "foreign"

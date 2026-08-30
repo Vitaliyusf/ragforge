@@ -155,10 +155,19 @@ def test_a_delete_retried_after_the_vector_finally_went_stays_deleted():
         partial = service.delete_memory(written["memory_id"])
         index.fail_delete = False
         report = build_reconciliation_service(service).reconcile()
-        # A late retry of the same delete finds nothing left to remove.
-        with pytest.raises(ValueError):
-            service.delete_memory(written["memory_id"])
+        # A late retry of the same delete finds nothing left to remove, and the
+        # durable deletion identity lets it say so instead of claiming the
+        # memory was never there.
+        retry = service.delete_memory(written["memory_id"])
 
+    assert retry == {
+        "status": "deleted",
+        "memory_id": written["memory_id"],
+        "vector_deleted": None,
+        "reconciliation_required": False,
+        "already_deleted": True,
+        "reason": None,
+    }
     assert partial["status"] == "partial"
     assert report["repaired"] == 1
     assert database["episodic_memories"].docs == []

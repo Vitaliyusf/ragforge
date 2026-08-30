@@ -20,7 +20,7 @@ Three properties shape the design:
 from __future__ import annotations
 
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
 
 from app.core.config import settings
 from app.services.memory_embedding_client import MemoryEmbeddingError
@@ -133,6 +133,9 @@ class MemoryReconciliationService:
         documents = service._all_memory_documents(include_tombstones=True)
         report["scanned"] = len(documents)
         known_ids = {str(doc.get("id")) for doc in documents}
+        # Which of the scanned rows are already owned by a durable deletion
+        # identity, resolved in one bounded query rather than one per document.
+        deleted_ids = service._deletion_tombstone_ids(known_ids)
 
         # The bound counts work done, not documents looked at. Slicing the
         # document list instead would make every pass revisit the same head of
@@ -143,7 +146,7 @@ class MemoryReconciliationService:
             if attempted >= batch:
                 report["truncated"] = True
                 break
-            if self._reconcile_document(doc, report):
+            if self._reconcile_document(doc, report, deleted_ids):
                 attempted += 1
 
         if settings.memory_reconciliation_scan_orphans:
@@ -171,7 +174,12 @@ class MemoryReconciliationService:
     # Canonical-side drift
     # ------------------------------------------------------------------
 
-    def _reconcile_document(self, doc: Dict[str, Any], report: Dict[str, Any]) -> bool:
+    def _reconcile_document(
+        self,
+        doc: Dict[str, Any],
+        report: Dict[str, Any],
+        deleted_ids: Set[str],
+    ) -> bool:
         """Repair one canonical memory whose index state is behind.
 
         Returns whether this document needed work, so the caller can bound a
@@ -182,11 +190,19 @@ class MemoryReconciliationService:
         retrieval = doc.get("retrieval") or {}
         embedding_status = retrieval.get("embedding_status")
 
+        # A crash can leave the durable deletion identity committed while the
+        # canonical row is still unmarked and its point still indexed. The
+        # deletion identity is authoritative, so reconciliation finishes the
+        # delete and never re-embeds the row back into the index.
+        if str(doc.get("id") or "") in deleted_ids:
+            self._repair_tombstone(doc, report, deleted_ids)
+            return True
+
         if status in {MEMORY_STATUS_DELETED, MEMORY_STATUS_SUPERSEDED} or doc.get("valid_to"):
             if embedding_status == EMBEDDING_STATUS_DELETE_PENDING or (
                 status == MEMORY_STATUS_DELETED and embedding_status != EMBEDDING_STATUS_DISABLED
             ):
-                self._repair_tombstone(doc, report)
+                self._repair_tombstone(doc, report, deleted_ids)
                 return True
             return False
 
@@ -235,13 +251,19 @@ class MemoryReconciliationService:
         report["repaired"] += 1
         self._record(drift_class, OUTCOME_REPAIRED)
 
-    def _repair_tombstone(self, doc: Dict[str, Any], report: Dict[str, Any]) -> None:
+    def _repair_tombstone(
+        self,
+        doc: Dict[str, Any],
+        report: Dict[str, Any],
+        deleted_ids: Set[str],
+    ) -> None:
         """Finish a delete or supersession the index did not confirm.
 
         A tombstone exists only to remember which point still has to go. Once
         the point is gone the row has no reason to survive, so a deleted memory
         is removed for real; a superseded one keeps its history and merely
-        stops owing the index anything.
+        stops owing the index anything. The durable deletion identity is not
+        touched either way, so a later pass still refuses to resurrect the fact.
         """
         report["drift"][DRIFT_TOMBSTONE_VECTOR] += 1
         service = self.memory_service
@@ -261,7 +283,7 @@ class MemoryReconciliationService:
             return
 
         collection = service._collection_for(doc["memory_class"])
-        if service._memory_status(doc) == MEMORY_STATUS_DELETED:
+        if service._memory_status(doc) == MEMORY_STATUS_DELETED or memory_id in deleted_ids:
             collection.delete_one(scope_filter({"id": memory_id}))
         else:
             collection.update_one(

@@ -113,7 +113,7 @@ class FakeCollection:
                 return self._project(doc, projection)
         return None
 
-    def update_one(self, query, update):
+    def update_one(self, query, update, upsert=False):
         modified = 0
         for doc in self.docs:
             if self._matches(doc, query):
@@ -121,6 +121,11 @@ class FakeCollection:
                     _set_nested(doc, key, copy.deepcopy(value))
                 modified = 1
                 break
+        if not modified and upsert:
+            inserted = copy.deepcopy(update.get("$setOnInsert", {}))
+            for key, value in update.get("$set", {}).items():
+                _set_nested(inserted, key, copy.deepcopy(value))
+            self.docs.append(inserted)
         return SimpleNamespace(modified_count=modified)
 
     def delete_one(self, query):
