@@ -84,8 +84,15 @@ export function TabPanel({ id, children, className = '' }) {
       role="tabpanel"
       id={`panel-${id}`}
       aria-labelledby={`tab-${id}`}
+      // The panel is focusable so a keyboard user can scroll it, which means
+      // it needs to say so when it is focused. An inset ring does that without
+      // the layout shift an outer ring would cause inside a tab shell.
       tabIndex={0}
-      className={cn('pt-4 focus-visible:outline-hidden', className)}
+      className={cn(
+        'pt-4 rounded-lg focus-visible:outline-hidden',
+        'focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--ring)]',
+        className
+      )}
     >
       {children}
     </div>

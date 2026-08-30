@@ -2,20 +2,40 @@
 
 import { useState } from 'react'
 import { motion } from 'framer-motion'
-import { Check, X } from 'lucide-react'
-import { toast } from 'sonner'
+import { X } from 'lucide-react'
+import { notifyError } from '@/lib/notify'
 import Button from '@/components/ui/Button'
 import { cn } from '@/lib/utils'
 import { CATEGORY_OPTIONS, MAX_CHARS } from './memoryConfig'
+
+/** Every control below suppresses the UA outline for the app ring, so the
+    ring is spelled out rather than left to the browser default. */
+const FOCUS_RING =
+  'focus:outline-hidden focus-visible:ring-2 focus-visible:ring-[var(--ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--surface)]'
 
 function AddMemoryForm({ onAdd, onCancel }) {
   const [content, setContent]   = useState('')
   const [category, setCategory] = useState('user_preference')
   const [loading, setLoading]   = useState(false)
 
+  // Roving focus for the category radiogroup: the group is one tab stop and
+  // the arrow keys move (and select) inside it, which is what a screen reader
+  // promises the moment the options are announced as radios.
+  const handleCategoryKeyDown = (event) => {
+    const step = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[event.key]
+    if (!step) return
+    event.preventDefault()
+    const index = CATEGORY_OPTIONS.findIndex(opt => opt.value === category)
+    const next = CATEGORY_OPTIONS[(index + step + CATEGORY_OPTIONS.length) % CATEGORY_OPTIONS.length]
+    setCategory(next.value)
+    event.currentTarget.parentElement
+      ?.querySelector(`[data-category="${next.value}"]`)
+      ?.focus()
+  }
+
   const handleSubmit = async () => {
-    if (!content.trim()) { toast.error('Please enter memory content'); return }
-    if (content.length > MAX_CHARS) { toast.error(`Max ${MAX_CHARS} characters`); return }
+    if (!content.trim()) { notifyError('Please enter memory content'); return }
+    if (content.length > MAX_CHARS) { notifyError(`Max ${MAX_CHARS} characters`); return }
     setLoading(true)
     try {
       await onAdd(content.trim(), category)
@@ -43,7 +63,7 @@ function AddMemoryForm({ onAdd, onCancel }) {
             type="button"
             onClick={onCancel}
             aria-label="Cancel adding memory"
-            className="flex h-7 w-7 items-center justify-center rounded-lg"
+            className={cn('flex h-7 w-7 items-center justify-center rounded-lg', FOCUS_RING)}
             style={{ color: 'var(--fg-soft)' }}
           >
             <X size={14} />
@@ -58,7 +78,11 @@ function AddMemoryForm({ onAdd, onCancel }) {
               placeholder="Enter memory content…"
               maxLength={MAX_CHARS}
               rows={3}
-              className="w-full rounded-lg px-3 py-2.5 text-[15px] resize-none outline-hidden transition-all duration-150"
+              aria-label="Memory content"
+              className={cn(
+                'w-full rounded-lg px-3 py-2.5 text-[15px] resize-none transition-colors duration-150',
+                FOCUS_RING
+              )}
               style={{
                 background:  'var(--surface)',
                 border:      `1px solid ${content.length > MAX_CHARS * 0.9 ? 'var(--warning)' : 'var(--border)'}`,
@@ -78,13 +102,29 @@ function AddMemoryForm({ onAdd, onCancel }) {
           </div>
 
           <div>
-            <label className="label-xs block mb-1.5">Category</label>
-            <div className="flex gap-1.5 flex-wrap">
+            <span className="label-xs block mb-1.5" id="memory-category-label">Category</span>
+            {/* One choice out of a fixed set: a radiogroup, so a screen reader
+                announces the selection and arrow keys move between options
+                instead of Tab walking every category. */}
+            <div
+              className="flex gap-1.5 flex-wrap"
+              role="radiogroup"
+              aria-labelledby="memory-category-label"
+            >
               {CATEGORY_OPTIONS.map(opt => (
                 <button
                   key={opt.value}
+                  type="button"
+                  role="radio"
+                  data-category={opt.value}
+                  onKeyDown={handleCategoryKeyDown}
+                  aria-checked={category === opt.value}
+                  tabIndex={category === opt.value ? 0 : -1}
                   onClick={() => setCategory(opt.value)}
-                  className="px-2.5 py-1 rounded-md text-[13px] font-medium transition-all duration-150 outline-hidden"
+                  className={cn(
+                    'px-2.5 py-1 rounded-md text-[13px] font-medium transition-colors duration-150',
+                    FOCUS_RING
+                  )}
                   style={{
                     background:  category === opt.value ? 'var(--primary-soft)' : 'var(--surface-hover)',
                     color:       category === opt.value ? 'var(--primary)' : 'var(--fg-muted)',

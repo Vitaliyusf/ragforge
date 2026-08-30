@@ -77,14 +77,15 @@ export function SelectItem({ value, children, textValue, className = '' }) {
       // so the plain name is passed explicitly rather than losing keyboard
       // type-ahead on exactly the options that need it most.
       textValue={textValue}
+      // Radix marks the active option with `data-highlighted` for the pointer
+      // *and* for arrow-key navigation. Painting the highlight from mouse
+      // events instead left keyboard users moving through an unmarked list.
       className={cn(
         'relative flex items-center justify-between px-3 py-2 rounded-md text-[15px] font-medium outline-hidden cursor-pointer select-none',
-        'transition-colors duration-100',
+        'transition-colors duration-100 text-[var(--fg-muted)]',
+        'data-highlighted:bg-[var(--surface-hover)] data-highlighted:text-[var(--fg)]',
         className
       )}
-      style={{ color: 'var(--fg-muted)' }}
-      onMouseEnter={e => { e.currentTarget.style.background = 'var(--surface-hover)'; e.currentTarget.style.color = 'var(--fg)' }}
-      onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--fg-muted)' }}
     >
       <SelectPrimitive.ItemText>{children}</SelectPrimitive.ItemText>
       <SelectPrimitive.ItemIndicator>
