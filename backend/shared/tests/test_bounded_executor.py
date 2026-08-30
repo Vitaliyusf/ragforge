@@ -169,3 +169,65 @@ async def test_context_survives_offload_and_shutdown_drains() -> None:
         assert executor.snapshot().closed
     finally:
         trace_id.reset(token)
+
+
+@pytest.mark.asyncio
+async def test_handler_failure_releases_capacity_and_metrics_track_admission() -> None:
+    service = "vector_db"
+    pool = "failure-contract"
+    submitted = METRICS.executor_tasks_submitted_total.labels(
+        service=service,
+        pool=pool,
+    )
+    rejected = METRICS.executor_tasks_rejected_total.labels(
+        service=service,
+        pool=pool,
+    )
+    submitted_before = submitted._value.get()
+    rejected_before = rejected._value.get()
+    executor = BoundedExecutor(
+        service=service,
+        pool=pool,
+        max_workers=1,
+        queue_bound=1,
+        submit_timeout_seconds=0.1,
+    )
+    release = threading.Event()
+    started = threading.Event()
+
+    def blocked() -> str:
+        started.set()
+        release.wait(1.0)
+        return "done"
+
+    def fail() -> None:
+        raise ValueError("handler failed")
+
+    active = asyncio.create_task(executor.run(blocked))
+    assert await asyncio.to_thread(started.wait, 0.5)
+    failed = asyncio.create_task(executor.run(fail))
+    for _ in range(50):
+        if executor.snapshot().queued == 1:
+            break
+        await asyncio.sleep(0.01)
+
+    assert executor.snapshot().queued == 1
+    assert METRICS.executor_queue_depth.labels(
+        service=service,
+        pool=pool,
+    )._value.get() == 1
+    assert submitted._value.get() == submitted_before + 2
+
+    release.set()
+    assert await active == "done"
+    with pytest.raises(ValueError, match="handler failed"):
+        await failed
+    assert executor.snapshot().active == 0
+    assert executor.snapshot().queued == 0
+    assert await executor.run(lambda: "capacity-released") == "capacity-released"
+
+    assert await executor.shutdown()
+    with pytest.raises(ExecutorOverloaded) as error:
+        await executor.run(lambda: None)
+    assert error.value.reason == "closed"
+    assert rejected._value.get() == rejected_before + 1

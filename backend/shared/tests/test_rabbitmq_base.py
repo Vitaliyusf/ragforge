@@ -270,6 +270,8 @@ async def test_executor_overload_publishes_typed_retryable_reply() -> None:
     call = mock_channel.default_exchange.publish.call_args
     published = json.loads(call.args[0].body)
     assert call.kwargs["routing_key"] == "amq.rabbitmq.reply.auth"
+    assert call.args[0].correlation_id == "corr-auth"
+    assert published["correlation_id"] == "corr-auth"
     assert published["success"] is False
     assert published["error"] == {
         "code": "service_overloaded",
