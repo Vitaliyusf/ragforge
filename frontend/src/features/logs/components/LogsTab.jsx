@@ -18,8 +18,10 @@ import {
   X,
 } from 'lucide-react'
 import LoadingState from '@/components/feedback/LoadingState'
+import DeepLink from '@/components/observability/DeepLink'
 import { useLogs } from '@/features/logs'
-import { formatLogLine } from '@/lib/formatting/logs'
+import { parseLogEvent } from '@/lib/formatting/logs'
+import { LOG_SEVERITIES, logsLinkForCorrelation } from '@/lib/observability/deepLinks'
 import {
   setAutoRefresh,
   setLines,
@@ -45,7 +47,8 @@ const SEVERITY_COLORS = {
   unknown: 'var(--fg-soft)',
 }
 
-const SEVERITY_OPTIONS = ['error', 'warning', 'info', 'debug', 'trace', 'unknown']
+/** The severity vocabulary, owned by the observability module. */
+const SEVERITY_OPTIONS = LOG_SEVERITIES
 
 const SERVICE_COLORS = {
   gateway: '#4a9eff',
@@ -56,6 +59,81 @@ const SERVICE_COLORS = {
   rag: '#06b6d4',
   reranker: '#14b8a6',
   vector_db: '#6366f1',
+}
+
+/** Enough of an id to recognise, short enough for a dense stream. */
+function shortId(value) {
+  const text = String(value)
+  return text.length > 14 ? `${text.slice(0, 10)}…` : text
+}
+
+/**
+ * One log entry, read as an event rather than as a line of text.
+ *
+ * Structured entries get their fields — time, origin, message — and their
+ * correlation ids as controls that re-filter the stream around them. The raw
+ * JSON stays available underneath, because the field the viewer does not know
+ * how to show is exactly the one somebody eventually needs.
+ *
+ * A line that is not JSON renders as its own text. Nothing is invented for
+ * it: an event with no structure is shown as having none.
+ */
+function LogEventRow({ event, severityColor }) {
+  const time = event.timestamp ? new Date(event.timestamp) : null
+  const stamp = time && !Number.isNaN(time.getTime()) ? time.toLocaleTimeString() : null
+
+  return (
+    <div
+      className="group flex items-start gap-2.5 rounded-lg border-l-2 px-2.5 py-2 transition-colors"
+      style={{ borderLeftColor: severityColor }}
+    >
+      <span
+        className="mt-0.5 w-12 shrink-0 text-xs font-semibold uppercase tracking-wide"
+        style={{ color: severityColor }}
+      >
+        {event.severity}
+      </span>
+      <div className="min-w-0 flex-1">
+        {stamp || event.location ? (
+          <div className="flex flex-wrap items-center gap-x-2 text-xs text-text-muted">
+            {stamp ? <span dir="ltr" className="tabular-nums">{stamp}</span> : null}
+            {event.location ? <span className="truncate">{event.location}</span> : null}
+          </div>
+        ) : null}
+
+        <p className="whitespace-pre-wrap break-words text-xs leading-relaxed text-text-secondary">
+          {event.message}
+        </p>
+
+        {event.identifiers.length ? (
+          <div className="mt-1 flex flex-wrap items-center gap-1">
+            {event.identifiers.map((identifier) => (
+              <DeepLink
+                key={identifier.field}
+                link={logsLinkForCorrelation({
+                  id: identifier.value,
+                  kindLabel: identifier.kindLabel,
+                })}
+              >
+                <span className="font-mono">
+                  {identifier.label} {shortId(identifier.value)}
+                </span>
+              </DeepLink>
+            ))}
+          </div>
+        ) : null}
+
+        {event.details ? (
+          <details className="mt-1">
+            <summary className="cursor-pointer text-xs text-text-muted">Event data</summary>
+            <pre className="mt-1 overflow-x-auto whitespace-pre-wrap break-words rounded-lg bg-bg-tertiary p-2 text-xs text-text-muted">
+              {JSON.stringify(event.details, null, 2)}
+            </pre>
+          </details>
+        ) : null}
+      </div>
+    </div>
+  )
 }
 
 function SummaryItem({ icon: Icon, label, value, color }) {
@@ -331,7 +409,16 @@ export default function LogsTab() {
               <p className="mt-0.5 text-xs text-text-muted">{filteredLogs.length} visible events</p>
             </div>
             <div className="flex items-center gap-1.5">
-              {hasActiveFilters ? <Badge variant="primary" size="xs" icon={Filter}>Filtered</Badge> : null}
+              {/* Arriving from a deep link means arriving already filtered.
+                  Naming the term is what stops an empty stream reading as a
+                  quiet system. */}
+              {textFilter ? (
+                <Badge variant="primary" size="xs" icon={Filter} title={textFilter}>
+                  Matching “{textFilter.length > 18 ? `${textFilter.slice(0, 16)}…` : textFilter}”
+                </Badge>
+              ) : hasActiveFilters ? (
+                <Badge variant="primary" size="xs" icon={Filter}>Filtered</Badge>
+              ) : null}
               {/* The auto-refresh toggle beside this already says whether the
                   stream is following; a second "Live" chip here was one of
                   four things in the app claiming liveness in its own words. */}
@@ -356,12 +443,18 @@ export default function LogsTab() {
                   <Terminal size={23} />
                 </span>
                 <h3 className="mt-4 text-[15px] font-semibold text-text-primary">
-                  {hasActiveFilters ? 'No events match your filters' : 'No service output yet'}
+                  {textFilter
+                    ? 'Nothing here mentions that identifier'
+                    : hasActiveFilters
+                      ? 'No events match your filters'
+                      : 'No service output yet'}
                 </h3>
                 <p className="mt-1 max-w-sm text-[13px] leading-relaxed text-text-muted">
-                  {hasActiveFilters
-                    ? 'Adjust the search or severity filters to widen the current view.'
-                    : 'Choose services and refresh to load their latest output.'}
+                  {textFilter
+                    ? `Only the latest ${lines} lines per service are searched, so an older event is no longer in the buffer to find. Load more lines, or widen the service selection.`
+                    : hasActiveFilters
+                      ? 'Adjust the search or severity filters to widen the current view.'
+                      : 'Choose services and refresh to load their latest output.'}
                 </p>
                 <Button
                   variant="primary"
@@ -392,25 +485,15 @@ export default function LogsTab() {
 
                     <div className="space-y-0.5">
                       {serviceLogs.map((log, index) => {
-                        const formattedLine = formatLogLine(log.line)
-                        const severity = log.severity || 'unknown'
+                        const event = parseLogEvent(log.line)
+                        const severity = log.severity || event.severity || 'unknown'
                         const severityColor = SEVERITY_COLORS[severity] || SEVERITY_COLORS.unknown
                         return (
-                          <div
+                          <LogEventRow
                             key={`${log.service}-${log.index}-${index}`}
-                            className="group flex items-start gap-2.5 rounded-lg border-l-2 px-2.5 py-2 transition-colors"
-                            style={{ borderLeftColor: severityColor }}
-                          >
-                            <span
-                              className="mt-0.5 w-12 shrink-0 text-xs font-semibold uppercase tracking-wide"
-                              style={{ color: severityColor }}
-                            >
-                              {severity}
-                            </span>
-                            <span className="min-w-0 flex-1 whitespace-pre-wrap break-words text-xs leading-relaxed text-text-secondary">
-                              {formattedLine || log.line}
-                            </span>
-                          </div>
+                            event={{ ...event, severity }}
+                            severityColor={severityColor}
+                          />
                         )
                       })}
                     </div>

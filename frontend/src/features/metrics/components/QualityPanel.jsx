@@ -6,6 +6,8 @@ import Card, { CardHeader } from '@/components/ui/Card'
 import EmptyState from '@/components/feedback/EmptyState'
 import TabSkeleton from '@/components/ui/TabSkeleton'
 import StatCard from '@/components/ui/StatCard'
+import DeepLink from '@/components/observability/DeepLink'
+import { conversationLink } from '@/lib/observability/deepLinks'
 import Histogram from './charts/Histogram'
 import {
   CITATION_DENOMINATOR_NOTE,
@@ -286,7 +288,10 @@ export default function QualityPanel({ data, loading, error, onRetry }) {
                   <th scope="col" className="py-1.5 pr-3 text-right font-medium">Safety</th>
                   <th scope="col" className="py-1.5 pr-3 text-right font-medium">Unsupported claims</th>
                   <th scope="col" className="py-1.5 pr-3 text-left font-medium">Hallucination</th>
-                  <th scope="col" className="py-1.5 text-left font-medium">Confidence</th>
+                  <th scope="col" className="py-1.5 pr-3 text-left font-medium">Confidence</th>
+                  <th scope="col" className="py-1.5 text-left font-medium">
+                    <span className="sr-only">Open the conversation</span>
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -337,8 +342,14 @@ export default function QualityPanel({ data, loading, error, onRetry }) {
                         ? labelFor(HALLUCINATION_VERDICT_LABELS, turn.hallucination_verdict)
                         : EMPTY}
                     </td>
-                    <td className="py-1.5" style={{ color: 'var(--fg-muted)' }}>
+                    <td className="py-1.5 pr-3" style={{ color: 'var(--fg-muted)' }}>
                       {labelFor(CONFIDENCE_LABELS, turn.confidence)}
+                    </td>
+                    {/* The metrics store records the same conversation id the
+                        chat route is keyed by, so a low score is one click
+                        from the exchange that produced it. */}
+                    <td className="py-1.5">
+                      <DeepLink link={conversationLink(turn.conversation_id)} />
                     </td>
                   </tr>
                 ))}

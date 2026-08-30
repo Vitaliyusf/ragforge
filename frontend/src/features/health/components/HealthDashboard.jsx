@@ -2,7 +2,7 @@
 
 import { useMemo } from 'react'
 import {
-  Server, RefreshCw, AlertTriangle, CheckCircle2, XCircle, Gauge, HeartPulse, ShieldCheck,
+  Activity, Server, RefreshCw, AlertTriangle, CheckCircle2, XCircle, Gauge, HeartPulse, ShieldCheck,
 } from 'lucide-react'
 import Button from '@/components/ui/Button'
 import PageHeader from '@/components/ui/PageHeader'
@@ -17,7 +17,32 @@ import RateLimiterPanel from './RateLimiterPanel'
 import MiniSparkline from './MiniSparkline'
 import DomainStatus from '@/components/status/DomainStatus'
 import { STATUS_DOMAINS } from '@/components/status/statusDomains'
+import { FreshnessBadge, ScopeBadge } from '@/components/observability/MetricMeta'
+import {
+  METRIC_SOURCE,
+  describeFreshness,
+  describeScope,
+} from '@/lib/observability/metricMeta'
 import { STATUS_CONFIG, SERVICE_LABELS } from './healthConfig'
+
+/**
+ * Health polls every 5s, so its patience is far shorter than the metrics
+ * tab's: half a minute without a reading is already worth saying, and two
+ * minutes of it means the probe results on screen describe the past.
+ */
+const HEALTH_FRESHNESS = { delayedAfterMs: 30_000, staleAfterMs: 120_000 }
+
+/**
+ * What these probes do and do not measure.
+ *
+ * Readiness says a service will accept traffic. It says nothing about whether
+ * that traffic is being served within any objective, and nothing collected
+ * here does — so this page must not be read as an SLO view.
+ */
+const PROBE_SCOPE_NOTE =
+  'Liveness, readiness and dependency probes only. No error budget or ' +
+  'latency objective is evaluated here, so a healthy board does not mean ' +
+  'the platform is meeting its service objectives.'
 
 export default function HealthDashboard() {
   const { health, loading, error, history, refresh } = useHealth()
@@ -34,6 +59,13 @@ export default function HealthDashboard() {
     unhealthyCount: serviceList.filter(([, s]) => s.status === 'unhealthy').length,
   }), [serviceList])
   const healthPercent = totalServices > 0 ? Math.round((healthyCount / totalServices) * 100) : 0
+
+  // Probes are platform-wide, and the reading has an age like any other.
+  const probeScope = describeScope({ source: METRIC_SOURCE.PROMETHEUS })
+  const probeFreshness = describeFreshness(
+    health?.timestamp ? health.timestamp * 1000 : null,
+    HEALTH_FRESHNESS
+  )
 
   const healthTimeline = useMemo(() =>
     history.map(h => h.data?.services
@@ -53,9 +85,13 @@ export default function HealthDashboard() {
           : 'Service availability and platform protection'}
         icon={HeartPulse}
         badge={
-          health && (
-            <DomainStatus domain={STATUS_DOMAINS.SERVICE} state={health.status} size="md" />
-          )
+          <span className="flex flex-wrap items-center gap-2">
+            {health && (
+              <DomainStatus domain={STATUS_DOMAINS.SERVICE} state={health.status} size="md" />
+            )}
+            <ScopeBadge scope={probeScope} />
+            <FreshnessBadge freshness={probeFreshness} />
+          </span>
         }
         actions={
           <div className="flex items-center gap-2">
@@ -118,6 +154,7 @@ export default function HealthDashboard() {
               />
               <span className="text-[13px] font-semibold tabular-nums" style={{ color: overallCfg.iconColor }}>{healthPercent}%</span>
             </div>
+            <p className="mt-3 text-xs" style={{ color: 'var(--fg-soft)' }}>{PROBE_SCOPE_NOTE}</p>
           </div>
           <div className="grid grid-cols-3 gap-2 md:w-[260px]">
             {[

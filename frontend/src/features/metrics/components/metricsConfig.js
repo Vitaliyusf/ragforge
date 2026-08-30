@@ -22,6 +22,28 @@ export const METRICS_SECTIONS = [
   { id: 'pipeline', label: 'Pipeline', icon: Workflow },
 ]
 
+/**
+ * Where each section's headline sample count lives, and what it counts.
+ *
+ * Every panel is an aggregation, and an aggregation without its denominator
+ * is a rumour. This is the denominator the section header states.
+ */
+export const SECTION_SAMPLES = {
+  overview: { get: (data) => data?.turns, noun: 'turn' },
+  latency: { get: (data) => data?.turns, noun: 'turn' },
+  retrieval: { get: (data) => data?.turns, noun: 'turn' },
+  quality: { get: (data) => data?.turns, noun: 'turn' },
+  pipeline: { get: (data) => data?.ingestion?.funnel?.files, noun: 'file' },
+}
+
+/**
+ * Sections that render at least one Prometheus-backed widget.
+ *
+ * Quality is the exception: it is entirely MongoDB-backed, so the
+ * platform-scope caveat would be a warning about nothing on that page.
+ */
+export const PROMETHEUS_SECTIONS = new Set(['overview', 'latency', 'retrieval', 'pipeline'])
+
 export const WINDOW_OPTIONS = [
   { value: '1h', label: 'Last hour' },
   { value: '24h', label: 'Last 24 hours' },
@@ -241,9 +263,12 @@ export const CITATION_DENOMINATOR_NOTE =
   'rather than scored zero, so this mean can cover far fewer answers than ' +
   'the window holds.'
 
-/** Shown beside any figure Prometheus supplies: these carry no tenant label. */
-export const PLATFORM_SCOPE_NOTE =
-  'Platform-wide across all tenants — this figure carries no tenant label.'
+/**
+ * Shown beside any figure Prometheus supplies: these carry no tenant label.
+ * Owned by the shared trust contract so Health and Metrics cannot describe
+ * the same scope two ways.
+ */
+export { PLATFORM_SCOPE_NOTE } from '@/lib/observability/metricMeta'
 
 /** Every cost on the tab is an estimate from a static price table. */
 export const COST_ESTIMATE_NOTE =

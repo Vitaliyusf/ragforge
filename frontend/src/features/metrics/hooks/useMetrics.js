@@ -21,6 +21,13 @@ const INITIAL_STATE = {
   error: null,
   promAvailable: true,
   lastUpdated: null,
+  // Envelope metadata, kept rather than dropped: it is the only evidence the
+  // UI has for whose data this is and how old it is. `tenantId` is the tenant
+  // the response says it actually aggregated, never the one that was asked
+  // for, so a panel cannot claim a tenant the backend did not read.
+  tenantId: null,
+  prometheusScope: null,
+  generatedAt: null,
 }
 
 /**
@@ -72,6 +79,12 @@ export function useMetrics(section, { window: windowRange, tenantId } = {}) {
           error: null,
           promAvailable: response?.prometheus_available !== false,
           lastUpdated: response?.generated_at ? new Date(response.generated_at) : new Date(),
+          tenantId: response?.tenant_id ?? null,
+          prometheusScope: response?.prometheus_scope ?? null,
+          // Null when the response carried no stamp: freshness is then
+          // reported as unknown rather than as the moment it happened to
+          // arrive here, which would always look current.
+          generatedAt: response?.generated_at ?? null,
         })
       } catch (err) {
         if (controller.signal.aborted) return

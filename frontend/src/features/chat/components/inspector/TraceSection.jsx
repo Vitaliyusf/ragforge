@@ -3,17 +3,19 @@
 import { DataCell } from '@/components/ui/DataDisplay'
 import ProgressBar from '@/components/ui/ProgressBar'
 import { formatDuration } from '@/lib/formatting/datetime'
+import DeepLink from '@/components/observability/DeepLink'
+import { isUsableIdentifier, logsLinkForCorrelation } from '@/lib/observability/deepLinks'
 import { nodeStyle, TechnicalValue, RedactedBlock, Empty } from './shared'
 
-/** A zero UUID is a placeholder the backend never filled in, not an identifier. */
-const PLACEHOLDER_ID = /^[0-]+$/
-
+/**
+ * What counts as an identifier — including the zero-UUID placeholder rule —
+ * is the observability module's to decide, so the inspector and the deep-link
+ * builders cannot disagree about which ids are real.
+ */
 export function usableIdentifiers(entries) {
   return entries
-    .filter(([, value]) => value != null && value !== '')
-    .map(([label, value]) => [label, String(value)])
-    .filter(([, value]) => !PLACEHOLDER_ID.test(value))
-    .map(([label, value]) => ({ label, value }))
+    .filter(([, value]) => isUsableIdentifier(value))
+    .map(([label, value]) => ({ label, value: String(value) }))
 }
 
 /** Correlation identifiers and the per-node execution timeline. */
@@ -47,6 +49,15 @@ export default function TraceSection({ identifiers = [], traceEvents = [], debug
             <div key={label} className="min-w-0">
               <div className="text-xs uppercase tracking-wide text-text-muted">{label}</div>
               <TechnicalValue title={value}>{value}</TechnicalValue>
+              {/* The id the services logged this turn under. There is no trace
+                  store to open, so this is what the platform can honestly
+                  offer: the log stream, filtered to this id. */}
+              <DeepLink
+                link={logsLinkForCorrelation({
+                  id: value,
+                  kindLabel: label.replace(/\s*ID$/i, '').toLowerCase(),
+                })}
+              />
             </div>
           ))}
         </div>

@@ -58,13 +58,16 @@ const LATENCY = {
 
 const SECTION_DATA = { overview: OVERVIEW, latency: LATENCY, quality: null }
 
-function mockSections({ promAvailable = true } = {}) {
+function mockSections({ promAvailable = true, generatedAt, tenantId = 'acme' } = {}) {
   mockUseMetrics.mockImplementation((section) => ({
     data: SECTION_DATA[section] ?? null,
     loading: false,
     error: null,
     promAvailable,
     lastUpdated: new Date('2026-08-25T12:00:00Z'),
+    tenantId,
+    prometheusScope: 'all_tenants',
+    generatedAt: generatedAt === undefined ? new Date().toISOString() : generatedAt,
     refresh: vi.fn(),
   }))
 }
@@ -109,6 +112,51 @@ describe('MetricsTab', () => {
       const name = button.getAttribute('aria-label') || button.textContent.trim()
       expect(name, 'found a button with no accessible name').not.toBe('')
     }
+  })
+
+  describe('the trust contract above the panels', () => {
+    it('names the tenant the response said it aggregated, and the denominator', () => {
+      render(<MetricsTab />)
+
+      expect(screen.getByText('Tenant · acme')).toBeInTheDocument()
+      expect(screen.getByText(/last 24 hours · 10 turns/)).toBeInTheDocument()
+    })
+
+    it('says the tenant filter does not reach the Prometheus widgets', () => {
+      render(<MetricsTab />)
+
+      expect(screen.getByText('Global · all tenants')).toBeInTheDocument()
+      expect(
+        screen.getByText(/tenant filter does not apply to these/i)
+      ).toBeInTheDocument()
+    })
+
+    it('drops the platform caveat on the section that has no Prometheus widgets', async () => {
+      const user = userEvent.setup()
+      render(<MetricsTab />)
+
+      await user.click(screen.getByRole('button', { name: /Quality/i }))
+
+      expect(screen.queryByText('Global · all tenants')).not.toBeInTheDocument()
+    })
+
+    it('says the data is delayed rather than showing an unqualified figure', () => {
+      mockUseMetrics.mockReset()
+      mockSections({ generatedAt: new Date(Date.now() - 4 * 60_000).toISOString() })
+      render(<MetricsTab />)
+
+      expect(screen.getByText('Data delayed 4m')).toBeInTheDocument()
+    })
+
+    it('reports freshness as unknown when the response carried no stamp', () => {
+      mockUseMetrics.mockReset()
+      mockSections({ generatedAt: null })
+      render(<MetricsTab />)
+
+      // Silence is reserved for data that is genuinely current. An unstamped
+      // response says so instead of inheriting that silence.
+      expect(screen.getByText('Freshness unknown')).toBeInTheDocument()
+    })
   })
 
   describe('when the metrics store is unavailable', () => {

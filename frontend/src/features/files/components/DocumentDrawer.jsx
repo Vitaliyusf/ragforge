@@ -7,6 +7,8 @@ import { DataRow } from '@/components/ui/DataDisplay'
 import { formatFileSize } from '@/lib/formatting/bytes'
 import { formatAbsoluteDateTime } from '@/lib/formatting/datetime'
 import { ltrIsolateProps } from '@/lib/accessibility/direction'
+import DeepLink from '@/components/observability/DeepLink'
+import { logsLinkForCorrelation } from '@/lib/observability/deepLinks'
 import {
   DOCUMENT_STATUSES,
   describeFailure,
@@ -16,6 +18,9 @@ import {
   summarizePipeline,
 } from '../documentModel'
 import { DocumentPipelineCell, DocumentStatusBadge } from './DocumentStatus'
+
+/** The services that touch a file between upload and index. */
+const INGESTION_LOG_SERVICES = ['files', 'embedding', 'vector_db']
 
 function Section({ title, children }) {
   return (
@@ -216,9 +221,21 @@ export default function DocumentDrawer({
                     <p className="mt-0.5 text-[13px] text-fg-muted">{event.reason}</p>
                   ) : null}
                   {event.task_id ? (
-                    <p className="mt-0.5 font-mono text-xs text-fg-soft" {...ltrIsolateProps()}>
-                      {event.task_id}
-                    </p>
+                    <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
+                      <span className="font-mono text-xs text-fg-soft" {...ltrIsolateProps()}>
+                        {event.task_id}
+                      </span>
+                      {/* The id the ingestion services logged this stage
+                          under — the only trail an ingestion failure leaves
+                          outside this drawer. */}
+                      <DeepLink
+                        link={logsLinkForCorrelation({
+                          id: event.task_id,
+                          kindLabel: 'ingestion task',
+                          services: INGESTION_LOG_SERVICES,
+                        })}
+                      />
+                    </div>
                   ) : null}
                 </li>
               ))}

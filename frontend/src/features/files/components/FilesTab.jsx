@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ChevronLeft, ChevronRight, FolderOpen, Loader2, Search, Upload } from 'lucide-react'
 import { toast } from 'sonner'
 import { useFiles } from '@/features/files'
@@ -59,7 +59,7 @@ async function runBulk(ids, operation, limit = BULK_CONCURRENCY) {
   return { succeeded, failed }
 }
 
-export default function FilesTab() {
+export default function FilesTab({ intent = null }) {
   // useFiles already refreshes the shared file list every few seconds, so the
   // nav's background poll stands down for as long as this tab is open.
   useLiveActivitySource(ACTIVITY_FEATURES.FILES)
@@ -94,6 +94,17 @@ export default function FilesTab() {
   const [pendingDelete, setPendingDelete] = useState(null)
   const [bulkBusy, setBulkBusy] = useState(false)
   const [page, setPage] = useState(1)
+
+  // Arriving from a deep link — a file wedged in the ingestion funnel, say —
+  // means arriving with a question about one document. The search box is how
+  // this tab narrows, so the intent is applied there rather than through a
+  // second selection mechanism that would have to be kept in step with it.
+  useEffect(() => {
+    if (!intent?.query) return
+    setQuery(intent.query)
+    setStatusFilter('all')
+    setPage(1)
+  }, [intent])
 
   const counts = useMemo(() => countByStatus(files), [files])
   const documents = useMemo(

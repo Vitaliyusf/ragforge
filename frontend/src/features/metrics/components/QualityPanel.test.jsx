@@ -165,6 +165,8 @@ describe('QualityPanel', () => {
     expect(table.getByText('Unsupported claims')).toBeInTheDocument()
     expect(table.getByText('3')).toBeInTheDocument()
     expect(table.getByText('Severe')).toBeInTheDocument()
+    // A low score is only actionable next to the exchange that produced it.
+    expect(table.getByRole('button', { name: /Open in Chat/i })).toBeInTheDocument()
   })
 
   it('renders a pre-phase-6 worst turn without inventing a verdict', () => {
@@ -192,5 +194,8 @@ describe('QualityPanel', () => {
     const table = within(screen.getByRole('table'))
     expect(table.queryByText('None')).not.toBeInTheDocument()
     expect(table.getAllByText('—').length).toBe(2)
+    // No conversation id was recorded, so no jump is offered rather than one
+    // that would land on an unfiltered Chat.
+    expect(table.queryByRole('button', { name: /Open in Chat/i })).not.toBeInTheDocument()
   })
 })

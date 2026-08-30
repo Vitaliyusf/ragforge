@@ -15,8 +15,21 @@ import PipelinePanel from './PipelinePanel'
 import QualityPanel from './QualityPanel'
 import RetrievalPanel from './RetrievalPanel'
 import {
+  FilterScopeNote,
+  MetricTrustLine,
+  ScopeBadge,
+} from '@/components/observability/MetricMeta'
+import {
+  METRIC_SOURCE,
+  PLATFORM_SCOPE_NOTE,
+  describeMetric,
+  describeScope,
+} from '@/lib/observability/metricMeta'
+import {
   DEFAULT_WINDOW,
   METRICS_SECTIONS,
+  PROMETHEUS_SECTIONS,
+  SECTION_SAMPLES,
   WINDOW_OPTIONS,
   formatTimestamp,
 } from './metricsConfig'
@@ -47,12 +60,45 @@ export default function MetricsTab({ section: requestedSection, onNavigate }) {
 
   // One section, one request. Changing the sub-nav swaps the endpoint rather
   // than loading all five.
-  const { data, loading, error, promAvailable, lastUpdated, refresh } = useMetrics(section, {
+  const {
+    data,
+    loading,
+    error,
+    promAvailable,
+    lastUpdated,
+    tenantId,
+    prometheusScope,
+    generatedAt,
+    refresh,
+  } = useMetrics(section, {
     window: windowRange,
     tenantId: tenant === OWN_TENANT ? '' : tenant,
   })
 
   const panelProps = { data, loading, error, promAvailable, onRetry: refresh }
+
+  // What the figures below are, before anyone reads one: whose they are, over
+  // what range, over how many samples, and how old. The scope reported here
+  // is the store's, because that is the tenant-scoped half — the Prometheus
+  // half is platform-wide and says so on its own widgets and in the caveat.
+  const sampler = SECTION_SAMPLES[section]
+  const meta = describeMetric({
+    source: METRIC_SOURCE.METRICS_STORE,
+    tenantId,
+    generatedAt,
+    window: windowRange,
+    sampleCount: sampler ? (sampler.get(data) ?? null) : null,
+    sampleNoun: sampler?.noun,
+    loading: loading && !data,
+    error,
+  })
+
+  // The tenant selector above does not reach the Prometheus widgets. Saying
+  // so beside the selector — not only in each widget's own description — is
+  // what stops a platform number being read as this tenant's.
+  const platformScope = PROMETHEUS_SECTIONS.has(section)
+    ? describeScope({ source: METRIC_SOURCE.PROMETHEUS, prometheusScope })
+    : null
 
   return (
     <div className="mx-auto flex h-full w-full max-w-7xl flex-col gap-5 overflow-y-auto px-3 py-4 md:px-6 md:py-5">
@@ -95,6 +141,7 @@ export default function MetricsTab({ section: requestedSection, onNavigate }) {
               aria-label="Tenant"
             >
               <SelectItem value={OWN_TENANT}>Current tenant</SelectItem>
+              {tenantId ? <SelectItem value={tenantId}>{tenantId}</SelectItem> : null}
             </Select>
 
             <Button
@@ -109,6 +156,18 @@ export default function MetricsTab({ section: requestedSection, onNavigate }) {
           </div>
         }
       />
+
+      {/* The trust contract for everything below: scope, range, sample count
+          and freshness, stated once rather than implied per widget. */}
+      <div className="flex flex-col gap-1.5">
+        <MetricTrustLine meta={meta} />
+        {platformScope ? (
+          <FilterScopeNote>
+            <ScopeBadge scope={platformScope} className="me-1.5 align-middle" />
+            The tenant filter does not apply to these. {PLATFORM_SCOPE_NOTE}
+          </FilterScopeNote>
+        ) : null}
+      </div>
 
       {/* Sub-nav, driven entirely by METRICS_SECTIONS. */}
       <nav aria-label="Metrics sections">

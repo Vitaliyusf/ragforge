@@ -110,6 +110,8 @@ describe('PipelinePanel', () => {
     expect(screen.getByText('Stuck files')).toBeInTheDocument()
     expect(screen.getByText('report.pdf')).toBeInTheDocument()
     expect(screen.getByText('notes.docx')).toBeInTheDocument()
+    // A wedged file is only actionable where it can be retried or deleted.
+    expect(screen.getAllByRole('button', { name: /Open in Knowledge/i })).toHaveLength(2)
   })
 
   it('labels every cost as an estimate', () => {
