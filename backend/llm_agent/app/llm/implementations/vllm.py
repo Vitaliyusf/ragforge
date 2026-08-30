@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import json
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
+import time
 from typing import Any, Dict, List, Mapping, Optional
 
 import httpx
@@ -14,9 +14,12 @@ from app.llm.interfaces import (
     LLMInvocation,
     LLMUsage,
     ProviderHTTPError,
+    ProviderOverloadedError,
     ProviderProtocolError,
     ProviderTimeoutError,
 )
+from app.llm.provider_capacity import ProviderCapacity
+from shared.metrics import METRICS
 
 
 # Qwen3 is a reasoning model: over raw /v1/completions it emits a <think>…</think>
@@ -30,12 +33,35 @@ _NO_THINK_SUFFIX = "\n\nAssistant:\n<think>\n\n</think>\n\n"
 class VLLMClient(ILLMClient):
     """vLLM client for high-performance concurrent inference."""
 
-    def __init__(self, config: Settings):
+    def __init__(self, config: Settings, http_client: Optional[httpx.Client] = None):
         self.config = config
         self.base_url = config.vllm_base_url
+        self.service_name = getattr(config, "service_name", "llm_agent")
         self.headers = {"Authorization": f"Bearer {config.vllm_api_key}"}
         self.max_concurrent_requests = config.max_concurrent_requests
-        self._executor = ThreadPoolExecutor(max_workers=self.max_concurrent_requests)
+        self._capacity = ProviderCapacity(
+            service=self.service_name,
+            limit=self.max_concurrent_requests,
+            admission_timeout=getattr(config, "provider_admission_timeout_seconds", 1.0),
+        )
+        self._connect_timeout = getattr(config, "vllm_connect_timeout", 5.0)
+        self._write_timeout = getattr(config, "vllm_write_timeout", 10.0)
+        self._pool_timeout = getattr(config, "vllm_pool_timeout", 1.0)
+        self._default_read_timeout = getattr(config, "vllm_read_timeout", 60.0)
+        limits = httpx.Limits(
+            max_connections=self.max_concurrent_requests,
+            max_keepalive_connections=self.max_concurrent_requests,
+            keepalive_expiry=getattr(config, "vllm_keepalive_expiry", 30.0),
+        )
+        self._http = (
+            http_client
+            if http_client is not None
+            else httpx.Client(
+                headers=self.headers,
+                limits=limits,
+                timeout=self._timeout(self._default_read_timeout),
+            )
+        )
         self.default_max_tokens = config.vllm_max_tokens
         self.default_temperature = config.vllm_temperature
         self.default_top_p = config.vllm_top_p
@@ -43,12 +69,16 @@ class VLLMClient(ILLMClient):
 
     def generate(self, invocation: LLMInvocation) -> LLMGenerationResult:
         """Generate text from a prompt using the vLLM OpenAI-compatible API."""
-        future = self._executor.submit(self._invoke_vllm, invocation)
-        try:
-            return future.result(timeout=invocation.timeout)
-        except FutureTimeoutError as exc:
-            future.cancel()
-            raise RuntimeError(f"Request timed out after {invocation.timeout} seconds") from exc
+        with self._capacity.admit():
+            return self._invoke_vllm(invocation)
+
+    def _timeout(self, read_timeout: float) -> httpx.Timeout:
+        return httpx.Timeout(
+            connect=self._connect_timeout,
+            read=read_timeout,
+            write=self._write_timeout,
+            pool=self._pool_timeout,
+        )
 
     def _invoke_vllm(self, invocation: LLMInvocation) -> LLMGenerationResult:
         payload = {
@@ -105,10 +135,18 @@ class VLLMClient(ILLMClient):
             raise ProviderHTTPError(
                 f"vLLM request failed (HTTP {exc.response.status_code})"
             ) from exc
-        except httpx.TimeoutException as exc:
+        except httpx.PoolTimeout as exc:
+            raise ProviderOverloadedError(
+                "The vLLM HTTP connection pool is saturated. Please retry shortly."
+            ) from exc
+        except httpx.ReadTimeout as exc:
             raise ProviderTimeoutError(
                 "The request took too long to process. Please try again."
             ) from exc
+        except (httpx.ConnectTimeout, httpx.WriteTimeout) as exc:
+            raise ProviderHTTPError("The vLLM HTTP transport timed out") from exc
+        except httpx.TimeoutException as exc:
+            raise ProviderTimeoutError("The vLLM request timed out") from exc
 
     @staticmethod
     def _json_schema_response_format(name: str, schema: Mapping[str, Any]) -> Dict[str, Any]:
@@ -144,12 +182,13 @@ class VLLMClient(ILLMClient):
             ),
         }
         try:
-            response = httpx.post(
-                f"{self.base_url}/v1/completions",
-                json=payload,
-                headers=self.headers,
-                timeout=timeout,
-            )
+            with self._capacity.admit():
+                response = self._http.post(
+                    f"{self.base_url}/v1/completions",
+                    json=payload,
+                    headers=self.headers,
+                    timeout=self._timeout(timeout),
+                )
             response.raise_for_status()
             body = response.json()
             choices = body.get("choices") if isinstance(body, dict) else None
@@ -159,6 +198,14 @@ class VLLMClient(ILLMClient):
             raise ProviderProtocolError(
                 f"vLLM does not accept JSON-schema response_format (HTTP {exc.response.status_code})"
             ) from exc
+        except httpx.PoolTimeout as exc:
+            raise ProviderOverloadedError(
+                "The vLLM HTTP connection pool is saturated. Please retry shortly."
+            ) from exc
+        except httpx.ReadTimeout as exc:
+            raise ProviderTimeoutError("JSON-schema capability probe timed out") from exc
+        except (httpx.ConnectTimeout, httpx.WriteTimeout) as exc:
+            raise ProviderHTTPError("JSON-schema capability probe transport timed out") from exc
         except httpx.TimeoutException as exc:
             raise ProviderTimeoutError("JSON-schema capability probe timed out") from exc
         except httpx.HTTPError as exc:
@@ -174,11 +221,11 @@ class VLLMClient(ILLMClient):
         return {"transport": "json_schema", "schema_enforced": True}
 
     def _generate_once(self, invocation: LLMInvocation, payload: Dict[str, object]) -> LLMGenerationResult:
-        response = httpx.post(
+        response = self._http.post(
             f"{self.base_url}/v1/completions",
             json=payload,
             headers=self.headers,
-            timeout=invocation.timeout,
+            timeout=self._timeout(invocation.timeout),
         )
         response.raise_for_status()
         result = response.json()
@@ -205,12 +252,14 @@ class VLLMClient(ILLMClient):
         finish_reason = "completed"
         usage = LLMUsage(provider="vllm")
 
-        with httpx.stream(
+        started = time.perf_counter()
+        first_token_observed = False
+        with self._http.stream(
             "POST",
             f"{self.base_url}/v1/completions",
             json=payload,
             headers=self.headers,
-            timeout=invocation.timeout,
+            timeout=self._timeout(invocation.timeout),
         ) as response:
             response.raise_for_status()
             for line in response.iter_lines():
@@ -236,6 +285,11 @@ class VLLMClient(ILLMClient):
                 choice = choices[0]
                 token = choice.get("text", "")
                 if token:
+                    if not first_token_observed:
+                        METRICS.vllm_ttft_seconds.labels(service=self.service_name).observe(
+                            time.perf_counter() - started
+                        )
+                        first_token_observed = True
                     index = len(chunks)
                     chunks.append(token)
                     if invocation.on_token is not None:
@@ -251,7 +305,11 @@ class VLLMClient(ILLMClient):
     def list_models(self) -> List[str]:
         """List available models from the vLLM server."""
         try:
-            response = httpx.get(f"{self.base_url}/v1/models", headers=self.headers, timeout=5.0)
+            response = self._http.get(
+                f"{self.base_url}/v1/models",
+                headers=self.headers,
+                timeout=self._timeout(5.0),
+            )
             response.raise_for_status()
             data = response.json()
             models = []
@@ -278,7 +336,11 @@ class VLLMClient(ILLMClient):
         so callers can fall back to the configured value.
         """
         try:
-            response = httpx.get(f"{self.base_url}/v1/models", headers=self.headers, timeout=5.0)
+            response = self._http.get(
+                f"{self.base_url}/v1/models",
+                headers=self.headers,
+                timeout=self._timeout(5.0),
+            )
             response.raise_for_status()
             entries = response.json().get("data") or []
         except Exception:
@@ -296,7 +358,11 @@ class VLLMClient(ILLMClient):
     def is_available(self) -> bool:
         """Check if vLLM server is available."""
         try:
-            response = httpx.get(f"{self.base_url}/health", headers=self.headers, timeout=5.0)
+            response = self._http.get(
+                f"{self.base_url}/health",
+                headers=self.headers,
+                timeout=self._timeout(5.0),
+            )
             return response.status_code == 200
         except (httpx.ConnectError, httpx.TimeoutException):
             return False
@@ -306,7 +372,11 @@ class VLLMClient(ILLMClient):
     def get_model_info(self, model: str) -> Optional[Dict]:
         """Get a model from the collection endpoint vLLM actually exposes."""
         try:
-            response = httpx.get(f"{self.base_url}/v1/models", headers=self.headers, timeout=5.0)
+            response = self._http.get(
+                f"{self.base_url}/v1/models",
+                headers=self.headers,
+                timeout=self._timeout(5.0),
+            )
             response.raise_for_status()
             entries = response.json().get("data") or []
             return next((entry for entry in entries if entry.get("id") == model), None)
@@ -315,4 +385,5 @@ class VLLMClient(ILLMClient):
 
     def shutdown(self) -> None:
         """Shutdown the client and clean up resources."""
-        self._executor.shutdown(wait=True)
+        self._capacity.close()
+        self._http.close()

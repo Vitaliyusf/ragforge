@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 import unittest
 from types import SimpleNamespace
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
 
 from app.llm.implementations.vllm import VLLMClient
 from app.llm.interfaces import LLMInvocation
@@ -64,10 +64,8 @@ class VLLMStreamingUsageTests(unittest.TestCase):
         response.raise_for_status.return_value = None
         response.json.return_value = {"choices": [{"text": "ok", "finish_reason": "stop"}]}
         post = Mock(return_value=response)
-        client = VLLMClient(_config())
-
-        with patch("app.llm.implementations.vllm.httpx.post", post):
-            client._invoke_vllm(_invocation(max_tokens=37))
+        client = VLLMClient(_config(), http_client=Mock(post=post))
+        client._invoke_vllm(_invocation(max_tokens=37))
 
         self.assertEqual(post.call_args.kwargs["json"]["max_tokens"], 37)
 
@@ -82,7 +80,7 @@ class VLLMStreamingUsageTests(unittest.TestCase):
             vllm_api_key="private-vllm-token",
             max_concurrent_requests=1,
         )
-        client = VLLMClient(settings)
+        client = VLLMClient(settings, http_client=Mock(post=post))
         expected = {
             "answer_generation": 128,
             "answer_evaluation": 512,
@@ -91,19 +89,18 @@ class VLLMStreamingUsageTests(unittest.TestCase):
             "memory_extraction": 512,
         }
 
-        with patch("app.llm.implementations.vllm.httpx.post", post):
-            for action, max_tokens in expected.items():
-                with self.subTest(action=action):
-                    client._invoke_vllm(
-                        LLMInvocation(
-                            system_prompt="System",
-                            raw_prompt="Prompt",
-                            model="model-a",
-                            max_tokens=settings.max_tokens_for_request_type(action),
-                            metadata={"request_type": action},
-                        )
+        for action, max_tokens in expected.items():
+            with self.subTest(action=action):
+                client._invoke_vllm(
+                    LLMInvocation(
+                        system_prompt="System",
+                        raw_prompt="Prompt",
+                        model="model-a",
+                        max_tokens=settings.max_tokens_for_request_type(action),
+                        metadata={"request_type": action},
                     )
-                    self.assertEqual(post.call_args.kwargs["json"]["max_tokens"], max_tokens)
+                )
+                self.assertEqual(post.call_args.kwargs["json"]["max_tokens"], max_tokens)
 
     def test_stream_requests_usage_and_preserves_visible_stream(self):
         token_events = []
@@ -126,12 +123,10 @@ class VLLMStreamingUsageTests(unittest.TestCase):
                 ]
             )
         )
-        client = VLLMClient(_config())
-
-        with patch("app.llm.implementations.vllm.httpx.stream", stream):
-            result = client._invoke_vllm(
-                _invocation(lambda token, index: token_events.append((token, index)))
-            )
+        client = VLLMClient(_config(), http_client=Mock(stream=stream))
+        result = client._invoke_vllm(
+            _invocation(lambda token, index: token_events.append((token, index)))
+        )
 
         request_payload = stream.call_args.kwargs["json"]
         self.assertTrue(request_payload["stream"])
@@ -152,10 +147,8 @@ class VLLMStreamingUsageTests(unittest.TestCase):
                 ]
             )
         )
-        client = VLLMClient(_config())
-
-        with patch("app.llm.implementations.vllm.httpx.stream", stream):
-            result = client._invoke_vllm(_invocation(lambda _token, _index: None))
+        client = VLLMClient(_config(), http_client=Mock(stream=stream))
+        result = client._invoke_vllm(_invocation(lambda _token, _index: None))
 
         self.assertEqual(result.raw_output, "Hello")
         self.assertEqual(result.finish_reason, "length")
@@ -171,11 +164,9 @@ class VLLMStreamingUsageTests(unittest.TestCase):
                 error=original_error,
             )
         )
-        client = VLLMClient(_config())
-
-        with patch("app.llm.implementations.vllm.httpx.stream", stream):
-            with self.assertRaisesRegex(RuntimeError, "stream interrupted") as context:
-                client._invoke_vllm(_invocation(lambda _token, _index: None))
+        client = VLLMClient(_config(), http_client=Mock(stream=stream))
+        with self.assertRaisesRegex(RuntimeError, "stream interrupted") as context:
+            client._invoke_vllm(_invocation(lambda _token, _index: None))
 
         self.assertIs(context.exception, original_error)
 
@@ -191,10 +182,8 @@ class VLLMStreamingUsageTests(unittest.TestCase):
             },
         }
         post = Mock(return_value=response)
-        client = VLLMClient(_config())
-
-        with patch("app.llm.implementations.vllm.httpx.post", post):
-            result = client._invoke_vllm(_invocation())
+        client = VLLMClient(_config(), http_client=Mock(post=post))
+        result = client._invoke_vllm(_invocation())
 
         request_payload = post.call_args.kwargs["json"]
         self.assertFalse(request_payload["stream"])
