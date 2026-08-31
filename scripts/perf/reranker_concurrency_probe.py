@@ -106,6 +106,8 @@ def config(**overrides: Any) -> Any:
         "reranker_max_length": 512,
         "reranker_microbatch_window_ms": 0.0,
         "reranker_max_batch_pairs": 64,
+        # The probe's explicit eight-request x twenty-pair live envelope.
+        "reranker_max_outstanding_pairs": 160,
         "reranker_max_pending_pairs": 512,
         "reranker_admission_timeout_seconds": 1.0,
         "reranker_inference_workers": 2,

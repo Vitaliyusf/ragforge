@@ -135,6 +135,7 @@ class RerankScheduler:
         service: str,
         max_batch_pairs: int,
         microbatch_window_ms: float,
+        max_outstanding_pairs: int,
         max_pending_pairs: int,
         admission_timeout_seconds: float,
         inference_workers: int = 2,
@@ -150,6 +151,8 @@ class RerankScheduler:
             raise ValueError("microbatch_window_ms cannot be negative")
         if max_pending_pairs < 1:
             raise ValueError("max_pending_pairs must be at least 1")
+        if max_outstanding_pairs < 1:
+            raise ValueError("max_outstanding_pairs must be at least 1")
         if admission_timeout_seconds <= 0:
             raise ValueError("admission_timeout_seconds must be positive")
         if inference_slot_pairs is None:
@@ -163,6 +166,7 @@ class RerankScheduler:
         self.service = service
         self.max_batch_pairs = max_batch_pairs
         self.window_seconds = microbatch_window_ms / 1000.0
+        self.max_outstanding_pairs = max_outstanding_pairs
         self.max_pending_pairs = max_pending_pairs
         self.admission_timeout_seconds = admission_timeout_seconds
         self.inference_slot_pairs = inference_slot_pairs
@@ -377,10 +381,10 @@ class RerankScheduler:
                     self._total_pending_pairs_locked() + request.pairs <= limit
                 )
                 # Pending capacity is storage, not service capacity. Live work
-                # is bounded separately by the measured in-service envelope:
-                # one request-sized slot per worker. Background work waiting
-                # in its reserved queue does not consume that live envelope,
-                # while a background batch already running necessarily does.
+                # is bounded separately by the explicit, measured operational
+                # envelope. Background work waiting in its reserved queue does
+                # not consume that live envelope, while a background batch
+                # already running necessarily does.
                 outstanding_fits = scheduling_class != CLASS_LIVE or (
                     self._pending_pairs[CLASS_LIVE]
                     + self._inflight_pairs
@@ -429,7 +433,7 @@ class RerankScheduler:
 
     def _outstanding_limit(self) -> int:
         """Return the measured live in-service envelope in physical pairs."""
-        return self.inference_workers * self.inference_slot_pairs
+        return self.max_outstanding_pairs
 
     def _release_cancelled(
         self, request: _Request, future: "Future[List[float]]"
@@ -781,6 +785,9 @@ def create_rerank_scheduler(
         max_batch_pairs=max(1, int(getattr(config, "reranker_max_batch_pairs", 64))),
         microbatch_window_ms=max(
             0.0, float(getattr(config, "reranker_microbatch_window_ms", 5.0))
+        ),
+        max_outstanding_pairs=max(
+            1, int(getattr(config, "reranker_max_outstanding_pairs", 40))
         ),
         max_pending_pairs=max(
             1, int(getattr(config, "reranker_max_pending_pairs", 512))

@@ -45,10 +45,11 @@ _PASSAGE_SCORE = {
 def test_production_defaults_bound_the_measured_cpu_operational_envelope():
     settings = RAGConfig()
 
-    assert settings.reranker_candidate_k == 20
+    assert settings.reranker_candidate_k == 8
     assert settings.reranker_inference_workers == 2
-    assert settings.reranker_max_batch_pairs == 20
+    assert settings.reranker_max_batch_pairs == 8
     assert settings.reranker_microbatch_window_ms == 0.0
+    assert settings.reranker_max_outstanding_pairs == 32
     assert settings.reranker_max_pending_pairs == 40
     assert settings.reranker_admission_timeout_seconds == 0.5
     assert settings.reranker_timeout_seconds == 12.0
@@ -70,6 +71,7 @@ def config(**overrides):
         "reranker_max_length": 128,
         "reranker_microbatch_window_ms": 20.0,
         "reranker_max_batch_pairs": 64,
+        "reranker_max_outstanding_pairs": 128,
         "reranker_max_pending_pairs": 512,
         "reranker_admission_timeout_seconds": 1.0,
         "reranker_inference_workers": 2,
@@ -170,6 +172,7 @@ def scheduler(predict, **overrides) -> Iterator[RerankScheduler]:
         "service": "rag",
         "max_batch_pairs": 8,
         "microbatch_window_ms": 25.0,
+        "max_outstanding_pairs": 64,
         "max_pending_pairs": 64,
         "admission_timeout_seconds": 1.0,
         "inference_workers": 2,
@@ -326,21 +329,28 @@ def test_pending_capacity_may_be_smaller_than_physical_batch_capacity():
 
 def test_outstanding_capacity_sheds_work_beyond_supported_logical_envelope():
     gate = AllGatedPredict()
-    passages = ["weak", "answer"] * 10
+    passages = ["weak", "answer", "middle", "other"] * 2
 
     async def main():
         with scheduler(
             gate,
-            max_batch_pairs=64,
+            max_batch_pairs=8,
+            microbatch_window_ms=0,
+            max_outstanding_pairs=32,
             max_pending_pairs=40,
             admission_timeout_seconds=0.05,
             inference_workers=2,
-            inference_slot_pairs=20,
+            inference_slot_pairs=8,
         ) as instance:
-            running = [await instance.submit("alpha", passages)]
-            await asyncio.to_thread(gate.wait_for_calls, 1)
-            running.append(await instance.submit("alpha", passages))
+            # Four K8 requests fit: two run and one bounded two-request wave
+            # remains queued. Pending storage still has room, so the fifth is
+            # refused specifically by the explicit operational envelope.
+            running = [await instance.submit("alpha", passages) for _ in range(2)]
             await asyncio.to_thread(gate.wait_for_calls, 2)
+            running.extend(
+                [await instance.submit("alpha", passages) for _ in range(2)]
+            )
+            assert instance.pending_pairs() == 16
             with pytest.raises(RerankSchedulerOverloaded) as refused:
                 await instance.submit("alpha", passages)
 
@@ -361,25 +371,27 @@ def test_outstanding_capacity_sheds_work_beyond_supported_logical_envelope():
 
 def test_cancelling_queued_live_work_releases_outstanding_capacity():
     gate = AllGatedPredict()
-    passages = ["weak", "answer"] * 5
+    passages = ["weak", "answer", "middle", "other"] * 2
 
     async def main():
         with scheduler(
             gate,
-            max_batch_pairs=20,
+            max_batch_pairs=8,
+            microbatch_window_ms=0,
+            max_outstanding_pairs=32,
             max_pending_pairs=40,
             admission_timeout_seconds=0.05,
             inference_workers=2,
-            inference_slot_pairs=20,
+            inference_slot_pairs=8,
         ) as instance:
             running = [await instance.submit("alpha", passages) for _ in range(2)]
             await asyncio.to_thread(gate.wait_for_calls, 2)
             queued = [await instance.submit("alpha", passages) for _ in range(2)]
 
-            assert instance.pending_pairs() == 20
+            assert instance.pending_pairs() == 16
             assert queued[0].cancel() is True
             replacement = await instance.submit("alpha", passages)
-            assert instance.pending_pairs() == 20
+            assert instance.pending_pairs() == 16
 
             gate.release.set()
             await asyncio.gather(
@@ -390,6 +402,51 @@ def test_cancelling_queued_live_work_releases_outstanding_capacity():
             return instance.pending_pairs()
 
     assert asyncio.run(main()) == 0
+
+
+def test_inference_completion_wakes_an_outstanding_admission_waiter():
+    gate = AllGatedPredict()
+    passages = ["weak", "answer", "middle", "other"] * 2
+
+    async def main():
+        with scheduler(
+            gate,
+            max_batch_pairs=8,
+            microbatch_window_ms=0,
+            max_outstanding_pairs=32,
+            max_pending_pairs=40,
+            admission_timeout_seconds=1.0,
+            inference_workers=2,
+            inference_slot_pairs=8,
+        ) as instance:
+            accepted = [await instance.submit("alpha", passages) for _ in range(2)]
+            await asyncio.to_thread(gate.wait_for_calls, 2)
+            accepted.extend(
+                [await instance.submit("alpha", passages) for _ in range(2)]
+            )
+
+            waiting = asyncio.create_task(instance.submit("alpha", passages))
+
+            def wait_until_parked() -> bool:
+                with instance._condition:
+                    return instance._condition.wait_for(
+                        lambda: len(instance._capacity_waiters) == 1,
+                        timeout=5.0,
+                    )
+
+            assert await asyncio.to_thread(wait_until_parked)
+            assert not waiting.done()
+
+            # A worker's inference completion releases inflight capacity and
+            # notifies admission waiters. No admission-timeout retry is needed.
+            gate.release.set()
+            admitted = await asyncio.wait_for(waiting, 1.0)
+            await asyncio.gather(
+                *(scores_of(future) for future in accepted),
+                scores_of(admitted),
+            )
+
+    asyncio.run(main())
 
 
 def test_physical_batch_size_is_bounded():
@@ -741,6 +798,7 @@ def test_shutdown_without_draining_fails_pending_waiters_explicitly():
             service="rag",
             max_batch_pairs=2,
             microbatch_window_ms=5.0,
+            max_outstanding_pairs=64,
             max_pending_pairs=64,
             admission_timeout_seconds=1.0,
             inference_workers=1,
