@@ -13,6 +13,7 @@ from app.services.embedding_job_tracing import EmbeddingLangSmithTracer
 from app.services.embedding_job_worker import EmbeddingJobConsumerWorker
 from app.services.embedding_handler import QueryEmbeddingHandler
 from app.services.extraction_handler import ExtractionHandler
+from app.services.inference_scheduler import create_scheduler
 from app.messaging.embedding_kafka import EmbeddingKafkaConsumer, EmbeddingKafkaProducer
 
 
@@ -188,6 +189,26 @@ def make_job(chunks=None, **overrides):
     return job
 
 
+_ACTIVE_SCHEDULERS = []
+
+
+@pytest.fixture(autouse=True)
+def _shutdown_schedulers():
+    """Every scheduler a test builds owns a worker thread; stop them all."""
+
+    yield
+    while _ACTIVE_SCHEDULERS:
+        _ACTIVE_SCHEDULERS.pop().shutdown()
+
+
+def build_scheduler(model, config):
+    """Start one inference scheduler for the duration of the test."""
+
+    scheduler = create_scheduler(model, config).start()
+    _ACTIVE_SCHEDULERS.append(scheduler)
+    return scheduler
+
+
 def build_service(config=None, model=None, tracer=None):
     """Construct the service under test."""
 
@@ -201,7 +222,7 @@ def build_service(config=None, model=None, tracer=None):
     logger = RecordingLogger()
     service = EmbeddingJobService(
         producer=producer,
-        embedding_model=model or FakeEmbeddingModel(),
+        scheduler=build_scheduler(model or FakeEmbeddingModel(), config),
         logger=logger,
         config=config,
         tracer=tracer or EmbeddingLangSmithTracer(enabled=False),
@@ -571,10 +592,11 @@ def test_query_embedding_handler_embeds_one_prefixed_query():
 
     logger = RecordingLogger()
     model = FakeEmbeddingModel(responses=[[[0.1, 0.2, 0.3]]])
+    config = make_config()
     handler = QueryEmbeddingHandler(
-        embedding_model=model,
+        scheduler=build_scheduler(model, config),
         logger=logger,
-        config=make_config(),
+        config=config,
     )
 
     reply = handler.process_request_with_reply(

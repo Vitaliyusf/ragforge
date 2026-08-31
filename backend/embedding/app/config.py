@@ -67,6 +67,28 @@ class EmbeddingConfig:
         self.embedding_max_batch_size: int = int(
             os.getenv("EMBEDDING_MAX_BATCH_SIZE", str(self.embedding_batch_size))
         )
+        # Bounded cross-request micro-batching (CONC-04). The window is the
+        # only latency the scheduler adds to an otherwise idle query; the
+        # pending bound is what keeps a flood of ingestion items from
+        # allocating unbounded futures.
+        self.embedding_microbatch_window_ms: float = float(
+            os.getenv("EMBEDDING_MICROBATCH_WINDOW_MS", "5")
+        )
+        self.embedding_max_pending_items: int = int(
+            os.getenv("EMBEDDING_MAX_PENDING_ITEMS", "256")
+        )
+        self.embedding_admission_timeout_seconds: float = float(
+            os.getenv("EMBEDDING_ADMISSION_TIMEOUT_SECONDS", "1.0")
+        )
+        self.embedding_inference_timeout_seconds: float = float(
+            os.getenv("EMBEDDING_INFERENCE_TIMEOUT_SECONDS", "30.0")
+        )
+        # Bounded workers sharing the one model. One worker makes every live
+        # query wait behind whatever batch is running; this is the fairness
+        # floor, not a throughput dial.
+        self.embedding_inference_workers: int = int(
+            os.getenv("EMBEDDING_INFERENCE_WORKERS", "2")
+        )
         self.vector_db_collection_name: str = os.getenv("VECTOR_DB_COLLECTION_NAME", "rag_chunks_v1")
         
         # E5/BGE retrieval models require query/passage prefixes for optimal retrieval

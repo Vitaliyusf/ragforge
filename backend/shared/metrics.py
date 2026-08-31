@@ -101,6 +101,14 @@ QUEUE_WAIT_BUCKETS = (0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5,
 # something synchronous it should have offloaded.
 EVENT_LOOP_LAG_BUCKETS = (0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0)
 
+# The two scheduling classes the embedding inference scheduler arbitrates
+# between (CONC-04). Eval/benchmark work is scheduled as `background`: it is
+# throughput work that must never sit in front of an interactive query.
+EMBEDDING_SCHEDULER_CLASSES = frozenset({"live", "background"})
+
+# Why the scheduler refused a submission. `closed` is shutdown, not overload.
+EMBEDDING_SCHEDULER_REJECTIONS = frozenset({"saturated", "oversized", "closed"})
+
 # Powers of two: batching work is chosen in doublings, so the buckets should
 # be able to show a batch size of exactly 1 collapsing into 32.
 BATCH_SIZE_BUCKETS = (1, 2, 4, 8, 16, 32, 64, 128, 256, 512)
@@ -713,6 +721,36 @@ class ServiceMetrics:
             "Texts embedded per encode call",
             ["service", "mode"],
             buckets=list(BATCH_SIZE_BUCKETS),
+        )
+
+        # ── Embedding inference scheduler (CONC-04) ─────────────────
+        #
+        # `embedding_class` is the closed pair in EMBEDDING_SCHEDULER_CLASSES:
+        # interactive work and everything deferrable. It is deliberately not
+        # the `traffic_class` label — eval traffic is scheduled as background
+        # here, and collapsing the two would hide exactly the fairness the
+        # scheduler exists to provide.
+        self.embedding_scheduler_pending_items = Gauge(
+            "ragapp_embedding_scheduler_pending_items",
+            "Embedding items accepted by the inference scheduler and not yet embedded",
+            ["service", "embedding_class"],
+        )
+
+        # One observation per physical model forward pass, so it can be read
+        # against embedding_batch_size: the same wall time spread over a
+        # larger batch is the whole point of micro-batching.
+        self.embedding_inference_duration_seconds = Histogram(
+            "ragapp_embedding_inference_duration_seconds",
+            "Wall time of one physical embedding model forward pass",
+            ["service"],
+            buckets=[0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0],
+        )
+
+        # `reason` is one of EMBEDDING_SCHEDULER_REJECTIONS, never a message.
+        self.embedding_scheduler_rejected_total = Counter(
+            "ragapp_embedding_scheduler_rejected_total",
+            "Embedding submissions refused by the bounded inference scheduler",
+            ["service", "embedding_class", "reason"],
         )
 
         # Distinct from reranker_candidate_count: that is how many

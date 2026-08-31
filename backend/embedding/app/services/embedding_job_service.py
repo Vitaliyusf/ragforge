@@ -1,15 +1,21 @@
 """Typed Kafka embedding-job orchestration for the embedding service.
 
-Validates strict embedding.jobs.requested envelopes, batches eligible chunks
-through the embedding model, delegates envelope construction and publishing to
-EmbeddingJobPublisher, and uses shared retry + DLQ helpers for failure handling.
+Validates strict embedding.jobs.requested envelopes, submits eligible chunks to
+the process-level embedding inference scheduler, delegates envelope
+construction and publishing to EmbeddingJobPublisher, and uses shared retry +
+DLQ helpers for failure handling.
+
+Since CONC-04 this service no longer decides physical model batches. The
+``batch_size`` slicing below is a *publish* grouping — how many chunks share
+one vector-db upsert envelope — while the scheduler alone decides how many
+texts share one forward pass, and may combine these chunks with a concurrent
+live query.
 """
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from pydantic import ValidationError
 
 from app.config import EmbeddingConfig
-from app.embedding.interfaces import IEmbeddingModel
 from app.schemas.embedding_job import (
     EmbeddingJobChunk,
     EmbeddingJobRequestedEnvelope,
@@ -17,6 +23,12 @@ from app.schemas.embedding_job import (
 )
 from app.services.embedding_job_publisher import EmbeddingJobPublisher
 from app.services.embedding_job_tracing import EmbeddingLangSmithTracer
+from app.services.inference_scheduler import (
+    CLASS_BACKGROUND,
+    EmbeddingScheduler,
+    EmbeddingSchedulerOverloaded,
+    EmbeddingSchedulerResultMismatch,
+)
 from shared.dlq import DeadLetterQueue
 from shared.logging import ServiceLogger
 from shared.retry import RetryExhausted, RetryPolicy
@@ -38,13 +50,13 @@ class EmbeddingJobService:
     def __init__(
         self,
         producer: EmbeddingKafkaProducer,
-        embedding_model: Optional[IEmbeddingModel],
+        scheduler: EmbeddingScheduler,
         logger: ServiceLogger,
         config: EmbeddingConfig,
         tracer: Optional[EmbeddingLangSmithTracer] = None,
     ) -> None:
         self.producer = producer
-        self.embedding_model = embedding_model
+        self.scheduler = scheduler
         self.logger = logger
         self.config = config
         self.tracer = tracer or EmbeddingLangSmithTracer(enabled=False)
@@ -88,7 +100,7 @@ class EmbeddingJobService:
             return True
 
     def _process_job_once(self, raw_message: Dict[str, Any]) -> None:
-        if not self.embedding_model or not self.embedding_model.is_loaded():
+        if not self.scheduler.is_available():
             raise RetryableEmbeddingJobError("Embedding model not available")
 
         envelope = self._parse_and_validate_job(raw_message)
@@ -152,10 +164,18 @@ class EmbeddingJobService:
                 with self.tracer.span("embedding_job.embed_batch", batch_metadata):
                     try:
                         model_inputs = self._prepare_model_inputs(batch_chunks)
-                        embeddings = self.embedding_model.encode_batch(
+                        embeddings = self.scheduler.encode(
                             model_inputs,
-                            batch_size=min(self.batch_size, len(batch_chunks)),
+                            scheduling_class=CLASS_BACKGROUND,
                         )
+                    except EmbeddingSchedulerResultMismatch as exc:
+                        raise NonRetryableEmbeddingJobError(
+                            f"Embedding count mismatch for batch {batch_index}: {exc}"
+                        ) from exc
+                    except EmbeddingSchedulerOverloaded as exc:
+                        raise RetryableEmbeddingJobError(
+                            f"Embedding batch {batch_index} refused by backpressure: {exc}"
+                        ) from exc
                     except Exception as exc:
                         raise RetryableEmbeddingJobError(
                             f"Embedding batch {batch_index} failed: {exc}"

@@ -3,9 +3,15 @@ from typing import Any, Dict, Optional
 import time
 
 from app.config import EmbeddingConfig
-from app.embedding.interfaces import IEmbeddingModel
+from app.services.inference_scheduler import (
+    CLASS_BACKGROUND,
+    CLASS_LIVE,
+    EmbeddingScheduler,
+    EmbeddingSchedulerOverloaded,
+    EmbeddingSchedulerUnavailable,
+)
 from shared.logging import ServiceLogger
-from shared.metrics import METRICS, traffic_class
+from shared.metrics import METRICS, TRAFFIC_CLASS_EVAL, traffic_class
 
 
 class QueryEmbeddingHandler:
@@ -13,11 +19,13 @@ class QueryEmbeddingHandler:
 
     def __init__(
         self,
-        embedding_model: Optional[IEmbeddingModel],
+        scheduler: EmbeddingScheduler,
         logger: ServiceLogger,
         config: EmbeddingConfig,
     ) -> None:
-        self.embedding_model = embedding_model
+        # The handler never touches the model: the process-level scheduler owns
+        # every forward pass, so two concurrent queries can share one batch.
+        self.scheduler = scheduler
         self.logger = logger
         self.config = config
         self.query_prefix = config.embedding_query_prefix or ""
@@ -39,7 +47,7 @@ class QueryEmbeddingHandler:
             return self._reply(request_correlation_id, error="text must be a string")
         if body.get("action") not in (None, "embed"):
             return self._reply(request_correlation_id, error="unsupported embedding action")
-        if not self.embedding_model or not self.embedding_model.is_loaded():
+        if not self.scheduler.is_available():
             return self._reply(request_correlation_id, error="Embedding model not available")
 
         self.logger.log(
@@ -54,16 +62,28 @@ class QueryEmbeddingHandler:
                 traffic_class=traffic_class(),
             ).inc()
             started = time.monotonic()
-            embeddings = self.embedding_model.encode_batch(
-                [f"{self.query_prefix}{text}"],
-                batch_size=1,
+            embedding = self.scheduler.encode_one(
+                f"{self.query_prefix}{text}",
+                scheduling_class=self._scheduling_class(),
             )
             METRICS.embedding_duration.labels(
                 service="embedding",
                 traffic_class=traffic_class(),
             ).observe(time.monotonic() - started)
-            embedding = embeddings[0] if embeddings else []
             return self._reply(request_correlation_id, embedding=embedding)
+        except EmbeddingSchedulerOverloaded:
+            # Deliberately not converted into a reply payload: the RabbitMQ
+            # boundary translates this type into the typed `service_overloaded`
+            # busy reply the gateway already understands.
+            self.logger.log(
+                "query_embedding:process",
+                "Query embedding rejected by inference backpressure",
+                {"correlation_id": request_correlation_id},
+                hypothesis_id="W",
+            )
+            raise
+        except EmbeddingSchedulerUnavailable:
+            return self._reply(request_correlation_id, error="Embedding model not available")
         except Exception as exc:
             self.logger.log(
                 "query_embedding:process",
@@ -76,6 +96,11 @@ class QueryEmbeddingHandler:
                 hypothesis_id="E",
             )
             return self._reply(request_correlation_id, error=str(exc))
+
+    @staticmethod
+    def _scheduling_class() -> str:
+        """Eval traffic is scheduled as background so it never precedes a query."""
+        return CLASS_BACKGROUND if traffic_class() == TRAFFIC_CLASS_EVAL else CLASS_LIVE
 
     @staticmethod
     def _reply(
