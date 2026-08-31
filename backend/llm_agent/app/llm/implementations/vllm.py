@@ -253,7 +253,7 @@ class VLLMClient(ILLMClient):
         usage = LLMUsage(provider="vllm")
 
         started = time.perf_counter()
-        first_token_observed = False
+        first_token_at: Optional[float] = None
         with self._http.stream(
             "POST",
             f"{self.base_url}/v1/completions",
@@ -285,16 +285,23 @@ class VLLMClient(ILLMClient):
                 choice = choices[0]
                 token = choice.get("text", "")
                 if token:
-                    if not first_token_observed:
+                    if first_token_at is None:
+                        first_token_at = time.perf_counter()
                         METRICS.vllm_ttft_seconds.labels(service=self.service_name).observe(
-                            time.perf_counter() - started
+                            first_token_at - started
                         )
-                        first_token_observed = True
                     index = len(chunks)
                     chunks.append(token)
                     if invocation.on_token is not None:
                         invocation.on_token(token, index)
                 finish_reason = choice.get("finish_reason") or finish_reason
+
+        output_tokens = usage.output_tokens
+        if first_token_at is not None and isinstance(output_tokens, (int, float)) and output_tokens > 0:
+            decode_seconds = max(time.perf_counter() - first_token_at, 1e-9)
+            METRICS.vllm_output_tokens_per_second.labels(
+                service=self.service_name
+            ).observe(float(output_tokens) / decode_seconds)
 
         return LLMGenerationResult(
             raw_output="".join(chunks),

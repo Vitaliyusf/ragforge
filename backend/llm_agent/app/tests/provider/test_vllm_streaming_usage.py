@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 import unittest
 from types import SimpleNamespace
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 from app.llm.implementations.vllm import VLLMClient
 from app.llm.interfaces import LLMInvocation
@@ -155,6 +155,28 @@ class VLLMStreamingUsageTests(unittest.TestCase):
         self.assertIsNone(result.usage.input_tokens)
         self.assertIsNone(result.usage.output_tokens)
         self.assertIsNone(result.usage.total_tokens)
+
+    def test_stream_emits_decode_throughput_when_usage_is_available(self):
+        stream = Mock(
+            return_value=_StreamResponse(
+                [
+                    _sse({"choices": [{"text": "Hello", "finish_reason": None}]}),
+                    _sse({"choices": [{"text": " world", "finish_reason": "stop"}]}),
+                    _sse({"choices": [], "usage": {"completion_tokens": 2}}),
+                    "data: [DONE]",
+                ]
+            )
+        )
+        throughput = Mock()
+        with (
+            patch("app.llm.implementations.vllm.time.perf_counter", side_effect=[10.0, 11.0, 13.0]),
+            patch("app.llm.implementations.vllm.METRICS.vllm_output_tokens_per_second", throughput),
+        ):
+            client = VLLMClient(_config(), http_client=Mock(stream=stream))
+            client._invoke_vllm(_invocation(lambda _token, _index: None))
+
+        throughput.labels.assert_called_once_with(service="llm_agent")
+        throughput.labels.return_value.observe.assert_called_once_with(1.0)
 
     def test_stream_error_before_usage_is_not_masked(self):
         original_error = RuntimeError("stream interrupted")
