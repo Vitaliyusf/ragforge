@@ -28,7 +28,7 @@ correctness fix rather than a nice chart.
 
 ---
 
-## Why this project exists
+## Problem
 
 Getting a RAG prototype to answer one question is a weekend. The interesting problems
 start immediately afterwards:
@@ -48,7 +48,7 @@ start immediately afterwards:
 
 ---
 
-## Measured results
+## Results / Metrics
 
 Every row names its evidence and its evidence *type*. Nothing here is extrapolated to
 production throughput: these are host-local measurements on one developer machine.
@@ -426,7 +426,7 @@ Each service is an independently built and deployed container with its own
 
 ---
 
-## Tech stack
+## Tech Stack
 
 **Backend** — Python 3.12, FastAPI, Pydantic / pydantic-settings, asyncio, uv
 
@@ -447,7 +447,7 @@ Ruff, GitHub Actions, benchmark and evaluation tooling
 
 ---
 
-## Repository structure
+## Project Structure
 
 ```text
 backend/
@@ -470,7 +470,7 @@ docker-compose.yml     Full local stack
 
 ---
 
-## Running locally
+## Quick Start
 
 **Prerequisites:** Docker and Docker Compose; an NVIDIA GPU with CUDA drivers and ~6 GB
 VRAM for vLLM. Without a GPU every service except vLLM starts, but chat and RAG flows
@@ -647,7 +647,7 @@ by design and named as such rather than quietly implied to be finished.
 
 ---
 
-## About this repository
+## Public Repo Scope
 
 RagForge is a portfolio engineering project focused on the production problems that
 appear *after* an AI prototype works: retrieval quality, model serving capacity,
