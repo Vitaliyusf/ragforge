@@ -1,6 +1,7 @@
 """Chat service — routes chat requests to RAG or LLM with context preparation."""
 from __future__ import annotations
 
+import asyncio
 from typing import Any, Dict, Optional, Tuple, TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -93,14 +94,18 @@ class ChatService(BaseRPCService):
         return "\n".join(lines)
 
     async def _prepare_context(self, request: ChatRequest) -> Tuple[str, str, Optional[str]]:
-        """Fetch user insight and conversation history in parallel-friendly fashion.
+        """Fetch independent user insight and conversation history concurrently.
 
         Returns:
             (user_insight, history_str, history_sent)
             history_sent equals history_str when history exists, else None.
         """
-        user_insight = await self._fetch_user_insight()
-        history, history_sent = await self._fetch_history(request)
+        async with asyncio.TaskGroup() as tasks:
+            insight_task = tasks.create_task(self._fetch_user_insight())
+            history_task = tasks.create_task(self._fetch_history(request))
+
+        user_insight = insight_task.result()
+        history, history_sent = history_task.result()
         return user_insight, history, history_sent
 
     async def _fetch_user_insight(self) -> str:
