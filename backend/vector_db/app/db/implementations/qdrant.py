@@ -1,6 +1,8 @@
 """Qdrant vector store implementation for chunk-native operations."""
+from contextlib import contextmanager
+import time
 import uuid
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Iterator, List, Optional
 
 import numpy as np
 from qdrant_client import QdrantClient
@@ -8,6 +10,7 @@ from qdrant_client.models import (
     Distance,
     FieldCondition,
     Filter,
+    FilterSelector,
     PointStruct,
     SparseVector,
     SparseVectorParams,
@@ -23,6 +26,7 @@ from app.core.constants import (
     SAFE_REVIEW_STATUSES,
 )
 from app.db.interfaces import IVectorStore, verify_targets
+from shared.metrics import METRICS
 from shared.sparse_retrieval import sparse_lexical_vector
 
 
@@ -111,7 +115,8 @@ class QdrantVectorStore(IVectorStore):
                 )
             )
 
-        self.client.upsert(collection_name=self._collection_name, points=points)
+        with self._observe("upsert"):
+            self.client.upsert(collection_name=self._collection_name, points=points)
         return len(points)
 
     def search_chunks(
@@ -131,15 +136,16 @@ class QdrantVectorStore(IVectorStore):
 
         # `client.search` was removed in qdrant-client 1.19; `query_points` is
         # the replacement and returns the hits under `.points`.
-        search_results = self.client.query_points(
-            collection_name=self._collection_name,
-            query=query_list,
-            using=DENSE_VECTOR_NAME,
-            limit=top_k,
-            query_filter=self._build_search_filter(filters),
-            with_payload=include_payload,
-            with_vectors=include_vector,
-        ).points
+        with self._observe("dense_search"):
+            search_results = self.client.query_points(
+                collection_name=self._collection_name,
+                query=query_list,
+                using=DENSE_VECTOR_NAME,
+                limit=top_k,
+                query_filter=self._build_search_filter(filters),
+                with_payload=include_payload,
+                with_vectors=include_vector,
+            ).points
 
         formatted: List[Dict[str, Any]] = []
         for result in search_results:
@@ -169,15 +175,16 @@ class QdrantVectorStore(IVectorStore):
             return []
         if len(indices) != len(values):
             raise ValueError("Sparse query indices and values must have equal length")
-        search_results = self.client.query_points(
-            collection_name=self._collection_name,
-            query=SparseVector(indices=indices, values=values),
-            using=SPARSE_VECTOR_NAME,
-            limit=top_k,
-            query_filter=self._build_search_filter(filters),
-            with_payload=include_payload,
-            with_vectors=False,
-        ).points
+        with self._observe("sparse_search"):
+            search_results = self.client.query_points(
+                collection_name=self._collection_name,
+                query=SparseVector(indices=indices, values=values),
+                using=SPARSE_VECTOR_NAME,
+                limit=top_k,
+                query_filter=self._build_search_filter(filters),
+                with_payload=include_payload,
+                with_vectors=False,
+            ).points
         return [
             {
                 "id": str(result.id),
@@ -190,11 +197,22 @@ class QdrantVectorStore(IVectorStore):
     def delete_chunks(self, filters: Dict[str, Any]) -> int:
         """Hard delete chunks by file/document filter."""
         delete_filter = self._build_delete_filter(filters)
-        ids = self._scroll_ids(delete_filter)
-        if not ids:
+        with self._observe("delete_count"):
+            deleted_count = int(
+                self.client.count(
+                    collection_name=self._collection_name,
+                    count_filter=delete_filter,
+                    exact=True,
+                ).count
+            )
+        if deleted_count == 0:
             return 0
-        self.client.delete(collection_name=self._collection_name, points_selector=ids)
-        return len(ids)
+        with self._observe("delete"):
+            self.client.delete(
+                collection_name=self._collection_name,
+                points_selector=FilterSelector(filter=delete_filter),
+            )
+        return deleted_count
 
     def lookup_ids(
         self,
@@ -225,14 +243,15 @@ class QdrantVectorStore(IVectorStore):
         retrievable: set = set()
         offset = None
         while True:
-            records, next_offset = self.client.scroll(
-                collection_name=self._collection_name,
-                scroll_filter=Filter(must=must),
-                offset=offset,
-                limit=256,
-                with_payload=[field, "retrieval_allowed", "review_status"],
-                with_vectors=False,
-            )
+            with self._observe("label_lookup_scroll"):
+                records, next_offset = self.client.scroll(
+                    collection_name=self._collection_name,
+                    scroll_filter=Filter(must=must),
+                    offset=offset,
+                    limit=256,
+                    with_payload=[field, "retrieval_allowed", "review_status"],
+                    with_vectors=False,
+                )
             for record in records:
                 payload = record.payload or {}
                 value = payload.get(field)
@@ -265,6 +284,10 @@ class QdrantVectorStore(IVectorStore):
             if count_error is not None:
                 raise count_error
             raise
+
+    def close(self) -> None:
+        """Close the single process-owned Qdrant client."""
+        self.client.close()
 
     # ------------------------------------------------------------------
     # Private helpers
@@ -401,22 +424,13 @@ class QdrantVectorStore(IVectorStore):
 
         return Filter(must=must)
 
-    def _scroll_ids(self, scroll_filter: Filter) -> List[Any]:
-        ids: List[Any] = []
-        offset = None
-
-        while True:
-            records, next_offset = self.client.scroll(
-                collection_name=self._collection_name,
-                scroll_filter=scroll_filter,
-                offset=offset,
-                limit=256,
-                with_payload=False,
-                with_vectors=False,
-            )
-            ids.extend(record.id for record in records)
-            if next_offset is None:
-                break
-            offset = next_offset
-
-        return ids
+    @contextmanager
+    def _observe(self, operation: str) -> Iterator[None]:
+        started = time.monotonic()
+        try:
+            yield
+        finally:
+            METRICS.qdrant_operation_duration.labels(
+                service="vector_db",
+                operation=operation,
+            ).observe(time.monotonic() - started)

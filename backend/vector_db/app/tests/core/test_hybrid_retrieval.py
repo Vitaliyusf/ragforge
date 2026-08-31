@@ -1,4 +1,8 @@
 """Focused contracts for sparse representation and deterministic fusion."""
+from concurrent.futures import ThreadPoolExecutor
+from threading import Event, Lock
+import time
+
 import numpy as np
 import pytest
 
@@ -106,3 +110,92 @@ def test_vector_service_invokes_both_bounded_arms_and_reports_provenance(
         ["dense"],
         ["sparse"],
     ]
+
+
+def test_vector_service_overlaps_hybrid_arms(vector_service, mock_vector_store):
+    dense_started = Event()
+    sparse_started = Event()
+
+    def dense(**kwargs):
+        dense_started.set()
+        assert sparse_started.wait(timeout=1)
+        return [candidate("dense", 0.9)]
+
+    def sparse(**kwargs):
+        sparse_started.set()
+        assert dense_started.wait(timeout=1)
+        return [candidate("sparse", 4.0)]
+
+    mock_vector_store.search_chunks.side_effect = dense
+    mock_vector_store.search_sparse.side_effect = sparse
+
+    result = vector_service.search_chunks(
+        [0.1, 0.2, 0.3],
+        top_k=2,
+        filters={"tenant_id": "tenant-a"},
+        query_sparse={"indices": [7], "values": [1.0]},
+        retrieval_strategy="hybrid",
+    )
+
+    assert [item["payload"]["chunk_id"] for item in result] == ["dense", "sparse"]
+
+
+def test_hybrid_executor_bounds_process_wide_fanout(vector_service, mock_vector_store):
+    lock = Lock()
+    active = 0
+    peak = 0
+
+    def arm(**kwargs):
+        nonlocal active, peak
+        with lock:
+            active += 1
+            peak = max(peak, active)
+        time.sleep(0.02)
+        with lock:
+            active -= 1
+        return []
+
+    mock_vector_store.search_chunks.side_effect = arm
+    mock_vector_store.search_sparse.side_effect = arm
+
+    def hybrid_request():
+        return vector_service.search_chunks(
+            [0.1, 0.2, 0.3],
+            filters={"tenant_id": "tenant-a"},
+            query_sparse={"indices": [7], "values": [1.0]},
+            retrieval_strategy="hybrid",
+        )
+
+    with ThreadPoolExecutor(max_workers=4) as callers:
+        futures = [callers.submit(hybrid_request) for _ in range(4)]
+        assert [future.result(timeout=2) for future in futures] == [[], [], [], []]
+
+    assert peak == 2
+
+
+@pytest.mark.parametrize("failed_arm", ["dense", "sparse"])
+def test_hybrid_failure_identifies_arm_and_joins_peer(
+    vector_service, mock_vector_store, failed_arm
+):
+    peer_finished = Event()
+
+    def fail(**kwargs):
+        raise RuntimeError("boom")
+
+    def peer(**kwargs):
+        time.sleep(0.02)
+        peer_finished.set()
+        return []
+
+    mock_vector_store.search_chunks.side_effect = fail if failed_arm == "dense" else peer
+    mock_vector_store.search_sparse.side_effect = fail if failed_arm == "sparse" else peer
+
+    with pytest.raises(Exception, match=rf"{failed_arm} hybrid search failed"):
+        vector_service.search_chunks(
+            [0.1, 0.2, 0.3],
+            filters={"tenant_id": "tenant-a"},
+            query_sparse={"indices": [7], "values": [1.0]},
+            retrieval_strategy="hybrid",
+        )
+
+    assert peer_finished.is_set()

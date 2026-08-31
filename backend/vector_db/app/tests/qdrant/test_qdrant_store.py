@@ -178,21 +178,62 @@ def test_delete_chunks_supports_file_document_and_combined_filters(
 ):
     """Delete should support file_id, document_id, or both together."""
     store = QdrantVectorStore(vector_size=3)
-    mock_qdrant_client.scroll.return_value = (
-        [SimpleNamespace(id="chunk-1"), SimpleNamespace(id="chunk-2")],
-        None,
-    )
+    mock_qdrant_client.count.return_value = SimpleNamespace(count=2)
 
     deleted_count = store.delete_chunks(filters)
 
     assert deleted_count == 2
-    delete_filter = mock_qdrant_client.scroll.call_args.kwargs["scroll_filter"]
+    delete_filter = mock_qdrant_client.count.call_args.kwargs["count_filter"]
     filter_dump = delete_filter.model_dump(exclude_none=True)
     assert {condition["key"] for condition in filter_dump["must"]} == set(filters.keys())
-    assert mock_qdrant_client.delete.call_args.kwargs["points_selector"] == [
-        "chunk-1",
-        "chunk-2",
-    ]
+    selector = mock_qdrant_client.delete.call_args.kwargs["points_selector"]
+    assert selector.filter == delete_filter
+    mock_qdrant_client.scroll.assert_not_called()
+
+
+def test_delete_uses_tenant_ownership_filter_without_materializing_ids(
+    mock_qdrant_client,
+):
+    store = QdrantVectorStore(vector_size=3)
+    mock_qdrant_client.count.return_value = SimpleNamespace(count=1_000_000)
+    filters = {
+        "tenant_id": "tenant-a",
+        "owner_admin_id": "admin-a",
+        "file_id": "file-1",
+    }
+
+    assert store.delete_chunks(filters) == 1_000_000
+
+    count_filter = mock_qdrant_client.count.call_args.kwargs["count_filter"]
+    conditions = {
+        condition.key: condition.match.model_dump() for condition in count_filter.must
+    }
+    assert conditions == {
+        "tenant_id": {"value": "tenant-a"},
+        "owner_admin_id": {"value": "admin-a"},
+        "file_id": {"value": "file-1"},
+    }
+    assert mock_qdrant_client.delete.call_args.kwargs["points_selector"].filter == count_filter
+    mock_qdrant_client.scroll.assert_not_called()
+
+
+def test_zero_match_delete_uses_count_only(mock_qdrant_client):
+    store = QdrantVectorStore(vector_size=3)
+    mock_qdrant_client.count.return_value = SimpleNamespace(count=0)
+
+    assert store.delete_chunks({"file_id": "file-1"}) == 0
+    mock_qdrant_client.delete.assert_not_called()
+    mock_qdrant_client.scroll.assert_not_called()
+
+
+def test_qdrant_store_closes_its_single_reused_client(mock_qdrant_client):
+    store = QdrantVectorStore(vector_size=3)
+    mock_qdrant_client.query_points.return_value = SimpleNamespace(points=[])
+
+    store.search_chunks(np.array([0.1, 0.2, 0.3]))
+    store.close()
+
+    mock_qdrant_client.close.assert_called_once_with()
 
 
 def test_qdrant_lookup_bounds_the_scroll_to_the_ids_that_were_asked_about(

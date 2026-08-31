@@ -174,7 +174,7 @@
         "hybrid",
         "rrf"
       ],
-      "notes": "Production retrieval uses named dense and lexical sparse Qdrant vectors with bounded deterministic RRF. Both arms share tenant/review/deletion filters. Dense-only mode remains supported explicitly; a legacy collection without the named sparse schema requires rebuild/reindex."
+      "notes": "Production retrieval uses named dense and lexical sparse Qdrant vectors with bounded deterministic client-side RRF. The independent arms run concurrently through one process-owned two-worker/two-permit executor because server fusion cannot return the required per-arm diagnostics or enforce the chunk-id tie-break contract. Both arms share tenant/review filters. File/document cleanup uses an exact filtered count followed by filter-native delete, never a client-materialized point-ID list. One reusable Qdrant client is closed during service shutdown. Dense-only mode remains supported explicitly; a legacy collection without the named sparse schema requires rebuild/reindex."
     },
     {
       "id": "CAP-011",

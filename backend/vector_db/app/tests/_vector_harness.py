@@ -141,7 +141,7 @@ def mock_logger():
 @pytest.fixture
 def vector_service(mock_vector_store, mock_producer, mock_logger):
     """Chunk-native vector service instance."""
-    return VectorService(
+    service = VectorService(
         vector_store=mock_vector_store,
         producer=mock_producer,
         service_logger=mock_logger,
@@ -152,6 +152,8 @@ def vector_service(mock_vector_store, mock_producer, mock_logger):
         delete_requested_topic="vector_db.delete.requested",
         service_name="vector_db",
     )
+    yield service
+    service.close()
 
 
 ADMIN_A = {"tenant_id": "tenant-a", "user_id": "admin-a", "role": "admin", "admin_id": "admin-a"}
@@ -163,7 +165,7 @@ ADMIN_B = {"tenant_id": "tenant-b", "user_id": "admin-b", "role": "admin", "admi
 @pytest.fixture
 def live_service(mock_producer, mock_logger):
     """A vector service over a real in-memory store, for existence checks."""
-    return VectorService(
+    service = VectorService(
         vector_store=InMemoryVectorStore(),
         producer=mock_producer,
         service_logger=mock_logger,
@@ -174,6 +176,8 @@ def live_service(mock_producer, mock_logger):
         delete_requested_topic="vector_db.delete.requested",
         service_name="vector_db",
     )
+    yield service
+    service.close()
 
 
 def seed(service, identity, *chunks):
