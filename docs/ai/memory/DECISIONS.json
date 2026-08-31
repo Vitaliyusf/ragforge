@@ -326,6 +326,22 @@
         "backend/llm_agent/app/llm/implementations/vllm.py",
         "scripts/perf/vllm_concurrency_probe.py"
       ]
+    },
+    {
+      "id": "DEC-017",
+      "status": "accepted",
+      "title": "Reranker concurrency queues; `busy` means overload, not contention",
+      "decision": "The RAG service owns one process-level RerankScheduler (backend/rag/app/services/rerank_scheduler.py) behind the single CrossEncoder instance, replacing the reranker's max_workers=1 executor and single `_inflight` future. Concurrent rerank requests queue on a bounded pending-pairs queue and are fanned back their own contiguous score slice by exact offsets. `busy` is emitted only when admission is refused before RERANKER_ADMISSION_TIMEOUT_SECONDS (or the caller's remaining reranker_timeout_seconds), never because another request is scoring. Two inference workers share the model; eval/background traffic may hold at most one, so a live turn always has a worker. RERANKER_MICROBATCH_WINDOW_MS defaults to 0: batching is opportunistic — a worker takes whatever is already queued, up to RERANKER_MAX_BATCH_PAIRS=64 — and never waits.",
+      "reason": "Single-flight reranking made retrieval quality depend on load: a second concurrent turn was answered `busy` and its pipeline fell back to the fused RRF ordering, so the same query over the same corpus could return a different final ranking. The CONC-05 probe (scripts/perf/reranker_concurrency_probe.py, stub model) measures 100% learned-rerank success and zero `busy` at concurrency 1/2/4/8 and under mixed live+eval load. The zero window is measured, not assumed: across three model cost shapes a 5ms collection window bought no throughput where per-pair compute dominates - the cross-encoder's shape - while raising live p95 (concurrency 4: 99.0ms p50 / 126.8ms p95 windowed against 69.1 / 99.3 opportunistic).",
+      "do_not_do": "Do not restore an immediate-busy fast path for concurrent callers, do not create a second CrossEncoder instance to raise concurrency, and do not raise the micro-batch window without a measurement showing per-call overhead dominates per-pair compute for the deployed model.",
+      "revisit_if": "A real-model benchmark on the pinned BAAI/bge-reranker-v2-m3 (Checkpoint B) shows a different cost shape, the candidate depth changes materially, or GPU execution makes per-call overhead dominant.",
+      "evidence": [
+        "backend/rag/app/services/rerank_scheduler.py",
+        "backend/rag/app/services/learned_reranker.py",
+        "backend/rag/app/tests/core/test_rerank_scheduler.py",
+        "scripts/perf/reranker_concurrency_probe.py",
+        "docs/ai/tasks/CONC-05.md"
+      ]
     }
   ]
 }

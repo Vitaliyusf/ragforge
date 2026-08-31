@@ -123,7 +123,16 @@ async def lifespan(app: FastAPI):
         await _consumer.stop()
         app.state.rpc_consumer = None
         await rpc_client.close()
-        logger.log("main:shutdown", "RAG service shutdown complete", {})
+        # The reranker owns model-holding worker threads. Draining them here
+        # is what keeps a shutdown from leaving a request blocked on a future
+        # nothing will ever settle; whatever the deadline does not reach is
+        # failed explicitly rather than abandoned.
+        drained = rag_service.graph_runner.reranker.shutdown()
+        logger.log(
+            "main:shutdown",
+            "RAG service shutdown complete",
+            {"reranker_scheduler_drained": drained},
+        )
 
 
 # ---------------------------------------------------------------------------

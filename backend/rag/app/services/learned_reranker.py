@@ -2,12 +2,18 @@
 from __future__ import annotations
 
 import asyncio
+import threading
 import time
-from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Optional, Sequence
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
-from shared.metrics import METRICS
+from app.services.rerank_scheduler import (
+    RerankScheduler,
+    RerankSchedulerOverloaded,
+    create_rerank_scheduler,
+    scheduling_class_for,
+)
+from shared.metrics import METRICS, RERANKER_STATUSES
 
 
 RERANKER_IMPLEMENTATION = "sentence_transformers_cross_encoder"
@@ -50,7 +56,19 @@ def _default_model_factory(model_name: str, revision: str, max_length: int) -> A
 
 
 class CrossEncoderReranker:
-    """Run one learned model off the event loop and bound overload behavior."""
+    """Own one learned model and score through one bounded scheduler.
+
+    The model instance, its pinned revision and its ``batch_size`` /
+    ``max_length`` contract live here. *When* a pair is scored — which forward
+    pass carries it, and behind how much other work — belongs to
+    :class:`~app.services.rerank_scheduler.RerankScheduler`.
+
+    Before CONC-05 those two were the same decision: a single-flight executor
+    meant a request arriving while another was reranking got ``busy`` and its
+    pipeline fell back to the RRF ordering, so concurrency alone could change
+    the final ranking. Now contention queues instead, and ``busy`` is reserved
+    for real overload — the bounded queue refusing work before its deadline.
+    """
 
     def __init__(
         self,
@@ -71,41 +89,76 @@ class CrossEncoderReranker:
         self.timeout_seconds = max(
             0.001, float(getattr(config, "reranker_timeout_seconds", 5.0))
         )
+        # Backpressure is bounded separately from inference: a request that
+        # cannot even be *queued* within this should be told so quickly, not
+        # left to burn its whole `reranker_timeout_seconds` in a queue.
+        self.admission_timeout_seconds = max(
+            0.001, float(getattr(config, "reranker_admission_timeout_seconds", 1.0))
+        )
         self.batch_size = max(1, int(getattr(config, "reranker_batch_size", 8)))
         self.max_length = max(32, int(getattr(config, "reranker_max_length", 512)))
+        self.service = str(getattr(config, "service_name", "rag"))
         self._model_factory = model_factory or _default_model_factory
         self._model: Any = None
         self._model_error: Optional[BaseException] = None
-        self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="reranker")
-        self._inflight: Optional[Future[List[float]]] = None
-        self._state_lock = asyncio.Lock()
+        # Guards model construction. `_load_model` runs on scheduler worker
+        # threads, and without this two workers racing the first rerank would
+        # each build a CrossEncoder — two copies of the model in memory.
+        self._model_lock = threading.Lock()
+        self._scheduler: RerankScheduler = create_rerank_scheduler(self._predict, config)
 
     @property
     def model_ref(self) -> str:
         return f"{self.model_name}@{self.model_revision}"
 
+    @property
+    def scheduler(self) -> RerankScheduler:
+        """The one process-level scheduler behind this model."""
+        return self._scheduler
+
+    def shutdown(self, *, drain: bool = True, timeout: float = 10.0) -> bool:
+        """Stop admission and settle every outstanding rerank request."""
+        return self._scheduler.shutdown(drain=drain, timeout=timeout)
+
     def _load_model(self) -> Any:
         if self._model is not None:
             return self._model
-        if self._model_error is not None:
-            raise RuntimeError(
-                "reranker model initialization previously failed"
-            ) from self._model_error
-        try:
-            self._model = self._model_factory(
-                self.model_name,
-                self.model_revision,
-                self.max_length,
-            )
-        except BaseException as exc:
-            self._model_error = exc
-            raise
-        return self._model
+        with self._model_lock:
+            if self._model is not None:
+                return self._model
+            if self._model_error is not None:
+                raise RuntimeError(
+                    "reranker model initialization previously failed"
+                ) from self._model_error
+            try:
+                model = self._model_factory(
+                    self.model_name,
+                    self.model_revision,
+                    self.max_length,
+                )
+            except BaseException as exc:
+                self._model_error = exc
+                METRICS.model_loads_total.labels(
+                    service=self.service, model_kind="reranker", outcome="failure"
+                ).inc()
+                raise
+            self._model = model
+            METRICS.model_loads_total.labels(
+                service=self.service, model_kind="reranker", outcome="success"
+            ).inc()
+            return self._model
 
-    def _predict(self, query: str, passages: Sequence[str]) -> List[float]:
+    def _predict(self, pairs: List[Tuple[str, str]]) -> List[float]:
+        """Score one physical batch of ``(query, passage)`` pairs.
+
+        Called only on a scheduler worker thread. ``batch_size`` is still the
+        model's own internal chunk size — the scheduler decides how many pairs
+        arrive here, not how many the model tokenizes at once — so a pair is
+        scored exactly as it was before CONC-05.
+        """
         model = self._load_model()
         values = model.predict(
-            [(query, passage) for passage in passages],
+            list(pairs),
             batch_size=self.batch_size,
             show_progress_bar=False,
         )
@@ -118,10 +171,6 @@ class CrossEncoderReranker:
             if isinstance(value, list):
                 value = value[-1]
             scores.append(float(value))
-        if len(scores) != len(passages):
-            raise RuntimeError(
-                "reranker returned a different number of scores than passages"
-            )
         return scores
 
     def _observe(
@@ -134,17 +183,24 @@ class CrossEncoderReranker:
         top_score: Optional[float] = None,
     ) -> None:
         METRICS.reranker_requests_total.labels(
-            service="rag", status=status, traffic_class=traffic_class
+            service=self.service, status=status, traffic_class=traffic_class
         ).inc()
         METRICS.reranker_duration.labels(
-            service="rag", status=status, traffic_class=traffic_class
+            service=self.service, status=status, traffic_class=traffic_class
         ).observe(elapsed)
         METRICS.reranker_candidate_count.labels(
-            service="rag", traffic_class=traffic_class
+            service=self.service, traffic_class=traffic_class
         ).observe(candidate_count)
+        # The CONC-00 terminal-status counter carries only the four closed
+        # values; `disabled` and `insufficient_input` are pipeline shapes, not
+        # inference outcomes, and would widen a label space the track pins.
+        if status in RERANKER_STATUSES:
+            METRICS.reranker_status_total.labels(
+                service=self.service, status=status
+            ).inc()
         if top_score is not None:
             METRICS.reranker_top_score.labels(
-                service="rag", traffic_class=traffic_class
+                service=self.service, traffic_class=traffic_class
             ).observe(top_score)
 
     async def rerank(
@@ -171,40 +227,54 @@ class CrossEncoderReranker:
             )
             return RerankResult(bounded, status, elapsed * 1000, len(bounded))
 
-        async with self._state_lock:
-            if self._inflight is not None and not self._inflight.done():
-                status = "busy"
-                elapsed = time.monotonic() - started
-                self._observe(
-                    status=status,
-                    elapsed=elapsed,
-                    candidate_count=len(bounded),
-                    traffic_class=traffic_class,
-                )
-                return RerankResult(bounded, status, elapsed * 1000, len(bounded))
-            self._inflight = self._executor.submit(self._predict, query, passages)
-            future = self._inflight
+        scheduling_class = scheduling_class_for(traffic_class)
+        deadline = started + self.timeout_seconds
+        self._scheduler.start()
 
         status = "success"
+        scores: List[float] = []
         try:
-            scores = await asyncio.wait_for(
-                asyncio.shield(asyncio.wrap_future(future)),
-                timeout=self.timeout_seconds,
+            # Admission is bounded by its own knob *and* by the caller's
+            # deadline: the pipeline promised an answer within
+            # `reranker_timeout_seconds`, so queueing can never extend that
+            # promise, and a saturated queue gives up sooner still.
+            future = await self._scheduler.submit(
+                query,
+                passages,
+                scheduling_class=scheduling_class,
+                admission_timeout=max(
+                    0.0,
+                    min(
+                        self.admission_timeout_seconds,
+                        deadline - time.monotonic(),
+                    ),
+                ),
             )
-        except asyncio.TimeoutError:
-            status = "timeout"
-            scores = []
-        except Exception:
-            status = "error"
-            scores = []
-        finally:
-            if future.done():
-                async with self._state_lock:
-                    if self._inflight is future:
-                        self._inflight = None
+        except RerankSchedulerOverloaded:
+            status = "busy"
+        else:
+            awaitable = asyncio.wrap_future(future)
+            try:
+                scores = await asyncio.wait_for(
+                    awaitable, timeout=max(0.0, deadline - time.monotonic())
+                )
+            except (asyncio.TimeoutError, TimeoutError):
+                # `wait_for` already cancelled the wrapper, which cancels the
+                # scheduler future. A request not yet composed into a batch is
+                # dropped and its capacity released; one already running keeps
+                # its slot, so no other request's score offsets can shift.
+                future.cancel()
+                self._record_inference_timeout(scheduling_class)
+                status = "timeout"
+            except Exception:
+                status = "error"
 
         elapsed = time.monotonic() - started
-        if status != "success":
+        if status != "success" or len(scores) != len(bounded):
+            if status == "success":
+                # A count mismatch is never silently absorbed into a partial
+                # ranking: this request fails explicitly and falls back.
+                status = "error"
             self._observe(
                 status=status,
                 elapsed=elapsed,
@@ -213,7 +283,7 @@ class CrossEncoderReranker:
             )
             return RerankResult(bounded, status, elapsed * 1000, len(bounded))
 
-        ranked: List[tuple[int, Dict[str, Any]]] = []
+        ranked: List[Tuple[int, Dict[str, Any]]] = []
         for index, (candidate, score) in enumerate(zip(bounded, scores)):
             candidate["retrieval_score"] = candidate.get("score")
             candidate["reranker_score"] = score
@@ -228,3 +298,8 @@ class CrossEncoderReranker:
             top_score=float(result[0]["reranker_score"]) if result else None,
         )
         return RerankResult(result, status, elapsed * 1000, len(result))
+
+    def _record_inference_timeout(self, scheduling_class: str) -> None:
+        METRICS.reranker_scheduler_timeouts_total.labels(
+            service=self.service, rerank_class=scheduling_class, phase="inference"
+        ).inc()
