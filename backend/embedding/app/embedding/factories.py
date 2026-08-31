@@ -6,6 +6,7 @@ from typing import Callable, Optional
 from app.embedding.interfaces import IEmbeddingModel
 from app.embedding.implementations.sentence_transformers import SentenceTransformerModel
 from app.config import EmbeddingConfig
+from shared.metrics import METRICS
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +61,16 @@ class EmbeddingModelFactory:
             logger.error("Unsupported embedding model type: %s", model_type)
             return None
 
-        return _load_with_retry(
+        model = _load_with_retry(
             lambda: SentenceTransformerModel(model_name), "sentence-transformers"
         )
+        # One load per healthy process: the counter exists so a *second*
+        # increment is visible, because a reloaded model is a second copy of
+        # the weights in memory and breaks the one-instance contract the
+        # inference scheduler is built on.
+        METRICS.model_loads_total.labels(
+            service=config.service_name,
+            model_kind="embedding",
+            outcome="success" if model is not None else "failure",
+        ).inc()
+        return model

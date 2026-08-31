@@ -85,9 +85,25 @@ class EmbeddingConfig:
         )
         # Bounded workers sharing the one model. One worker makes every live
         # query wait behind whatever batch is running; this is the fairness
-        # floor, not a throughput dial.
+        # floor, not a throughput dial. Three, not two, because the background
+        # bound below reserves one: at two workers ingestion would be left
+        # with a single worker and measured 77 items/s against 185 before the
+        # reservation, where three workers hold live p95 at 132ms *and*
+        # ingestion at 213 items/s under the same mixed load.
         self.embedding_inference_workers: int = int(
-            os.getenv("EMBEDDING_INFERENCE_WORKERS", "2")
+            os.getenv("EMBEDDING_INFERENCE_WORKERS", "3")
+        )
+        # Physical inference capacity ingestion may hold at once. Priority in
+        # the queue is worthless once background occupies every worker: the
+        # next query is ordered first in a queue no worker is free to read,
+        # and still waits out a whole forward pass. Defaults to one below the
+        # worker count so a live arrival always has somewhere to run, while
+        # ingestion keeps every remaining worker.
+        self.embedding_max_background_inflight: int = int(
+            os.getenv(
+                "EMBEDDING_MAX_BACKGROUND_INFLIGHT",
+                str(max(1, self.embedding_inference_workers - 1)),
+            )
         )
         self.vector_db_collection_name: str = os.getenv("VECTOR_DB_COLLECTION_NAME", "rag_chunks_v1")
         

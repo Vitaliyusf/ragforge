@@ -381,6 +381,155 @@ def test_live_work_progresses_while_background_saturates_the_queue(scheduler_fac
     assert max(live_latencies) < 2.0
 
 
+
+# ── 8b. background never occupies every physical inference worker ──────
+
+
+class BlockingClassModel(IEmbeddingModel):
+    """Fake model that blocks background forward passes and records overlap.
+
+    The scheduling class is read back off the text prefix the test submits,
+    which is the only thing the model can see. Concurrency is sampled inside
+    ``encode_batch`` — the physical forward pass itself — so what the
+    assertions below prove is scheduling, not arrival timing.
+    """
+
+    def __init__(self):
+        self.release_background = threading.Event()
+        self.background_entered = threading.Event()
+        self.batches = []
+        self._lock = threading.Lock()
+        self._live = 0
+        self._background = 0
+        self.max_concurrent = 0
+        self.max_background_concurrent = 0
+
+    def _enter(self, texts):
+        background = any(text.startswith("passage:") for text in texts)
+        with self._lock:
+            self.batches.append(list(texts))
+            if background:
+                self._background += 1
+            else:
+                self._live += 1
+            self.max_concurrent = max(self.max_concurrent, self._live + self._background)
+            self.max_background_concurrent = max(
+                self.max_background_concurrent, self._background
+            )
+        return background
+
+    def _exit(self, background):
+        with self._lock:
+            if background:
+                self._background -= 1
+            else:
+                self._live -= 1
+
+    def encode(self, text):
+        return self.encode_batch([text])[0]
+
+    def encode_batch(self, texts, batch_size=32):
+        background = self._enter(texts)
+        try:
+            if background:
+                self.background_entered.set()
+                # Held open until the test releases it: this is the running
+                # forward pass a live arrival must not have to wait for.
+                assert self.release_background.wait(10.0), "background never released"
+            return [[float(len(text))] for text in texts]
+        finally:
+            self._exit(background)
+
+    def is_loaded(self):
+        return True
+
+
+def test_background_cannot_occupy_every_physical_inference_worker(scheduler_factory):
+    """The CONC-04 fairness criterion, proved without relying on timing luck.
+
+    A running forward pass is not interruptible, so this does not assert that
+    live work preempts background. It asserts the property that makes
+    preemption unnecessary: background is never holding every worker, so a
+    live arrival always has a worker free to run it.
+    """
+    model = BlockingClassModel()
+    scheduler = scheduler_factory(
+        model,
+        embedding_max_batch_size=4,
+        embedding_inference_workers=2,
+        embedding_max_pending_items=64,
+        embedding_inference_timeout_seconds=20.0,
+    )
+    assert scheduler.inference_workers == 2
+    assert scheduler.max_background_inflight == 1
+
+    background_results = {}
+    background_errors = []
+
+    def ingest(index):
+        try:
+            background_results[index] = scheduler.encode(
+                [f"passage: bg{index}-{i}" for i in range(4)],
+                scheduling_class=CLASS_BACKGROUND,
+            )
+        except BaseException as exc:  # recorded, then asserted on
+            background_errors.append(exc)
+
+    # 1-2. Enough background submissions to fill both workers several times
+    # over, held open inside the model.
+    ingestion = [threading.Thread(target=ingest, args=(i,)) for i in range(6)]
+    for thread in ingestion:
+        thread.start()
+    assert model.background_entered.wait(5.0), "background inference never started"
+    # Give the second worker every chance to grab background work too.
+    time.sleep(0.2)
+
+    # 3-4. Live work submitted while background is still inside the model must
+    # reach a physical forward pass without the background batch finishing.
+    started = time.monotonic()
+    live = scheduler.encode_one("query: live0")
+    live_latency = time.monotonic() - started
+    assert live == [float(len("query: live0"))]
+    assert not model.release_background.is_set(), (
+        "live work must not have needed the background batch to finish"
+    )
+    assert live_latency < 5.0
+
+    # 5-6. Background is released and must also complete.
+    model.release_background.set()
+    for thread in ingestion:
+        thread.join(10.0)
+    assert not background_errors
+    assert len(background_results) == 6
+    for index, vectors in background_results.items():
+        assert vectors == [
+            [float(len(f"passage: bg{index}-{i}"))] for i in range(4)
+        ], "result-to-request mapping shifted"
+
+    # The bounds the fix must not trade away.
+    assert model.max_concurrent <= scheduler.inference_workers
+    assert model.max_background_concurrent <= scheduler.max_background_inflight
+    assert scheduler.background_inflight == 0
+    assert all(len(batch) <= 4 for batch in model.batches)
+
+
+def test_background_in_flight_bound_is_validated():
+    """Zero would starve ingestion; above the worker count bounds nothing."""
+    for invalid in (0, 3):
+        with pytest.raises(ValueError):
+            EmbeddingScheduler(
+                BlockingClassModel(),
+                service="embedding",
+                max_batch_size=4,
+                microbatch_window_ms=5.0,
+                max_pending_items=64,
+                admission_timeout_seconds=1.0,
+                inference_timeout_seconds=5.0,
+                inference_workers=2,
+                max_background_inflight=invalid,
+            )
+
+
 # ── 9. shutdown drains or fails pending work deterministically ───────────────
 
 

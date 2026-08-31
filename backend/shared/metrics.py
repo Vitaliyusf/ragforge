@@ -109,6 +109,16 @@ EMBEDDING_SCHEDULER_CLASSES = frozenset({"live", "background"})
 # Why the scheduler refused a submission. `closed` is shutdown, not overload.
 EMBEDDING_SCHEDULER_REJECTIONS = frozenset({"saturated", "oversized", "closed"})
 
+# Where a submission ran out of time. `admission` is the bounded wait for
+# pending capacity, `inference` the wait for a forward pass that was already
+# accepted: the first is backpressure, the second is the model being too slow,
+# and an operator must be able to tell them apart.
+EMBEDDING_SCHEDULER_TIMEOUT_PHASES = frozenset({"admission", "inference"})
+
+# Whether a model load attempt produced a usable model. Bounded on purpose:
+# the exception text belongs in a log line, never in a label.
+MODEL_LOAD_OUTCOMES = frozenset({"success", "failure"})
+
 # Powers of two: batching work is chosen in doublings, so the buckets should
 # be able to show a batch size of exactly 1 collapsing into 32.
 BATCH_SIZE_BUCKETS = (1, 2, 4, 8, 16, 32, 64, 128, 256, 512)
@@ -751,6 +761,46 @@ class ServiceMetrics:
             "ragapp_embedding_scheduler_rejected_total",
             "Embedding submissions refused by the bounded inference scheduler",
             ["service", "embedding_class", "reason"],
+        )
+
+        # Items that reached a physical forward pass, split by scheduling
+        # class. Deliberately a counter and not an items/sec gauge: a gauge
+        # would need a window chosen here, while `rate()` lets the dashboard
+        # choose it, and the same series then answers both "items/sec" and
+        # "is background still making progress while live is prioritised".
+        self.embedding_scheduler_items_total = Counter(
+            "ragapp_embedding_scheduler_items_total",
+            "Embedding items completed through a physical forward pass",
+            ["service", "embedding_class"],
+        )
+
+        # Scheduler-side latency of one item, enqueue to settled, split by
+        # class. queue_wait_seconds and embedding_inference_duration_seconds
+        # each measure one half; the fairness criterion is about the sum, and
+        # a p95 of a sum cannot be recovered from two separate histograms.
+        self.embedding_scheduler_latency_seconds = Histogram(
+            "ragapp_embedding_scheduler_latency_seconds",
+            "Scheduler latency of one embedding item, accepted to settled",
+            ["service", "embedding_class"],
+            buckets=list(QUEUE_WAIT_BUCKETS),
+        )
+
+        # `phase` is one of EMBEDDING_SCHEDULER_TIMEOUT_PHASES. A timeout is
+        # counted apart from a rejection because it costs the caller the whole
+        # deadline, where a rejection is refused immediately.
+        self.embedding_scheduler_timeouts_total = Counter(
+            "ragapp_embedding_scheduler_timeouts_total",
+            "Embedding submissions that expired against a scheduler deadline",
+            ["service", "embedding_class", "phase"],
+        )
+
+        # `outcome` is one of MODEL_LOAD_OUTCOMES. Bounded and low-rate: a
+        # healthy process loads once, so any increase after startup is the
+        # signal — a model being reloaded is a second copy in memory.
+        self.model_loads_total = Counter(
+            "ragapp_model_loads_total",
+            "Embedding/reranker model load attempts by outcome",
+            ["service", "model_kind", "outcome"],
         )
 
         # Distinct from reranker_candidate_count: that is how many

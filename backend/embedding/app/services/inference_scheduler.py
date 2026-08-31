@@ -32,6 +32,21 @@ Two measured decisions are baked in here, both from the CONC-04 benchmark:
   query the full window (measured 14ms -> 31ms). The window is now paid only
   when another forward pass is already in flight, which is exactly when
   combining is worth waiting for.
+* **Background may occupy at most ``inference_workers - 1`` workers.** Queue
+  priority only orders work that has not started yet. Once ingestion had
+  filled every worker, a query arriving a microsecond later was ordered first
+  in a queue nobody was free to read, and still paid a whole 32-item forward
+  pass (measured mixed-load live p95 699ms against a 332ms physical batch:
+  two batches deep). The admission bound below keeps one worker able to pick
+  up live work at any moment, so such a query waits for the *window*, not for
+  a running batch — measured live p95 132ms. The worker count moved 2 -> 3
+  alongside it so the reservation costs a live-capable worker rather than
+  half of ingestion capacity.
+
+No forward pass is ever interrupted. This is admission and scheduling
+isolation, not preemption: ``SentenceTransformer.encode`` offers no
+cancellation point, so the only way to bound how long a live arrival waits is
+to stop background from holding every worker in the first place.
 """
 from __future__ import annotations
 
@@ -128,6 +143,7 @@ class EmbeddingScheduler:
         admission_timeout_seconds: float,
         inference_timeout_seconds: float,
         inference_workers: int = 2,
+        max_background_inflight: Optional[int] = None,
         logger: Optional[ServiceLogger] = None,
     ) -> None:
         if inference_workers < 1:
@@ -158,6 +174,21 @@ class EmbeddingScheduler:
         self.live_reserve = max(1, min(max_batch_size, max_pending_items // 2))
         self.background_floor = max(1, max_batch_size // 4)
 
+        # The third reservation, and the one queue ordering cannot express:
+        # physical worker capacity background is not allowed to fill. It
+        # defaults to one below the worker count, so one worker is always able
+        # to start live work without waiting for a running batch to finish,
+        # and ingestion keeps the rest of the capacity. It is
+        # never zero — background must keep making progress — and never above
+        # the worker count, which would make it no bound at all.
+        if max_background_inflight is None:
+            max_background_inflight = max(1, inference_workers - 1)
+        if not 1 <= max_background_inflight <= inference_workers:
+            raise ValueError(
+                "max_background_inflight must be between 1 and inference_workers"
+            )
+        self.max_background_inflight = max_background_inflight
+
         self._condition = threading.Condition()
         self._queues: dict[str, Deque[_Item]] = {
             CLASS_LIVE: deque(),
@@ -168,6 +199,7 @@ class EmbeddingScheduler:
         self._inference_calls = 0
         self._items_embedded = 0
         self._busy_workers = 0
+        self._background_inflight = 0
         self.inference_workers = inference_workers
         self._workers = [
             threading.Thread(
@@ -245,6 +277,12 @@ class EmbeddingScheduler:
         return self._inference_calls
 
     @property
+    def background_inflight(self) -> int:
+        """Workers currently running a batch that carries background items."""
+        with self._condition:
+            return self._background_inflight
+
+    @property
     def items_embedded(self) -> int:
         """Logical items that reached a physical forward pass."""
         return self._items_embedded
@@ -291,8 +329,13 @@ class EmbeddingScheduler:
             for item in items:
                 remaining = result_deadline - time.monotonic()
                 if remaining <= 0:
+                    self._record_timeout(scheduling_class, "inference")
                     raise TimeoutError("embedding inference deadline expired")
-                results.append(item.future.result(timeout=remaining))
+                try:
+                    results.append(item.future.result(timeout=remaining))
+                except TimeoutError:
+                    self._record_timeout(scheduling_class, "inference")
+                    raise
         except BaseException:
             # Cancelling only removes items that have not entered a batch;
             # anything already composed keeps its slot, so no neighbouring
@@ -344,6 +387,7 @@ class EmbeddingScheduler:
                     return
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
+                    self._record_timeout(scheduling_class, "admission")
                     self._record_rejection(scheduling_class, "saturated")
                     raise EmbeddingSchedulerOverloaded(self.service, "saturated")
                 self._condition.wait(remaining)
@@ -365,13 +409,17 @@ class EmbeddingScheduler:
                 return
             if not batch:
                 continue
-            with self._condition:
-                self._busy_workers += 1
+            # `_collect_batch` already claimed this worker's capacity — and,
+            # for a batch carrying background items, the background slot —
+            # under the same lock that composed the batch, so two workers can
+            # never both decide they are the one allowed background runner.
             try:
                 self._run_batch(batch)
             finally:
                 with self._condition:
                     self._busy_workers -= 1
+                    if _carries_background(batch):
+                        self._background_inflight -= 1
                     self._condition.notify_all()
 
     def _collect_batch(self) -> Optional[List[_Item]]:
@@ -380,10 +428,17 @@ class EmbeddingScheduler:
         Returns None when the scheduler is finished and the worker should exit.
         """
         with self._condition:
-            while not self._total_pending_locked() and not self._closed:
+            while True:
+                if self._closed and (
+                    not self._drain_pending or not self._total_pending_locked()
+                ):
+                    return None
+                if self._queues[CLASS_LIVE] or self._background_admissible_locked():
+                    break
+                # Either nothing is pending, or the only pending work is
+                # background and every background slot is taken. Both are
+                # resolved by another worker finishing, which notifies here.
                 self._condition.wait()
-            if self._closed and (not self._drain_pending or not self._total_pending_locked()):
-                return None
 
             # Only pay the window when another forward pass is already in
             # flight. An idle scheduler has capacity to serve the next arrival
@@ -402,16 +457,36 @@ class EmbeddingScheduler:
                     break
                 self._condition.wait(remaining)
 
-            return self._compose_locked()
+            batch = self._compose_locked()
+            if batch:
+                self._busy_workers += 1
+                if _carries_background(batch):
+                    self._background_inflight += 1
+            return batch
+
+    def _background_admissible_locked(self) -> bool:
+        """True when this worker may start a batch carrying background items."""
+        return (
+            bool(self._queues[CLASS_BACKGROUND])
+            and self._background_inflight < self.max_background_inflight
+        )
 
     def _compose_locked(self) -> List[_Item]:
-        """Fill one physical batch under the live-first, background-floor rule."""
+        """Fill one physical batch under the live-first, background-floor rule.
+
+        Background is taken only while a background worker slot is free. Once
+        it is not, this worker composes a live-only batch — or none at all,
+        and parks — which is exactly what keeps a worker free to pick up a
+        live arrival while a long ingestion forward pass is still running.
+        """
         batch: List[_Item] = []
-        reserved = self.background_floor if self._queues[CLASS_BACKGROUND] else 0
+        allow_background = self._background_admissible_locked()
+        reserved = self.background_floor if allow_background else 0
         live_capacity = max(self.max_batch_size - reserved, 0)
 
         self._take_locked(batch, CLASS_LIVE, live_capacity)
-        self._take_locked(batch, CLASS_BACKGROUND, self.max_batch_size - len(batch))
+        if allow_background:
+            self._take_locked(batch, CLASS_BACKGROUND, self.max_batch_size - len(batch))
         # Live may reclaim slots the background queue did not actually use.
         self._take_locked(batch, CLASS_LIVE, self.max_batch_size - len(batch))
 
@@ -472,6 +547,21 @@ class EmbeddingScheduler:
 
         with self._condition:
             self._items_embedded += len(batch)
+        for scheduling_class in self._queues:
+            embedded = sum(
+                1 for item in batch if item.scheduling_class == scheduling_class
+            )
+            if embedded:
+                METRICS.embedding_scheduler_items_total.labels(
+                    service=self.service,
+                    embedding_class=scheduling_class,
+                ).inc(embedded)
+        settled = time.monotonic()
+        for item in batch:
+            METRICS.embedding_scheduler_latency_seconds.labels(
+                service=self.service,
+                embedding_class=item.scheduling_class,
+            ).observe(max(0.0, settled - item.enqueued_at))
         for item, vector in zip(batch, vectors):
             _settle(item.future, vector, None)
 
@@ -519,12 +609,24 @@ class EmbeddingScheduler:
                 embedding_class=scheduling_class,
             ).set(len(queue))
 
+    def _record_timeout(self, scheduling_class: str, phase: str) -> None:
+        METRICS.embedding_scheduler_timeouts_total.labels(
+            service=self.service,
+            embedding_class=scheduling_class,
+            phase=phase,
+        ).inc()
+
     def _record_rejection(self, scheduling_class: str, reason: str) -> None:
         METRICS.embedding_scheduler_rejected_total.labels(
             service=self.service,
             embedding_class=scheduling_class,
             reason=reason,
         ).inc()
+
+
+def _carries_background(batch: List[_Item]) -> bool:
+    """True when this physical batch holds any deferrable item."""
+    return any(item.scheduling_class == CLASS_BACKGROUND for item in batch)
 
 
 def _settle(
@@ -550,6 +652,7 @@ def create_scheduler(
     logger: Optional[ServiceLogger] = None,
 ) -> EmbeddingScheduler:
     """Build the one process-level scheduler from service configuration."""
+    workers = max(1, int(getattr(config, "embedding_inference_workers", 2)))
     return EmbeddingScheduler(
         model,
         service=getattr(config, "service_name", "embedding"),
@@ -562,6 +665,19 @@ def create_scheduler(
         inference_timeout_seconds=float(
             getattr(config, "embedding_inference_timeout_seconds", 30.0)
         ),
-        inference_workers=max(1, int(getattr(config, "embedding_inference_workers", 2))),
+        inference_workers=workers,
+        max_background_inflight=max(
+            1,
+            min(
+                workers,
+                int(
+                    getattr(
+                        config,
+                        "embedding_max_background_inflight",
+                        max(1, workers - 1),
+                    )
+                ),
+            ),
+        ),
         logger=logger,
     )
