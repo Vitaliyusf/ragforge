@@ -222,12 +222,14 @@
       "id": "DEC-012",
       "status": "accepted",
       "title": "Qdrant-native dense+sparse retrieval with deterministic RRF",
-      "decision": "Canonical retrieval stores named dense and lexical sparse vectors in one Qdrant collection, queries both arms with identical eligibility filters, and fuses bounded pools with stable reciprocal-rank fusion.",
-      "reason": "The sparse arm must independently surface exact-term candidates while preserving one ingestion path, one authorization boundary and explainable deterministic ranking.",
+      "decision": "Canonical retrieval stores named dense and lexical sparse vectors in one Qdrant collection, queries both arms concurrently through a process-owned executor bounded to two active calls with identical eligibility filters, and fuses bounded pools with stable client-side reciprocal-rank fusion. Qdrant file/document cleanup uses exact filtered count plus filter-native delete.",
+      "reason": "The sparse arm must independently surface exact-term candidates while preserving one ingestion path, one authorization boundary and explainable deterministic ranking. Pinned Qdrant supports server RRF, but its fused response cannot preserve the required per-arm ranks/scores and chunk-id tie-break diagnostics; concurrent arms overlap latency without changing that contract. Filter-native deletion removes linear client ID materialization while retaining the existing exact-count response.",
       "do_not_do": [
         "Do not score lexical overlap only inside dense candidates or add keyword bonuses after dense retrieval.",
         "Do not silently call a dense-only or partially indexed collection hybrid.",
-        "Do not introduce a reranker under this fusion contract."
+        "Do not introduce a reranker under this fusion contract.",
+        "Do not select server-side fusion unless it reproduces per-arm diagnostics and deterministic tie behavior exactly.",
+        "Do not scroll and materialize every matching point ID before a file/document delete."
       ],
       "revisit_if": [
         "A measured retrieval benchmark justifies a different sparse representation or deterministic fusion policy.",
@@ -238,7 +240,9 @@
         "backend/shared/sparse_retrieval.py",
         "backend/vector_db/app/services/hybrid_retrieval.py",
         "backend/vector_db/app/db/implementations/qdrant.py",
-        "backend/rag/app/services/conversation_backend_client.py"
+        "backend/rag/app/services/conversation_backend_client.py",
+        "VECTOR-02",
+        "scripts/benchmarks/vector02_qdrant_operations.py"
       ]
     },
     {

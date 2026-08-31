@@ -114,3 +114,6 @@ class IVectorStore(ABC):
     def count(self) -> int:
         """Get the number of stored points."""
         raise NotImplementedError
+
+    def close(self) -> None:
+        """Release backing-store resources when explicit shutdown is required."""

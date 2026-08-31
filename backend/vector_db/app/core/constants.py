@@ -119,6 +119,7 @@ INDEXED_FIELDS: dict = {
     "owner_admin_id": PayloadSchemaType.KEYWORD,
     "file_id": PayloadSchemaType.KEYWORD,
     "document_id": PayloadSchemaType.KEYWORD,
+    "chunk_id": PayloadSchemaType.KEYWORD,
     "chunk_version": PayloadSchemaType.INTEGER,
     "retrieval_allowed": PayloadSchemaType.BOOL,
     "review_status": PayloadSchemaType.KEYWORD,

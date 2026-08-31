@@ -121,6 +121,7 @@ async def lifespan(app: FastAPI):
         # Stop RabbitMQ RPC consumer
         await _rpc_consumer.stop()
         await executor.shutdown()
+        _vector_service.close()
 
         # Stop Kafka pipeline consumer thread
         _running[0] = False
@@ -134,6 +135,8 @@ async def lifespan(app: FastAPI):
             _kafka_producer.flush()
         except Exception:
             pass
+        if _vector_store is not None:
+            _vector_store.close()
 
         _logger.log("main:shutdown", "Shutdown complete")
 

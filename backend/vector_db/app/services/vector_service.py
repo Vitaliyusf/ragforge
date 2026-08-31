@@ -1,5 +1,7 @@
 """Chunk-native vector service for Qdrant and Kafka operations."""
+from concurrent.futures import Future, ThreadPoolExecutor, wait
 import os
+from threading import BoundedSemaphore
 import time
 from typing import Any, Dict, List, Optional, Union
 from uuid import uuid4
@@ -53,6 +55,70 @@ class VectorService(BaseVectorService):
     # ------------------------------------------------------------------
     # Domain operations
     # ------------------------------------------------------------------
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        # Hybrid retrieval has exactly two independent blocking Qdrant arms.
+        # The matching semaphore prevents an unbounded executor work queue when
+        # several callers arrive together.
+        self._hybrid_executor = ThreadPoolExecutor(
+            max_workers=2,
+            thread_name_prefix="vector-hybrid",
+        )
+        self._hybrid_slots = BoundedSemaphore(2)
+
+    def close(self) -> None:
+        """Finish submitted hybrid arms and release the process-owned executor."""
+        self._hybrid_executor.shutdown(wait=True, cancel_futures=True)
+
+    def _submit_hybrid_arm(self, function: Any, **kwargs: Any) -> Future:
+        self._hybrid_slots.acquire()
+        try:
+            future = self._hybrid_executor.submit(function, **kwargs)
+        except BaseException:
+            self._hybrid_slots.release()
+            raise
+        future.add_done_callback(lambda _: self._hybrid_slots.release())
+        return future
+
+    def _search_hybrid_arms(
+        self,
+        query: np.ndarray,
+        query_sparse: Dict[str, List[Any]],
+        *,
+        dense_candidate_k: int,
+        sparse_candidate_k: int,
+        filters: Dict[str, Any],
+        include_payload: bool,
+        include_vector: bool,
+    ) -> tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+        futures = {
+            "dense": self._submit_hybrid_arm(
+                self.vector_store.search_chunks,
+                query_vector=query,
+                top_k=dense_candidate_k,
+                filters=filters,
+                include_payload=include_payload,
+                include_vector=include_vector,
+            ),
+            "sparse": self._submit_hybrid_arm(
+                self.vector_store.search_sparse,
+                query_sparse=query_sparse,
+                top_k=sparse_candidate_k,
+                filters=filters,
+                include_payload=include_payload,
+            ),
+        }
+        # Always join both arms. A failed arm therefore cannot leave work
+        # orphaned or leak one of the two executor permits.
+        wait(futures.values())
+        results: Dict[str, List[Dict[str, Any]]] = {}
+        for arm in ("dense", "sparse"):
+            try:
+                results[arm] = futures[arm].result()
+            except Exception as exc:
+                raise RuntimeError(f"{arm} hybrid search failed: {exc}") from exc
+        return results["dense"], results["sparse"]
 
     def initialize_collection(self) -> str:
         """Ensure the active Qdrant collection and indexes exist."""
@@ -193,21 +259,17 @@ class VectorService(BaseVectorService):
         try:
             query = np.asarray(query_vector, dtype=np.float32)
             scoped_filters = self._scoped_filters(filters)
-            dense_results = self.vector_store.search_chunks(
-                query_vector=query,
-                top_k=dense_candidate_k if retrieval_strategy == "hybrid" else top_k,
-                filters=scoped_filters,
-                include_payload=include_payload,
-                include_vector=include_vector,
-            )
             if retrieval_strategy == "hybrid":
                 if query_sparse is None:
                     raise InvalidVectorError("query_sparse is required for hybrid retrieval")
-                sparse_results = self.vector_store.search_sparse(
-                    query_sparse=query_sparse,
-                    top_k=sparse_candidate_k,
+                dense_results, sparse_results = self._search_hybrid_arms(
+                    query,
+                    query_sparse,
+                    dense_candidate_k=dense_candidate_k,
+                    sparse_candidate_k=sparse_candidate_k,
                     filters=scoped_filters,
                     include_payload=include_payload,
+                    include_vector=include_vector,
                 )
                 results = reciprocal_rank_fusion(
                     dense_results,
@@ -216,7 +278,13 @@ class VectorService(BaseVectorService):
                     rrf_k=rrf_k,
                 )
             elif retrieval_strategy == "dense":
-                results = dense_results
+                results = self.vector_store.search_chunks(
+                    query_vector=query,
+                    top_k=top_k,
+                    filters=scoped_filters,
+                    include_payload=include_payload,
+                    include_vector=include_vector,
+                )
             else:
                 raise InvalidVectorError(f"Unsupported retrieval_strategy: {retrieval_strategy}")
         except AuthError:
@@ -226,6 +294,11 @@ class VectorService(BaseVectorService):
         except Exception as exc:
             raise VectorStoreError(f"Failed to search chunks: {exc}") from exc
         finally:
+            if retrieval_strategy == "hybrid":
+                METRICS.qdrant_operation_duration.labels(
+                    service="vector_db",
+                    operation="hybrid_search",
+                ).observe(time.monotonic() - started)
             # In `finally` so a failed search is still counted and timed.
             METRICS.vector_search_duration.labels(
                 service="vector_db",
