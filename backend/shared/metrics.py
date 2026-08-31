@@ -88,6 +88,36 @@ DEGRADED_PATH_REASONS = frozenset({
 # track: it means a concurrent caller was turned away and the pipeline fell
 # back to RRF, which is a quality regression that latency numbers alone hide.
 RERANKER_STATUSES = frozenset({"success", "busy", "timeout", "error"})
+
+# The two scheduling classes the reranker inference scheduler arbitrates
+# between (CONC-05). Eval and benchmark traffic is scheduled as `background`:
+# it is throughput work that must never sit in front of a user's turn.
+RERANKER_SCHEDULER_CLASSES = frozenset({"live", "background"})
+
+# Why the rerank scheduler refused a submission. `saturated` is ordinary load:
+# the pending queue stayed full for the whole admission wait. `oversized` is a
+# configuration fault, not load — the request needs more pairs than one
+# physical batch (`reranker_candidate_k` above `reranker_max_batch_pairs`), so
+# it can never be admitted and no retry will help. They stay separate reasons
+# because only one of them is fixed by adding capacity.
+RERANKER_SCHEDULER_REJECTIONS = frozenset({"saturated", "oversized", "closed"})
+
+# Where a rerank submission ran out of time. `admission` is the bounded wait
+# for pending capacity — backpressure; `inference` is the wait for a forward
+# pass that was already accepted — the model being too slow. An operator must
+# be able to tell them apart.
+RERANKER_SCHEDULER_TIMEOUT_PHASES = frozenset({"admission", "inference"})
+
+# The configured bounds published as gauges, so a pending depth can be read
+# against the ceiling it is approaching.
+RERANKER_SCHEDULER_CAPACITY_SETTINGS = frozenset(
+    {
+        "max_pending_pairs",
+        "max_batch_pairs",
+        "inference_workers",
+        "max_background_inflight",
+    }
+)
 VLLM_ADMISSION_STATUSES = frozenset(
     {"admitted", "timeout", "closed", "failed", "cancelled"}
 )
@@ -820,6 +850,84 @@ class ServiceMetrics:
             "ragapp_reranker_status_total",
             "Reranker outcomes by terminal status",
             ["service", "status"],
+        )
+
+        # ── Reranker inference scheduler (CONC-05) ──────────────────
+        #
+        # `rerank_class` is the closed pair in RERANKER_SCHEDULER_CLASSES.
+        # Deliberately not the `traffic_class` label carried by
+        # reranker_requests_total: eval traffic is *scheduled* as background
+        # here, and collapsing the two would hide exactly the fairness the
+        # scheduler exists to provide.
+        #
+        # Pending is published in both units on purpose. Pairs are what the
+        # admission bound is expressed in; requests are what a saturation
+        # dashboard is read in ("how many turns are waiting").
+        self.reranker_scheduler_pending_requests = Gauge(
+            "ragapp_reranker_scheduler_pending_requests",
+            "Rerank requests accepted by the scheduler and not yet scored",
+            ["service", "rerank_class"],
+        )
+
+        self.reranker_scheduler_pending_pairs = Gauge(
+            "ragapp_reranker_scheduler_pending_pairs",
+            "Query/candidate pairs accepted by the scheduler and not yet scored",
+            ["service", "rerank_class"],
+        )
+
+        # The signal that separates ordinary contention from overload: a
+        # request that waited and was reranked shows up here, where a request
+        # that was refused shows up in reranker_scheduler_rejected_total.
+        self.reranker_scheduler_queue_wait_seconds = Histogram(
+            "ragapp_reranker_scheduler_queue_wait_seconds",
+            "Wait between accepting a rerank request and starting its forward pass",
+            ["service", "rerank_class"],
+            buckets=list(QUEUE_WAIT_BUCKETS),
+        )
+
+        # One observation per physical forward pass, readable against
+        # reranker_batch_size: the same wall time over a larger batch is the
+        # whole point of micro-batching.
+        self.reranker_inference_duration_seconds = Histogram(
+            "ragapp_reranker_inference_duration_seconds",
+            "Wall time of one physical reranker model forward pass",
+            ["service"],
+            buckets=[0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0],
+        )
+
+        # `reason` is one of RERANKER_SCHEDULER_REJECTIONS, never a message.
+        self.reranker_scheduler_rejected_total = Counter(
+            "ragapp_reranker_scheduler_rejected_total",
+            "Rerank requests refused by the bounded inference scheduler",
+            ["service", "rerank_class", "reason"],
+        )
+
+        # `phase` is one of RERANKER_SCHEDULER_TIMEOUT_PHASES. A timeout is
+        # counted apart from a rejection: it costs the caller its whole
+        # deadline, where a rejection is refused immediately.
+        self.reranker_scheduler_timeouts_total = Counter(
+            "ragapp_reranker_scheduler_timeouts_total",
+            "Rerank submissions that expired against a scheduler deadline",
+            ["service", "rerank_class", "phase"],
+        )
+
+        # Pairs that reached a physical forward pass, split by scheduling
+        # class. A counter and not a pairs/sec gauge so the dashboard, not
+        # this module, chooses the window — the same series then answers both
+        # "pairs/sec" and "is background still progressing under live load".
+        self.reranker_scheduler_pairs_total = Counter(
+            "ragapp_reranker_scheduler_pairs_total",
+            "Query/candidate pairs completed through a physical forward pass",
+            ["service", "rerank_class"],
+        )
+
+        # `setting` is one of RERANKER_SCHEDULER_CAPACITY_SETTINGS. Pending
+        # depth is meaningless without the ceiling it is approaching, and an
+        # operator should not have to read the deployment to find it.
+        self.reranker_scheduler_capacity = Gauge(
+            "ragapp_reranker_scheduler_capacity",
+            "Configured bound of the reranker inference scheduler",
+            ["service", "setting"],
         )
 
         # Provider-level vLLM evidence, separate from the RAG-level

@@ -21,6 +21,10 @@ from shared.metrics import (
     METRICS,
     MODEL_LOAD_OUTCOMES,
     QUEUE_WAIT_BUCKETS,
+    RERANKER_SCHEDULER_CAPACITY_SETTINGS,
+    RERANKER_SCHEDULER_CLASSES,
+    RERANKER_SCHEDULER_REJECTIONS,
+    RERANKER_SCHEDULER_TIMEOUT_PHASES,
     RERANKER_STATUSES,
 )
 
@@ -75,6 +79,14 @@ CONCURRENCY_METRICS = (
     "model_loads_total",
     "reranker_batch_size",
     "reranker_status_total",
+    "reranker_scheduler_pending_requests",
+    "reranker_scheduler_pending_pairs",
+    "reranker_scheduler_queue_wait_seconds",
+    "reranker_inference_duration_seconds",
+    "reranker_scheduler_rejected_total",
+    "reranker_scheduler_timeouts_total",
+    "reranker_scheduler_pairs_total",
+    "reranker_scheduler_capacity",
     "vllm_inflight_requests",
     "vllm_configured_limit",
     "vllm_admission_wait_seconds",
@@ -124,6 +136,10 @@ def test_the_closed_vocabularies_are_immutable() -> None:
         EMBEDDING_SCHEDULER_CLASSES,
         EMBEDDING_SCHEDULER_REJECTIONS,
         EMBEDDING_SCHEDULER_TIMEOUT_PHASES,
+        RERANKER_SCHEDULER_CLASSES,
+        RERANKER_SCHEDULER_REJECTIONS,
+        RERANKER_SCHEDULER_TIMEOUT_PHASES,
+        RERANKER_SCHEDULER_CAPACITY_SETTINGS,
         MODEL_LOAD_OUTCOMES,
     ):
         assert isinstance(vocabulary, frozenset)
@@ -131,6 +147,19 @@ def test_the_closed_vocabularies_are_immutable() -> None:
 
 def test_reranker_statuses_are_exactly_the_four_the_task_names() -> None:
     assert RERANKER_STATUSES == {"success", "busy", "timeout", "error"}
+
+
+def test_the_rerank_scheduler_vocabularies_stay_closed() -> None:
+    """CONC-05 label spaces, pinned so a later task cannot widen them."""
+    assert RERANKER_SCHEDULER_CLASSES == {"live", "background"}
+    assert RERANKER_SCHEDULER_REJECTIONS == {"saturated", "oversized", "closed"}
+    assert RERANKER_SCHEDULER_TIMEOUT_PHASES == {"admission", "inference"}
+    assert RERANKER_SCHEDULER_CAPACITY_SETTINGS == {
+        "max_pending_pairs",
+        "max_batch_pairs",
+        "inference_workers",
+        "max_background_inflight",
+    }
 
 
 def test_bucket_edges_are_documented_and_ascending() -> None:

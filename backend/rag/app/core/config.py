@@ -87,6 +87,40 @@ class RAGConfig(BaseSettings):
     reranker_batch_size: int = 8
     reranker_max_length: int = 512
 
+    # Bounded cross-request rerank scheduling (CONC-05).
+    #
+    # `reranker_batch_size` above is unchanged and still means the model's own
+    # internal tokenization chunk. These bound something different: how many
+    # pairs from *concurrently pending requests* the scheduler hands to one
+    # `predict` call, and how much work it will hold before refusing more.
+    # They are named in pairs, not requests, because a request's size varies
+    # with how many candidates retrieval produced.
+    #
+    # The window defaults to zero — batching is opportunistic, never waited
+    # for. The CONC-05 probe swept three model cost shapes (per-call overhead
+    # vs per-pair compute) at concurrency 1/2/4/8, and a 5ms window bought no
+    # throughput in the two where per-pair compute dominates — which is the
+    # cross-encoder's shape, one full forward pass per pair — while raising
+    # live p95 (balanced shape, 8 concurrent: 199ms windowed against 168ms
+    # opportunistic). At zero the scheduler still combines whatever is already
+    # queued when a worker frees up, so per-call overhead is amortised for
+    # free; it simply never makes a lone request pay for the privilege.
+    # Raise it only against a measurement showing per-call overhead dominates.
+    reranker_microbatch_window_ms: float = 0.0
+    reranker_max_batch_pairs: int = 64
+    reranker_max_pending_pairs: int = 512
+    reranker_admission_timeout_seconds: float = 1.0
+    # Workers sharing the one model. Two, not one: with a single worker every
+    # turn waits out whatever forward pass is running, which is the fairness
+    # problem CONC-05 exists to remove, and the reservation below would have
+    # nothing left to reserve.
+    reranker_inference_workers: int = 2
+    # Physical capacity eval/benchmark work may hold at once. Queue priority
+    # is worthless once background occupies every worker: the next turn is
+    # ordered first in a queue no worker is free to read. One below the worker
+    # count, so a live arrival always has somewhere to run.
+    reranker_max_background_inflight: int = 1
+
     # Collection names
     conversation_threads_collection: str = "conversation_threads"
     conversation_turns_collection: str = "conversation_turns"
