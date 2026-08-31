@@ -1,11 +1,13 @@
 """Tests for chat endpoints."""
 import asyncio
-from unittest.mock import AsyncMock, MagicMock
+from contextlib import suppress
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.core.auth import get_current_user
+from app.core.constants import MemoryAction
 from app.core.deps import get_chat_service
 from app.rest.v1 import chat as chat_routes
 from shared.auth import AuthIdentity
@@ -89,3 +91,107 @@ def test_plain_chat_uses_typed_llm_contract_and_normalizes_reply():
     assert llm_call.args[1]["input"]["question"] == "Reply with OK"
     assert result["response"] == "OK"
     assert "visible_reasoning_steps" not in result
+
+
+def test_prepare_context_overlaps_reads_and_assembles_deterministically():
+    service = object.__new__(ChatService)
+    both_started = asyncio.Event()
+    started = set()
+
+    async def mark_started(branch):
+        started.add(branch)
+        if len(started) == 2:
+            both_started.set()
+        await asyncio.wait_for(both_started.wait(), timeout=0.1)
+
+    async def fetch_insight():
+        await mark_started("insight")
+        await asyncio.sleep(0.02)
+        return "insight"
+
+    async def fetch_history(_request):
+        await mark_started("history")
+        return "history", "history"
+
+    with (
+        patch.object(service, "_fetch_user_insight", side_effect=fetch_insight),
+        patch.object(service, "_fetch_history", side_effect=fetch_history),
+    ):
+        result = asyncio.run(
+            service._prepare_context(ChatRequest(message="hello", chat_id="chat-1"))
+        )
+
+    assert result == ("insight", "history", "history")
+
+
+def test_prepare_context_preserves_optional_timeout_fallback():
+    rpc_client = MagicMock()
+
+    async def send_request(_routing_key, payload, timeout):
+        del timeout
+        if payload["action"] == MemoryAction.GET_USER_INSIGHT:
+            raise TimeoutError
+        return {
+            "status": "success",
+            "compressed_summary": "summary",
+            "recent_messages": [],
+        }
+
+    rpc_client.send_request = AsyncMock(side_effect=send_request)
+    config = MagicMock()
+    config.short_timeout = 10.0
+    config.request_topics = {"memory": "memory"}
+    service = ChatService(rpc_client, MagicMock(), config)
+
+    result = asyncio.run(
+        service._prepare_context(ChatRequest(message="hello", chat_id="chat-1"))
+    )
+
+    assert result == (
+        "",
+        "[Earlier conversation summary]: summary",
+        "[Earlier conversation summary]: summary",
+    )
+    assert rpc_client.send_request.await_count == 2
+
+
+def test_prepare_context_cancellation_cleans_up_both_branches():
+    service = object.__new__(ChatService)
+    both_started = asyncio.Event()
+    history_finished = asyncio.Event()
+    started = set()
+
+    async def wait_for_cancellation(branch):
+        started.add(branch)
+        if len(started) == 2:
+            both_started.set()
+        try:
+            await asyncio.Event().wait()
+        finally:
+            if branch == "history":
+                history_finished.set()
+
+    async def fetch_insight():
+        await wait_for_cancellation("insight")
+        return ""
+
+    async def fetch_history(_request):
+        await wait_for_cancellation("history")
+        return "", None
+
+    async def exercise():
+        task = asyncio.create_task(
+            service._prepare_context(ChatRequest(message="hello", chat_id="chat-1"))
+        )
+        await asyncio.wait_for(both_started.wait(), timeout=0.1)
+        task.cancel()
+        with suppress(asyncio.CancelledError):
+            await task
+        await asyncio.wait_for(history_finished.wait(), timeout=0.1)
+        assert task.cancelled()
+
+    with (
+        patch.object(service, "_fetch_user_insight", side_effect=fetch_insight),
+        patch.object(service, "_fetch_history", side_effect=fetch_history),
+    ):
+        asyncio.run(exercise())
