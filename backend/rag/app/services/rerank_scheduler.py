@@ -138,6 +138,7 @@ class RerankScheduler:
         max_pending_pairs: int,
         admission_timeout_seconds: float,
         inference_workers: int = 2,
+        inference_slot_pairs: Optional[int] = None,
         max_background_inflight: Optional[int] = None,
         logger: Optional[ServiceLogger] = None,
     ) -> None:
@@ -147,10 +148,16 @@ class RerankScheduler:
             raise ValueError("max_batch_pairs must be at least 1")
         if microbatch_window_ms < 0:
             raise ValueError("microbatch_window_ms cannot be negative")
-        if max_pending_pairs < max_batch_pairs:
-            raise ValueError("max_pending_pairs must be at least max_batch_pairs")
+        if max_pending_pairs < 1:
+            raise ValueError("max_pending_pairs must be at least 1")
         if admission_timeout_seconds <= 0:
             raise ValueError("admission_timeout_seconds must be positive")
+        if inference_slot_pairs is None:
+            inference_slot_pairs = max_batch_pairs
+        if inference_slot_pairs < 1 or inference_slot_pairs > max_batch_pairs:
+            raise ValueError(
+                "inference_slot_pairs must be between 1 and max_batch_pairs"
+            )
 
         self._predict = predict
         self.service = service
@@ -158,6 +165,7 @@ class RerankScheduler:
         self.window_seconds = microbatch_window_ms / 1000.0
         self.max_pending_pairs = max_pending_pairs
         self.admission_timeout_seconds = admission_timeout_seconds
+        self.inference_slot_pairs = inference_slot_pairs
         self._logger = logger
 
         # Fairness as two reservations rather than a policy engine.
@@ -196,6 +204,7 @@ class RerankScheduler:
         self._inference_calls = 0
         self._pairs_scored = 0
         self._busy_workers = 0
+        self._inflight_pairs = 0
         self._background_inflight = 0
         self._workers = [
             threading.Thread(
@@ -364,10 +373,29 @@ class RerankScheduler:
                 if self._closed:
                     self._record_rejection(scheduling_class, "closed")
                     raise RerankSchedulerOverloaded(self.service, "closed")
-                if self._total_pending_pairs_locked() + request.pairs <= limit:
+                pending_fits = (
+                    self._total_pending_pairs_locked() + request.pairs <= limit
+                )
+                # Pending capacity is storage, not service capacity. Live work
+                # is bounded separately by the measured in-service envelope:
+                # one request-sized slot per worker. Background work waiting
+                # in its reserved queue does not consume that live envelope,
+                # while a background batch already running necessarily does.
+                outstanding_fits = scheduling_class != CLASS_LIVE or (
+                    self._pending_pairs[CLASS_LIVE]
+                    + self._inflight_pairs
+                    + request.pairs
+                    <= self._outstanding_limit()
+                )
+                if pending_fits and outstanding_fits:
                     request.enqueued_at = time.monotonic()
                     self._queues[scheduling_class].append(request)
                     self._pending_pairs[scheduling_class] += request.pairs
+                    request.future.add_done_callback(
+                        lambda future, admitted=request: self._release_cancelled(
+                            admitted, future
+                        )
+                    )
                     self._publish_pending_locked()
                     self._condition.notify_all()
                     return
@@ -398,6 +426,27 @@ class RerankScheduler:
         if scheduling_class == CLASS_LIVE:
             return self.max_pending_pairs
         return max(1, self.max_pending_pairs - self.live_reserve)
+
+    def _outstanding_limit(self) -> int:
+        """Return the measured live in-service envelope in physical pairs."""
+        return self.inference_workers * self.inference_slot_pairs
+
+    def _release_cancelled(
+        self, request: _Request, future: "Future[List[float]]"
+    ) -> None:
+        """Remove a cancelled request while it is still waiting in a queue."""
+        if not future.cancelled():
+            return
+        with self._condition:
+            queue = self._queues[request.scheduling_class]
+            for index, queued in enumerate(queue):
+                if queued is request:
+                    del queue[index]
+                    self._pending_pairs[request.scheduling_class] -= request.pairs
+                    self._publish_pending_locked()
+                    self._condition.notify_all()
+                    self._notify_capacity_locked()
+                    break
 
     def _discard_waiter(self, waiter: "asyncio.Future[None]") -> None:
         with self._condition:
@@ -436,9 +485,11 @@ class RerankScheduler:
             finally:
                 with self._condition:
                     self._busy_workers -= 1
+                    self._inflight_pairs -= _batch_pairs(batch)
                     if _carries_background(batch):
                         self._background_inflight -= 1
                     self._condition.notify_all()
+                    self._notify_capacity_locked()
 
     def _collect_batch(self) -> Optional[List[_Request]]:
         """Block for the first request, then hold the micro-batch window open.
@@ -477,6 +528,7 @@ class RerankScheduler:
             batch = self._compose_locked()
             if batch:
                 self._busy_workers += 1
+                self._inflight_pairs += _batch_pairs(batch)
                 if _carries_background(batch):
                     self._background_inflight += 1
             return batch
@@ -660,12 +712,14 @@ class RerankScheduler:
     def _publish_capacity(self) -> None:
         """Publish the configured bounds so a dashboard can read saturation.
 
-        `setting` is a closed four-value vocabulary, not free text.
+        `setting` is a closed six-value vocabulary, not free text.
         """
         for setting, value in (
             ("max_pending_pairs", self.max_pending_pairs),
             ("max_batch_pairs", self.max_batch_pairs),
             ("inference_workers", self.inference_workers),
+            ("inference_slot_pairs", self.inference_slot_pairs),
+            ("max_outstanding_pairs", self._outstanding_limit()),
             ("max_background_inflight", self.max_background_inflight),
         ):
             METRICS.reranker_scheduler_capacity.labels(
@@ -735,6 +789,13 @@ def create_rerank_scheduler(
             0.001, float(getattr(config, "reranker_admission_timeout_seconds", 1.0))
         ),
         inference_workers=workers,
+        inference_slot_pairs=max(
+            1,
+            min(
+                int(getattr(config, "reranker_candidate_k", 20)),
+                int(getattr(config, "reranker_max_batch_pairs", 64)),
+            ),
+        ),
         max_background_inflight=max(
             1,
             min(

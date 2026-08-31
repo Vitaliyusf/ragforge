@@ -82,8 +82,11 @@ class RAGConfig(BaseSettings):
     reranker_enabled: bool = False
     reranker_model: str = "BAAI/bge-reranker-v2-m3"
     reranker_model_revision: str = "b5160aeac3c6c8fe7beaaaf04c9e0142826b58d1"
+    # Keep the last quality-proven candidate pool until a lower-K Retrieval220
+    # run is provenance-verified. The production-text frontier found K8 was
+    # the first c4 capacity pass, but its quality run was not validly captured.
     reranker_candidate_k: int = 20
-    reranker_timeout_seconds: float = 5.0
+    reranker_timeout_seconds: float = 12.0
     reranker_batch_size: int = 8
     reranker_max_length: int = 512
 
@@ -107,9 +110,13 @@ class RAGConfig(BaseSettings):
     # free; it simply never makes a lone request pay for the privilege.
     # Raise it only against a measurement showing per-call overhead dominates.
     reranker_microbatch_window_ms: float = 0.0
-    reranker_max_batch_pairs: int = 64
-    reranker_max_pending_pairs: int = 512
-    reranker_admission_timeout_seconds: float = 1.0
+    # One logical request per physical CrossEncoder call. Combining requests
+    # into a larger CPU call increased the measured tail.
+    reranker_max_batch_pairs: int = 20
+    # Queue-storage bound only. The scheduler separately caps live queued plus
+    # running work at workers * candidate-sized inference slots.
+    reranker_max_pending_pairs: int = 40
+    reranker_admission_timeout_seconds: float = 0.5
     # Workers sharing the one model. Two, not one: with a single worker every
     # turn waits out whatever forward pass is running, which is the fairness
     # problem CONC-05 exists to remove, and the reservation below would have
