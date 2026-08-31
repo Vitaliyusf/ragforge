@@ -1,7 +1,7 @@
 """Tests for chat endpoints."""
 import asyncio
 from contextlib import suppress
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -113,12 +113,13 @@ def test_prepare_context_overlaps_reads_and_assembles_deterministically():
         await mark_started("history")
         return "history", "history"
 
-    service._fetch_user_insight = fetch_insight
-    service._fetch_history = fetch_history
-
-    result = asyncio.run(
-        service._prepare_context(ChatRequest(message="hello", chat_id="chat-1"))
-    )
+    with (
+        patch.object(service, "_fetch_user_insight", side_effect=fetch_insight),
+        patch.object(service, "_fetch_history", side_effect=fetch_history),
+    ):
+        result = asyncio.run(
+            service._prepare_context(ChatRequest(message="hello", chat_id="chat-1"))
+        )
 
     assert result == ("insight", "history", "history")
 
@@ -178,9 +179,6 @@ def test_prepare_context_cancellation_cleans_up_both_branches():
         await wait_for_cancellation("history")
         return "", None
 
-    service._fetch_user_insight = fetch_insight
-    service._fetch_history = fetch_history
-
     async def exercise():
         task = asyncio.create_task(
             service._prepare_context(ChatRequest(message="hello", chat_id="chat-1"))
@@ -192,4 +190,8 @@ def test_prepare_context_cancellation_cleans_up_both_branches():
         await asyncio.wait_for(history_finished.wait(), timeout=0.1)
         assert task.cancelled()
 
-    asyncio.run(exercise())
+    with (
+        patch.object(service, "_fetch_user_insight", side_effect=fetch_insight),
+        patch.object(service, "_fetch_history", side_effect=fetch_history),
+    ):
+        asyncio.run(exercise())
