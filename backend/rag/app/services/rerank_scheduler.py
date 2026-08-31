@@ -313,8 +313,10 @@ class RerankScheduler:
         relies on getting one score per candidate position it submitted.
 
         Raises :class:`RerankSchedulerOverloaded` when the bounded pending
-        queue cannot take the request before the admission deadline. That —
-        and only that — is overload; waiting behind another request is not.
+        queue cannot take the request before the admission deadline
+        (``saturated``), or when the request is larger than one physical batch
+        or its class's pending bound and so can never be admitted at all
+        (``oversized``). Waiting behind another request is neither.
         """
         if scheduling_class not in self._queues:
             raise ValueError(f"unknown scheduling class: {scheduling_class!r}")
@@ -342,11 +344,19 @@ class RerankScheduler:
         once pairs leave the queue.
         """
         scheduling_class = request.scheduling_class
-        # A request larger than its class limit is never refused for its own
-        # size — the pipeline bounds candidates already, and refusing here
-        # would silently disable reranking for a legitimate shape. It simply
-        # waits for the queue to be empty enough to hold it alone.
-        limit = max(self._pending_limit(scheduling_class), request.pairs)
+        limit = self._pending_limit(scheduling_class)
+        # `max_batch_pairs` is a physical bound: no forward pass may carry more
+        # pairs than it, and a request is never split across passes. So a
+        # request that cannot fit one batch alone — or one that cannot fit its
+        # class's pending bound alone — has no admissible shape at all, and
+        # widening the bound for it would only defer the same impossible batch
+        # while letting a single caller exceed what the operator configured.
+        # It is refused typed instead: `oversized` names a configuration fault
+        # (`reranker_candidate_k` above `reranker_max_batch_pairs`) distinctly
+        # from `saturated`, which is ordinary load.
+        if request.pairs > min(limit, self.max_batch_pairs):
+            self._record_rejection(scheduling_class, "oversized")
+            raise RerankSchedulerOverloaded(self.service, "oversized")
         loop = asyncio.get_running_loop()
 
         while True:
@@ -514,12 +524,19 @@ class RerankScheduler:
         second place for the offsets to go wrong. When the head does not fit,
         this take stops rather than skipping it, so a large request cannot be
         starved by a stream of small ones behind it.
+
+        The fit test has no empty-batch exemption: `max_batch_pairs` is a hard
+        physical bound, so a head that would break it is left queued rather
+        than admitted alone. Admission already guarantees every queued request
+        fits one batch, so the only budget a head can fail against here is a
+        narrowed one (live under the background floor) — and `_compose_locked`
+        retries live against the full bound afterwards, so nothing stalls.
         """
         queue = self._queues[scheduling_class]
         pairs = _batch_pairs(batch)
         while queue:
             head = queue[0]
-            if batch and pairs + head.pairs > min(pair_budget, self.max_batch_pairs):
+            if pairs + head.pairs > min(pair_budget, self.max_batch_pairs):
                 return
             queue.popleft()
             self._pending_pairs[scheduling_class] -= head.pairs

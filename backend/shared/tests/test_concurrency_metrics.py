@@ -152,7 +152,7 @@ def test_reranker_statuses_are_exactly_the_four_the_task_names() -> None:
 def test_the_rerank_scheduler_vocabularies_stay_closed() -> None:
     """CONC-05 label spaces, pinned so a later task cannot widen them."""
     assert RERANKER_SCHEDULER_CLASSES == {"live", "background"}
-    assert RERANKER_SCHEDULER_REJECTIONS == {"saturated", "closed"}
+    assert RERANKER_SCHEDULER_REJECTIONS == {"saturated", "oversized", "closed"}
     assert RERANKER_SCHEDULER_TIMEOUT_PHASES == {"admission", "inference"}
     assert RERANKER_SCHEDULER_CAPACITY_SETTINGS == {
         "max_pending_pairs",

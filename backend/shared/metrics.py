@@ -94,11 +94,13 @@ RERANKER_STATUSES = frozenset({"success", "busy", "timeout", "error"})
 # it is throughput work that must never sit in front of a user's turn.
 RERANKER_SCHEDULER_CLASSES = frozenset({"live", "background"})
 
-# Why the rerank scheduler refused a submission. There is no `oversized`
-# reason on purpose: the pipeline already bounds a request to
-# `reranker_candidate_k` candidates, and refusing one for its own size would
-# silently disable learned reranking for a legitimate shape.
-RERANKER_SCHEDULER_REJECTIONS = frozenset({"saturated", "closed"})
+# Why the rerank scheduler refused a submission. `saturated` is ordinary load:
+# the pending queue stayed full for the whole admission wait. `oversized` is a
+# configuration fault, not load — the request needs more pairs than one
+# physical batch (`reranker_candidate_k` above `reranker_max_batch_pairs`), so
+# it can never be admitted and no retry will help. They stay separate reasons
+# because only one of them is fixed by adding capacity.
+RERANKER_SCHEDULER_REJECTIONS = frozenset({"saturated", "oversized", "closed"})
 
 # Where a rerank submission ran out of time. `admission` is the bounded wait
 # for pending capacity — backpressure; `inference` is the wait for a forward

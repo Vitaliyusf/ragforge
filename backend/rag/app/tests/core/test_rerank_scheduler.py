@@ -289,6 +289,64 @@ def test_physical_batch_size_is_bounded():
     assert max(gate.batch_sizes) <= 4
 
 
+def test_a_request_larger_than_one_batch_is_refused_and_never_widens_a_bound():
+    """A single request may not exceed the configured hard bounds.
+
+    `max_batch_pairs` is physical: no forward pass may carry more pairs than
+    it, and a request is never split. A five-pair request under a four-pair
+    batch bound therefore has no admissible shape. It must be refused typed —
+    not admitted as one oversized forward pass, and not by letting it enlarge
+    the pending queue it could not fit.
+    """
+    gate = GatedPredict()
+
+    async def main():
+        with scheduler(
+            gate,
+            max_batch_pairs=4,
+            max_pending_pairs=8,
+            admission_timeout_seconds=0.05,
+            inference_workers=1,
+        ) as instance:
+            with pytest.raises(RerankSchedulerOverloaded) as refused:
+                await instance.submit(
+                    "alpha", ["weak", "answer", "middle", "other", "dup"]
+                )
+            # The refusal is immediate and leaves no residue in the queue.
+            assert instance.pending_pairs() == 0
+
+            # The pending bound is still the configured 8, not the 5 the
+            # rejected request would have needed: one held request plus two
+            # queued fill it exactly, and the next pair is ordinary overload.
+            held = await instance.submit("alpha", ["weak", "answer", "middle", "other"])
+            gate.entered.wait(5.0)
+            queued = [
+                await instance.submit(
+                    "alpha", ["weak", "answer", "middle", "other"]
+                )
+                for _ in range(2)
+            ]
+            assert instance.pending_pairs() == 8
+            with pytest.raises(RerankSchedulerOverloaded) as saturated:
+                await instance.submit("alpha", ["middle"])
+            gate.release.set()
+            await asyncio.gather(scores_of(held), *(scores_of(f) for f in queued))
+            return refused.value, saturated.value
+
+    oversized, saturated = asyncio.run(main())
+
+    assert oversized.reason == "oversized"
+    assert oversized.pool == "reranker_inference"
+    # Overload from load stays a distinct, separately actionable reason.
+    assert saturated.reason == "saturated"
+
+    # The model never saw the rejected request: no five-pair call, and none of
+    # its pairs reached a forward pass at all.
+    assert gate.calls, "no forward pass ran"
+    assert max(gate.batch_sizes) <= 4
+    assert all(len(call) != 5 for call in gate.calls)
+
+
 def test_concurrent_requests_share_one_physical_forward_pass():
     """Micro-batching actually combines work, not just serialises it."""
     gate = GatedPredict()
