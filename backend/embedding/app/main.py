@@ -29,6 +29,7 @@ from app.services.embedding_job_service import EmbeddingJobService
 from app.services.embedding_job_tracing import EmbeddingLangSmithTracer
 from app.services.embedding_job_worker import EmbeddingJobConsumerWorker
 from app.services.extraction_handler import ExtractionHandler
+from app.services.inference_scheduler import create_scheduler
 from shared.logging import ServiceLogger
 from shared.bounded_executor import BoundedExecutor
 
@@ -39,6 +40,7 @@ class EmbeddingRuntime:
 
     producer: Any
     model: Any
+    scheduler: Any
     rpc_consumer: Any
     rpc_producer: Any
     extract_consumer: Any
@@ -70,6 +72,10 @@ async def lifespan(app: FastAPI):
     if model is None:
         logger.log("main:startup", "No embedding model available", {}, hypothesis_id="W")
 
+    # One model, one scheduler, one process. Every embedding path below hands
+    # logical items to this object; nothing else calls the model.
+    scheduler = create_scheduler(model, config, logger).start()
+
     extractors = FileExtractorFactory.create_all()
     if not extractors:
         logger.log("main:startup", "No file extractors available", {}, hypothesis_id="W")
@@ -81,13 +87,13 @@ async def lifespan(app: FastAPI):
     )
     job_service = EmbeddingJobService(
         producer=job_producer,
-        embedding_model=model,
+        scheduler=scheduler,
         logger=logger,
         config=config,
         tracer=tracer,
     )
     job_worker = EmbeddingJobConsumerWorker(job_consumer, job_service, logger)
-    query_handler = QueryEmbeddingHandler(model, logger, config)
+    query_handler = QueryEmbeddingHandler(scheduler, logger, config)
     extraction_handler = ExtractionHandler(
         producer,
         extractors,
@@ -151,6 +157,7 @@ async def lifespan(app: FastAPI):
     runtime = EmbeddingRuntime(
         producer=producer,
         model=model,
+        scheduler=scheduler,
         rpc_consumer=rpc_consumer,
         rpc_producer=rpc_producer,
         extract_consumer=extract_consumer,
@@ -168,6 +175,9 @@ async def lifespan(app: FastAPI):
             "extraction_topic": config.extract_topic,
             "model_loaded": model.is_loaded() if model else False,
             "extractors_count": len(extractors),
+            "microbatch_window_ms": config.embedding_microbatch_window_ms,
+            "max_batch_size": scheduler.max_batch_size,
+            "max_pending_items": scheduler.max_pending_items,
         },
     )
 
@@ -192,6 +202,13 @@ async def lifespan(app: FastAPI):
         for thread in threads:
             if thread.is_alive():
                 thread.join(timeout=10.0)
+        if not scheduler.shutdown():
+            logger.log(
+                "main:shutdown",
+                "Embedding scheduler failed pending work at shutdown",
+                {},
+                hypothesis_id="W",
+            )
         try:
             producer.flush()
         except Exception:

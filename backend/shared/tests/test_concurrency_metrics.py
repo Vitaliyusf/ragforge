@@ -14,8 +14,12 @@ from shared.metrics import (
     BATCH_SIZE_BUCKETS,
     CONCURRENCY_REQUEST_CLASSES,
     DEGRADED_PATH_REASONS,
+    EMBEDDING_SCHEDULER_CLASSES,
+    EMBEDDING_SCHEDULER_REJECTIONS,
+    EMBEDDING_SCHEDULER_TIMEOUT_PHASES,
     EVENT_LOOP_LAG_BUCKETS,
     METRICS,
+    MODEL_LOAD_OUTCOMES,
     QUEUE_WAIT_BUCKETS,
     RERANKER_STATUSES,
 )
@@ -62,6 +66,13 @@ CONCURRENCY_METRICS = (
     "background_tasks",
     "degraded_path_total",
     "embedding_batch_size",
+    "embedding_scheduler_pending_items",
+    "embedding_scheduler_rejected_total",
+    "embedding_scheduler_items_total",
+    "embedding_scheduler_latency_seconds",
+    "embedding_scheduler_timeouts_total",
+    "embedding_inference_duration_seconds",
+    "model_loads_total",
     "reranker_batch_size",
     "reranker_status_total",
     "vllm_inflight_requests",
@@ -106,7 +117,15 @@ def test_the_stage_label_carries_the_nine_measured_request_classes() -> None:
 def test_the_closed_vocabularies_are_immutable() -> None:
     """A mutable default would let one import order change another service's
     label space."""
-    for vocabulary in (CONCURRENCY_REQUEST_CLASSES, DEGRADED_PATH_REASONS, RERANKER_STATUSES):
+    for vocabulary in (
+        CONCURRENCY_REQUEST_CLASSES,
+        DEGRADED_PATH_REASONS,
+        RERANKER_STATUSES,
+        EMBEDDING_SCHEDULER_CLASSES,
+        EMBEDDING_SCHEDULER_REJECTIONS,
+        EMBEDDING_SCHEDULER_TIMEOUT_PHASES,
+        MODEL_LOAD_OUTCOMES,
+    ):
         assert isinstance(vocabulary, frozenset)
 
 
@@ -131,6 +150,62 @@ def test_degraded_path_records_a_closed_reason_vocabulary() -> None:
     metric.labels(service="s", stage="rag_extended", reason="busy").inc()
     assert metric.labels(service="s", stage="rag_extended", reason="busy")._value.get() == before + 1
     assert "busy" in DEGRADED_PATH_REASONS
+
+
+def test_the_embedding_scheduler_signals_split_live_from_background() -> None:
+    """The fairness claim is unreadable on a series that averages the two."""
+    for name in (
+        "embedding_scheduler_pending_items",
+        "embedding_scheduler_rejected_total",
+        "embedding_scheduler_items_total",
+        "embedding_scheduler_timeouts_total",
+        "embedding_scheduler_latency_seconds",
+    ):
+        assert "embedding_class" in _labels(name), name
+    assert EMBEDDING_SCHEDULER_CLASSES == {"live", "background"}
+
+
+def test_items_processed_is_a_counter_so_the_rate_is_the_dashboard_s_choice() -> None:
+    """CONC-04 asks for items/sec. A gauge would bake one averaging window in
+    here; a monotonic counter lets `rate()` pick it at read time, and the same
+    series then also answers whether background is still progressing."""
+    metric = cast(Any, METRICS.embedding_scheduler_items_total)
+    labels = {"service": "probe_service", "embedding_class": "background"}
+    before = metric.labels(**labels)._value.get()
+    metric.labels(**labels).inc(4)
+    assert metric.labels(**labels)._value.get() == before + 4
+    assert isinstance(METRICS.embedding_scheduler_items_total, prometheus.Counter)
+
+
+def test_per_class_latency_is_one_histogram_not_two_halves() -> None:
+    """queue wait and inference duration each measure half of what a live
+    request actually pays; the fairness criterion is stated on the sum."""
+    assert METRICS.embedding_scheduler_latency_seconds is not METRICS.queue_wait_seconds
+    assert (
+        METRICS.embedding_scheduler_latency_seconds
+        is not METRICS.embedding_inference_duration_seconds
+    )
+    observed = tuple(METRICS.embedding_scheduler_latency_seconds._upper_bounds[:-1])
+    assert observed == tuple(float(bucket) for bucket in QUEUE_WAIT_BUCKETS)
+
+
+def test_scheduler_timeouts_are_counted_apart_from_rejections() -> None:
+    """A rejection is refused immediately; a timeout costs the caller its whole
+    deadline. Collapsing them hides which one an operator is looking at."""
+    assert METRICS.embedding_scheduler_timeouts_total is not (
+        METRICS.embedding_scheduler_rejected_total
+    )
+    assert "phase" in _labels("embedding_scheduler_timeouts_total")
+    assert EMBEDDING_SCHEDULER_TIMEOUT_PHASES == {"admission", "inference"}
+    assert EMBEDDING_SCHEDULER_REJECTIONS == {"saturated", "oversized", "closed"}
+
+
+def test_model_load_outcomes_are_a_closed_pair() -> None:
+    """The point of the counter is a second increment: a reloaded model is a
+    second copy of the weights, which breaks the one-instance contract."""
+    assert MODEL_LOAD_OUTCOMES == {"success", "failure"}
+    assert set(_labels("model_loads_total")) == {"service", "model_kind", "outcome"}
+    assert isinstance(METRICS.model_loads_total, prometheus.Counter)
 
 
 def test_reranker_batch_size_is_distinct_from_candidate_count() -> None:
