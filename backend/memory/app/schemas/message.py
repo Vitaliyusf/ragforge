@@ -1,5 +1,9 @@
 """Pydantic schemas for message operations."""
-from pydantic import BaseModel, Field
+from typing import Any, Dict
+
+from pydantic import BaseModel, Field, field_validator
+
+from shared.chat_metadata import sanitize_chat_metadata
 
 
 class MessageBase(BaseModel):
@@ -9,6 +13,7 @@ class MessageBase(BaseModel):
     sender: str
     message: str
     timestamp: str
+    metadata: Dict[str, Any] = Field(default_factory=dict)
 
 
 class MessageResponse(MessageBase):
@@ -22,6 +27,12 @@ class AddMessageRequest(BaseModel):
     message_id: str = Field(..., description="Unique message identifier")
     sender: str = Field(default="User", description="Message sender")
     message: str = Field(..., description="Message content")
+    metadata: Dict[str, Any] = Field(default_factory=dict, description="Bounded durable turn metadata")
+
+    @field_validator("metadata", mode="before")
+    @classmethod
+    def validate_metadata(cls, value: Any) -> Dict[str, Any]:
+        return sanitize_chat_metadata(value)
 
 
 class GetMessagesRequest(BaseModel):

@@ -165,6 +165,21 @@ describe('custom utilities survive the @layer to @utility move', () => {
 })
 
 describe('theme is driven by the .dark class, not the OS preference', () => {
+  it('keeps the light surface hierarchy distinct and softly neutral', () => {
+    for (const [token, value] of [
+      ['bg', '#EEF2F7'],
+      ['bg-subtle', '#E8EDF4'],
+      ['surface', '#F8FAFC'],
+      ['surface-elevated', '#FFFFFF'],
+      ['surface-hover', '#F1F4F8'],
+      ['surface-active', '#E7EBF2'],
+      ['border', '#D6DDE8'],
+      ['border-strong', '#C3CCD9'],
+    ]) {
+      expect(css).toMatch(new RegExp(`--${token}:\\s*${value}`, 'i'))
+    }
+  })
+
   it('emits the dark variant against .dark rather than prefers-color-scheme', () => {
     expect(css).toMatch(/\.dark\\:bg-surface:where\(\.dark/)
     expect(css).not.toMatch(/prefers-color-scheme/)

@@ -29,6 +29,57 @@ def test_add_message_creates_chat_only_for_explicit_not_found() -> None:
     chat_service.create_chat.assert_called_once_with("chat-1", "New Chat")
 
 
+def test_add_message_stores_sanitized_metadata_and_legacy_reads_default_empty() -> None:
+    chat_service = Mock(spec=ChatService)
+    collection = Mock()
+    collection.find.return_value.sort.return_value = [
+        {"id": "legacy", "chat_id": "chat-1", "sender": "Assistant", "message": "Old"}
+    ]
+    service = MessageService(Mock(), chat_service)
+    service._get_collection = Mock(return_value=collection)
+
+    service.add_message(
+        "message-1",
+        "chat-1",
+        "Assistant",
+        "Answer",
+        {
+            "turnId": "turn-1",
+            "sources": [{"title": "Guide", "text": "private chunk", "text_preview": "excerpt"}],
+            "unknown": "drop me",
+        },
+    )
+
+    stored = collection.insert_one.call_args.args[0]
+    assert stored["metadata"] == {
+        "turnId": "turn-1",
+        "sources": [{"title": "Guide", "text_preview": "excerpt"}],
+    }
+    assert service.get_messages("chat-1")[0]["metadata"] == {}
+
+
+def test_memory_handler_forwards_message_metadata() -> None:
+    message_service = Mock(spec=MessageService)
+    message_service.add_message.return_value = {"id": "message-1"}
+    handler = MemoryHandlerService(Mock(), message_service, Mock(), Mock(), Mock())
+
+    reply = handler.process_request({
+        "action": "add_message",
+        "chat_id": "chat-1",
+        "message_id": "message-1",
+        "sender": "Assistant",
+        "message": "Answer",
+        "metadata": {"turnId": "turn-1"},
+        "correlation_id": "corr-1",
+        "source_service": "gateway",
+    })
+
+    message_service.add_message.assert_called_once_with(
+        "message-1", "chat-1", "Assistant", "Answer", {"turnId": "turn-1"}
+    )
+    assert reply["success"] is True
+
+
 def test_add_message_does_not_create_chat_after_database_lookup_failure() -> None:
     chat_service = Mock(spec=ChatService)
     chat_service.get_chat.side_effect = DatabaseError("Database operation failed")

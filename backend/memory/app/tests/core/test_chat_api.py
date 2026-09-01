@@ -151,11 +151,15 @@ def test_add_message(client, override_message_service):
             "message_id": "msg-1",
             "sender": "User",
             "message": "hello",
+            "metadata": {"turnId": "turn-1"},
         },
     )
 
     assert response.status_code == 201
     assert response.json()["id"] == "msg-1"
+    override_message_service.add_message.assert_called_once_with(
+        "msg-1", "test-chat-1", "User", "hello", {"turnId": "turn-1"}
+    )
 
 
 def test_get_messages(client, override_message_service):

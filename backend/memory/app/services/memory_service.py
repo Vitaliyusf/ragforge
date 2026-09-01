@@ -1221,7 +1221,6 @@ class LongTermMemoryService:
 
         log_doc = {
             "id": str(uuid.uuid4()),
-            "request_id": request_id,
             "trace_id": request_context.get("trace_id"),
             "correlation_id": request_context.get("correlation_id"),
             "owner_id": request_context.get("owner_id"),
@@ -1238,6 +1237,12 @@ class LongTermMemoryService:
             "created_at": self._now_fn(),
             **ownership_fields(),
         }
+        # MongoDB's sparse unique indexes omit a missing field, but they still
+        # index an explicitly stored null. Keep non-idempotent legacy callers
+        # out of the request-id index instead of making every later write
+        # collide with the first null entry.
+        if request_id:
+            log_doc["request_id"] = request_id
         self._write_log_collection().insert_one(log_doc)
 
     def _result_from_log(self, log_doc: Dict[str, Any]) -> Dict[str, Any]:
@@ -2009,9 +2014,17 @@ class LongTermMemoryService:
         content: str,
         category: Optional[str] = None,
         metadata: Optional[Dict[str, Any]] = None,
+        request_context: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """Legacy wrapper for creating memories."""
         metadata = metadata or {}
+        provenance = copy.deepcopy(metadata.get("provenance")) if isinstance(metadata.get("provenance"), dict) else {}
+        provenance.setdefault("chat_id", metadata.get("chat_id"))
+        # This compatibility surface is reached by an authenticated, explicit
+        # create action (including the manual Memory UI). Treating it like an
+        # inferred agent candidate caused every manual preference to fail the
+        # semantic-memory write policy.
+        provenance.setdefault("explicit_user_signal", metadata.get("explicit_user_signal", True))
         owner_id = metadata.get("owner_id") or metadata.get("chat_id") or metadata.get("conversation_id") or "legacy-owner"
         owner_type = metadata.get("owner_type") or ("conversation" if metadata.get("chat_id") or metadata.get("conversation_id") else "user")
         memory_class = "semantic_preference" if "preference" in self._normalize_text(category).lower() else None
@@ -2023,20 +2036,18 @@ class LongTermMemoryService:
             },
             "source": metadata.get("source", "legacy_create_memory"),
             "tags": metadata.get("tags", []),
-            "provenance": metadata.get("provenance") or {
-                "chat_id": metadata.get("chat_id"),
-                "explicit_user_signal": metadata.get("explicit_user_signal", False),
-            },
+            "provenance": provenance,
             "event_at": metadata.get("event_at"),
             "preference_key": metadata.get("preference_key"),
             "value": metadata.get("value"),
             "evidence_count": metadata.get("evidence_count"),
         }
-        result = self.write_memory(
-            candidate,
-            {"owner_id": owner_id, "owner_type": owner_type, "source": "legacy_create_memory"},
-        )
-        if result["status"] not in {"accepted", "merged"} or not result["memory_id"]:
+        write_context = copy.deepcopy(request_context or {})
+        write_context.setdefault("owner_id", owner_id)
+        write_context.setdefault("owner_type", owner_type)
+        write_context.setdefault("source", "legacy_create_memory")
+        result = self.write_memory(candidate, write_context)
+        if result["status"] not in {"accepted", "merged", "duplicate"} or not result["memory_id"]:
             raise DatabaseError(result["reason"])
         return self.get_memory(result["memory_id"])
 
@@ -2051,7 +2062,7 @@ class LongTermMemoryService:
         del category
         metadata = metadata or {}
         collection, doc = self._find_memory_document(memory_id)
-        if not collection or not doc:
+        if collection is None or not doc:
             raise ValueError(f"Memory {memory_id} not found")
 
         updated = copy.deepcopy(doc)
@@ -2124,7 +2135,7 @@ class LongTermMemoryService:
         started = time.monotonic()
         self._record_operation("delete_memory")
         collection, doc = self._find_memory_document(memory_id, include_tombstones=True)
-        if not collection or not doc:
+        if collection is None or not doc:
             if self._deletion_tombstone_by_memory_id(memory_id):
                 self._record_duration("delete_memory", started)
                 return {

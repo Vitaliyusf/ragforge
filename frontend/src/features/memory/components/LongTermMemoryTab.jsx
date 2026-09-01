@@ -39,20 +39,33 @@ export default function LongTermMemoryTab() {
       const data = await memoryService.getMemories()
       setMemories(data.memories || [])
       setLoadError(null)
+      return true
     } catch (err) {
       // A failed load used to fall through to the empty state, which reads as
       // "you have no memories" — the one thing it does not mean.
       setLoadError(err)
+      return false
     } finally {
       setLoading(false)
     }
   }
 
   const handleAdd = async (content, category) => {
-    await memoryService.createMemory(content, category)
-    await loadMemories()
-    setShowAddForm(false)
-    notifySuccess('Memory saved')
+    try {
+      await memoryService.createMemory(content, category)
+      if (!await loadMemories()) {
+        throw new Error('The memory may have been saved, but the canonical list could not be refreshed.')
+      }
+      setShowAddForm(false)
+      notifySuccess('Memory saved')
+    } catch (err) {
+      notifyError('Could not save memory', {
+        error: err,
+        description: 'Your draft is still here. Check the details and try again.',
+        onRetry: () => handleAdd(content, category),
+      })
+      throw err
+    }
   }
 
   const handleEdit = async (id, content) => {
@@ -68,11 +81,20 @@ export default function LongTermMemoryTab() {
     if (!memory) return
     setDeletingIds(prev => new Set(prev).add(memory.id))
     try {
-      await memoryService.deleteMemory(memory.id)
-      await loadMemories()
+      const result = await memoryService.deleteMemory(memory.id)
+      if (result?.status && !['success', 'deleted'].includes(result.status)) {
+        throw new Error(result.message || 'The memory service could not complete the deletion.')
+      }
+      if (!await loadMemories()) {
+        throw new Error('The delete was sent, but the canonical list could not be refreshed.')
+      }
       notifySuccess('Memory deleted')
     } catch (err) {
-      notifyError('Delete failed', { error: err, onRetry: handleConfirmDelete })
+      notifyError('Delete failed', {
+        error: err,
+        description: 'The memory remains visible. Retry when the service is available.',
+        onRetry: handleConfirmDelete,
+      })
     } finally {
       setDeletingIds(prev => { const n = new Set(prev); n.delete(memory.id); return n })
       setDeleteModal({ open: false, memory: null })

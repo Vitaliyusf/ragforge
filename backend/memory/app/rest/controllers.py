@@ -45,6 +45,7 @@ class MemoryController(EndpointController):
                     request.chat_id,
                     request.sender,
                     request.message,
+                    request.metadata,
                 )
             )
         )

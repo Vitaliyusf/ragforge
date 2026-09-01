@@ -8,6 +8,7 @@ from shared.logging import ServiceLogger
 from app.db.session import get_messages_collection
 from app.services.chat_service import ChatService
 from app.services.tenant_scope import ownership_fields, scope_filter
+from shared.chat_metadata import sanitize_chat_metadata
 
 
 class MessageService:
@@ -27,7 +28,8 @@ class MessageService:
         message_id: str, 
         chat_id: str, 
         sender: str, 
-        message: str
+        message: str,
+        metadata: Dict[str, Any] | None = None,
     ) -> Dict[str, Any]:
         """Add a message to a chat."""
         try:
@@ -45,8 +47,9 @@ class MessageService:
                 "chat_id": chat_id,
                 "sender": sender,
                 "message": message,
-                "timestamp": timestamp
-                , **ownership_fields()
+                "timestamp": timestamp,
+                "metadata": sanitize_chat_metadata(metadata),
+                **ownership_fields(),
             }
             collection.insert_one(message_doc)
             
@@ -67,6 +70,8 @@ class MessageService:
                 scope_filter({"chat_id": chat_id}), 
                 {"_id": 0}
             ).sort("timestamp", 1))
+            for message in messages:
+                message.setdefault("metadata", {})
             
             self.logger.log("message_service:get", "Retrieved messages", {"chat_id": chat_id, "count": len(messages)})
             return messages

@@ -24,15 +24,15 @@
    @theme entries because they change between themes; @theme below only
    points Tailwind's utility namespaces at them. One value, one home. */
 :root {
-  --bg:               #F4F6FB;
-  --bg-subtle:        #ECEFF6;
-  --surface:          #FFFFFF;
+  --bg:               #EEF2F7;
+  --bg-subtle:        #E8EDF4;
+  --surface:          #F8FAFC;
   --surface-elevated: #FFFFFF;
-  --surface-hover:    #F0F2F8;
-  --surface-active:   #E7EAF3;
+  --surface-hover:    #F1F4F8;
+  --surface-active:   #E7EBF2;
 
-  --border:           #DDE2EC;
-  --border-strong:    #C7CEDD;
+  --border:           #D6DDE8;
+  --border-strong:    #C3CCD9;
   --border-focus:     #7767F6;
 
   --fg:               #182033;

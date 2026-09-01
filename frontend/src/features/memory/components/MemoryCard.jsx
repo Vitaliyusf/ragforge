@@ -126,11 +126,13 @@ function MemoryCard({ memory, isDeleting, onEdit, onDelete }) {
               </div>
             )}
             {isReadOnly && (
-              <div className="shrink-0 p-1.5" title="Agent-managed, read-only">
+              <div
+                className="flex shrink-0 items-center gap-1 self-start rounded-md px-2 py-1 text-xs"
+                style={{ background: 'var(--surface-hover)', color: 'var(--fg-soft)' }}
+                title="AI/system managed and read-only"
+              >
                 <Lock size={12} style={{ color: 'var(--fg-soft)' }} aria-hidden="true" />
-                {/* The lock alone is a colour-and-shape signal; the reason this
-                    card has no edit or delete control is spelled out too. */}
-                <span className="sr-only">Agent-managed, read-only</span>
+                <span>AI/system managed</span>
               </div>
             )}
           </div>
