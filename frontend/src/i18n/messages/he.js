@@ -1365,6 +1365,7 @@ export const he = {
   'evalHistory.empty': 'עדיין אין הרצות השוואה. התחל השוואה כדי לבנות היסטוריה בשרת.',
   'evalHistory.goldenSet': 'מערך זהב',
   'evalHistory.rowName': '{profile} החל ב-{time}',
+  'evalHistory.queuedAt': 'בתור מ-{time}',
 
   // ── Eval: run report ─────────────────────────────────────────────────────
   'evalReport.safeToLeave':
@@ -1394,6 +1395,12 @@ export const he = {
   'evalReport.matchModeNote': 'התאמה {mode} מול המזהים המתויגים.',
   'evalReport.itemsSuffix': '{count} פריטים',
   'evalReport.startedSuffix': 'החל ב-{time}',
+  'evalReport.timing.createdAt': 'נוצר / נכנס לתור ב-',
+  'evalReport.timing.startedAt': 'החל ב-',
+  'evalReport.timing.finishedAt': 'הסתיים ב-',
+  'evalReport.timing.queue': 'המתנה בתור / הכנה',
+  'evalReport.timing.execution': 'ביצוע',
+  'evalReport.timing.total': 'זמן כולל שחלף',
   'evalReport.download': 'הורדת ארכיון אבחון',
   'evalReport.retryRun': 'הרצה חוזרת',
   'evalReport.whatHappened': 'מה קרה',
@@ -1575,7 +1582,7 @@ export const he = {
   'evalHistory.profile': 'פרופיל',
   'evalHistory.dataset': 'מערך נתונים',
   'evalHistory.status': 'מצב',
-  'evalHistory.duration': 'משך',
+  'evalHistory.totalTime': 'זמן כולל',
   'evalHistory.keyResult': 'תוצאה מרכזית',
   'evalHistory.actions': 'פעולות',
   'evalReport.labelsScored': 'התיוגים שנוקדו: גרסה {version}, טביעת אצבע',

@@ -19,7 +19,7 @@ const COMPLETED = {
   profile: 'full_quality',
   status: 'completed',
   created_at: '2026-08-26T20:14:00Z',
-  started_at: '2026-08-26T20:14:00Z',
+  started_at: '2026-08-26T20:15:00Z',
   finished_at: '2026-08-26T20:16:41Z',
   phases: [{ name: 'retrieval_base', status: 'completed', results: { mrr: 0.812 } }],
 }
@@ -31,6 +31,24 @@ const RUNNING = {
   status: 'running',
   created_at: '2026-08-26T21:00:00Z',
   phases: [{ name: 'end_to_end_regular', status: 'running' }],
+}
+
+const QUEUED = {
+  benchmark_id: 'bm-queued',
+  dataset_name: 'golden_smoke_30',
+  profile: 'smoke_quality',
+  status: 'queued',
+  created_at: '2026-08-26T21:30:00Z',
+  phases: [{ name: 'end_to_end_regular', status: 'queued' }],
+}
+
+/** A run written before the timing fields existed carries none of them. */
+const LEGACY = {
+  benchmark_id: 'bm-legacy',
+  dataset_name: 'golden_smoke_30',
+  profile: 'smoke_quality',
+  status: 'completed',
+  phases: [{ name: 'end_to_end_regular', status: 'completed' }],
 }
 
 function setup(history = [COMPLETED, RUNNING], props = {}) {
@@ -52,19 +70,42 @@ function setup(history = [COMPLETED, RUNNING], props = {}) {
 describe('BenchmarkHistoryTable', () => {
   it('names its columns rather than stacking free text', () => {
     setup()
-    for (const heading of ['Started', 'Profile', 'Dataset', 'Status', 'Duration', 'Key result']) {
+    for (const heading of ['Started', 'Profile', 'Dataset', 'Status', 'Total time', 'Key result']) {
       expect(screen.getByRole('columnheader', { name: heading })).toBeInTheDocument()
     }
   })
 
-  it('shows the profile, dataset, duration and key result of a run', () => {
+  it('shows the profile, dataset, total time and key result of a run', () => {
     setup([COMPLETED])
     const row = screen.getAllByRole('row')[1]
     expect(within(row).getByText('Full Quality')).toBeInTheDocument()
     expect(within(row).getByText(/golden_smoke_30 · v2/)).toBeInTheDocument()
     expect(within(row).getByText('Completed')).toBeInTheDocument()
+    // Creation to finish: the wait as the person who pressed the button
+    // experienced it, not the 1m 41s the worker was busy for.
     expect(within(row).getByText('2m 41s')).toBeInTheDocument()
+    expect(within(row).queryByText('1m 41s')).not.toBeInTheDocument()
     expect(within(row).getByText('MRR 0.81')).toBeInTheDocument()
+  })
+
+  it('puts the actual start time under Started, never the creation time', () => {
+    setup([COMPLETED])
+    const started = within(screen.getAllByRole('row')[1]).getAllByRole('cell')[0]
+    const time = (iso) =>
+      new Intl.DateTimeFormat(undefined, {
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      }).format(Date.parse(iso))
+    expect(started).toHaveTextContent(time(COMPLETED.started_at))
+    expect(started).not.toHaveTextContent(time(COMPLETED.created_at))
+  })
+
+  it('says a run that has not started is queued rather than calling it started', () => {
+    setup([QUEUED])
+    const started = within(screen.getAllByRole('row')[1]).getAllByRole('cell')[0]
+    expect(started).toHaveTextContent(/^Queued /)
   })
 
   it('keeps the benchmark id out of the row body and in its title', () => {
@@ -100,6 +141,14 @@ describe('BenchmarkHistoryTable', () => {
   it('cannot re-select the run already on screen', () => {
     setup()
     expect(screen.getByRole('button', { name: /^View Smoke Quality started/ })).toBeDisabled()
+  })
+
+  it('renders a legacy run with no timestamps as dashes, never as zero', () => {
+    setup([LEGACY])
+    const cells = within(screen.getAllByRole('row')[1]).getAllByRole('cell')
+    expect(cells[0]).toHaveTextContent('—')
+    expect(cells[4]).toHaveTextContent('—')
+    expect(cells[4]).not.toHaveTextContent('0m 00s')
   })
 
   it('explains an empty history clearly', () => {

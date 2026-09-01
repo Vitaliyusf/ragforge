@@ -30,6 +30,7 @@ import { translate } from '@/i18n/translate'
 import {
   PHASE_LABEL_KEYS,
   PROFILES_BY_ID,
+  benchmarkSpans,
   formatDuration,
   formatRunTimestamp,
   isTerminal,
@@ -642,6 +643,40 @@ export function filterItems(rows, { search = '', failuresOnly = false, band = 'a
 // ---------------------------------------------------------------------------
 
 /**
+ * The three spans a benchmark occupies, kept apart on purpose.
+ *
+ * `created_at` is when the benchmark document was queued, `started_at` is
+ * when its worker entered `running`, and `finished_at` is when it ended.
+ * Collapsing those three into one "duration" is how a row can claim a run
+ * took five minutes while the reader watched it for nine: the queue is
+ * invisible in the execution number and the execution is invisible in the
+ * total. Each span is labelled for what it measures, and a legacy run
+ * missing the timestamp a span needs reports a dash rather than a zero.
+ */
+export function benchmarkTiming(benchmark, t = defaultTranslate) {
+  if (!benchmark) return null
+  const { created_at: created, started_at: started, finished_at: finished } = benchmark
+  const spans = benchmarkSpans(benchmark)
+  return {
+    createdAt: created || null,
+    createdLabel: formatRunTimestamp(created),
+    startedAt: started || null,
+    startedLabel: formatRunTimestamp(started),
+    finishedAt: finished || null,
+    finishedLabel: formatRunTimestamp(finished),
+    // Resolved against the run's status, not against its timestamps alone:
+    // an execution span measured from `started_at` when `started_at` is
+    // missing would invent the queue time as work, and a total measured to
+    // now on a terminal run would climb for ever. See `benchmarkSpans`.
+    spans: [
+      { key: 'queue', label: t('evalReport.timing.queue'), value: spans.queue },
+      { key: 'execution', label: t('evalReport.timing.execution'), value: spans.execution },
+      { key: 'total', label: t('evalReport.timing.total'), value: spans.total },
+    ],
+  }
+}
+
+/**
  * A benchmark run as a report.
  *
  * The human labels lead — profile, dataset, when, how long — and the
@@ -668,9 +703,13 @@ export function benchmarkReport(benchmark, dataset, t = defaultTranslate) {
     status: benchmark.status,
     statusMeta: statusMeta(benchmark.status, t),
     terminal,
-    startedAt: benchmark.started_at || benchmark.created_at,
-    startedLabel: formatRunTimestamp(benchmark.started_at || benchmark.created_at),
-    duration: formatDuration(benchmark.started_at || benchmark.created_at, benchmark.finished_at),
+    startedAt: benchmark.started_at || null,
+    startedLabel: formatRunTimestamp(benchmark.started_at),
+    // The headline number is total elapsed, because the wait a reader is
+    // remembering started when they created the run, not when a worker
+    // picked it up. The three spans it decomposes into sit in `timing`.
+    duration: benchmarkSpans(benchmark).total,
+    timing: benchmarkTiming(benchmark, t),
     dataset: {
       name: benchmark.dataset_name || dataset?.name || t('evalModel.goldenSet'),
       version: benchmark.dataset_version ?? dataset?.dataset_version ?? null,
@@ -735,6 +774,9 @@ export function evaluationReport(run, dataset, t = defaultTranslate) {
     startedAt: run.started_at,
     startedLabel: formatRunTimestamp(run.started_at),
     duration: formatDuration(run.started_at, run.finished_at),
+    // An evaluation has no queue of its own: it is started by the caller
+    // that is already waiting on it, so there is no span to decompose.
+    timing: null,
     dataset: {
       name: dataset?.name || t('evalModel.goldenSet'),
       version: run.dataset_version ?? null,

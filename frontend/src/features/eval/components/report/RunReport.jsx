@@ -39,6 +39,7 @@ import {
   DatasetProvenance,
   FailureAttribution,
   LabelValidation,
+  RunTiming,
   ScoresAtK,
 } from './sections'
 import { Fact, Note } from './primitives'
@@ -184,6 +185,7 @@ export default function RunReport({
           <TabPanel id="overview">
             <div className="flex flex-col gap-4">
               <DatasetProvenance run={report.raw} dataset={dataset} />
+              <RunTiming timing={report.timing} />
               {report.labelValidation?.checked && <Note>{t(LABELS_VERIFIED_NOTE_KEY)}</Note>}
               {report.kind === 'benchmark' ? (
                 <ComparisonPanel comparison={comparison} />
