@@ -42,13 +42,20 @@ def kafka_document_key(message: Mapping[str, Any]) -> Optional[str]:
     """Return the ingestion ordering key carried by an event envelope.
 
     ``document_id`` is the canonical boundary. ``file_id`` is the compatible
-    fallback for older pipeline events that predate the document field.
+    fallback for older pipeline events that predate the document field. Batched
+    commands such as vector-db upserts carry those identifiers on each chunk,
+    so use the first chunk as the batch's ordering boundary.
     """
     payload = message.get("payload")
     if isinstance(payload, Mapping):
         value = payload.get("document_id") or payload.get("file_id")
         if value:
             return str(value)
+        chunks = payload.get("chunks")
+        if isinstance(chunks, list) and chunks and isinstance(chunks[0], Mapping):
+            value = chunks[0].get("document_id") or chunks[0].get("file_id")
+            if value:
+                return str(value)
     value = message.get("document_id") or message.get("file_id")
     return str(value) if value else None
 

@@ -17,6 +17,9 @@ def test_document_key_prefers_document_id_and_supports_legacy_file_id() -> None:
         {"payload": {"document_id": "doc-1", "file_id": "file-1"}}
     ) == "doc-1"
     assert kafka_document_key({"payload": {"file_id": "file-1"}}) == "file-1"
+    assert kafka_document_key(
+        {"payload": {"chunks": [{"document_id": "doc-1", "file_id": "file-1"}]}}
+    ) == "doc-1"
     assert kafka_document_key({"file_id": "legacy-file"}) == "legacy-file"
     assert kafka_document_key({"payload": {}}) is None
 
