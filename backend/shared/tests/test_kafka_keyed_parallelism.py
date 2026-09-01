@@ -183,7 +183,10 @@ def test_worker_pool_readiness_tracks_all_consumers_and_threads() -> None:
             release.set()
 
     def target(_consumer: Consumer) -> Callable[[], None]:
-        return lambda: release.wait(timeout=1.0)
+        def run() -> None:
+            release.wait(timeout=1.0)
+
+        return run
 
     pool = KafkaConsumerWorkerPool(
         worker_count=2,
