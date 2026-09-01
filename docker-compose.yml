@@ -243,6 +243,11 @@ services:
 
   memory:
     <<: *runtime-security
+    deploy:
+      # Safe competing consumers: MongoDB/Qdrant own correctness state and the
+      # service loads no model. Keep one replica by default for local resource
+      # economy; production can opt in with MEMORY_REPLICAS=2 (or higher).
+      replicas: ${MEMORY_REPLICAS:-1}
     build:
       context: .
       dockerfile: backend/memory/Dockerfile
