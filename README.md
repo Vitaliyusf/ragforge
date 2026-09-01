@@ -19,7 +19,7 @@ work that begins after a RAG prototype answers its first question: preserving
 quality under contention, bounding shared resources, proving failure behavior,
 and making every performance claim traceable to evidence.
 
-## Why this project exists
+## Problem
 
 - Dense retrieval alone misses exact terms; hybrid fusion must remain deterministic
   and apply identical tenant filters to every retrieval arm.
@@ -93,7 +93,7 @@ delivery.
   tenant predicates across MongoDB and Qdrant, RBAC, CSRF/Origin checks, and
   fail-closed streaming controls.
 
-## Measured results
+## Results / Metrics
 
 These are accepted, host-local results on named workloads—not production traffic or
 generic end-to-end throughput. Evidence grades are defined in the
@@ -192,7 +192,7 @@ Prometheus remains internal by default. The executable metric contract lives in
 [`backend/shared/metrics.py`](backend/shared/metrics.py) and the scrape topology in
 [`docker/prometheus/prometheus.yml`](docker/prometheus/prometheus.yml).
 
-## Tech stack
+## Tech Stack
 
 | Layer | Technologies |
 | --- | --- |
@@ -203,7 +203,7 @@ Prometheus remains internal by default. The executable metric contract lives in
 | Operations | Docker Compose, Caddy, Prometheus, GitHub Actions |
 | Quality | pytest, strict mypy on shared/gateway, Ruff, deterministic eval tooling |
 
-## Run locally
+## Quick Start
 
 **Prerequisites:** Docker with Compose and an NVIDIA GPU with CUDA drivers and about
 6 GB VRAM for the default vLLM profile. Without a GPU, the supporting services can
@@ -232,7 +232,7 @@ closes once any user exists. Infrastructure services are not exposed to the LAN 
 default. For TLS and secure-cookie deployment, use the documented
 [production overlay](docs/multi-tenancy-security.md#8-production-deployment).
 
-## Repository structure
+## Project Structure
 
 ```text
 backend/
@@ -276,7 +276,7 @@ scripts/        Environment initialization and measurement tooling
 - [Streaming output safety](docs/streaming-output-safety.md)
 - [CI validation workflow](.github/workflows/ci.yml)
 
-## Public repository scope
+## Public Repo Scope
 
 This is a curated portfolio snapshot of the main development repository. It includes
 the application, public CI, operator/security documentation, initialization scripts,
