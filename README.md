@@ -76,7 +76,7 @@ delivery.
 
 ## Key engineering highlights
 
-- **Production RAG:** concurrent dense and sparse Qdrant search, deterministic
+- **Production RAG:** hybrid dense+sparse Qdrant search, deterministic
   reciprocal-rank fusion, learned multilingual reranking, bounded context assembly,
   citations, and streamed generation.
 - **Model infrastructure:** one shared scheduler per embedding or CrossEncoder model,
