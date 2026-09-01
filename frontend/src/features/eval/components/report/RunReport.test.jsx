@@ -134,6 +134,32 @@ describe('run header', () => {
     expect(screen.getByText('b-2')).toBeInTheDocument()
   })
 
+  it('breaks the run into queue, execution and total elapsed', () => {
+    renderBenchmark(
+      benchmark({
+        created_at: '2026-08-26T12:00:00Z',
+        started_at: '2026-08-26T12:03:17Z',
+        finished_at: '2026-08-26T12:08:47Z',
+      })
+    )
+    const timing = (label) =>
+      screen.getByText(label).parentElement.textContent.replace(label, '').trim()
+    expect(timing('Queue / preflight')).toBe('3m 17s')
+    expect(timing('Execution')).toBe('5m 30s')
+    expect(timing('Total elapsed')).toBe('8m 47s')
+  })
+
+  it('dashes the timing of a legacy run instead of inventing zero durations', () => {
+    renderBenchmark(
+      benchmark({ created_at: undefined, started_at: undefined, finished_at: undefined })
+    )
+    for (const label of ['Queue / preflight', 'Execution', 'Total elapsed']) {
+      const row = screen.getByText(label).parentElement
+      expect(row).toHaveTextContent('—')
+      expect(row).not.toHaveTextContent('0m 00s')
+    }
+  })
+
   it('renders nothing at all without a run', () => {
     const { container } = render(<RunReport report={null} />)
     expect(container).toBeEmptyDOMElement()

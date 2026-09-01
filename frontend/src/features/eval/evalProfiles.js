@@ -219,9 +219,22 @@ export function ageSeconds(value) {
     : null
 }
 
+/**
+ * A span of seconds as `Nm SSs` — the one duration format this feature uses.
+ *
+ * A negative span keeps its sign rather than being clamped to zero. A run
+ * whose end precedes its start has contradictory timestamps, and `0m 00s`
+ * would present that contradiction as a believable measurement.
+ */
+export function formatSpan(seconds) {
+  const sign = seconds < 0 ? '-' : ''
+  const total = Math.abs(seconds)
+  return `${sign}${Math.floor(total / 60)}m ${String(total % 60).padStart(2, '0')}s`
+}
+
 export function formatAge(seconds) {
   if (seconds === null || seconds === undefined) return EMPTY
-  return `${Math.floor(seconds / 60)}m ${String(seconds % 60).padStart(2, '0')}s`
+  return formatSpan(seconds)
 }
 
 export function formatElapsed(value) {
@@ -230,19 +243,60 @@ export function formatElapsed(value) {
 }
 
 /**
- * How long a run took, from its own two timestamps.
+ * The span between two run timestamps, or a truthful reason there is none.
  *
- * A run with no start time reports nothing rather than a duration measured
- * from a substitute timestamp that means something else. A run that started
- * and has not finished reports how long it has been going, which is what
- * the column is for while it is still going.
+ * The single duration primitive every timing label on this feature is built
+ * from. Three rules, and they are the reason the callers below exist as
+ * separate named helpers rather than as three calls to this one:
+ *
+ * - No usable opening timestamp reports nothing. A duration measured from a
+ *   substitute timestamp means something other than what its label claims,
+ *   and that is precisely the bug this replaced.
+ * - No usable closing timestamp measures to now. The span is still running,
+ *   and how long it has been running is what the label is for.
+ * - A closing timestamp that precedes the opening one is reported with its
+ *   sign, never clamped. See {@link formatSpan}.
+ */
+export function durationBetween(fromValue, toValue, now = Date.now()) {
+  const from = Date.parse(fromValue || '')
+  if (!Number.isFinite(from)) return EMPTY
+  const to = Date.parse(toValue || '')
+  return formatSpan(Math.trunc(((Number.isFinite(to) ? to : now) - from) / 1000))
+}
+
+/**
+ * How long a benchmark waited before its worker entered `running`.
+ *
+ * Grows against the clock while the run is still queued, which is the only
+ * honest thing to show somebody watching a run that has not started.
+ */
+export function benchmarkQueueDuration(createdAt, startedAt, now) {
+  return durationBetween(createdAt, startedAt, now)
+}
+
+/** How long the benchmark worker actually ran, queue time excluded. */
+export function benchmarkExecutionDuration(startedAt, finishedAt, now) {
+  return durationBetween(startedAt, finishedAt, now)
+}
+
+/**
+ * How long the run took as its user experienced it.
+ *
+ * From creation, because that is when somebody pressed the button and began
+ * waiting — not from the moment a worker got round to the job.
+ */
+export function benchmarkTotalDuration(createdAt, finishedAt, now) {
+  return durationBetween(createdAt, finishedAt, now)
+}
+
+/**
+ * How long a single evaluation run took.
+ *
+ * An evaluation has one pair of timestamps and no queue of its own, so
+ * start-to-finish is unambiguous here in a way it is not for a benchmark.
  */
 export function formatDuration(startedAt, finishedAt) {
-  const start = Date.parse(startedAt || '')
-  const end = Date.parse(finishedAt || '')
-  if (!Number.isFinite(start)) return EMPTY
-  if (!Number.isFinite(end)) return formatAge(ageSeconds(startedAt))
-  return formatAge(Math.max(0, Math.floor((end - start) / 1000)))
+  return durationBetween(startedAt, finishedAt)
 }
 
 export function formatRunTimestamp(value) {

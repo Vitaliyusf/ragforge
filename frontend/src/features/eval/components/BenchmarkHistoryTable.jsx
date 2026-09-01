@@ -8,7 +8,7 @@ import {
   EMPTY,
   PROFILES_BY_ID,
   TERMINAL_STATUSES,
-  formatDuration,
+  benchmarkTotalDuration,
   formatRunTimestamp,
   keyResult,
   statusMeta,
@@ -23,7 +23,7 @@ const HEADING_KEYS = [
   'evalHistory.profile',
   'evalHistory.dataset',
   'evalHistory.status',
-  'evalHistory.duration',
+  'evalHistory.totalTime',
   'evalHistory.keyResult',
   'evalHistory.actions',
 ]
@@ -74,7 +74,17 @@ export default function BenchmarkHistoryTable({
             const status = statusMeta(run.status, t)
             const terminal = TERMINAL_STATUSES.has(run.status)
             const current = run.benchmark_id === selectedId
-            const started = formatRunTimestamp(run.created_at || run.started_at)
+            // Two different clocks used to meet in this row: the column
+            // said "Started" and showed creation time, while the duration
+            // beside it measured execution only. A row whose two numbers
+            // cannot be subtracted from each other is worse than no row.
+            const started = run.started_at ? formatRunTimestamp(run.started_at) : null
+            const queued = run.created_at ? formatRunTimestamp(run.created_at) : null
+            // A run that has not started has no start time to show. It says
+            // when it was queued, in those words, rather than passing its
+            // creation time off as the thing the column is named after.
+            const startedLabel =
+              started || (queued ? t('evalHistory.queuedAt', { time: queued }) : EMPTY)
             const name = run.dataset_name || run.dataset?.name || t('evalHistory.goldenSet')
             // Names the run in a way a person can act on: two "View" buttons
             // in a list are indistinguishable to anyone not looking at the
@@ -83,7 +93,7 @@ export default function BenchmarkHistoryTable({
               profile: PROFILES_BY_ID[run.profile]?.labelKey
                 ? t(PROFILES_BY_ID[run.profile].labelKey)
                 : run.profile || t('evalModel.benchmark'),
-              time: started,
+              time: startedLabel,
             })
 
             return (
@@ -101,7 +111,7 @@ export default function BenchmarkHistoryTable({
                 }}
               >
                 <span role="cell" className="tabular-nums" style={{ color: 'var(--fg-muted)' }}>
-                  {started}
+                  {startedLabel}
                 </span>
                 <span role="cell" className="truncate" style={{ color: 'var(--fg)' }}>
                   {PROFILES_BY_ID[run.profile]?.labelKey
@@ -118,7 +128,7 @@ export default function BenchmarkHistoryTable({
                   </Badge>
                 </span>
                 <span role="cell" className="tabular-nums" style={{ color: 'var(--fg-muted)' }}>
-                  {formatDuration(run.started_at, run.finished_at)}
+                  {benchmarkTotalDuration(run.created_at, run.finished_at)}
                 </span>
                 <span role="cell" className="tabular-nums" style={{ color: 'var(--fg-muted)' }}>
                   {keyResult(run)}

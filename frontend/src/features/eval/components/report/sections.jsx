@@ -274,6 +274,52 @@ export function DatasetProvenance({ run, dataset }) {
 }
 
 /**
+ * When the run was queued, when it started, when it ended — and the three
+ * spans between those points.
+ *
+ * A single duration cannot answer the question a reader actually has when a
+ * run felt slow, which is *where* the time went. Queue and execution are
+ * shown beside the total so a run that spent its minutes waiting is
+ * distinguishable from one that spent them working, without anybody having
+ * to subtract two timestamps by hand.
+ */
+export function RunTiming({ timing }) {
+  const { t } = useI18n()
+  if (!timing) return null
+  return (
+    <div className="text-[12px]" style={{ color: 'var(--fg-soft)' }}>
+      <dl className="grid grid-cols-1 gap-x-6 gap-y-1 sm:grid-cols-3">
+        {[
+          { key: 'created', label: t('evalReport.timing.createdAt'), value: timing.createdLabel },
+          { key: 'started', label: t('evalReport.timing.startedAt'), value: timing.startedLabel },
+          { key: 'finished', label: t('evalReport.timing.finishedAt'), value: timing.finishedLabel },
+        ].map((point) => (
+          <div key={point.key} className="flex justify-between gap-2 sm:justify-start">
+            <dt>{point.label}</dt>
+            <dd className="tabular-nums" style={{ color: 'var(--fg-muted)' }}>
+              {point.value}
+            </dd>
+          </div>
+        ))}
+      </dl>
+      <dl
+        className="mt-2 grid grid-cols-1 gap-x-6 gap-y-1 border-t pt-2 sm:grid-cols-3"
+        style={{ borderColor: 'var(--border)' }}
+      >
+        {timing.spans.map((span) => (
+          <div key={span.key} className="flex justify-between gap-2 sm:justify-start">
+            <dt>{span.label}</dt>
+            <dd className="tabular-nums" style={{ color: 'var(--fg-muted)' }}>
+              {span.value}
+            </dd>
+          </div>
+        ))}
+      </dl>
+    </div>
+  )
+}
+
+/**
  * Whether this run's ground truth still exists in the live index.
  *
  * The job here is to keep two things apart that a recall number cannot:

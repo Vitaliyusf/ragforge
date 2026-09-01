@@ -1368,6 +1368,7 @@ export const en = {
   'evalHistory.empty': 'No benchmark runs yet. Start a benchmark to build its server-backed history.',
   'evalHistory.goldenSet': 'Golden set',
   'evalHistory.rowName': '{profile} started {time}',
+  'evalHistory.queuedAt': 'Queued {time}',
 
   // ── Eval: run report ─────────────────────────────────────────────────────
   'evalReport.safeToLeave':
@@ -1397,6 +1398,12 @@ export const en = {
   'evalReport.matchModeNote': '{mode} matching against the labelled ids.',
   'evalReport.itemsSuffix': '{count} items',
   'evalReport.startedSuffix': 'started {time}',
+  'evalReport.timing.createdAt': 'Created / queued at',
+  'evalReport.timing.startedAt': 'Started at',
+  'evalReport.timing.finishedAt': 'Finished at',
+  'evalReport.timing.queue': 'Queue / preflight',
+  'evalReport.timing.execution': 'Execution',
+  'evalReport.timing.total': 'Total elapsed',
   'evalReport.download': 'Download Diagnostic ZIP',
   'evalReport.retryRun': 'Retry run',
   'evalReport.whatHappened': 'What happened',
@@ -1578,7 +1585,7 @@ export const en = {
   'evalHistory.profile': 'Profile',
   'evalHistory.dataset': 'Dataset',
   'evalHistory.status': 'Status',
-  'evalHistory.duration': 'Duration',
+  'evalHistory.totalTime': 'Total time',
   'evalHistory.keyResult': 'Key result',
   'evalHistory.actions': 'Actions',
   'evalReport.labelsScored': 'Labels scored: version {version}, fingerprint',
