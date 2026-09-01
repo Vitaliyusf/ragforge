@@ -30,9 +30,7 @@ import { translate } from '@/i18n/translate'
 import {
   PHASE_LABEL_KEYS,
   PROFILES_BY_ID,
-  benchmarkExecutionDuration,
-  benchmarkQueueDuration,
-  benchmarkTotalDuration,
+  benchmarkSpans,
   formatDuration,
   formatRunTimestamp,
   isTerminal,
@@ -658,6 +656,7 @@ export function filterItems(rows, { search = '', failuresOnly = false, band = 'a
 export function benchmarkTiming(benchmark, t = defaultTranslate) {
   if (!benchmark) return null
   const { created_at: created, started_at: started, finished_at: finished } = benchmark
+  const spans = benchmarkSpans(benchmark)
   return {
     createdAt: created || null,
     createdLabel: formatRunTimestamp(created),
@@ -665,25 +664,14 @@ export function benchmarkTiming(benchmark, t = defaultTranslate) {
     startedLabel: formatRunTimestamp(started),
     finishedAt: finished || null,
     finishedLabel: formatRunTimestamp(finished),
+    // Resolved against the run's status, not against its timestamps alone:
+    // an execution span measured from `started_at` when `started_at` is
+    // missing would invent the queue time as work, and a total measured to
+    // now on a terminal run would climb for ever. See `benchmarkSpans`.
     spans: [
-      {
-        key: 'queue',
-        label: t('evalReport.timing.queue'),
-        value: benchmarkQueueDuration(created, started),
-      },
-      {
-        key: 'execution',
-        label: t('evalReport.timing.execution'),
-        // Deliberately not measured from `created_at` when `started_at` is
-        // missing: a legacy run with no start time did not execute for its
-        // queue time, and saying so would invent the number outright.
-        value: benchmarkExecutionDuration(started, finished),
-      },
-      {
-        key: 'total',
-        label: t('evalReport.timing.total'),
-        value: benchmarkTotalDuration(created, finished),
-      },
+      { key: 'queue', label: t('evalReport.timing.queue'), value: spans.queue },
+      { key: 'execution', label: t('evalReport.timing.execution'), value: spans.execution },
+      { key: 'total', label: t('evalReport.timing.total'), value: spans.total },
     ],
   }
 }
@@ -720,7 +708,7 @@ export function benchmarkReport(benchmark, dataset, t = defaultTranslate) {
     // The headline number is total elapsed, because the wait a reader is
     // remembering started when they created the run, not when a worker
     // picked it up. The three spans it decomposes into sit in `timing`.
-    duration: benchmarkTotalDuration(benchmark.created_at, benchmark.finished_at),
+    duration: benchmarkSpans(benchmark).total,
     timing: benchmarkTiming(benchmark, t),
     dataset: {
       name: benchmark.dataset_name || dataset?.name || t('evalModel.goldenSet'),

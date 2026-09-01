@@ -290,6 +290,49 @@ export function benchmarkTotalDuration(createdAt, finishedAt, now) {
 }
 
 /**
+ * The three spans of one benchmark, resolved against its status.
+ *
+ * The status is what decides whether an open span may be measured against
+ * the clock, and no timestamp pair can answer that on its own. An active run
+ * with no `finished_at` has not finished yet, so its total is still growing.
+ * A **terminal** run with no `finished_at` is a different thing entirely: it
+ * is a closed record whose end was never written, and measuring it against
+ * `Date.now()` would show a completed benchmark whose duration climbs for
+ * ever. That is incomplete evidence, and it reports a dash.
+ *
+ * The rule lives here rather than in {@link durationBetween} because the
+ * primitive is also what measures genuinely open spans, and teaching it to
+ * refuse the clock would break the live run it exists to serve.
+ */
+export function benchmarkSpans(run, now) {
+  const created = run?.created_at
+  const started = run?.started_at
+  const finished = run?.finished_at
+  if (TERMINAL_STATUSES.has(run?.status)) {
+    // A closed record is measured only from what it actually recorded.
+    return {
+      queue: closedSpan(created, started),
+      execution: closedSpan(started, finished),
+      total: closedSpan(created, finished),
+    }
+  }
+  return {
+    queue: benchmarkQueueDuration(created, started, now),
+    // A run that has not started has executed for no time anybody can
+    // name, which is not the same as having executed for none.
+    execution: benchmarkExecutionDuration(started, finished, now),
+    total: benchmarkTotalDuration(created, finished, now),
+  }
+}
+
+/** A span that reports nothing rather than measuring an absent end to now. */
+function closedSpan(fromValue, toValue) {
+  return Number.isFinite(Date.parse(toValue || ''))
+    ? durationBetween(fromValue, toValue)
+    : EMPTY
+}
+
+/**
  * How long a single evaluation run took.
  *
  * An evaluation has one pair of timestamps and no queue of its own, so

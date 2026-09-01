@@ -13,6 +13,7 @@ import {
   EMPTY,
   benchmarkExecutionDuration,
   benchmarkQueueDuration,
+  benchmarkSpans,
   benchmarkTotalDuration,
   durationBetween,
 } from './evalProfiles'
@@ -111,5 +112,60 @@ describe('benchmarkTiming', () => {
     const timing = benchmarkTiming({ benchmark_id: 'bm-legacy' })
     expect(timing.spans.every((span) => span.value === EMPTY)).toBe(true)
     expect(timing.startedLabel).toBe(EMPTY)
+  })
+})
+
+describe('benchmarkSpans resolves an open span against the run status', () => {
+  const spansOf = (run) => {
+    const { queue, execution, total } = benchmarkSpans(run)
+    return { queue, execution, total }
+  }
+
+  it('grows a running run against the clock while it has no finish time', () => {
+    atNow('2026-09-01T19:16:39.000Z')
+    expect(
+      spansOf({ status: 'running', created_at: CREATED, started_at: STARTED })
+    ).toEqual({ queue: '3m 17s', execution: '2m 00s', total: '5m 17s' })
+  })
+
+  it('grows a queued run from creation and attributes no execution to it', () => {
+    atNow('2026-09-01T19:13:00.000Z')
+    expect(spansOf({ status: 'queued', created_at: CREATED })).toEqual({
+      queue: '1m 38s',
+      execution: EMPTY,
+      total: '1m 38s',
+    })
+  })
+
+  it('dashes a terminal run whose finish time was never recorded', () => {
+    atNow('2026-09-01T23:00:00.000Z')
+    // The run is over. Measuring its open end against the clock would show a
+    // completed benchmark whose duration is still climbing hours later.
+    expect(
+      spansOf({ status: 'completed', created_at: CREATED, started_at: STARTED })
+    ).toEqual({ queue: '3m 17s', execution: EMPTY, total: EMPTY })
+  })
+
+  it('stops the clock for every terminal status, not just completed', () => {
+    atNow('2026-09-01T23:00:00.000Z')
+    for (const status of ['completed', 'partial', 'failed', 'interrupted']) {
+      const spans = spansOf({ status, created_at: CREATED, started_at: STARTED })
+      expect(spans.total).toBe(EMPTY)
+      expect(spans.execution).toBe(EMPTY)
+    }
+  })
+
+  it('holds a terminal run to the same numbers however much later it is read', () => {
+    const run = {
+      status: 'completed',
+      created_at: CREATED,
+      started_at: STARTED,
+      finished_at: FINISHED,
+    }
+    atNow('2026-09-01T19:20:10.000Z')
+    const justAfter = spansOf(run)
+    atNow('2026-09-08T19:20:10.000Z')
+    expect(spansOf(run)).toEqual(justAfter)
+    expect(justAfter).toEqual({ queue: '3m 17s', execution: '5m 30s', total: '8m 47s' })
   })
 })

@@ -8,7 +8,7 @@ import {
   EMPTY,
   PROFILES_BY_ID,
   TERMINAL_STATUSES,
-  benchmarkTotalDuration,
+  benchmarkSpans,
   formatRunTimestamp,
   keyResult,
   statusMeta,
@@ -128,7 +128,7 @@ export default function BenchmarkHistoryTable({
                   </Badge>
                 </span>
                 <span role="cell" className="tabular-nums" style={{ color: 'var(--fg-muted)' }}>
-                  {benchmarkTotalDuration(run.created_at, run.finished_at)}
+                  {benchmarkSpans(run).total}
                 </span>
                 <span role="cell" className="tabular-nums" style={{ color: 'var(--fg-muted)' }}>
                   {keyResult(run)}
