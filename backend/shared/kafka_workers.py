@@ -65,3 +65,12 @@ class KafkaConsumerWorkerPool:
             if thread.is_alive():
                 thread.join(timeout=max(0.0, deadline - time.monotonic()))
         return not any(thread.is_alive() for thread in self.threads)
+
+    def is_connected(self) -> bool:
+        """Return whether every configured worker and consumer is operational."""
+        return (
+            len(self.consumers) == self._worker_count
+            and len(self.threads) == self._worker_count
+            and all(thread.is_alive() for thread in self.threads)
+            and all(consumer.is_connected() for consumer in self.consumers)
+        )

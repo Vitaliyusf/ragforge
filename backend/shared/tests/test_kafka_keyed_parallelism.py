@@ -166,3 +166,36 @@ def test_close_unblocks_all_consumers_without_leaking_threads() -> None:
 
     assert pool.close(timeout=1.0) is True
     assert all(not thread.is_alive() for thread in pool.threads)
+
+
+def test_worker_pool_readiness_tracks_all_consumers_and_threads() -> None:
+    release = threading.Event()
+
+    class Consumer:
+        def __init__(self) -> None:
+            self.connected = True
+
+        def is_connected(self) -> bool:
+            return self.connected
+
+        def close(self) -> None:
+            self.connected = False
+            release.set()
+
+    def target(_consumer: Consumer) -> Callable[[], None]:
+        return lambda: release.wait(timeout=1.0)
+
+    pool = KafkaConsumerWorkerPool(
+        worker_count=2,
+        consumer_factory=Consumer,
+        target_factory=target,
+        thread_name_prefix="readiness-test",
+    )
+
+    assert pool.is_connected() is False
+    pool.start()
+    assert pool.is_connected() is True
+    pool.consumers[0].connected = False
+    assert pool.is_connected() is False
+    assert pool.close(timeout=1.0) is True
+    assert pool.is_connected() is False
