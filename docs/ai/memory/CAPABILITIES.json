@@ -310,6 +310,24 @@
         "superseded_by"
       ],
       "notes": "LongTermMemoryService is the single owner of memory persistence, lifecycle and retrieval. Writes use bounded deterministic consolidation: exact and semantic duplicates are suppressed or reinforced, declared fact keys supersede prior values only within the same canonical scope, ambiguous similarity preserves both facts for later policy, and temporal validity keeps superseded facts explicitly historical. Current retrieval excludes deleted/superseded facts unless history or as-of semantics are requested. Memory vectors come only from the embedding service RPC (action 'embed'); MongoDB is canonical and Qdrant is derived. MemoryReconciliationService performs tenant-scoped, bounded, resumable repair for missing/stale/orphan/duplicate vectors and tombstoned deletes, while retrieval.embedding_status records partial failures for idempotent retry."
+    },
+    {
+      "id": "CAP-018",
+      "name": "Memory service competing-consumer replica scaleout",
+      "status": "implemented",
+      "owner": "memory",
+      "canonical_paths": [
+        "docker-compose.yml",
+        "backend/memory/app/bootstrap/runtime.py",
+        "backend/shared/rabbitmq_base.py"
+      ],
+      "search_terms": [
+        "MEMORY_REPLICAS",
+        "competing consumers",
+        "horizontal scaleout",
+        "memory replica"
+      ],
+      "notes": "MEMORY_REPLICAS defaults to 1 and may be raised for RabbitMQ competing-consumer scaleout. Memory correctness state is external in MongoDB/Qdrant, embedding and LLM work remain external RPC calls, prefetch and executor admission stay bounded per replica, and the service loads no model. CONC-10 measured 200 read-only RPCs at concurrency 32: 334.394 req/s with one replica versus 839.850 req/s with two, 109/111 deliveries, zero errors, and about 57.6 MiB RSS per replica. This is a measured read-path result, not a claim of linear scaling for downstream-bound semantic writes or unlimited replicas."
     }
   ]
 }
