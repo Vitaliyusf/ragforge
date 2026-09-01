@@ -28,7 +28,7 @@ from __future__ import annotations
 import json
 import logging
 import time
-from typing import Any, Dict, Iterator, Mapping, Optional, Tuple
+from typing import Any, Dict, Iterator, Mapping, Optional, Protocol, Tuple
 
 from kafka import KafkaConsumer, KafkaProducer
 from kafka.structs import TopicPartition
@@ -77,7 +77,7 @@ def _broker_connected(client: Any) -> bool:
         return False
 
 
-class _KafkaConfigProtocol:
+class _KafkaConfigProtocol(Protocol):
     """Structural interface required by both base classes.
 
     Every service config must expose these Kafka fields.
