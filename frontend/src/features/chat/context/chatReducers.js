@@ -6,7 +6,7 @@
  */
 
 import { initialConversationState, initialRuntimeState } from './chatConstants'
-import { buildAssistantMetadata } from './chatHelpers'
+import { buildAssistantMetadata, buildPersistedAssistantMetadata } from './chatHelpers'
 
 export function updateMessage(messages, messageId, updater) {
   return messages.map((message) => {
@@ -160,7 +160,7 @@ export function conversationReducer(state, action) {
           isLoading: false,
           metadata: {
             ...message.metadata,
-            ...buildAssistantMetadata(nextTurn),
+            ...buildPersistedAssistantMetadata(nextTurn, action.event),
           },
         })),
       }

@@ -293,10 +293,13 @@
       "owner": "memory",
       "canonical_paths": [
         "backend/memory/app/services/memory_service.py",
+        "backend/memory/app/services/memory_handler_service.py",
         "backend/memory/app/services/memory_embedding_client.py",
         "backend/memory/app/services/memory_vector_index.py",
         "backend/memory/app/services/memory_consolidation.py",
-        "backend/memory/app/services/memory_reconciliation.py"
+        "backend/memory/app/services/memory_reconciliation.py",
+        "backend/gateway/app/rest/v1/long_term_memory.py",
+        "frontend/src/features/memory/components/LongTermMemoryTab.jsx"
       ],
       "search_terms": [
         "get_relevant_memories",
@@ -309,7 +312,7 @@
         "valid_from",
         "superseded_by"
       ],
-      "notes": "LongTermMemoryService is the single owner of memory persistence, lifecycle and retrieval. Writes use bounded deterministic consolidation: exact and semantic duplicates are suppressed or reinforced, declared fact keys supersede prior values only within the same canonical scope, ambiguous similarity preserves both facts for later policy, and temporal validity keeps superseded facts explicitly historical. Current retrieval excludes deleted/superseded facts unless history or as-of semantics are requested. Memory vectors come only from the embedding service RPC (action 'embed'); MongoDB is canonical and Qdrant is derived. MemoryReconciliationService performs tenant-scoped, bounded, resumable repair for missing/stale/orphan/duplicate vectors and tombstoned deletes, while retrieval.embedding_status records partial failures for idempotent retry."
+      "notes": "LongTermMemoryService is the single owner of memory persistence, lifecycle and retrieval. Writes use bounded deterministic consolidation: exact and semantic duplicates are suppressed or reinforced, declared fact keys supersede prior values only within the same canonical scope, ambiguous similarity preserves both facts for later policy, and temporal validity keeps superseded facts explicitly historical. Current retrieval excludes deleted/superseded facts unless history or as-of semantics are requested. Manual authenticated creates are explicit user signals, preserve the RabbitMQ request context into the write audit, and return the existing canonical memory for an exact retry instead of creating a duplicate. Manual delete uses canonical reload semantics; user_insight remains AI/system-managed and read-only. Memory vectors come only from the embedding service RPC (action 'embed'); MongoDB is canonical and Qdrant is derived. MemoryReconciliationService performs tenant-scoped, bounded, resumable repair for missing/stale/orphan/duplicate vectors and tombstoned deletes, while retrieval.embedding_status records partial failures for idempotent retry."
     },
     {
       "id": "CAP-018",

@@ -43,6 +43,7 @@ class ChatHistoryService(BaseRPCService):
                 "message_id": str(uuid.uuid4()),
                 "sender": request.sender,
                 "message": request.message,
+                "metadata": request.metadata,
             },
         )
 

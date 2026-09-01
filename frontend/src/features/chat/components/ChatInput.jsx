@@ -68,7 +68,7 @@ export default function ChatInput({
   return (
     <div className="composer-fade shrink-0 px-3 pb-3 pt-7 md:px-5 md:pb-4">
       <div
-        className="mx-auto max-w-3xl overflow-hidden rounded-2xl border border-[var(--border)] transition-all duration-200 focus-within:border-[var(--border-focus)] focus-within:ring-2 focus-within:ring-[var(--ring)]"
+        className="mx-auto max-w-[64rem] overflow-hidden rounded-2xl border border-[var(--border)] transition-all duration-200 focus-within:border-[var(--border-focus)] focus-within:ring-2 focus-within:ring-[var(--ring)]"
         style={{
           background: 'var(--surface-elevated)',
           boxShadow: 'var(--shadow-lg)',

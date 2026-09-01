@@ -204,6 +204,23 @@ describe('ChatTab', () => {
     await waitFor(() => {
       expect(chatService.addMessage).toHaveBeenCalledTimes(2)
     })
+    expect(chatService.addMessage).toHaveBeenNthCalledWith(
+      2,
+      'chat-1',
+      'Assistant',
+      'Hello world',
+      expect.objectContaining({
+        turnId: expect.any(String),
+        requestId: expect.any(String),
+        traceId: expect.any(String),
+        mode: 'regular',
+        answerReview,
+        sources: [{ title: 'Policy document' }],
+        retrievalSummary: { hits: 2 },
+        traceEvents: [expect.objectContaining({ node: 'planner' })],
+        debugPayloads: expect.objectContaining({ visible_reasoning_steps: 'Visible reasoning summary' }),
+      })
+    )
 
     // Everything withheld above is reachable through the Developer Inspector,
     // where model input and output stay masked until explicitly revealed.

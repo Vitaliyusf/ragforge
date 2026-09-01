@@ -40,6 +40,9 @@ function AddMemoryForm({ onAdd, onCancel }) {
     try {
       await onAdd(content.trim(), category)
       setContent(''); setCategory('user_preference')
+    } catch (_) {
+      // The owner reports the actionable API error. Keeping the draft intact
+      // lets the user correct it or retry without retyping the memory.
     } finally {
       setLoading(false)
     }

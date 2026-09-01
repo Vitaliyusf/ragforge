@@ -35,6 +35,8 @@ import {
   createId,
   formatHistoryForPrompt,
   mapGatewayMessage,
+  buildPersistedAssistantMetadata,
+  buildPersistedUserMetadata,
   readReplyField,
 } from './chatHelpers'
 import { chatRuntimeReducer } from './chatReducers'
@@ -317,10 +319,15 @@ export function ChatProvider({ children }) {
       .catch(() => {})
   }, [applyTitle])
 
-  const persistTurn = useCallback(async (chatId, text, finalAnswer) => {
+  const persistTurn = useCallback(async (chatId, text, finalAnswer, turn, doneEvent) => {
     try {
-      await chatService.addMessage(chatId, 'User', text)
-      await chatService.addMessage(chatId, 'Assistant', finalAnswer)
+      await chatService.addMessage(chatId, 'User', text, buildPersistedUserMetadata(turn))
+      await chatService.addMessage(
+        chatId,
+        'Assistant',
+        finalAnswer,
+        buildPersistedAssistantMetadata(turn, doneEvent)
+      )
       setChats((prev) => prev.map((chat) => (
         chat.id === chatId ? { ...chat, updated_at: new Date().toISOString() } : chat
       )))
@@ -476,7 +483,7 @@ export function ChatProvider({ children }) {
       if (chatId && finalAnswer) {
         // The chat now has a completed turn worth curating when the user leaves.
         dirtyChatIdsRef.current.add(chatId)
-        persistTurn(chatId, trimmed, finalAnswer)
+        persistTurn(chatId, trimmed, finalAnswer, turn, doneEvent)
         if (userMessageCount >= AUTO_TITLE_USER_MESSAGE_THRESHOLD) {
           maybeAutoTitle(chatId)
         }

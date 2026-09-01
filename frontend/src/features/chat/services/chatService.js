@@ -57,10 +57,11 @@ class ChatService {
    * @param {string} message - Message text
    * @returns {Promise<Object>} Response data
    */
-  async addMessage(chatId, sender, message) {
+  async addMessage(chatId, sender, message, metadata = undefined) {
     return await post(`/v1/chats/${chatId}/messages`, {
       sender,
-      message
+      message,
+      ...(metadata ? { metadata } : {}),
     })
   }
 

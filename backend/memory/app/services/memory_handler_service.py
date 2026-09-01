@@ -470,9 +470,10 @@ class MemoryHandlerService:
         message_id = request.get("message_id")
         sender = request.get("sender", "User")
         message_text = request.get("message", "")
+        metadata = request.get("metadata")
         if not chat_id or not message_id:
             return self._send_error(request, "chat_id and message_id are required")
-        message = self.message_service.add_message(message_id, chat_id, sender, message_text)
+        message = self.message_service.add_message(message_id, chat_id, sender, message_text, metadata)
         return self._send_response(request, {"status": "success", "message_id": message["id"]})
 
     def _handle_get_chats(self, request: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -578,7 +579,12 @@ class MemoryHandlerService:
         metadata = request.get("metadata")
         if not content:
             return self._send_error(request, "content is required")
-        memory = self.memory_service.create_memory(content, category, metadata)
+        memory = self.memory_service.create_memory(
+            content,
+            category,
+            metadata,
+            self._memory_request_context(request),
+        )
         return self._send_response(request, {"status": "success", "memory": memory})
 
     def _handle_update_long_term_memory(self, request: Dict[str, Any]) -> Optional[Dict[str, Any]]:
