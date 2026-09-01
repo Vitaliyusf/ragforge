@@ -62,7 +62,7 @@ describe('answer surface', () => {
     renderAnswer()
 
     // Three chunks, two documents: the default line speaks of documents.
-    expect(screen.getByText('Grounded · 2 sources · Review passed')).toBeInTheDocument()
+    expect(screen.getByText('Grounded · Sources: 2 · Review passed')).toBeInTheDocument()
     expect(screen.queryByText(/groundedness_score/i)).not.toBeInTheDocument()
     expect(screen.queryByText('chunk-abc')).not.toBeInTheDocument()
   })
@@ -80,16 +80,16 @@ describe('answer surface', () => {
     renderAnswer()
 
     // One count, one meaning: several chunks from one document are one source.
-    const counts = screen.getAllByText('2 sources', { exact: false })
+    const counts = screen.getAllByText('Sources: 2', { exact: false })
     expect(counts.length).toBeGreaterThan(0)
-    expect(screen.queryByText('3 sources', { exact: false })).not.toBeInTheDocument()
+    expect(screen.queryByText('Sources: 3', { exact: false })).not.toBeInTheDocument()
   })
 
   it('names sources by document and counts them', () => {
     renderAnswer()
 
     // Three chunks, two documents: a reader sees documents.
-    expect(screen.getByText('2 sources')).toBeInTheDocument()
+    expect(screen.getByText('Sources: 2')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Retrieval handbook\.pdf/ })).toBeInTheDocument()
   })
 

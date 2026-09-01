@@ -10,9 +10,16 @@
  * `create_file_document()` writes, the statuses are the ones the files service
  * stores, and a field the backend never sends is reported as absent rather
  * than as a zero.
+ *
+ * Every label comes back twice: as canonical English, which this module is
+ * the authority on and which its tests assert, and as the translation key a
+ * component resolves against the reader's locale. The module itself is pure
+ * and has no locale.
  */
 
 import { STATUS_TONES } from '@/components/status/statusTone'
+import { DEFAULT_LOCALE } from '@/i18n/locale'
+import { translate } from '@/i18n/translate'
 import { computeEffectiveStatus } from './fileStatus'
 
 /**
@@ -23,14 +30,14 @@ import { computeEffectiveStatus } from './fileStatus'
  * row reads "Embedding…" and a finished one "Indexed".
  */
 export const PIPELINE_STAGES = [
-  { key: 'extraction', label: 'Extraction', active: 'Extracting', done: 'Extracted' },
-  { key: 'review', label: 'Review', active: 'In review', done: 'Reviewed' },
-  { key: 'chunking', label: 'Chunking', active: 'Chunking', done: 'Chunked' },
-  { key: 'summary', label: 'Summary', active: 'Summarising', done: 'Summarised' },
-  { key: 'embedding', label: 'Embedding', active: 'Embedding', done: 'Embedded' },
-  { key: 'semantic', label: 'Semantic', active: 'Analysing', done: 'Analysed' },
-  { key: 'vector', label: 'Indexing', active: 'Indexing', done: 'Indexed' },
-  { key: 'metadata', label: 'Metadata', active: 'Tagging', done: 'Tagged' },
+  { key: 'extraction', label: 'Extraction', labelKey: 'pipeline.extraction', active: 'Extracting', activeKey: 'pipeline.extracting', done: 'Extracted', doneKey: 'pipeline.extracted' },
+  { key: 'review', label: 'Review', labelKey: 'pipeline.review', active: 'In review', activeKey: 'pipeline.inReview', done: 'Reviewed', doneKey: 'pipeline.reviewed' },
+  { key: 'chunking', label: 'Chunking', labelKey: 'pipeline.chunking', active: 'Chunking', activeKey: 'pipeline.chunking', done: 'Chunked', doneKey: 'pipeline.chunked' },
+  { key: 'summary', label: 'Summary', labelKey: 'pipeline.summary', active: 'Summarising', activeKey: 'pipeline.summarising', done: 'Summarised', doneKey: 'pipeline.summarised' },
+  { key: 'embedding', label: 'Embedding', labelKey: 'pipeline.embedding', active: 'Embedding', activeKey: 'pipeline.embedding', done: 'Embedded', doneKey: 'pipeline.embedded' },
+  { key: 'semantic', label: 'Semantic', labelKey: 'pipeline.semantic', active: 'Analysing', activeKey: 'pipeline.analysing', done: 'Analysed', doneKey: 'pipeline.analysed' },
+  { key: 'vector', label: 'Indexing', labelKey: 'pipeline.indexing', active: 'Indexing', activeKey: 'pipeline.indexing', done: 'Indexed', doneKey: 'pipeline.indexed' },
+  { key: 'metadata', label: 'Metadata', labelKey: 'pipeline.metadata', active: 'Tagging', activeKey: 'pipeline.tagging', done: 'Tagged', doneKey: 'pipeline.tagged' },
 ]
 
 const STAGE_DONE_VALUES = new Set(['done', 'complete', 'completed', 'ready'])
@@ -79,26 +86,26 @@ export const DOCUMENT_STATUSES = {
 }
 
 const STATUS_PRESENTATION = {
-  [DOCUMENT_STATUSES.READY]: { label: 'Ready', tone: STATUS_TONES.SUCCESS },
+  [DOCUMENT_STATUSES.READY]: { label: 'Ready', labelKey: 'status.ready', tone: STATUS_TONES.SUCCESS },
   // The one status where something really is moving, and so the only one
   // allowed the live tone and its motion.
-  [DOCUMENT_STATUSES.PROCESSING]: { label: 'Processing', tone: STATUS_TONES.LIVE },
-  [DOCUMENT_STATUSES.QUEUED]: { label: 'Queued', tone: STATUS_TONES.NEUTRAL },
-  [DOCUMENT_STATUSES.REVIEW]: { label: 'Needs review', tone: STATUS_TONES.WARNING },
-  [DOCUMENT_STATUSES.FAILED]: { label: 'Failed', tone: STATUS_TONES.DANGER },
-  [DOCUMENT_STATUSES.REJECTED]: { label: 'Rejected', tone: STATUS_TONES.DANGER },
-  [DOCUMENT_STATUSES.UNKNOWN]: { label: 'Unknown', tone: STATUS_TONES.NEUTRAL },
+  [DOCUMENT_STATUSES.PROCESSING]: { label: 'Processing', labelKey: 'status.processing', tone: STATUS_TONES.LIVE },
+  [DOCUMENT_STATUSES.QUEUED]: { label: 'Queued', labelKey: 'status.queued', tone: STATUS_TONES.NEUTRAL },
+  [DOCUMENT_STATUSES.REVIEW]: { label: 'Needs review', labelKey: 'status.needsReview', tone: STATUS_TONES.WARNING },
+  [DOCUMENT_STATUSES.FAILED]: { label: 'Failed', labelKey: 'status.failed', tone: STATUS_TONES.DANGER },
+  [DOCUMENT_STATUSES.REJECTED]: { label: 'Rejected', labelKey: 'status.rejected', tone: STATUS_TONES.DANGER },
+  [DOCUMENT_STATUSES.UNKNOWN]: { label: 'Unknown', labelKey: 'status.unknown', tone: STATUS_TONES.NEUTRAL },
 }
 
 /** The status filter options, in the order the toolbar shows them. */
 export const STATUS_FILTER_OPTIONS = [
-  { value: 'all', label: 'All statuses' },
-  { value: DOCUMENT_STATUSES.READY, label: 'Ready' },
-  { value: DOCUMENT_STATUSES.PROCESSING, label: 'Processing' },
-  { value: DOCUMENT_STATUSES.QUEUED, label: 'Queued' },
-  { value: DOCUMENT_STATUSES.REVIEW, label: 'Needs review' },
-  { value: DOCUMENT_STATUSES.FAILED, label: 'Failed' },
-  { value: DOCUMENT_STATUSES.REJECTED, label: 'Rejected' },
+  { value: 'all', label: 'All statuses', labelKey: 'knowledge.allStatuses' },
+  { value: DOCUMENT_STATUSES.READY, label: 'Ready', labelKey: 'status.ready' },
+  { value: DOCUMENT_STATUSES.PROCESSING, label: 'Processing', labelKey: 'status.processing' },
+  { value: DOCUMENT_STATUSES.QUEUED, label: 'Queued', labelKey: 'status.queued' },
+  { value: DOCUMENT_STATUSES.REVIEW, label: 'Needs review', labelKey: 'status.needsReview' },
+  { value: DOCUMENT_STATUSES.FAILED, label: 'Failed', labelKey: 'status.failed' },
+  { value: DOCUMENT_STATUSES.REJECTED, label: 'Rejected', labelKey: 'status.rejected' },
 ]
 
 /**
@@ -147,37 +154,51 @@ export function getStatusPresentation(status) {
  * decide whether motion is warranted.
  *
  * @param {object} file
- * @returns {{state: string, label: string, stageKey: string|null}}
+ * @returns {{state: string, label: string, labelKey: string, stageKey: string|null}}
  */
 export function summarizePipeline(file) {
   const status = getDocumentStatus(file)
   const stages = getPipelineStages(file)
 
   const failed = stages.find((stage) => stage.state === 'failed')
-  if (failed) return { state: 'failed', label: failed.label, stageKey: failed.key }
+  if (failed) {
+    return { state: 'failed', label: failed.label, labelKey: failed.labelKey, stageKey: failed.key }
+  }
 
   if (status === DOCUMENT_STATUSES.READY) {
-    return { state: 'done', label: 'Indexed', stageKey: 'vector' }
+    return { state: 'done', label: 'Indexed', labelKey: 'pipeline.indexed', stageKey: 'vector' }
   }
   if (status === DOCUMENT_STATUSES.FAILED) {
     // Errored with no stage flag of its own: the run failed before, or
     // outside, any single stage.
-    return { state: 'failed', label: 'Ingestion', stageKey: null }
+    return { state: 'failed', label: 'Ingestion', labelKey: 'pipeline.ingestion', stageKey: null }
   }
   if (status === DOCUMENT_STATUSES.REVIEW) {
-    return { state: 'blocked', label: 'Awaiting review', stageKey: 'review' }
+    return { state: 'blocked', label: 'Awaiting review', labelKey: 'pipeline.awaitingReview', stageKey: 'review' }
   }
   if (status === DOCUMENT_STATUSES.REJECTED) {
-    return { state: 'blocked', label: 'Stopped at review', stageKey: 'review' }
+    return { state: 'blocked', label: 'Stopped at review', labelKey: 'pipeline.stoppedAtReview', stageKey: 'review' }
   }
 
   const running = stages.find((stage) => stage.state === 'running')
-  if (running) return { state: 'running', label: `${running.active}…`, stageKey: running.key }
+  if (running) {
+    return {
+      state: 'running',
+      label: `${running.active}…`,
+      labelKey: running.activeKey,
+      // The ellipsis is punctuation, not copy: it is appended by the
+      // renderer so a translated stage name keeps it.
+      suffix: '…',
+      stageKey: running.key,
+    }
+  }
 
   const lastDone = [...stages].reverse().find((stage) => stage.state === 'done')
-  if (lastDone) return { state: 'idle', label: lastDone.done, stageKey: lastDone.key }
+  if (lastDone) {
+    return { state: 'idle', label: lastDone.done, labelKey: lastDone.doneKey, stageKey: lastDone.key }
+  }
 
-  return { state: 'queued', label: 'Not started', stageKey: null }
+  return { state: 'queued', label: 'Not started', labelKey: 'pipeline.notStarted', stageKey: null }
 }
 
 /**
@@ -189,7 +210,8 @@ export function summarizePipeline(file) {
  *
  * @param {object} file
  * @param {Array<object>} [events] audit events, newest first
- * @returns {{title: string, reason: string|null, impact: string}|null}
+ * @returns {{title: string, titleKey: string, titleVars: object, reason: string|null,
+ *   impact: string, impactKey: string}|null}
  */
 export function describeFailure(file, events = []) {
   if (getDocumentStatus(file) !== DOCUMENT_STATUSES.FAILED) return null
@@ -206,8 +228,11 @@ export function describeFailure(file, events = []) {
 
   return {
     title: `${pipeline.label} failed`,
+    titleKey: 'pipeline.stageFailed',
+    titleVars: { stageKey: pipeline.labelKey },
     reason,
-    impact: 'This document is not searchable.',
+    impact: translate(DEFAULT_LOCALE, 'pipeline.notSearchable'),
+    impactKey: 'pipeline.notSearchable',
   }
 }
 
@@ -230,10 +255,10 @@ export function getDocumentType(file) {
 
 /** The columns a document list can be ordered by. */
 export const SORT_OPTIONS = [
-  { value: 'updated', label: 'Updated' },
-  { value: 'name', label: 'Name' },
-  { value: 'status', label: 'Status' },
-  { value: 'size', label: 'Size' },
+  { value: 'updated', label: 'Updated', labelKey: 'knowledge.sortUpdated' },
+  { value: 'name', label: 'Name', labelKey: 'knowledge.sortName' },
+  { value: 'status', label: 'Status', labelKey: 'knowledge.sortStatus' },
+  { value: 'size', label: 'Size', labelKey: 'knowledge.sortSize' },
 ]
 
 /** Attention first: failure, then review, then work in flight, then settled. */

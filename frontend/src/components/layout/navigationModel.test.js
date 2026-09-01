@@ -11,10 +11,11 @@ import {
   PILLAR_ORDER,
   ROLE_PILLARS,
   allowedTabsForRole,
-  destinationLabel,
+  destinationLabelKey,
   destinationsForRole,
   navigationForRole,
 } from './navigationModel'
+import { translate } from '@/i18n/translate'
 
 const ids = (groups) => groups.flatMap((group) => group.items.map((item) => item.id))
 
@@ -28,7 +29,8 @@ describe('pillars', () => {
   it('renders pillars in product order, workspace first', () => {
     const groups = navigationForRole('admin')
     expect(groups.map((group) => group.pillar)).toEqual(PILLAR_ORDER)
-    expect(groups[0].label).toBe('Workspace')
+    expect(translate('en', groups[0].labelKey)).toBe('Workspace')
+    expect(translate('he', groups[0].labelKey)).toBe('סביבת עבודה')
   })
 
   it('puts the daily work in Workspace and the subsystems below it', () => {
@@ -109,12 +111,19 @@ describe('one model, two readers', () => {
     }
   })
 
-  it('gives each destination one canonical label', () => {
-    expect(destinationLabel('files')).toBe('Knowledge')
-    expect(destinationLabel('config')).toBe('Settings')
-    const labels = destinationsForRole('admin', { features: { training: true } }).map(
-      (destination) => destination.label
-    )
-    expect(new Set(labels).size).toBe(labels.length)
+  it('gives each destination one canonical label in both languages', () => {
+    expect(translate('en', destinationLabelKey('files'))).toBe('Knowledge')
+    expect(translate('en', destinationLabelKey('config'))).toBe('Settings')
+    expect(translate('he', destinationLabelKey('files'))).toBe('מאגר ידע')
+    expect(translate('he', destinationLabelKey('config'))).toBe('הגדרות')
+
+    // No two destinations may collide once translated, in either language —
+    // two buttons reading the same word is the failure this guards.
+    for (const locale of ['en', 'he']) {
+      const labels = destinationsForRole('admin', { features: { training: true } }).map(
+        (destination) => translate(locale, destination.labelKey)
+      )
+      expect(new Set(labels).size, locale).toBe(labels.length)
+    }
   })
 })

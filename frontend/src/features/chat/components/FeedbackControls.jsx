@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { ThumbsDown, ThumbsUp } from 'lucide-react'
+import { useI18n } from '@/i18n'
 
 /**
  * Answer feedback, compact enough to live under every answer.
@@ -20,12 +21,15 @@ import { ThumbsDown, ThumbsUp } from 'lucide-react'
  * note (carried in the `comment` field the backend already reads) or skips it.
  */
 
+// `key` and `rating` are the values the backend stores and never change with
+// the interface language; only `labelKey` is what the reader sees.
 const ANSWER_RATINGS = [
-  { key: 'helpful', icon: ThumbsUp, label: 'Helpful', rating: 'positive' },
-  { key: 'not_helpful', icon: ThumbsDown, label: 'Not helpful', rating: 'negative' },
+  { key: 'helpful', icon: ThumbsUp, labelKey: 'chat.feedbackHelpful', rating: 'positive' },
+  { key: 'not_helpful', icon: ThumbsDown, labelKey: 'chat.feedbackNotHelpful', rating: 'negative' },
 ]
 
 export default function FeedbackControls({ turnId, feedback, onAnswerFeedback }) {
+  const { t } = useI18n()
   const [detailOpen, setDetailOpen] = useState(false)
   const [detail, setDetail] = useState('')
   const [detailSent, setDetailSent] = useState(false)
@@ -74,8 +78,8 @@ export default function FeedbackControls({ turnId, feedback, onAnswerFeedback })
             <button
               key={option.key}
               type="button"
-              aria-label={option.label}
-              title={option.label}
+              aria-label={t(option.labelKey)}
+              title={t(option.labelKey)}
               aria-pressed={option.key === 'not_helpful' ? isChosen || detailOpen : isChosen}
               disabled={disabled}
               onClick={() => rate(option)}
@@ -87,11 +91,13 @@ export default function FeedbackControls({ turnId, feedback, onAnswerFeedback })
           )
         })}
         {state?.status === 'error' ? (
-          <span className="ms-1 text-xs text-[var(--danger)]">{state.error || 'Feedback failed'}</span>
+          <span className="ms-1 text-xs text-[var(--danger)]">
+            {state.error || t('chat.feedbackFailed')}
+          </span>
         ) : null}
         {state?.status === 'sent' && !detailOpen ? (
           <span className="ms-1 text-xs text-[var(--fg-soft)]">
-            {detailSent ? 'Thanks — noted' : 'Thanks for the feedback'}
+            {detailSent ? t('chat.feedbackNoted') : t('chat.feedbackThanks')}
           </span>
         ) : null}
       </div>
@@ -103,8 +109,8 @@ export default function FeedbackControls({ turnId, feedback, onAnswerFeedback })
             dir="auto"
             value={detail}
             onChange={(event) => setDetail(event.target.value)}
-            aria-label="What was wrong with this answer? (optional)"
-            placeholder="What was wrong? (optional)"
+            aria-label={t('chat.feedbackDetailLabel')}
+            placeholder={t('chat.feedbackDetailPlaceholder')}
             className="min-w-0 flex-1 rounded-lg border px-2.5 py-1.5 text-[13px] text-[var(--fg)] outline-hidden focus-visible:ring-2"
             style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}
           />
@@ -113,7 +119,7 @@ export default function FeedbackControls({ turnId, feedback, onAnswerFeedback })
             disabled={!detail.trim() || disabled}
             className="rounded-lg px-2.5 py-1.5 text-xs font-medium text-[var(--fg-muted)] transition-colors hover:bg-[var(--surface-hover)] hover:text-[var(--fg)] disabled:opacity-40"
           >
-            Send
+            {t('chat.feedbackSend')}
           </button>
           <button
             type="button"
@@ -121,7 +127,7 @@ export default function FeedbackControls({ turnId, feedback, onAnswerFeedback })
             disabled={disabled}
             className="rounded-lg px-2 py-1.5 text-xs text-[var(--fg-soft)] transition-colors hover:text-[var(--fg)] disabled:opacity-40"
           >
-            Skip
+            {t('chat.feedbackSkip')}
           </button>
         </form>
       ) : null}

@@ -5,6 +5,7 @@ import {
   hasMeasuredScores,
   toPercent,
 } from './answerQuality'
+import { translate } from '@/i18n/translate'
 
 describe('answer quality', () => {
   it('summarises a grounded, reviewed answer compactly', () => {
@@ -19,7 +20,7 @@ describe('answer quality', () => {
     })
 
     expect(quality.kind).toBe('summary')
-    expect(quality.parts.join(' · ')).toBe('Grounded · 3 sources · Review passed')
+    expect(quality.parts.join(' · ')).toBe('Grounded · Sources: 3 · Review passed')
     expect(quality.tone).toBe('success')
   })
 
@@ -35,8 +36,9 @@ describe('answer quality', () => {
     })
 
     // Three chunks from two documents: the reader is told two sources, and the
-    // chunk count is carried separately for the Developer Inspector.
-    expect(quality.parts).toContain('2 sources')
+    // chunk count is carried separately for the Developer Inspector. The count
+    // is labelled rather than pluralised so the same phrasing works in Hebrew.
+    expect(quality.parts).toContain('Sources: 2')
     expect(quality.sourceCount).toBe(2)
     expect(quality.chunkCount).toBe(3)
   })
@@ -62,7 +64,7 @@ describe('answer quality', () => {
     })
 
     expect(quality.kind).toBe('summary')
-    expect(quality.parts).toEqual(['2 sources'])
+    expect(quality.parts).toEqual(['Sources: 2'])
   })
 
   it('flags a failed review', () => {
@@ -79,6 +81,22 @@ describe('answer quality', () => {
     expect(hasMeasuredScores({ groundedness_score: 0, completeness_score: 0, safety_score: 0 })).toBe(false)
     expect(hasMeasuredScores({ groundedness_score: 0.4 })).toBe(true)
     expect(hasMeasuredScores(null)).toBe(false)
+  })
+
+  it('carries the same summary as translation keys, so Hebrew reads natively', () => {
+    const quality = buildAnswerQuality({
+      review: { verdict: 'pass', groundedness_score: 0.91 },
+      sources: [{ source_name: 'a.pdf' }, { source_name: 'b.pdf' }],
+    })
+
+    const hebrew = quality.partKeys.map((part) => translate('he', part.key, part.vars))
+    expect(hebrew).toEqual(['מבוססת על המקורות', 'מקורות: 2', 'בדיקת האיכות עברה'])
+  })
+
+  it('states answerability in Hebrew from the same descriptor', () => {
+    const quality = buildAnswerQuality({ review: null, sources: [] })
+    expect(quality.answerabilityKey).toBe('chat.noSupportingEvidence')
+    expect(translate('he', quality.answerabilityKey)).toBe('לא נמצאו מקורות תומכים')
   })
 
   it('never renders an unmeasured score as a number', () => {

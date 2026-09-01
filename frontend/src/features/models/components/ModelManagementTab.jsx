@@ -22,9 +22,16 @@ import Button from '@/components/ui/Button'
 import Card from '@/components/ui/Card'
 import Input from '@/components/ui/Input'
 import PageHeader from '@/components/ui/PageHeader'
+import TechnicalText from '@/components/ui/TechnicalText'
+import { useI18n } from '@/i18n'
 
-const safeRender = (value) => {
-  if (value === null || value === undefined) return 'N/A'
+/**
+ * Whatever the runtime handed over, as something safe to put on screen.
+ * `missing` is supplied by the caller so the placeholder can be localized
+ * without this helper needing a locale of its own.
+ */
+const safeRender = (value, missing = 'N/A') => {
+  if (value === null || value === undefined) return missing
   if (typeof value === 'object') return JSON.stringify(value)
   return String(value)
 }
@@ -54,6 +61,7 @@ function MetricTile({ icon: Icon, label, value, tone = 'primary', hint }) {
 }
 
 export default function ModelManagementTab() {
+  const { t } = useI18n()
   const [implementations, setImplementations] = useState([])
   const [selectedImplementation, setSelectedImplementation] = useState(null)
   const [implementationInfo, setImplementationInfo] = useState(null)
@@ -89,7 +97,7 @@ export default function ModelManagementTab() {
         }
       }
     } catch (err) {
-      notifyError('Failed to load runtimes', { error: err, onRetry: loadImplementations })
+      notifyError(t('models.loadRuntimesFailed'), { error: err, onRetry: loadImplementations })
     } finally {
       setLoading(false)
     }
@@ -110,7 +118,7 @@ export default function ModelManagementTab() {
       const data = await modelService.listAllModels()
       if (data.models) setModels(data.models)
     } catch (err) {
-      notifyError('Failed to load models', { error: err, onRetry: loadModels })
+      notifyError(t('models.loadModelsFailed'), { error: err, onRetry: loadModels })
     } finally {
       setLoading(false)
     }
@@ -149,22 +157,22 @@ export default function ModelManagementTab() {
             stopPoll()
             setLoading(false)
             if (status.status === 'completed') {
-              notifySuccess(`${model} downloaded`)
+              notifySuccess(t('models.downloaded', { model }))
               loadModels()
             }
           }
         } catch (err) {
           stopPoll()
           setLoading(false)
-          notifyError('Download status check failed', {
+          notifyError(t('models.downloadStatusFailed'), {
             error: err,
-            description: `RAGForge stopped following "${model}". The download may still be running on the server.`,
+            description: t('models.downloadStatusFailedDetail', { model }),
           })
         }
       }, 2000)
       downloadPollsRef.current.add(pollStatus)
     } catch (err) {
-      notifyError('Download failed', {
+      notifyError(t('models.downloadFailed'), {
         error: err,
         onRetry: () => handleDownload(model, implementation),
       })
@@ -187,10 +195,12 @@ export default function ModelManagementTab() {
   return (
     <div className="mx-auto flex h-full min-h-0 w-full max-w-7xl flex-col overflow-y-auto p-3 md:p-6">
       <PageHeader
-        title="Model workspace"
-        description="Choose a runtime, inspect model availability, and manage local downloads."
+        title={t('models.workspace')}
+        description={t('models.workspaceDescription')}
         icon={Cpu}
-        badge={selectedImplementation ? <Badge variant="primary" dot>{selectedImplementation}</Badge> : null}
+        badge={selectedImplementation
+          ? <Badge variant="primary" dot><TechnicalText>{selectedImplementation}</TechnicalText></Badge>
+          : null}
         actions={
           <Button
             variant="secondary"
@@ -199,7 +209,7 @@ export default function ModelManagementTab() {
             disabled={loading}
             leftIcon={<RefreshCw size={13} className={loading ? 'animate-spin' : ''} />}
           >
-            Refresh catalog
+            {t('models.refreshCatalog')}
           </Button>
         }
       />
@@ -207,22 +217,22 @@ export default function ModelManagementTab() {
       <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
         <MetricTile
           icon={Server}
-          label="Active runtime"
-          value={activeImplementation?.display_name || selectedImplementation || 'Not selected'}
-          hint={`${implementations.length} runtime${implementations.length === 1 ? '' : 's'} available`}
+          label={t('models.activeRuntime')}
+          value={activeImplementation?.display_name || selectedImplementation || t('models.notSelected')}
+          hint={t('models.runtimesAvailable', { count: implementations.length })}
         />
         <MetricTile
           icon={Package}
-          label="Model catalog"
+          label={t('models.catalog')}
           value={models.length}
-          hint={`${filteredModels.length} currently shown`}
+          hint={t('models.currentlyShown', { count: filteredModels.length })}
           tone="info"
         />
         <MetricTile
           icon={HardDrive}
-          label="Ready locally"
+          label={t('models.readyLocally')}
           value={downloadedCount}
-          hint="Downloaded and available"
+          hint={t('models.downloadedAvailable')}
           tone="success"
         />
       </div>
@@ -235,8 +245,8 @@ export default function ModelManagementTab() {
                 <Server size={16} />
               </span>
               <div>
-                <h2 className="text-[15px] font-semibold text-text-primary">Inference runtime</h2>
-                <p className="mt-0.5 text-xs text-text-muted">Select the engine used to serve models.</p>
+                <h2 className="text-[15px] font-semibold text-text-primary">{t('models.inferenceRuntime')}</h2>
+                <p className="mt-0.5 text-xs text-text-muted">{t('models.selectEngine')}</p>
               </div>
             </div>
           </div>
@@ -250,7 +260,7 @@ export default function ModelManagementTab() {
                   key={implementation.name}
                   whileTap={{ scale: 0.985 }}
                   onClick={() => handleImplementationChange(implementation.name)}
-                  className="flex w-full items-center gap-3 rounded-xl border p-3 text-left outline-hidden transition-all duration-200 focus-visible:ring-2"
+                  className="flex w-full items-center gap-3 rounded-xl border p-3 text-start outline-hidden transition-all duration-200 focus-visible:ring-2"
                   style={{
                     background: isActive ? 'var(--primary-soft)' : 'var(--surface-hover)',
                     borderColor: isActive ? 'var(--border-focus)' : 'var(--border)',
@@ -264,8 +274,14 @@ export default function ModelManagementTab() {
                     <Icon size={16} />
                   </span>
                   <span className="min-w-0 flex-1">
-                    <span className="block text-[15px] font-semibold text-text-primary">{safeRender(implementation.display_name)}</span>
-                    <span className="mt-0.5 block truncate text-xs text-text-muted">{safeRender(implementation.description)}</span>
+                    {/* Runtime names and their descriptions come from the model
+                        service and are canonical technology names. */}
+                    <span className="block text-[15px] font-semibold text-text-primary">
+                      {safeRender(implementation.display_name, t('models.notAvailableShort'))}
+                    </span>
+                    <span className="mt-0.5 block truncate text-xs text-text-muted">
+                      {safeRender(implementation.description, t('models.notAvailableShort'))}
+                    </span>
                   </span>
                   {isActive ? <CheckCircle size={16} className="shrink-0 text-primary" /> : null}
                 </motion.button>
@@ -274,7 +290,7 @@ export default function ModelManagementTab() {
 
             {!loading && implementations.length === 0 ? (
               <div className="rounded-xl border border-dashed border-border px-3 py-8 text-center text-[13px] text-text-muted">
-                No runtimes are currently available.
+                {t('models.noRuntimes')}
               </div>
             ) : null}
           </div>
@@ -289,7 +305,7 @@ export default function ModelManagementTab() {
               >
                 <div className="p-4">
                   <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-text-muted">
-                    <Sparkles size={11} className="text-primary" /> Capabilities
+                    <Sparkles size={11} className="text-primary" /> {t('models.capabilities')}
                   </div>
                   <div className="flex flex-wrap gap-1.5">
                     {implementationInfo.features.map((feature) => (
@@ -306,15 +322,17 @@ export default function ModelManagementTab() {
           <div className="flex flex-col gap-3 border-b border-border p-4 sm:flex-row sm:items-center">
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
-                <h2 className="text-[15px] font-semibold text-text-primary">Model catalog</h2>
+                <h2 className="text-[15px] font-semibold text-text-primary">{t('models.catalog')}</h2>
                 <Badge variant="default" size="xs">{filteredModels.length}</Badge>
               </div>
-              <p className="mt-0.5 text-xs text-text-muted">Select a model to inspect its runtime details.</p>
+              <p className="mt-0.5 text-xs text-text-muted">{t('models.catalogHint')}</p>
             </div>
             <Input
               value={modelQuery}
               onChange={(event) => setModelQuery(event.target.value)}
-              placeholder="Search models"
+              placeholder={t('models.search')}
+              aria-label={t('models.search')}
+              dir="auto"
               icon={Search}
               size="sm"
               containerClassName="w-full sm:w-64"
@@ -332,13 +350,13 @@ export default function ModelManagementTab() {
                   <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary-soft text-primary">
                     <Search size={19} />
                   </span>
-                  <h3 className="mt-4 text-[15px] font-semibold text-text-primary">No matching models</h3>
-                  <p className="mt-1 text-[13px] text-text-muted">Try a different name or refresh the catalog.</p>
+                  <h3 className="mt-4 text-[15px] font-semibold text-text-primary">{t('models.noMatches')}</h3>
+                  <p className="mt-1 text-[13px] text-text-muted">{t('models.noMatchesDescription')}</p>
                 </div>
               ) : (
                 <div className="space-y-2">
                   {filteredModels.map((model, index) => {
-                    const name = typeof model === 'string' ? model : model.name || model.id || 'Unknown'
+                    const name = typeof model === 'string' ? model : model.name || model.id || t('models.unknown')
                     const isSelected = selectedModel?.name === model.name || selectedModel === model
                     const isDownloaded = typeof model === 'object' && model.downloaded
                     const status = typeof model === 'object' ? model.status || 'available' : 'available'
@@ -352,7 +370,7 @@ export default function ModelManagementTab() {
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ delay: Math.min(index, 8) * 0.025 }}
                         onClick={() => handleModelSelect(model)}
-                        className="flex w-full items-center gap-3 rounded-xl border p-3 text-left outline-hidden transition-all duration-200 hover:border-border-hover hover:bg-bg-tertiary focus-visible:ring-2"
+                        className="flex w-full items-center gap-3 rounded-xl border p-3 text-start outline-hidden transition-all duration-200 hover:border-border-hover hover:bg-bg-tertiary focus-visible:ring-2"
                         style={{
                           background: isSelected ? 'var(--primary-soft)' : 'var(--surface-hover)',
                           borderColor: isSelected ? 'var(--border-focus)' : 'var(--border)',
@@ -365,13 +383,18 @@ export default function ModelManagementTab() {
                           <Package size={15} />
                         </span>
                         <span className="min-w-0 flex-1">
-                          <span className="block truncate text-[13px] font-semibold text-text-primary">{name}</span>
+                          {/* A model id is a repository slug: never reordered. */}
+                          <TechnicalText className="block truncate text-[13px] font-semibold text-text-primary">
+                            {name}
+                          </TechnicalText>
                           <span className="mt-0.5 block text-xs capitalize text-text-muted">
-                            {currentDownload?.status ? `Download ${currentDownload.status}` : status}
+                            {currentDownload?.status
+                              ? t('models.downloadState', { status: currentDownload.status })
+                              : status}
                           </span>
                         </span>
                         <Badge variant={isDownloaded ? 'success' : isSelected ? 'primary' : 'default'} size="xs">
-                          {isDownloaded ? 'Ready' : isSelected ? 'Selected' : 'Remote'}
+                          {t(isDownloaded ? 'models.ready' : isSelected ? 'models.selected' : 'models.remote')}
                         </Badge>
                       </motion.button>
                     )
@@ -380,7 +403,7 @@ export default function ModelManagementTab() {
               )}
             </div>
 
-            <div className="border-t border-border p-4 xl:border-l xl:border-t-0">
+            <div className="border-t border-border p-4 xl:border-s xl:border-t-0">
               {selectedModel ? (
                 <AnimatePresence mode="wait">
                   <motion.div
@@ -392,15 +415,23 @@ export default function ModelManagementTab() {
                     <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-2xl bg-primary-soft text-primary">
                       <Package size={19} />
                     </div>
-                    <div className="label-xs mb-1.5">Selected model</div>
-                    <h3 className="break-words text-[15px] font-semibold text-text-primary">
-                      {safeRender(modelInfo?.name || selectedModel?.name || selectedModel)}
-                    </h3>
+                    <div className="label-xs mb-1.5">{t('models.selectedModel')}</div>
+                    <TechnicalText
+                      as="h3"
+                      className="break-words text-[15px] font-semibold text-text-primary"
+                    >
+                      {safeRender(
+                        modelInfo?.name || selectedModel?.name || selectedModel,
+                        t('models.notAvailableShort')
+                      )}
+                    </TechnicalText>
                     <div className="mt-4 space-y-2.5">
                       {[
-                        ['Runtime', safeRender(modelInfo?.implementation || selectedImplementation)],
-                        ['Status', safeRender(modelInfo?.status || selectedModel?.status || 'available')],
-                        modelInfo?.downloaded !== undefined ? ['Local', modelInfo.downloaded ? 'Yes' : 'No'] : null,
+                        [t('models.runtime'), safeRender(modelInfo?.implementation || selectedImplementation, t('models.notAvailableShort'))],
+                        [t('models.status'), safeRender(modelInfo?.status || selectedModel?.status || 'available', t('models.notAvailableShort'))],
+                        modelInfo?.downloaded !== undefined
+                          ? [t('models.local'), t(modelInfo.downloaded ? 'models.yes' : 'models.no')]
+                          : null,
                       ].filter(Boolean).map(([label, value]) => (
                         <div key={label} className="flex items-center justify-between gap-3 border-b border-border pb-2 text-[13px] last:border-0">
                           <span className="text-text-muted">{label}</span>
@@ -424,7 +455,7 @@ export default function ModelManagementTab() {
                         className="mt-5 w-full"
                         leftIcon={<Download size={13} />}
                       >
-                        Download model
+                        {t('models.download')}
                       </Button>
                     ) : null}
                   </motion.div>
@@ -434,8 +465,10 @@ export default function ModelManagementTab() {
                   <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-bg-tertiary text-text-muted">
                     <Package size={19} />
                   </span>
-                  <h3 className="mt-4 text-[15px] font-semibold text-text-primary">Choose a model</h3>
-                  <p className="mt-1 text-[13px] leading-relaxed text-text-muted">Details and download actions will appear here.</p>
+                  <h3 className="mt-4 text-[15px] font-semibold text-text-primary">{t('models.chooseModel')}</h3>
+                  <p className="mt-1 text-[13px] leading-relaxed text-text-muted">
+                    {t('models.chooseModelDescription')}
+                  </p>
                 </div>
               )}
             </div>

@@ -6,6 +6,7 @@ import { formatDuration } from '@/lib/formatting/datetime'
 import DeepLink from '@/components/observability/DeepLink'
 import { isUsableIdentifier, logsLinkForCorrelation } from '@/lib/observability/deepLinks'
 import { nodeStyle, TechnicalValue, RedactedBlock, Empty } from './shared'
+import { useI18n } from '@/i18n'
 
 /**
  * What counts as an identifier — including the zero-UUID placeholder rule —
@@ -20,6 +21,7 @@ export function usableIdentifiers(entries) {
 
 /** Correlation identifiers and the per-node execution timeline. */
 export default function TraceSection({ identifiers = [], traceEvents = [], debugPayloads = {} }) {
+  const { t } = useI18n()
   const ids = usableIdentifiers(identifiers)
   const structuredCandidates = debugPayloads.output_safety_structured_output_candidates
     ? {
@@ -32,7 +34,7 @@ export default function TraceSection({ identifiers = [], traceEvents = [], debug
     : null
 
   if (!ids.length && !traceEvents.length && !structuredCandidates) {
-    return <Empty label="No trace data for this turn" />
+    return <Empty label={t('inspector.emptyTrace')} />
   }
 
   const totalLatency = traceEvents.reduce(
@@ -65,10 +67,10 @@ export default function TraceSection({ identifiers = [], traceEvents = [], debug
 
       {traceEvents.length ? (
         <>
-          <DataCell reverse center mono label="Total latency" value={formatDuration(totalLatency) || '—'} />
+          <DataCell reverse center mono label={t('inspector.totalLatency')} value={formatDuration(totalLatency) || '—'} />
           <div className="space-y-1.5">
             {traceEvents.map((trace, index) => {
-              const { color, label } = nodeStyle(trace.node)
+              const { color, label } = nodeStyle(trace.node, t)
               const percent = Math.max(4, Math.round(((trace.latency || 0) / maxLatency) * 100))
               const counters = trace.counters && Object.keys(trace.counters).length > 0
                 ? Object.entries(trace.counters)
@@ -82,7 +84,7 @@ export default function TraceSection({ identifiers = [], traceEvents = [], debug
                       <span className="truncate text-[13px] font-medium text-text-primary">{label}</span>
                       {trace.decision && trace.decision !== 'completed' && trace.decision !== trace.node ? (
                         <span className="shrink-0 rounded-full bg-bg-elevated px-1.5 py-0.5 text-xs text-text-muted">
-                          Decision: {trace.decision}
+                          {t('inspector.decision', { value: trace.decision })}
                         </span>
                       ) : null}
                     </div>
@@ -117,7 +119,7 @@ export default function TraceSection({ identifiers = [], traceEvents = [], debug
       ) : null}
 
       {structuredCandidates ? (
-        <RedactedBlock label="Structured output candidates" content={structuredCandidates} />
+        <RedactedBlock label={t('inspector.structuredCandidates')} content={structuredCandidates} />
       ) : null}
     </div>
   )

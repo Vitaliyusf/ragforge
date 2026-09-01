@@ -3,6 +3,7 @@
 import { AlertTriangle, Clock } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { STATUS_TONES, resolveTone } from '@/components/status/statusTone'
+import { useI18n } from '@/i18n'
 
 /**
  * A strip above content that is real but not current.
@@ -19,12 +20,12 @@ const VARIANTS = {
   stale: {
     tone: STATUS_TONES.NEUTRAL,
     icon: Clock,
-    defaultMessage: 'Showing the last data we received.',
+    messageKey: 'error.showingLastData',
   },
   partial: {
     tone: STATUS_TONES.WARNING,
     icon: AlertTriangle,
-    defaultMessage: 'Some sources did not respond, so this view is incomplete.',
+    messageKey: 'error.partialSources',
   },
 }
 
@@ -34,6 +35,7 @@ export default function StaleNotice({
   action,
   className = '',
 }) {
+  const { t } = useI18n()
   const config = VARIANTS[variant] ?? VARIANTS.stale
   const tone = resolveTone(config.tone)
   const Icon = config.icon
@@ -50,7 +52,7 @@ export default function StaleNotice({
       style={{ color: tone.fg, background: tone.bg, borderColor: tone.border }}
     >
       <Icon size={14} aria-hidden="true" className="shrink-0" />
-      <span className="min-w-0 flex-1 text-start">{message ?? config.defaultMessage}</span>
+      <span className="min-w-0 flex-1 text-start">{message ?? t(config.messageKey)}</span>
       {action}
     </div>
   )

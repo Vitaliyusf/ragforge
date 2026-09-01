@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ChevronLeft, ChevronRight, FolderOpen, Loader2, Search, Upload } from 'lucide-react'
+import { useI18n } from '@/i18n'
 import { notifyCritical, notifyError, notifySuccess } from '@/lib/notify'
 import { useFiles } from '@/features/files'
 import { ACTIVITY_FEATURES, useLiveActivitySource } from '@/features/activity'
@@ -60,6 +61,7 @@ async function runBulk(ids, operation, limit = BULK_CONCURRENCY) {
 }
 
 export default function FilesTab({ intent = null }) {
+  const { isRTL, t } = useI18n()
   // useFiles already refreshes the shared file list every few seconds, so the
   // nav's background poll stands down for as long as this tab is open.
   useLiveActivitySource(ACTIVITY_FEATURES.FILES)
@@ -149,13 +151,13 @@ export default function FilesTab({ intent = null }) {
     if (!filesToUpload?.length) return
     try {
       await uploadFiles(Array.from(filesToUpload))
-      notifySuccess('Upload accepted', {
-        description: `${filesToUpload.length} document(s) queued for ingestion.`,
+      notifySuccess(t('knowledge.uploadAccepted'), {
+        description: t('knowledge.uploadQueued', { count: filesToUpload.length }),
       })
     } catch (error) {
-      notifyError('Upload failed', { error, onRetry: () => handleUpload(filesToUpload) })
+      notifyError(t('knowledge.uploadFailed'), { error, onRetry: () => handleUpload(filesToUpload) })
     }
-  }, [uploadFiles])
+  }, [uploadFiles, t])
 
   const handleInputUpload = useCallback(async (event) => {
     const selectedFiles = Array.from(event.target.files || [])
@@ -206,19 +208,19 @@ export default function FilesTab({ intent = null }) {
     try {
       await openReview(fileId)
     } catch (error) {
-      notifyError('Review case unavailable', { error, onRetry: () => handleOpenReview(fileId) })
+      notifyError(t('knowledge.reviewUnavailable'), { error, onRetry: () => handleOpenReview(fileId) })
     }
-  }, [openReview])
+  }, [openReview, t])
 
   const handleSubmitDecision = useCallback(async (fileId, payload) => {
     try {
       await submitReviewDecision(fileId, payload)
-      notifySuccess('Review decision submitted')
+      notifySuccess(t('knowledge.decisionSubmitted'))
     } catch (error) {
-      notifyError('Decision failed', { error })
+      notifyError(t('knowledge.decisionFailed'), { error })
       throw error
     }
-  }, [submitReviewDecision])
+  }, [submitReviewDecision, t])
 
   // Delete — single row or selection — always passes through one confirmation.
   const requestDelete = useCallback((file) => setPendingDelete({ files: [file] }), [])
@@ -247,25 +249,29 @@ export default function FilesTab({ intent = null }) {
         // A partial delete leaves the list in a state the user has to
         // reconcile by hand, so it does not auto-dismiss the way a clean
         // success does.
-        notifyCritical('Some documents were not deleted', {
-          description: `${succeeded} deleted, ${failed} failed. The failed documents are still listed.`,
+        notifyCritical(t('knowledge.someNotDeleted'), {
+          description: t('knowledge.partialDelete', { succeeded, failed }),
         })
       } else {
-        notifySuccess(succeeded === 1 ? 'Document deleted' : `${succeeded} documents deleted`)
+        notifySuccess(
+          succeeded === 1
+            ? t('knowledge.documentDeleted')
+            : t('knowledge.documentsDeleted', { count: succeeded })
+        )
       }
     } finally {
       setBulkBusy(false)
       setPendingDelete(null)
     }
-  }, [pendingDelete, deleteFile, notifyFilesChanged, loadFiles, activeFileId, handleCloseDocument])
+  }, [pendingDelete, deleteFile, notifyFilesChanged, loadFiles, activeFileId, handleCloseDocument, t])
 
   const deleteCount = pendingDelete?.files?.length || 0
 
   return (
     <div className="mx-auto flex h-full min-h-0 w-full max-w-[1600px] flex-col p-3 md:p-6">
       <PageHeader
-        title="Documents"
-        description="Every uploaded document, its ingestion state, and what to do about it."
+        title={t('knowledge.documents')}
+        description={t('knowledge.description')}
         icon={FolderOpen}
         badge={<Badge variant="default">{files.length}</Badge>}
       />
@@ -280,8 +286,8 @@ export default function FilesTab({ intent = null }) {
         {dragActive ? (
           <div className="pointer-events-none absolute inset-2 z-30 flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-primary bg-primary-soft backdrop-blur-xs">
             <Upload size={26} className="text-primary" />
-            <p className="mt-2 text-[15px] font-medium text-primary">Drop to upload</p>
-            <p className="mt-1 text-xs text-fg-muted">PDF · DOCX · TXT · MD — up to 50 MB</p>
+            <p className="mt-2 text-[15px] font-medium text-primary">{t('knowledge.dropToUpload')}</p>
+            <p className="mt-1 text-xs text-fg-muted">{t('knowledge.acceptedTypes')}</p>
           </div>
         ) : null}
 
@@ -311,15 +317,15 @@ export default function FilesTab({ intent = null }) {
           {loading && files.length === 0 ? (
             <p className="flex items-center gap-2 px-5 py-6 text-[15px] text-fg-muted">
               <Loader2 size={14} className="animate-spin" />
-              Loading documents…
+              {t('knowledge.loading')}
             </p>
           ) : null}
 
           {!loading && files.length === 0 ? (
             <EmptyState
               icon={Upload}
-              title="No documents yet"
-              description="Upload a document to start the ingestion pipeline. Each stage is tracked individually."
+              title={t('knowledge.empty')}
+              description={t('knowledge.emptyDescriptionLong')}
             />
           ) : null}
 
@@ -327,15 +333,15 @@ export default function FilesTab({ intent = null }) {
             <EmptyState
               icon={Search}
               size="sm"
-              title="No matching documents"
-              description="Try another search term or a different status."
+              title={t('knowledge.noMatches')}
+              description={t('knowledge.noMatchesDescription')}
               action={
                 <button
                   type="button"
                   onClick={() => { setQuery(''); setStatusFilter('all'); setPage(1) }}
                   className="text-[13px] font-medium text-primary hover:underline"
                 >
-                  Clear filters
+                  {t('common.clearFilters')}
                 </button>
               }
             />
@@ -362,33 +368,39 @@ export default function FilesTab({ intent = null }) {
 
         {pageCount > 1 ? (
           <nav
-            aria-label="Document pages"
+            aria-label={t('knowledge.pages')}
             className="flex items-center justify-between gap-3 border-t border-border px-4 py-2 md:px-5"
           >
             <p className="text-[13px] text-fg-soft" role="status" aria-live="polite">
-              Showing {pageStart + 1}–{Math.min(pageStart + PAGE_SIZE, documents.length)} of {documents.length}
+              {t('knowledge.showingRange', {
+                from: pageStart + 1,
+                to: Math.min(pageStart + PAGE_SIZE, documents.length),
+                total: documents.length,
+              })}
             </p>
             <div className="flex items-center gap-1">
               <button
                 type="button"
                 onClick={() => setPage(currentPage - 1)}
                 disabled={currentPage === 1}
-                aria-label="Previous page"
+                aria-label={t('knowledge.previousPage')}
                 className="flex h-7 w-7 items-center justify-center rounded-lg border border-border text-fg-muted transition-colors hover:text-fg disabled:opacity-40"
               >
-                <ChevronLeft size={14} />
+                {/* Previous and next are directional: in Hebrew the
+                    chevrons swap so they point the way the reader reads. */}
+                {isRTL ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
               </button>
               <span className="px-1.5 text-[13px] tabular-nums text-fg-muted">
-                Page {currentPage} of {pageCount}
+                {t('knowledge.pageOf', { page: currentPage, total: pageCount })}
               </span>
               <button
                 type="button"
                 onClick={() => setPage(currentPage + 1)}
                 disabled={currentPage === pageCount}
-                aria-label="Next page"
+                aria-label={t('knowledge.nextPage')}
                 className="flex h-7 w-7 items-center justify-center rounded-lg border border-border text-fg-muted transition-colors hover:text-fg disabled:opacity-40"
               >
-                <ChevronRight size={14} />
+                {isRTL ? <ChevronLeft size={14} /> : <ChevronRight size={14} />}
               </button>
             </div>
           </nav>
@@ -420,16 +432,22 @@ export default function FilesTab({ intent = null }) {
       <ConfirmModal
         open={Boolean(pendingDelete)}
         onOpenChange={(next) => { if (!next) setPendingDelete(null) }}
-        title={deleteCount > 1 ? `Delete ${deleteCount} documents?` : 'Delete this document?'}
+        title={
+          deleteCount > 1
+            ? t('knowledge.deleteManyTitle', { count: deleteCount })
+            : t('knowledge.deleteOneTitle')
+        }
         // The files service deletes the record and its chunks, and asks the
         // vector service to drop the vectors — so this is what it claims.
         description={
           deleteCount === 1
-            ? `"${pendingDelete?.files[0]?.filename}" and its searchable index will be removed. This cannot be undone.`
-            : `${deleteCount} documents and their searchable index entries will be removed. This cannot be undone.`
+            ? t('knowledge.deleteOneDescription', { name: pendingDelete?.files[0]?.filename })
+            : t('knowledge.deleteManyDescription', { count: deleteCount })
         }
-        confirmLabel={deleteCount > 1 ? `Delete ${deleteCount}` : 'Delete'}
-        cancelLabel="Cancel"
+        confirmLabel={
+          deleteCount > 1 ? t('knowledge.deleteManyConfirm', { count: deleteCount }) : t('common.delete')
+        }
+        cancelLabel={t('common.cancel')}
         onConfirm={confirmDelete}
         variant="danger"
         loading={bulkBusy}

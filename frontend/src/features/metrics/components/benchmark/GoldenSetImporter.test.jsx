@@ -51,7 +51,7 @@ describe('GoldenSetImporter', () => {
     setup()
     const content = '[{"query":"Refund?","relevant_file_ids":["f-1"]}]'
 
-    const textarea = screen.getByRole('textbox', { name: 'Golden Set content' })
+    const textarea = screen.getByRole('textbox', { name: 'Golden set content' })
     textarea.focus()
     await user.paste(content)
     await validate(user)
@@ -66,7 +66,7 @@ describe('GoldenSetImporter', () => {
     const file = new File([content], 'golden.json', { type: 'application/json' })
 
     await user.upload(screen.getByLabelText('Upload JSON or JSONL'), file)
-    await waitFor(() => expect(screen.getByRole('textbox', { name: 'Golden Set content' })).toHaveValue(content))
+    await waitFor(() => expect(screen.getByRole('textbox', { name: 'Golden set content' })).toHaveValue(content))
     await validate(user)
 
     expect(validateGoldenSet).toHaveBeenCalledWith({ content, format: 'json' })
@@ -98,7 +98,7 @@ describe('GoldenSetImporter', () => {
     const user = userEvent.setup()
     setup()
 
-    const textarea = screen.getByRole('textbox', { name: 'Golden Set content' })
+    const textarea = screen.getByRole('textbox', { name: 'Golden set content' })
     textarea.focus()
     await user.paste('[{"query":]')
     await validate(user)
@@ -111,7 +111,7 @@ describe('GoldenSetImporter', () => {
     const user = userEvent.setup()
     setup()
 
-    const textarea = screen.getByRole('textbox', { name: 'Golden Set content' })
+    const textarea = screen.getByRole('textbox', { name: 'Golden set content' })
     textarea.focus()
     await user.paste('{}')
     await validate(user)
@@ -143,26 +143,26 @@ describe('GoldenSetImporter', () => {
     const user = userEvent.setup()
     setup()
 
-    const textarea = screen.getByRole('textbox', { name: 'Golden Set content' })
+    const textarea = screen.getByRole('textbox', { name: 'Golden set content' })
     textarea.focus()
     await user.paste('{}')
     await validate(user)
 
     expect(await screen.findByText(/0 chunk-ready \/ 1 file fallback/)).toBeInTheDocument()
     expect(screen.getByText(/file-level evaluation remains available/i)).toBeInTheDocument()
-    expect(screen.getByText('Golden Set is valid')).toBeInTheDocument()
+    expect(screen.getByText('Golden set is valid')).toBeInTheDocument()
   })
 
   it('renders valid and invalid totals for a valid result', async () => {
     const user = userEvent.setup()
     setup()
 
-    const textarea = screen.getByRole('textbox', { name: 'Golden Set content' })
+    const textarea = screen.getByRole('textbox', { name: 'Golden set content' })
     textarea.focus()
     await user.paste('{}')
     await validate(user)
 
-    expect(await screen.findByText('Golden Set is valid')).toBeInTheDocument()
+    expect(await screen.findByText('Golden set is valid')).toBeInTheDocument()
     expect(screen.getByText('1 ready · 0 unresolved · 0 ambiguous · 0 unanswerable')).toBeInTheDocument()
     expect(screen.getByText('1 valid · 0 invalid · 1 total')).toBeInTheDocument()
   })

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef } from 'react'
 import { notifyError, notifySuccess } from '@/lib/notify'
+import { useI18n } from '@/i18n'
 import ActivityIndicator from './ActivityIndicator'
 import ChatWelcome from './ChatWelcome'
 import MessageBubble from './MessageBubble'
@@ -23,6 +24,7 @@ export default function MessageList({
   onAnswerFeedback,
   activityStatus,
 }) {
+  const { t } = useI18n()
   const messagesEndRef = useRef(null)
   const prevLengthRef = useRef(0)
 
@@ -37,12 +39,12 @@ export default function MessageList({
     // `writeText` rejects outside a secure context and when the permission
     // is denied. Swallowing that left the user believing they had copied.
     navigator.clipboard.writeText(text)
-      .then(() => notifySuccess('Copied to clipboard'))
-      .catch((error) => notifyError('Could not copy', {
+      .then(() => notifySuccess(t('chat.copied')))
+      .catch((error) => notifyError(t('chat.copyFailed'), {
         error,
-        description: 'Your browser blocked clipboard access. Select the text and copy it manually.',
+        description: t('chat.copyFailedDetail'),
       }))
-  }, [])
+  }, [t])
 
   return (
     <div

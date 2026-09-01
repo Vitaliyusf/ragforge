@@ -21,7 +21,6 @@ import {
 } from '@/components/observability/MetricMeta'
 import {
   METRIC_SOURCE,
-  PLATFORM_SCOPE_NOTE,
   describeMetric,
   describeScope,
 } from '@/lib/observability/metricMeta'
@@ -33,6 +32,7 @@ import {
   WINDOW_OPTIONS,
   formatTimestamp,
 } from './metricsConfig'
+import { useI18n } from '@/i18n'
 
 /** Sentinel for "whichever tenant the caller belongs to". */
 const OWN_TENANT = '__own__'
@@ -48,6 +48,7 @@ const OWN_TENANT = '__own__'
 const RELOCATED_SECTIONS = { eval: 'eval' }
 
 export default function MetricsTab({ section: requestedSection, onNavigate }) {
+  const { locale, t } = useI18n()
   const relocatedTo = RELOCATED_SECTIONS[requestedSection]
   const known = METRICS_SECTIONS.some((entry) => entry.id === requestedSection)
   const [section, setSection] = useState(known ? requestedSection : METRICS_SECTIONS[0].id)
@@ -91,29 +92,30 @@ export default function MetricsTab({ section: requestedSection, onNavigate }) {
     sampleNoun: sampler?.noun,
     loading: loading && !data,
     error,
+    t,
   })
 
   // The tenant selector above does not reach the Prometheus widgets. Saying
   // so beside the selector — not only in each widget's own description — is
   // what stops a platform number being read as this tenant's.
   const platformScope = PROMETHEUS_SECTIONS.has(section)
-    ? describeScope({ source: METRIC_SOURCE.PROMETHEUS, prometheusScope })
+    ? describeScope({ source: METRIC_SOURCE.PROMETHEUS, prometheusScope, t })
     : null
 
   return (
     <div className="mx-auto flex h-full w-full max-w-7xl flex-col gap-5 overflow-y-auto px-3 py-4 md:px-6 md:py-5">
       <PageHeader
-        title="Metrics"
+        title={t('metrics.title')}
         description={
           lastUpdated
-            ? `Last updated ${formatTimestamp(lastUpdated)}`
-            : 'Latency, throughput and answer quality for this workspace'
+            ? t('metrics.lastUpdated', { time: formatTimestamp(lastUpdated, locale) })
+            : t('metrics.subtitle')
         }
         icon={BarChart3}
         badge={
           !promAvailable && (
             <Badge variant="warning" dot>
-              Metrics store unavailable
+              {t('metrics.storeUnavailable')}
             </Badge>
           )
         }
@@ -123,11 +125,11 @@ export default function MetricsTab({ section: requestedSection, onNavigate }) {
               value={windowRange}
               onValueChange={setWindowRange}
               className="w-[168px]"
-              aria-label="Time window"
+              aria-label={t('metrics.timeWindow')}
             >
               {WINDOW_OPTIONS.map((option) => (
                 <SelectItem key={option.value} value={option.value}>
-                  {option.label}
+                  {t(option.labelKey)}
                 </SelectItem>
               ))}
             </Select>
@@ -138,9 +140,9 @@ export default function MetricsTab({ section: requestedSection, onNavigate }) {
               value={tenant}
               onValueChange={setTenant}
               className="w-[168px]"
-              aria-label="Tenant"
+              aria-label={t('metrics.tenant')}
             >
-              <SelectItem value={OWN_TENANT}>Current tenant</SelectItem>
+              <SelectItem value={OWN_TENANT}>{t('metrics.currentTenant')}</SelectItem>
               {tenantId ? <SelectItem value={tenantId}>{tenantId}</SelectItem> : null}
             </Select>
 
@@ -151,7 +153,7 @@ export default function MetricsTab({ section: requestedSection, onNavigate }) {
               disabled={loading}
               leftIcon={<RefreshCw size={13} className={loading ? 'animate-spin' : ''} />}
             >
-              Refresh
+              {t('common.refresh')}
             </Button>
           </div>
         }
@@ -164,15 +166,15 @@ export default function MetricsTab({ section: requestedSection, onNavigate }) {
         {platformScope ? (
           <FilterScopeNote>
             <ScopeBadge scope={platformScope} className="me-1.5 align-middle" />
-            The tenant filter does not apply to these. {PLATFORM_SCOPE_NOTE}
+            {t('metrics.tenantFilterNote')} {t('meta.platformScopeNote')}
           </FilterScopeNote>
         ) : null}
       </div>
 
       {/* Sub-nav, driven entirely by METRICS_SECTIONS. */}
-      <nav aria-label="Metrics sections">
+      <nav aria-label={t('metrics.sections')}>
         <ul className="flex flex-wrap gap-1.5">
-          {METRICS_SECTIONS.map(({ id, label, icon: Icon }) => {
+          {METRICS_SECTIONS.map(({ id, labelKey, icon: Icon }) => {
             const active = id === section
             return (
               <li key={id}>
@@ -191,7 +193,7 @@ export default function MetricsTab({ section: requestedSection, onNavigate }) {
                   }}
                 >
                   <Icon size={14} />
-                  {label}
+                  {t(labelKey)}
                 </button>
               </li>
             )
@@ -213,6 +215,7 @@ export default function MetricsTab({ section: requestedSection, onNavigate }) {
  * overview request cannot blank the rest of the tab.
  */
 function OverviewSection({ data, loading, error, promAvailable, onRetry }) {
+  const { t } = useI18n()
   if (loading && !data) return <TabSkeleton />
 
   if (error) {
@@ -230,7 +233,7 @@ function OverviewSection({ data, loading, error, promAvailable, onRetry }) {
           {error}
         </span>
         <Button variant="secondary" size="sm" onClick={onRetry}>
-          Retry
+          {t('common.retry')}
         </Button>
       </div>
     )

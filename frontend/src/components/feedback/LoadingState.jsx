@@ -3,6 +3,7 @@
 import { Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { usePrefersReducedMotion } from '@/lib/accessibility/usePrefersReducedMotion'
+import { useI18n } from '@/i18n'
 
 /**
  * "We are fetching this, it is not broken and it is not empty."
@@ -15,10 +16,11 @@ import { usePrefersReducedMotion } from '@/lib/accessibility/usePrefersReducedMo
  * transition out of the loading state does not shift the layout.
  */
 export default function LoadingState({
-  label = 'Loading…',
+  label,
   minHeight,
   className = '',
 }) {
+  const { t } = useI18n()
   const reducedMotion = usePrefersReducedMotion()
 
   return (
@@ -36,7 +38,7 @@ export default function LoadingState({
         style={{ color: 'var(--fg-soft)' }}
       />
       <p className="text-[13px]" style={{ color: 'var(--fg-muted)' }}>
-        {label}
+        {label ?? t('common.loading')}
       </p>
     </div>
   )

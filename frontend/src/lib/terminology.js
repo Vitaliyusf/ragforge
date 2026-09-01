@@ -34,18 +34,29 @@ export function serviceLabel(name) {
   return SERVICE_LABELS[name] || name
 }
 
-/** Product concepts, as named in navigation, headings and body copy. */
-export const PRODUCT_LABELS = Object.freeze({
-  knowledge: 'Knowledge',
-  chat: 'Chat',
-  eval: 'Eval',
-  metrics: 'Metrics',
-  models: 'Models',
-  logs: 'Logs',
-  health: 'Health',
-  users: 'Users',
-  settings: 'Settings',
-  memory: 'Memory',
-  upload: 'Upload',
-  training: 'Training',
+/**
+ * Product concepts → the translation key that names them.
+ *
+ * The names themselves moved into `src/i18n/messages/*`. This table is what
+ * stops them being re-spelled per surface: navigation, the activity popover
+ * and any heading that needs a destination's name all resolve the same key,
+ * so a rename lands everywhere at once and Hebrew cannot drift from English.
+ *
+ * Keys, not strings, because this module has no React context to read and
+ * must stay callable from plain utilities — the component resolves the key at
+ * render time, where the active locale is known.
+ */
+export const PRODUCT_LABEL_KEYS = Object.freeze({
+  knowledge: 'nav.knowledge',
+  chat: 'nav.chat',
+  eval: 'nav.eval',
+  metrics: 'nav.metrics',
+  models: 'nav.models',
+  logs: 'nav.logs',
+  health: 'nav.health',
+  users: 'nav.users',
+  settings: 'nav.settings',
+  memory: 'nav.memory',
+  upload: 'nav.upload',
+  training: 'nav.training',
 })

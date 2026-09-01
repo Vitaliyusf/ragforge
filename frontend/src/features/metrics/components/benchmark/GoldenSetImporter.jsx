@@ -6,6 +6,9 @@ import Input, { Textarea } from '@/components/ui/Input'
 import Modal from '@/components/ui/Modal'
 import metricsService from '../../services/metricsService'
 import GoldenSetValidationResult from './GoldenSetValidationResult'
+import { useI18n } from '@/i18n'
+import { DEFAULT_LOCALE } from '@/i18n/locale'
+import { translate } from '@/i18n/translate'
 
 export const MAX_GOLDEN_SET_BYTES = 5 * 1024 * 1024
 
@@ -17,12 +20,13 @@ function readFile(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
     reader.onload = () => resolve(String(reader.result || ''))
-    reader.onerror = () => reject(new Error('The selected file could not be read.'))
+    reader.onerror = () => reject(new Error(translate(DEFAULT_LOCALE, 'importer.fileUnreadable')))
     reader.readAsText(file, 'UTF-8')
   })
 }
 
 export default function GoldenSetImporter({ open, onOpenChange, onSubmit, busy = false, error }) {
+  const { t } = useI18n()
   const fileInputRef = useRef(null)
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
@@ -58,12 +62,12 @@ export default function GoldenSetImporter({ open, onOpenChange, onSubmit, busy =
     invalidate()
     if (!/\.(json|jsonl)$/i.test(file.name)) {
       setContent('')
-      setLocalError('Choose a .json or .jsonl file.')
+      setLocalError(t('importer.wrongExtension'))
       return
     }
     if (file.size > MAX_GOLDEN_SET_BYTES) {
       setContent('')
-      setLocalError('The selected file is larger than the 5 MiB limit.')
+      setLocalError(t('importer.fileTooLarge'))
       return
     }
     try {
@@ -80,7 +84,7 @@ export default function GoldenSetImporter({ open, onOpenChange, onSubmit, busy =
     if (!content.trim()) return
     if (utf8Size(content) > MAX_GOLDEN_SET_BYTES) {
       setValidation(null)
-      setLocalError('Golden Set content is larger than the 5 MiB limit.')
+      setLocalError(t('importer.contentTooLarge'))
       return
     }
     setValidating(true)
@@ -94,7 +98,7 @@ export default function GoldenSetImporter({ open, onOpenChange, onSubmit, busy =
       )
     } catch (error) {
       setValidation(null)
-      setLocalError(error?.message || 'The server could not validate this Golden Set.')
+      setLocalError(error?.message || t('importer.validateFailed'))
     } finally {
       setValidating(false)
     }
@@ -114,17 +118,20 @@ export default function GoldenSetImporter({ open, onOpenChange, onSubmit, busy =
   }
 
   return (
-    <Modal open={open} onOpenChange={handleOpenChange} title="Import a golden set" size="lg">
+    <Modal open={open} onOpenChange={handleOpenChange} title={t('importer.title')} size="lg">
       <div className="flex flex-col gap-3">
         <Input
-          label="Name"
-          aria-label="Name"
+          label={t('importer.name')}
+          aria-label={t('importer.name')}
+          // A dataset name is the reader's own; a description likewise.
+          dir="auto"
           value={name}
           onChange={(event) => setName(event.target.value)}
         />
         <Input
-          label="Description"
-          aria-label="Description"
+          label={t('importer.description')}
+          aria-label={t('importer.description')}
+          dir="auto"
           value={description}
           onChange={(event) => setDescription(event.target.value)}
         />
@@ -132,7 +139,7 @@ export default function GoldenSetImporter({ open, onOpenChange, onSubmit, busy =
         <div className="grid gap-3 sm:grid-cols-[1fr_140px]">
           <div className="flex flex-col gap-1">
             <label htmlFor="golden-set-file" className="text-[13px] font-medium" style={{ color: 'var(--fg-muted)' }}>
-              Upload JSON or JSONL
+              {t('importer.uploadLabel')}
             </label>
             <input
               ref={fileInputRef}
@@ -142,12 +149,12 @@ export default function GoldenSetImporter({ open, onOpenChange, onSubmit, busy =
               onChange={handleFile}
               disabled={busy || validating}
               aria-describedby="golden-set-size-hint"
-              className="text-[13px] file:mr-3 file:rounded-lg file:border file:border-[var(--border)] file:bg-[var(--secondary)] file:px-3 file:py-1.5 file:text-[13px] file:text-[var(--fg-muted)]"
+              className="text-[13px] file:me-3 file:rounded-lg file:border file:border-[var(--border)] file:bg-[var(--secondary)] file:px-3 file:py-1.5 file:text-[13px] file:text-[var(--fg-muted)]"
             />
           </div>
           <div className="flex flex-col gap-1">
             <label htmlFor="golden-set-format" className="text-[13px] font-medium" style={{ color: 'var(--fg-muted)' }}>
-              Pasted format
+              {t('importer.pastedFormat')}
             </label>
             <select
               id="golden-set-format"
@@ -165,12 +172,15 @@ export default function GoldenSetImporter({ open, onOpenChange, onSubmit, busy =
           </div>
         </div>
         <p id="golden-set-size-hint" className="text-[12px]" style={{ color: 'var(--fg-soft)' }}>
-          Maximum 5 MiB. Selecting a file copies its text below so it can be reviewed.
+          {t('importer.sizeHint')}
         </p>
 
         <Textarea
-          label="Golden Set content"
-          aria-label="Golden Set content"
+          label={t('importer.content')}
+          aria-label={t('importer.content')}
+          // JSON is a technical artifact: LTR and left-aligned always.
+          dir="ltr"
+          className="text-left"
           rows={10}
           value={content}
           onChange={(event) => {
@@ -185,11 +195,11 @@ export default function GoldenSetImporter({ open, onOpenChange, onSubmit, busy =
 
         <div className="flex flex-wrap justify-between gap-2">
           <Button variant="ghost" onClick={reset} disabled={busy || validating}>
-            Clear
+            {t('common.clear')}
           </Button>
           <div className="flex gap-2">
             <Button variant="secondary" onClick={() => handleOpenChange(false)} disabled={busy || validating}>
-              Cancel
+              {t('common.cancel')}
             </Button>
             <Button
               variant="secondary"
@@ -197,14 +207,14 @@ export default function GoldenSetImporter({ open, onOpenChange, onSubmit, busy =
               loading={validating}
               disabled={busy || !content.trim()}
             >
-              Validate
+              {t('importer.validate')}
             </Button>
             <Button
               onClick={handleImport}
               loading={busy}
               disabled={!validation?.valid || !name.trim() || validating}
             >
-              Import validated set
+              {t('importer.import')}
             </Button>
           </div>
         </div>

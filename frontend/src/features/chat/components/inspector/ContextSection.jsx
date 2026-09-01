@@ -1,6 +1,7 @@
 'use client'
 
 import { RedactedBlock, Empty } from './shared'
+import { useI18n } from '@/i18n'
 
 /**
  * What the model was given to work from: the assembled passage context, the
@@ -8,15 +9,16 @@ import { RedactedBlock, Empty } from './shared'
  * query. All of it can echo private documents, so all of it starts hidden.
  */
 export default function ContextSection({ debugPayloads = {}, historySent }) {
+  const { t } = useI18n()
   const blocks = [
-    { label: 'Retrieved context', content: debugPayloads.generation_context },
-    { label: 'Conversation history sent', content: historySent },
-    { label: 'Query rewrite', content: debugPayloads.rewrite_response },
-    { label: 'Generation instructions', content: debugPayloads.generation_instructions },
+    { label: t('inspector.retrievedContext'), content: debugPayloads.generation_context },
+    { label: t('inspector.historySent'), content: historySent },
+    { label: t('inspector.queryRewrite'), content: debugPayloads.rewrite_response },
+    { label: t('inspector.generationInstructions'), content: debugPayloads.generation_instructions },
   ].filter((block) => block.content != null && block.content !== '')
 
   if (!blocks.length) {
-    return <Empty label="No context payloads for this turn" />
+    return <Empty label={t('inspector.emptyContext')} />
   }
 
   return (

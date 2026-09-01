@@ -12,6 +12,7 @@ import {
   formatFingerprint,
   formatTimestamp,
 } from '@/features/metrics/components/metricsConfig'
+import { useI18n } from '@/i18n'
 
 /**
  * Which dataset the run will score, and what is in it.
@@ -31,6 +32,7 @@ export default function EvalSetupCard({
   onImport,
   onDelete,
 }) {
+  const { locale, t } = useI18n()
   const [confirmDelete, setConfirmDelete] = useState(false)
   const fingerprint = dataset?.dataset_sha256
 
@@ -38,8 +40,8 @@ export default function EvalSetupCard({
     <Card padding="sm">
       <CardHeader
         className="mb-3"
-        title="Evaluation setup"
-        description="Scored against hand-labelled ground truth, not live traffic."
+        title={t('evalSetup.title')}
+        description={t('evalSetup.description')}
         action={
           <div className="flex items-center gap-2">
             <Button
@@ -48,7 +50,7 @@ export default function EvalSetupCard({
               onClick={onImport}
               leftIcon={<Upload size={13} />}
             >
-              Import
+              {t('evalSetup.import')}
             </Button>
             <DatasetActions
               disabled={busy || running || !datasetId}
@@ -63,7 +65,7 @@ export default function EvalSetupCard({
           value={datasetId}
           onValueChange={onSelect}
           className="w-full sm:w-[248px]"
-          aria-label="Golden set"
+          aria-label={t('evalSetup.goldenSet')}
         >
           {datasets.map((entry) => (
             <SelectItem key={entry.dataset_id} value={entry.dataset_id}>
@@ -73,13 +75,13 @@ export default function EvalSetupCard({
         </Select>
 
         <dl className="flex min-w-0 flex-wrap items-center gap-x-6 gap-y-3">
-          <Fact label="Items" value={formatCount(dataset?.item_count)} />
+          <Fact label={t('evalSetup.items')} value={formatCount(dataset?.item_count)} />
           <Fact
-            label="Version"
+            label={t('evalSetup.version')}
             value={dataset?.dataset_version ? `v${dataset.dataset_version}` : EMPTY}
           />
           <Fact
-            label="Fingerprint"
+            label={t('evalSetup.fingerprint')}
             value={
               fingerprint ? (
                 // Twelve characters tell two label sets apart by eye; the
@@ -93,8 +95,8 @@ export default function EvalSetupCard({
             }
           />
           <Fact
-            label="Last run"
-            value={dataset?.last_run_at ? formatTimestamp(dataset.last_run_at) : EMPTY}
+            label={t('evalSetup.lastRun')}
+            value={dataset?.last_run_at ? formatTimestamp(dataset.last_run_at, locale) : EMPTY}
           />
         </dl>
       </div>
@@ -102,13 +104,12 @@ export default function EvalSetupCard({
       <ConfirmModal
         open={confirmDelete}
         onOpenChange={setConfirmDelete}
-        title="Delete this golden set?"
-        description={
-          `${dataset?.name || 'This dataset'} and its ${formatCount(dataset?.item_count)} ` +
-          'hand-labelled items are removed for this workspace. Runs already ' +
-          'recorded against it keep their own snapshot of the labels they scored.'
-        }
-        confirmLabel="Delete golden set"
+        title={t('evalSetup.deleteTitle')}
+        description={t('evalSetup.deleteDescription', {
+          name: dataset?.name || t('evalSetup.thisDataset'),
+          count: formatCount(dataset?.item_count),
+        })}
+        confirmLabel={t('evalSetup.deleteConfirm')}
         variant="danger"
         onConfirm={() => onDelete?.(datasetId)}
       />
@@ -134,6 +135,7 @@ function Fact({ label, value }) {
  * things to learn.
  */
 function DatasetActions({ disabled, onDelete }) {
+  const { t } = useI18n()
   const [open, setOpen] = useState(false)
   const ref = useRef(null)
 
@@ -158,7 +160,7 @@ function DatasetActions({ disabled, onDelete }) {
       <Button
         variant="ghost"
         size="icon-sm"
-        aria-label="Dataset actions"
+        aria-label={t('evalSetup.actions')}
         aria-haspopup="menu"
         aria-expanded={open}
         disabled={disabled}
@@ -170,7 +172,7 @@ function DatasetActions({ disabled, onDelete }) {
       {open && (
         <div
           role="menu"
-          className="absolute right-0 top-full z-50 mt-1.5 w-52 overflow-hidden rounded-xl border p-1"
+          className="absolute end-0 top-full z-50 mt-1.5 w-52 overflow-hidden rounded-xl border p-1"
           style={{
             background: 'var(--surface-elevated)',
             borderColor: 'var(--border)',
@@ -184,11 +186,11 @@ function DatasetActions({ disabled, onDelete }) {
               setOpen(false)
               onDelete()
             }}
-            className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-[13px] font-medium transition-colors hover:bg-[var(--danger-soft)] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+            className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-start text-[13px] font-medium transition-colors hover:bg-[var(--danger-soft)] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
             style={{ color: 'var(--danger)' }}
           >
             <Trash2 size={13} />
-            Delete golden set
+            {t('evalSetup.deleteConfirm')}
           </button>
         </div>
       )}

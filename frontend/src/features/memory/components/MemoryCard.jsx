@@ -5,6 +5,8 @@ import { motion } from 'framer-motion'
 import { Bot, Check, ChevronDown, ChevronUp, Edit2, Lock, Trash2, X } from 'lucide-react'
 import Button from '@/components/ui/Button'
 import { cn } from '@/lib/utils'
+import { useI18n } from '@/i18n'
+import { intlLocale } from '@/lib/formatting/datetime'
 import CategoryBadge from './CategoryBadge'
 import { CATEGORY_CONFIG, MAX_CHARS } from './memoryConfig'
 
@@ -14,6 +16,7 @@ const FOCUS_RING =
   'focus:outline-hidden focus-visible:ring-2 focus-visible:ring-[var(--ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--surface)]'
 
 function MemoryCard({ memory, isDeleting, onEdit, onDelete }) {
+  const { locale, t } = useI18n()
   const [editing, setEditing]   = useState(false)
   const [content, setContent]   = useState(memory.content)
   const [loading, setLoading]   = useState(false)
@@ -55,7 +58,8 @@ function MemoryCard({ memory, isDeleting, onEdit, onDelete }) {
               onChange={e => setContent(e.target.value)}
               maxLength={MAX_CHARS}
               rows={3}
-              aria-label="Edit memory content"
+              dir="auto"
+              aria-label={t('memory.editContent')}
               className={cn('w-full rounded-lg px-3 py-2.5 text-[15px] resize-none', FOCUS_RING)}
               style={{
                 background:  'var(--surface-hover)',
@@ -81,7 +85,13 @@ function MemoryCard({ memory, isDeleting, onEdit, onDelete }) {
         ) : (
           <div className="flex gap-3">
             <div className="flex-1 min-w-0">
-              <p className="text-[15px] leading-relaxed whitespace-pre-wrap break-words" style={{ color: 'var(--fg)' }}>
+              {/* Memory content is user-generated and may be Hebrew,
+                  English or mixed, whatever the interface is set to. */}
+              <p
+                dir="auto"
+                className="text-[15px] leading-relaxed whitespace-pre-wrap break-words text-start"
+                style={{ color: 'var(--fg)' }}
+              >
                 {memory.content}
               </p>
               <div className="flex items-center gap-3 mt-3 flex-wrap">
@@ -89,11 +99,12 @@ function MemoryCard({ memory, isDeleting, onEdit, onDelete }) {
                 {isAgent && (
                   <div className="flex items-center gap-1">
                     <Bot size={10} style={{ color: 'var(--fg-soft)' }} />
-                    <span className="text-xs" style={{ color: 'var(--fg-soft)' }}>Agent</span>
+                    <span className="text-xs" style={{ color: 'var(--fg-soft)' }}>{t('memory.agent')}</span>
                   </div>
                 )}
                 <span className="text-xs" style={{ color: 'var(--fg-soft)' }}>
-                  {new Date(memory.updated_at || memory.created_at).toLocaleDateString()}
+                  {new Date(memory.updated_at || memory.created_at)
+                    .toLocaleDateString(intlLocale(locale))}
                 </span>
               </div>
             </div>
@@ -107,7 +118,7 @@ function MemoryCard({ memory, isDeleting, onEdit, onDelete }) {
                   style={{ color: 'var(--fg-soft)' }}
                   onMouseEnter={e => { e.currentTarget.style.background = 'var(--surface-hover)'; e.currentTarget.style.color = 'var(--fg)' }}
                   onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--fg-soft)' }}
-                  aria-label="Edit memory"
+                  aria-label={t('memory.edit')}
                 >
                   <Edit2 size={13} />
                 </button>
@@ -119,7 +130,7 @@ function MemoryCard({ memory, isDeleting, onEdit, onDelete }) {
                   style={{ color: 'var(--fg-soft)' }}
                   onMouseEnter={e => { e.currentTarget.style.background = 'var(--danger-soft)'; e.currentTarget.style.color = 'var(--danger)' }}
                   onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--fg-soft)' }}
-                  aria-label="Delete memory"
+                  aria-label={t('memory.delete')}
                 >
                   <Trash2 size={13} />
                 </button>
@@ -129,10 +140,10 @@ function MemoryCard({ memory, isDeleting, onEdit, onDelete }) {
               <div
                 className="flex shrink-0 items-center gap-1 self-start rounded-md px-2 py-1 text-xs"
                 style={{ background: 'var(--surface-hover)', color: 'var(--fg-soft)' }}
-                title="AI/system managed and read-only"
+                title={t('memory.systemManaged')}
               >
                 <Lock size={12} style={{ color: 'var(--fg-soft)' }} aria-hidden="true" />
-                <span>AI/system managed</span>
+                <span>{t('memory.systemManaged')}</span>
               </div>
             )}
           </div>

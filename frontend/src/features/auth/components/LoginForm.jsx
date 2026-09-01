@@ -7,10 +7,13 @@ import { useAuth } from '@/features/auth/hooks/useAuth'
 import authService from '@/features/auth/services/authService'
 import Input from '@/components/ui/Input'
 import Button from '@/components/ui/Button'
+import LanguageSwitcher from '@/components/layout/LanguageSwitcher'
+import { useI18n } from '@/i18n'
 
 const MIN_PASSWORD_LENGTH = 15
 
 export default function LoginForm() {
+  const { t } = useI18n()
   const { login, setup, loading, error } = useAuth()
   const [mode, setMode] = useState('login') // 'login' | 'setup'
   const [tenant, setTenant] = useState('default')
@@ -38,14 +41,14 @@ export default function LoginForm() {
     try {
       if (mode === 'setup') {
         if (password.length < MIN_PASSWORD_LENGTH) {
-          setFormError(`Password must contain at least ${MIN_PASSWORD_LENGTH} characters`)
+          setFormError(t('auth.passwordTooShort', { count: MIN_PASSWORD_LENGTH }))
           return
         }
         if (password !== confirmPassword) {
-          setFormError('Passwords do not match')
+          setFormError(t('auth.passwordMismatch'))
           return
         }
-        await setup(email, displayName || 'Administrator', password)
+        await setup(email, displayName || t('auth.administrator'), password)
       } else {
         await login(tenant, email, password)
       }
@@ -57,21 +60,33 @@ export default function LoginForm() {
   const isSetup = mode === 'setup'
 
   return (
-    <div className="min-h-screen flex">
+    // The language control is mounted here as well as in the header: a
+    // reader who cannot read the sign-in form cannot sign in to reach the
+    // setting that would fix it.
+    <div className="relative min-h-screen flex">
+      <div className="absolute top-4 end-4 z-10">
+        <LanguageSwitcher
+          buttonClassName={[
+            'relative flex h-9 w-9 shrink-0 items-center justify-center rounded-xl',
+            'text-[var(--fg-muted)] transition-colors duration-150',
+            'hover:bg-[var(--surface-hover)] hover:text-[var(--fg)]',
+            'focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[var(--ring)]',
+          ].join(' ')}
+        />
+      </div>
       <div className="hidden lg:flex flex-1 bg-gradient-primary items-center justify-center p-12">
         <div className="max-w-md text-white">
-          <h2 className="text-3xl font-bold mb-4">RAGForge</h2>
-          <p className="text-white/90 text-xl">
-            Your intelligent assistant for document search, chat, and more.
-          </p>
+          {/* The brand mark is a proper noun and stays LTR in every locale. */}
+          <h2 dir="ltr" className="text-3xl font-bold mb-4 [unicode-bidi:isolate]">RAGForge</h2>
+          <p className="text-white/90 text-xl">{t('auth.marketing')}</p>
           <div className="mt-8 flex gap-4">
             <div className="w-12 h-12 rounded-xl bg-white/20 flex items-center justify-center">
               {isSetup ? <ShieldCheck size={24} /> : <LogIn size={24} />}
             </div>
             <div>
-              <p className="font-semibold">Secure access</p>
+              <p className="font-semibold">{t('auth.secureAccess')}</p>
               <p className="text-[15px] text-white/80">
-                {isSetup ? 'Set up your workspace to get started' : 'Sign in to get started'}
+                {t(isSetup ? 'auth.setupCta' : 'auth.signInCta')}
               </p>
             </div>
           </div>
@@ -84,12 +99,10 @@ export default function LoginForm() {
         >
           <div className="mb-2">
             <h2 className="text-2xl font-semibold text-text-primary">
-              {isSetup ? 'Create administrator' : 'Welcome back'}
+              {t(isSetup ? 'auth.createAdministrator' : 'auth.welcomeBack')}
             </h2>
             <p className="text-text-muted text-[15px] mt-1">
-              {isSetup
-                ? 'This is a fresh installation. The account you create now becomes the workspace administrator.'
-                : 'Sign in to your account'}
+              {t(isSetup ? 'auth.setupSubtitle' : 'auth.signInSubtitle')}
             </p>
           </div>
 
@@ -101,12 +114,15 @@ export default function LoginForm() {
 
           {!isSetup && (
             <div>
-              <label className="block text-text-secondary text-[15px] mb-2">Workspace</label>
+              <label className="block text-text-secondary text-[15px] mb-2">{t('auth.workspace')}</label>
+              {/* A workspace id is a backend identifier, not copy. */}
               <Input
                 type="text"
+                dir="ltr"
                 value={tenant}
                 onChange={(e) => setTenant(e.target.value)}
                 placeholder="default"
+                aria-label={t('auth.workspace')}
                 autoComplete="organization"
                 required
               />
@@ -115,55 +131,64 @@ export default function LoginForm() {
 
           {isSetup && (
             <div>
-              <label className="block text-text-secondary text-[15px] mb-2">Display name</label>
+              <label className="block text-text-secondary text-[15px] mb-2">{t('auth.displayName')}</label>
               <Input
                 type="text"
+                dir="auto"
                 value={displayName}
                 onChange={(e) => setDisplayName(e.target.value)}
-                placeholder="Administrator"
+                placeholder={t('auth.administrator')}
+                aria-label={t('auth.displayName')}
                 autoComplete="name"
               />
             </div>
           )}
 
           <div>
-            <label className="block text-text-secondary text-[15px] mb-2">Email</label>
+            <label className="block text-text-secondary text-[15px] mb-2">{t('auth.email')}</label>
+            {/* An address is never Hebrew: LTR in both locales. */}
             <Input
               type="email"
+              dir="ltr"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="you@example.com"
+              aria-label={t('auth.email')}
               autoComplete="username"
               required
             />
           </div>
 
           <div>
-            <label className="block text-text-secondary text-[15px] mb-2">Password</label>
+            <label className="block text-text-secondary text-[15px] mb-2">{t('auth.password')}</label>
             <Input
               type="password"
+              dir="ltr"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="••••••••"
+              aria-label={t('auth.password')}
               autoComplete={isSetup ? 'new-password' : 'current-password'}
               minLength={isSetup ? MIN_PASSWORD_LENGTH : undefined}
               required
             />
             {isSetup && (
               <p className="text-text-muted text-[13px] mt-1">
-                At least {MIN_PASSWORD_LENGTH} characters.
+                {t('auth.passwordHint', { count: MIN_PASSWORD_LENGTH })}
               </p>
             )}
           </div>
 
           {isSetup && (
             <div>
-              <label className="block text-text-secondary text-[15px] mb-2">Confirm password</label>
+              <label className="block text-text-secondary text-[15px] mb-2">{t('auth.confirmPassword')}</label>
               <Input
                 type="password"
+                dir="ltr"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 placeholder="••••••••"
+                aria-label={t('auth.confirmPassword')}
                 autoComplete="new-password"
                 minLength={MIN_PASSWORD_LENGTH}
                 required
@@ -178,7 +203,7 @@ export default function LoginForm() {
             loading={loading}
             className="w-full py-3"
           >
-            {!loading && (isSetup ? 'Create administrator' : 'Sign in')}
+            {!loading && t(isSetup ? 'auth.createAdministrator' : 'auth.signIn')}
           </Button>
         </form>
       </div>

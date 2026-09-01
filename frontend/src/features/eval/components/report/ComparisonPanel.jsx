@@ -2,6 +2,7 @@
 
 import { AlertTriangle } from 'lucide-react'
 import { Callout, Cell, Note, Num, ReportTable, Row } from './primitives'
+import { useI18n } from '@/i18n'
 
 /**
  * This run against the one before it.
@@ -15,35 +16,32 @@ import { Callout, Cell, Note, Num, ReportTable, Row } from './primitives'
  * support.
  */
 export default function ComparisonPanel({ comparison }) {
+  const { t } = useI18n()
   if (!comparison) return null
 
   if (!comparison.baseline) {
-    return <Note>No earlier run is available to compare this one against.</Note>
+    return <Note>{t('evalReport.noBaseline')}</Note>
   }
 
   return (
     <div className="flex flex-col gap-3">
       {!comparison.comparable && (
-        <Callout tone="warning" icon={AlertTriangle} title="Not directly comparable">
-          <p>
-            This run and the baseline disagree on provenance, so the differences below are not
-            evidence of a regression or an improvement. Re-run both under the same configuration
-            before reading them as a change in quality.
-          </p>
+        <Callout tone="warning" icon={AlertTriangle} title={t('evalReport.notComparable')}>
+          <p>{t('evalReport.notComparableBody')}</p>
         </Callout>
       )}
 
       <p className="text-[12px]" style={{ color: 'var(--fg-soft)' }}>
-        Baseline {comparison.baseline.benchmark_id} → this run.
+        {t('evalReport.baselineArrow', { id: comparison.baseline.benchmark_id })}
       </p>
 
       {comparison.changes.length > 0 && (
         <ReportTable
-          caption="Configuration fields that differ between the two runs"
+          caption={t('evalReport.changedFieldsCaption')}
           columns={[
-            { key: 'field', label: 'Changed field' },
-            { key: 'baseline', label: 'Baseline' },
-            { key: 'candidate', label: 'This run' },
+            { key: 'field', label: t('evalReport.changedField') },
+            { key: 'baseline', label: t('evalReport.baseline') },
+            { key: 'candidate', label: t('evalReport.thisRun') },
           ]}
         >
           {comparison.changes.map((change) => (
@@ -56,7 +54,7 @@ export default function ComparisonPanel({ comparison }) {
                 {change.label}
                 {change.kind === 'unknown' && (
                   <span className="block text-[12px]" style={{ color: 'var(--fg-soft)' }}>
-                    One of the two runs did not record this.
+                    {t('evalReport.oneRunDidNotRecord')}
                   </span>
                 )}
               </th>
@@ -70,14 +68,15 @@ export default function ComparisonPanel({ comparison }) {
       )}
 
       {comparison.rows.length === 0 ? (
-        <Note>The two runs share no phase that both measured.</Note>
+        <Note>{t('evalReport.noSharedPhase')}</Note>
       ) : (
         <ReportTable
-          caption="Metric deltas against the baseline run"
+          caption={t('evalReport.deltasCaption')}
           columns={[
-            { key: 'metric', label: 'Metric' },
-            { key: 'baseline', label: 'Baseline', align: 'right' },
-            { key: 'candidate', label: 'This run', align: 'right' },
+            { key: 'metric', label: t('evalReport.metric') },
+            { key: 'baseline', label: t('evalReport.baseline'), align: 'right' },
+            { key: 'candidate', label: t('evalReport.thisRun'), align: 'right' },
+            // Δ and Δ% are mathematical notation, not copy.
             { key: 'delta', label: 'Δ', align: 'right' },
             { key: 'percent', label: 'Δ%', align: 'right' },
           ]}

@@ -7,13 +7,15 @@ import { DataCell } from '@/components/ui/DataDisplay'
 import ProgressBar from '@/components/ui/ProgressBar'
 import { formatScore, scoreColor } from '@/features/chat/utils/answerQuality'
 import { Empty } from './shared'
+import { useI18n } from '@/i18n'
 
 /** Retrieved passages with their retrieval/reranker scores. */
 export default function RetrievalSection({ sources, retrievalSummary }) {
+  const { t } = useI18n()
   const [expandedIndex, setExpandedIndex] = useState(null)
 
   if (!sources?.length) {
-    return <Empty label="No sources retrieved for this turn" />
+    return <Empty label={t('inspector.emptyRetrieval')} />
   }
 
   const scores = sources
@@ -26,9 +28,9 @@ export default function RetrievalSection({ sources, retrievalSummary }) {
   return (
     <div className="space-y-3">
       <div className="grid grid-cols-3 gap-2">
-        <DataCell reverse center mono label="Chunks" value={chunkCount} />
-        <DataCell reverse center mono label="Top score" value={scores.length ? formatScore(Math.max(...scores)) : '—'} />
-        <DataCell reverse center mono label="Min score" value={scores.length ? formatScore(Math.min(...scores)) : '—'} />
+        <DataCell reverse center mono label={t('inspector.chunks')} value={chunkCount} />
+        <DataCell reverse center mono label={t('inspector.topScore')} value={scores.length ? formatScore(Math.max(...scores)) : '—'} />
+        <DataCell reverse center mono label={t('inspector.minScore')} value={scores.length ? formatScore(Math.min(...scores)) : '—'} />
       </div>
 
       <div className="space-y-2">
@@ -59,8 +61,12 @@ export default function RetrievalSection({ sources, retrievalSummary }) {
                     {percent != null ? (
                       <span style={{ color }} className="font-mono font-semibold">{percent.toFixed(1)}%</span>
                     ) : null}
-                    {source.chunk_index != null ? <span>chunk #{source.chunk_index}</span> : null}
-                    {source.page != null ? <span>p.{source.page}</span> : null}
+                    {source.chunk_index != null
+                      ? <span>{t('inspector.chunkIndex', { index: source.chunk_index })}</span>
+                      : null}
+                    {source.page != null
+                      ? <span>{t('inspector.pageShort', { page: source.page })}</span>
+                      : null}
                   </div>
                 </div>
                 {isOpen
@@ -80,7 +86,7 @@ export default function RetrievalSection({ sources, retrievalSummary }) {
                   >
                     <div className="border-t border-border px-3 pb-3 pt-2">
                       <p dir="auto" className="line-clamp-6 text-xs leading-relaxed text-text-muted">
-                        {source.text_preview || source.text || 'No preview available'}
+                        {source.text_preview || source.text || t('inspector.noPreview')}
                       </p>
                     </div>
                   </motion.div>

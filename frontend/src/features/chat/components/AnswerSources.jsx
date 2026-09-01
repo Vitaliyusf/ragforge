@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { FileText } from 'lucide-react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { groupSourcesByDocument } from '@/features/chat/utils/answerSources'
+import { useI18n } from '@/i18n'
 
 /**
  * The documents an answer was built from, as compact chips.
@@ -22,6 +23,7 @@ import { groupSourcesByDocument } from '@/features/chat/utils/answerSources'
 const MAX_VISIBLE = 4
 
 export default function AnswerSources({ sources }) {
+  const { t } = useI18n()
   const [openName, setOpenName] = useState(null)
   const [showAll, setShowAll] = useState(false)
 
@@ -35,8 +37,10 @@ export default function AnswerSources({ sources }) {
   return (
     <div className="mt-3">
       <div className="flex w-full flex-wrap items-center gap-1.5">
+        {/* A labelled count, not a plural: the same phrasing has to read
+            correctly in Hebrew, where "1 source" has no clean equivalent. */}
         <span className="text-xs text-[var(--fg-soft)]">
-          {groups.length === 1 ? '1 source' : `${groups.length} sources`}
+          {t('chat.sourceCount', { count: groups.length })}
         </span>
         {visible.map((group) => {
           const inspectable = group.passages.length > 0
@@ -79,7 +83,7 @@ export default function AnswerSources({ sources }) {
             onClick={() => setShowAll(true)}
             className="rounded-lg px-1 py-1 text-xs text-[var(--fg-soft)] underline underline-offset-2 transition-colors hover:text-[var(--fg)]"
           >
-            +{overflow} more
+            {t('chat.moreSources', { count: overflow })}
           </button>
         ) : null}
       </div>
@@ -100,9 +104,12 @@ export default function AnswerSources({ sources }) {
             >
               {open.passages.map((passage, index) => (
                 <div key={index}>
+                  {/* The word is copy and follows the interface locale; the
+                      number beside it is an ordinary count and needs no
+                      isolation once the label carries the direction. */}
                   {passage.page != null ? (
-                    <div dir="ltr" className="mb-0.5 text-xs text-[var(--fg-soft)] [unicode-bidi:isolate]">
-                      Page {passage.page}
+                    <div className="mb-0.5 text-xs text-[var(--fg-soft)]">
+                      {t('chat.page', { page: passage.page })}
                     </div>
                   ) : null}
                   {passage.excerpt ? (

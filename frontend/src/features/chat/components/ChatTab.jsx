@@ -1,7 +1,15 @@
 'use client'
 
 import { useCallback, useMemo, useState } from 'react'
-import { PanelLeftOpen, PanelLeftClose, Sparkles, Loader2, ServerCrash } from 'lucide-react'
+import {
+  Loader2,
+  PanelLeftClose,
+  PanelLeftOpen,
+  PanelRightClose,
+  PanelRightOpen,
+  ServerCrash,
+  Sparkles,
+} from 'lucide-react'
 import { AnimatePresence, MotionConfig, motion } from 'framer-motion'
 import { useChat } from '@/features/chat'
 import { useAuth } from '@/features/auth'
@@ -13,9 +21,11 @@ import ChatSidebar from './ChatSidebar'
 import ModelSelector from './ModelSelector'
 import DeveloperInspector from './inspector/DeveloperInspector'
 import { ConfirmModal } from '@/components/ui/Modal'
+import { useI18n } from '@/i18n'
 
 export default function ChatTab() {
   const { isAdmin } = useAuth()
+  const { isRTL, t } = useI18n()
   const {
     messages, turnsById, chats, currentChatId, loading, chatsLoading, chatsError,
     models, selectedModel, defaultModel, wsConnectionStatus, answerMode,
@@ -32,6 +42,18 @@ export default function ChatTab() {
   const [chatToDelete, setChatToDelete] = useState(null)
   const [inspectedMessageId, setInspectedMessageId] = useState(null)
   const [sidebarOpen, setSidebarOpen] = useState(false)
+
+  // The mobile history drawer lives on the *start* edge — left in English,
+  // right in Hebrew — so it enters from the side the reader's eye already
+  // treats as the beginning of the line. The offset and the panel glyphs are
+  // mirrored with it; a drawer that slid in from the wrong edge behind a
+  // left-pointing icon would be two mistakes, not one.
+  const drawerOffset = isRTL ? 320 : -320
+  // The inspector is an auxiliary panel and belongs on the logical end —
+  // right in English, left in Hebrew — so it enters from the edge it rests on.
+  const inspectorOffset = isRTL ? -32 : 32
+  const OpenDrawerIcon = isRTL ? PanelRightOpen : PanelLeftOpen
+  const CloseDrawerIcon = isRTL ? PanelRightClose : PanelLeftClose
 
   const inspectedMessage = useMemo(
     () => messages.find((message) => message.id === inspectedMessageId) || null,
@@ -113,7 +135,7 @@ export default function ChatTab() {
             <>
               <motion.button
                 type="button"
-                aria-label="Close chat history"
+                aria-label={t('chat.closeHistory')}
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
@@ -121,26 +143,26 @@ export default function ChatTab() {
                 onClick={() => setSidebarOpen(false)}
               />
               <motion.aside
-                initial={{ x: -320 }}
+                initial={{ x: drawerOffset }}
                 animate={{ x: 0 }}
-                exit={{ x: -320 }}
+                exit={{ x: drawerOffset }}
                 transition={{ type: 'spring', damping: 30, stiffness: 400 }}
-                className="fixed inset-y-0 left-0 z-[80] flex w-[min(20rem,calc(100vw-2rem))] flex-col gap-3 overflow-hidden p-3 xl:hidden"
+                className="fixed inset-y-0 start-0 z-[80] flex w-[min(20rem,calc(100vw-2rem))] flex-col gap-3 overflow-hidden border-e p-3 xl:hidden"
                 style={{
                   background: 'var(--bg)',
-                  borderRight: '1px solid var(--border)',
+                  borderColor: 'var(--border)',
                   boxShadow: 'var(--shadow-xl)',
                 }}
               >
                 <div className="flex h-10 shrink-0 items-center justify-between px-1">
-                  <span className="text-[15px] font-semibold text-[var(--fg)]">Chat workspace</span>
+                  <span className="text-[15px] font-semibold text-[var(--fg)]">{t('chat.workspace')}</span>
                   <button
                     type="button"
                     onClick={() => setSidebarOpen(false)}
                     className="flex h-8 w-8 items-center justify-center rounded-xl text-[var(--fg-muted)] transition-colors hover:bg-[var(--surface-hover)] hover:text-[var(--fg)]"
-                    aria-label="Close chat history panel"
+                    aria-label={t('chat.closeHistoryPanel')}
                   >
-                    <PanelLeftClose size={16} />
+                    <CloseDrawerIcon size={16} />
                   </button>
                 </div>
                 {sidebar(true)}
@@ -165,9 +187,9 @@ export default function ChatTab() {
               type="button"
               className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-[var(--fg-muted)] transition-colors hover:bg-[var(--surface-hover)] hover:text-[var(--fg)] xl:hidden"
               onClick={() => setSidebarOpen(true)}
-              aria-label="Toggle chat history"
+              aria-label={t('chat.toggleHistory')}
             >
-              <PanelLeftOpen size={17} />
+              <OpenDrawerIcon size={17} />
             </button>
 
             <div
@@ -182,12 +204,12 @@ export default function ChatTab() {
                 in the composer. */}
             <div className="min-w-0 flex-1">
               <h1 dir="auto" className="truncate text-[15px] font-semibold text-[var(--fg)]">
-                {activeChat?.title || 'New conversation'}
+                {activeChat?.title || t('chat.newConversation')}
               </h1>
               <p className="mt-0.5 text-xs text-[var(--fg-soft)]">
                 {messages.length === 0
-                  ? 'Ask your knowledge base anything'
-                  : `${messages.length} message${messages.length === 1 ? '' : 's'} in this thread`}
+                  ? t('chat.emptyThreadSubtitle')
+                  : t('chat.messageCount', { count: messages.length })}
               </p>
             </div>
           </div>
@@ -241,7 +263,7 @@ export default function ChatTab() {
             <>
               <motion.button
                 type="button"
-                aria-label="Close inspector overlay"
+                aria-label={t('chat.closeInspectorOverlay')}
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
@@ -249,11 +271,11 @@ export default function ChatTab() {
                 onClick={closeInspector}
               />
               <motion.div
-                initial={{ opacity: 0, x: 32 }}
+                initial={{ opacity: 0, x: inspectorOffset }}
                 animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: 32 }}
+                exit={{ opacity: 0, x: inspectorOffset }}
                 transition={{ type: 'spring', damping: 30, stiffness: 360 }}
-                className="absolute inset-y-3 right-3 z-40 w-[min(430px,calc(100%-1.5rem))] md:inset-y-4 md:right-4"
+                className="absolute inset-y-3 end-3 z-40 w-[min(430px,calc(100%-1.5rem))] md:inset-y-4 md:end-4"
                 style={{ filter: 'drop-shadow(0 24px 48px rgba(0,0,0,0.24))' }}
               >
                 <DeveloperInspector
@@ -270,16 +292,14 @@ export default function ChatTab() {
         <ConfirmModal
           open={deleteModalOpen}
           onOpenChange={setDeleteModalOpen}
-          title="Delete chat?"
+          title={t('chat.deleteTitle')}
           // The delete_chat handler drops the chat, its messages and the
           // memories indexed against it; long-term memory is a separate store
           // and survives, so the copy says so rather than implying otherwise.
           description={
-            chatToDelete
-              ? `"${chatToDelete.title}" and all of its messages are removed, along with anything this conversation contributed to chat memory. Long-term memories stay. This cannot be undone.`
-              : ''
+            chatToDelete ? t('chat.deleteDescription', { title: chatToDelete.title }) : ''
           }
-          confirmLabel="Delete"
+          confirmLabel={t('common.delete')}
           onConfirm={handleConfirmDelete}
           variant="danger"
           loading={chatToDelete ? deletingChatIds.has(chatToDelete.id) : false}

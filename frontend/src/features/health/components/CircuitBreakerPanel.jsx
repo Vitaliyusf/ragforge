@@ -6,13 +6,15 @@ import EmptyState from '@/components/feedback/EmptyState'
 import ProgressBar from '@/components/ui/ProgressBar'
 import { ShieldCheck } from 'lucide-react'
 import { CB_STATE } from './healthConfig'
+import { useI18n } from '@/i18n'
 
 function CircuitBreakerPanel({ breakers }) {
+  const { t } = useI18n()
   const entries = Object.entries(breakers || {})
   if (entries.length === 0) {
     return (
       <div className="py-8 text-center text-[13px]" style={{ color: 'var(--fg-soft)' }}>
-        No circuit breakers registered yet
+        {t('health.noBreakers')}
       </div>
     )
   }
@@ -34,20 +36,22 @@ function CircuitBreakerPanel({ breakers }) {
             style={{ background: 'var(--surface-hover)', border: '1px solid var(--border)' }}
           >
             <div className="flex items-center justify-between mb-2.5">
-              <span className="text-[13px] font-semibold capitalize" style={{ color: 'var(--fg)' }}>
+              {/* The breaker is named after the dependency it protects —
+                  a backend key, not copy. */}
+              <span dir="ltr" className="text-[13px] font-semibold capitalize [unicode-bidi:isolate]" style={{ color: 'var(--fg)' }}>
                 {name.replace(/_/g, ' ')}
               </span>
-              <Badge variant={cbCfg.variant} size="xs">{cbCfg.label}</Badge>
+              <Badge variant={cbCfg.variant} size="xs">{t(cbCfg.labelKey)}</Badge>
             </div>
             <div className="grid grid-cols-4 gap-2 mb-2.5">
               {[
-                { label: 'Calls',    value: total,               color: 'var(--fg)'      },
-                { label: 'OK',       value: m.total_successes||0, color: 'var(--success)' },
-                { label: 'Fail',     value: m.total_failures||0,  color: 'var(--danger)'  },
-                { label: 'Rate',     value: `${failRate}%`,        color: 'var(--fg-muted)'},
-              ].map(({ label, value, color }) => (
-                <div key={label}>
-                  <div className="label-xs mb-0.5">{label}</div>
+                { labelKey: 'health.calls', value: total,                color: 'var(--fg)'      },
+                { labelKey: 'health.ok',    value: m.total_successes||0, color: 'var(--success)' },
+                { labelKey: 'health.fail',  value: m.total_failures||0,  color: 'var(--danger)'  },
+                { labelKey: 'health.rate',  value: `${failRate}%`,       color: 'var(--fg-muted)'},
+              ].map(({ labelKey, value, color }) => (
+                <div key={labelKey}>
+                  <div className="label-xs mb-0.5">{t(labelKey)}</div>
                   <div className="text-[13px] font-mono font-semibold" style={{ color }}>{value}</div>
                 </div>
               ))}
@@ -56,7 +60,7 @@ function CircuitBreakerPanel({ breakers }) {
               value={Math.min(100, failPct)}
               color={barColor}
               track="bg-border"
-              aria-label="Failure rate"
+              aria-label={t('health.failureRate')}
             />
           </div>
         )

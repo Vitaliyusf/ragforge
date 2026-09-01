@@ -10,6 +10,7 @@ import ContextSection from './ContextSection'
 import GenerationSection from './GenerationSection'
 import QualitySection from './QualitySection'
 import TraceSection, { usableIdentifiers } from './TraceSection'
+import { useI18n } from '@/i18n'
 
 /**
  * The Developer Inspector.
@@ -20,6 +21,7 @@ import TraceSection, { usableIdentifiers } from './TraceSection'
  * accordion never implies a measurement that was never taken.
  */
 export default function DeveloperInspector({ message, turn, onClose, onFlowFeedback }) {
+  const { t } = useI18n()
   const metadata = message?.metadata || {}
   const read = (key) => metadata[key] ?? turn?.[key] ?? null
 
@@ -32,12 +34,14 @@ export default function DeveloperInspector({ message, turn, onClose, onFlowFeedb
   const feedback = read('feedback')
   const turnId = message?.turnId || metadata.turnId || turn?.turnId || null
 
+  // The id *kind* is copy and is translated; the id itself is a technical
+  // value and is rendered LTR-isolated by TechnicalValue.
   const identifiers = useMemo(() => ([
-    ['Conversation ID', read('conversationId')],
-    ['Turn ID', turnId],
-    ['Request ID', read('requestId')],
-    ['Trace ID', read('traceId')],
-  ]), [metadata, turn, turnId]) // eslint-disable-line react-hooks/exhaustive-deps
+    [t('inspector.id.conversation'), read('conversationId')],
+    [t('inspector.id.turn'), turnId],
+    [t('inspector.id.request'), read('requestId')],
+    [t('inspector.id.trace'), read('traceId')],
+  ]), [metadata, turn, turnId, t]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const sections = useMemo(() => {
     const hasContext = Boolean(
@@ -70,7 +74,7 @@ export default function DeveloperInspector({ message, turn, onClose, onFlowFeedb
     return [
       {
         id: 'overview',
-        label: 'Overview',
+        label: t('inspector.section.overview'),
         available: true,
         render: () => (
           <OverviewSection
@@ -88,19 +92,19 @@ export default function DeveloperInspector({ message, turn, onClose, onFlowFeedb
       },
       {
         id: 'retrieval',
-        label: 'Retrieval',
+        label: t('inspector.section.retrieval'),
         available: sources.length > 0,
         render: () => <RetrievalSection sources={sources} retrievalSummary={retrievalSummary} />,
       },
       {
         id: 'context',
-        label: 'Context',
+        label: t('inspector.section.context'),
         available: hasContext,
         render: () => <ContextSection debugPayloads={debugPayloads} historySent={historySent} />,
       },
       {
         id: 'generation',
-        label: 'Generation',
+        label: t('inspector.section.generation'),
         available: hasGeneration,
         render: () => (
           <GenerationSection
@@ -112,7 +116,7 @@ export default function DeveloperInspector({ message, turn, onClose, onFlowFeedb
       },
       {
         id: 'quality',
-        label: 'Quality',
+        label: t('inspector.section.quality'),
         available: hasQuality,
         render: () => (
           <QualitySection
@@ -125,7 +129,7 @@ export default function DeveloperInspector({ message, turn, onClose, onFlowFeedb
       },
       {
         id: 'trace',
-        label: 'Trace',
+        label: t('inspector.section.trace'),
         available: hasTrace,
         render: () => (
           <TraceSection
@@ -137,7 +141,7 @@ export default function DeveloperInspector({ message, turn, onClose, onFlowFeedb
       },
     ].filter((section) => section.available)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [debugPayloads, traceEvents, sources, review, retrievalSummary, historySent, feedback, identifiers, message, turnId, onFlowFeedback])
+  }, [debugPayloads, traceEvents, sources, review, retrievalSummary, historySent, feedback, identifiers, message, turnId, onFlowFeedback, t])
 
   const [openId, setOpenId] = useState('overview')
 
@@ -145,10 +149,14 @@ export default function DeveloperInspector({ message, turn, onClose, onFlowFeedb
     <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-border bg-bg-elevated shadow-sm">
       <div className="flex items-center justify-between border-b border-border px-4 py-3">
         <div>
-          <div className="text-xs font-semibold uppercase tracking-wider text-text-muted">Developer</div>
-          <div className="text-[15px] font-semibold text-text-primary">Inspector</div>
+          <div className="text-xs font-semibold uppercase tracking-wider text-text-muted">
+            {t('inspector.developer')}
+          </div>
+          <div className="text-[15px] font-semibold text-text-primary">
+            {t('inspector.title')}
+          </div>
         </div>
-        <Button variant="ghost" size="icon" onClick={onClose} aria-label="Close inspector">
+        <Button variant="ghost" size="icon" onClick={onClose} aria-label={t('inspector.close')}>
           <X size={15} />
         </Button>
       </div>

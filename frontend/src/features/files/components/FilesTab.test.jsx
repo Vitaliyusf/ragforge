@@ -171,13 +171,13 @@ describe('FilesTab documents table', () => {
     const user = userEvent.setup()
     renderWithProviders(<FilesTab />)
     await waitFor(() => expect(rows()).toHaveLength(3))
-    expect(screen.getByText('3 documents')).toBeInTheDocument()
+    expect(screen.getByText('Documents: 3')).toBeInTheDocument()
 
     await user.type(screen.getByLabelText('Search documents'), 'manual')
 
     await waitFor(() => expect(rows()).toHaveLength(1))
     expect(screen.getByText('manual.docx')).toBeInTheDocument()
-    expect(screen.getByText('1 of 3 documents')).toBeInTheDocument()
+    expect(screen.getByText('Showing 1 of 3 documents')).toBeInTheDocument()
   })
 
   it('arrives from a deep link already narrowed to the document in question', async () => {
@@ -304,7 +304,7 @@ describe('FilesTab documents table', () => {
     await user.keyboard('{Escape}')
 
     await user.click(screen.getByLabelText('Select all documents on this page'))
-    expect(await screen.findByText('3 selected')).toBeInTheDocument()
+    expect(await screen.findByText('Selected: 3')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /Re-index/i })).not.toBeInTheDocument()
 
     expect(rerunRequests).toEqual([])
@@ -338,7 +338,7 @@ describe('FilesTab documents table', () => {
     await waitFor(() => expect(rows()).toHaveLength(3))
 
     await user.click(screen.getByLabelText('Select all documents on this page'))
-    expect(await screen.findByText('3 selected')).toBeInTheDocument()
+    expect(await screen.findByText('Selected: 3')).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: /^Delete$/ }))
     expect(await screen.findByText('Delete 3 documents?')).toBeInTheDocument()
@@ -414,7 +414,7 @@ describe('FilesTab at scale', () => {
 
     // One page of rows is mounted, and the counts still describe the whole set.
     await waitFor(() => expect(rows()).toHaveLength(50))
-    expect(screen.getByText('1000 documents')).toBeInTheDocument()
+    expect(screen.getByText('Documents: 1000')).toBeInTheDocument()
     expect(screen.getByText('Showing 1–50 of 1000')).toBeInTheDocument()
     expect(screen.getByText('Page 1 of 20')).toBeInTheDocument()
 
@@ -424,7 +424,7 @@ describe('FilesTab at scale', () => {
     // Narrowing the view returns to the first page.
     await user.type(screen.getByLabelText('Search documents'), 'document-0777')
     await waitFor(() => expect(rows()).toHaveLength(1))
-    expect(screen.getByText('1 of 1000 documents')).toBeInTheDocument()
+    expect(screen.getByText('Showing 1 of 1000 documents')).toBeInTheDocument()
 
     await user.clear(screen.getByLabelText('Search documents'))
     await waitFor(() => expect(rows()).toHaveLength(50))
@@ -432,7 +432,7 @@ describe('FilesTab at scale', () => {
     // The status filter reaches exactly the quarter of the library that failed.
     await user.click(screen.getByLabelText('Filter by status'))
     await user.click(await screen.findByRole('option', { name: /Failed/i }))
-    await waitFor(() => expect(screen.getByText('250 of 1000 documents')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('Showing 250 of 1000 documents')).toBeInTheDocument())
     expect(rows()).toHaveLength(50)
 
     // Sorting reorders that subset, not just the page.
@@ -486,7 +486,7 @@ describe('FilesTab bulk delete', () => {
     await waitFor(() => expect(rows()).toHaveLength(BULK_SIZE))
 
     await user.click(screen.getByLabelText('Select all documents on this page'))
-    expect(await screen.findByText(`${BULK_SIZE} selected`)).toBeInTheDocument()
+    expect(await screen.findByText(`Selected: ${BULK_SIZE}`)).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: /^Delete$/ }))
     expect(await screen.findByText(`Delete ${BULK_SIZE} documents?`)).toBeInTheDocument()

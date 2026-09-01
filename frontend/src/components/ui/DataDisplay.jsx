@@ -1,6 +1,8 @@
 'use client'
 
 import { cn } from '@/lib/utils'
+import { techLtrProps } from '@/lib/accessibility/direction'
+import { useI18n } from '@/i18n'
 
 /**
  * Shared read-only data display primitives.
@@ -78,10 +80,11 @@ export function DataCell({
 export function CodeBlock({
   label,
   content,
-  emptyText = 'Not available',
+  emptyText,
   hideWhenEmpty = false,
   className = '',
 }) {
+  const { t } = useI18n()
   const text = typeof content === 'string'
     ? content
     : content != null
@@ -93,8 +96,13 @@ export function CodeBlock({
   return (
     <div className={className}>
       {label ? <div className="mb-1 text-[13px] font-medium text-text-muted">{label}</div> : null}
-      <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-xl border border-border bg-bg-elevated p-3 text-[13px] text-text-secondary">
-        {text || emptyText}
+      {/* JSON and raw payloads keep their own direction and alignment in
+          every locale; the bidi algorithm would reorder their punctuation. */}
+      <pre
+        {...techLtrProps()}
+        className="max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-xl border border-border bg-bg-elevated p-3 text-left text-[13px] text-text-secondary [unicode-bidi:isolate]"
+      >
+        {text || emptyText || t('data.notAvailable')}
       </pre>
     </div>
   )

@@ -82,3 +82,19 @@ export function bidiTextProps(text) {
 export function ltrIsolateProps() {
   return { dir: 'ltr', className: 'inline-block [unicode-bidi:isolate]' }
 }
+
+/**
+ * Props for a *block* of technical text — a log viewport, a JSON dump, a code
+ * or preformatted section.
+ *
+ * The inline isolate above is wrong for these: a block that must never
+ * reflow needs its own direction and its own left alignment regardless of the
+ * interface locale, and `inline-block` would collapse a scrolling viewport.
+ * Having one factory for this stops the alternative, which is thirty call
+ * sites each writing `style={{ direction: 'ltr' }}` slightly differently.
+ *
+ * @returns {{dir: 'ltr', className: string}}
+ */
+export function techLtrProps() {
+  return { dir: 'ltr', className: 'text-left [unicode-bidi:isolate]' }
+}

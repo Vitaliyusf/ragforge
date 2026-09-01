@@ -18,6 +18,8 @@ import {
   summarizeActivity,
   useActivity,
 } from '@/features/activity'
+import { useI18n } from '@/i18n'
+import LanguageSwitcher from './LanguageSwitcher'
 import { navigationForRole } from './navigationModel'
 
 const iconButtonClass = [
@@ -47,12 +49,14 @@ const getOnlineServerSnapshot = () => true
 
 /** One navigation item, with the activity its feature published on it. */
 function NavItem({ destination, active, activity, onSelect }) {
-  const { id, label, icon: Icon } = destination
+  const { t } = useI18n()
+  const { id, labelKey, icon: Icon } = destination
+  const label = t(labelKey)
   // Background work is announced on the item itself: the status has to
   // survive a tooltip nobody hovers and a screen reader that never sees one.
   const activityState = activity?.state || ACTIVITY_STATES.IDLE
   const activityText =
-    activityState === ACTIVITY_STATES.IDLE ? null : describeActivity(id, activity)
+    activityState === ACTIVITY_STATES.IDLE ? null : describeActivity(id, activity, t)
   const working =
     activityState === ACTIVITY_STATES.RUNNING || activityState === ACTIVITY_STATES.QUEUED
 
@@ -115,6 +119,7 @@ function NavItem({ destination, active, activity, onSelect }) {
 
 export default function Header({ activeTab, setActiveTab }) {
   const { resolvedTheme, toggleTheme } = useTheme()
+  const { t } = useI18n()
   const { activities } = useActivity()
   const { user, isAdmin, logout } = useAuth()
   const [showRuntime, setShowRuntime] = useState(false)
@@ -185,18 +190,25 @@ export default function Header({ activeTab, setActiveTab }) {
         <button
           type="button"
           onClick={() => setActiveTab('chat')}
-          className="group flex shrink-0 items-center gap-2.5 rounded-xl pr-1 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
-          aria-label="Go to chat"
+          className="group flex shrink-0 items-center gap-2.5 rounded-xl pe-1 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+          aria-label={t('brand.goToChat')}
         >
           <span className="relative flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-primary">
             <Layers size={19} className="text-white" strokeWidth={2} />
             <ActivityDot summary={summary} />
           </span>
-          <span className="hidden text-left lg:block">
-            <span className="block text-[15px] font-semibold leading-5 tracking-[-0.01em] text-[var(--fg)]">
+          {/* The wordmark is a proper noun and stays LTR in every locale; the
+              tagline beneath it is copy and follows the interface direction. */}
+          <span className="hidden text-start lg:block">
+            <span
+              dir="ltr"
+              className="block text-[15px] font-semibold leading-5 tracking-[-0.01em] text-[var(--fg)] [unicode-bidi:isolate]"
+            >
               RAG<span className="text-[var(--primary)]">Forge</span>
             </span>
-            <span className="block text-xs leading-4 text-[var(--fg-soft)]">AI workspace</span>
+            <span className="block text-xs leading-4 text-[var(--fg-soft)]">
+              {t('brand.tagline')}
+            </span>
           </span>
         </button>
 
@@ -205,7 +217,7 @@ export default function Header({ activeTab, setActiveTab }) {
             else, so Chat and Logs stop reading as peers. */}
         <nav
           className="mx-2 flex min-w-0 flex-1 justify-center overflow-x-auto scrollbar-none md:mx-4"
-          aria-label="Main navigation"
+          aria-label={t('nav.main')}
         >
           <div
             className="flex items-center gap-0.5 rounded-xl border p-1"
@@ -222,7 +234,7 @@ export default function Header({ activeTab, setActiveTab }) {
                 )}
                 <div
                   role="group"
-                  aria-label={group.label}
+                  aria-label={t(group.labelKey)}
                   data-pillar={group.pillar}
                   className="flex items-center gap-0.5"
                 >
@@ -246,11 +258,16 @@ export default function Header({ activeTab, setActiveTab }) {
         <div className="flex shrink-0 items-center gap-0.5">
           <GlobalActivityControl summary={summary} />
 
+          {/* Language sits beside the theme toggle: both are "how this
+              workspace is presented to me", and neither touches the other's
+              stored preference. */}
+          <LanguageSwitcher buttonClassName={iconButtonClass} />
+
           <button
             type="button"
             onClick={toggleTheme}
-            aria-label={resolvedTheme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-            title={resolvedTheme === 'dark' ? 'Light mode' : 'Dark mode'}
+            aria-label={resolvedTheme === 'dark' ? t('theme.switchToLight') : t('theme.switchToDark')}
+            title={resolvedTheme === 'dark' ? t('theme.light') : t('theme.dark')}
             className={iconButtonClass}
           >
             <span key={resolvedTheme} className="flex animate-icon-swap">
@@ -267,7 +284,7 @@ export default function Header({ activeTab, setActiveTab }) {
               <button
                 type="button"
                 onClick={() => setShowRuntime((value) => !value)}
-                aria-label="Runtime details"
+                aria-label={t('runtime.details')}
                 aria-expanded={showRuntime}
                 className={cn(
                   'flex h-9 items-center gap-1.5 rounded-xl px-2 text-[13px] font-medium transition-colors duration-150',
@@ -278,7 +295,13 @@ export default function Header({ activeTab, setActiveTab }) {
                 )}
               >
                 <Cpu size={16} />
-                <span className="hidden 2xl:inline">{currentImplementation || 'Runtime'}</span>
+                {/* An implementation name is a technical identifier and must
+                    not be reordered by the surrounding RTL run. */}
+                <span className="hidden 2xl:inline">
+                  {currentImplementation
+                    ? <span dir="ltr" className="[unicode-bidi:isolate]">{currentImplementation}</span>
+                    : t('runtime.title')}
+                </span>
                 <ChevronDown
                   size={12}
                   className={cn(
@@ -290,7 +313,7 @@ export default function Header({ activeTab, setActiveTab }) {
 
               {showRuntime && (
                 <div
-                  className="animate-dropdown-in absolute right-0 top-full z-[1000] mt-2 w-[min(19rem,calc(100vw-1.5rem))] overflow-hidden rounded-2xl border"
+                  className="animate-dropdown-in absolute end-0 top-full z-[1000] mt-2 w-[min(19rem,calc(100vw-1.5rem))] overflow-hidden rounded-2xl border"
                   style={{
                     background: 'var(--surface-elevated)',
                     borderColor: 'var(--border)',
@@ -298,19 +321,22 @@ export default function Header({ activeTab, setActiveTab }) {
                   }}
                 >
                   <div className="border-b px-4 py-3" style={{ borderColor: 'var(--border)' }}>
-                    <p className="text-[15px] font-semibold text-[var(--fg)]">Runtime</p>
+                    <p className="text-[15px] font-semibold text-[var(--fg)]">{t('runtime.title')}</p>
                     <p className="mt-0.5 text-xs text-[var(--fg-soft)]">
-                      Deployment-owned model runtime
+                      {t('runtime.deploymentOwned')}
                     </p>
                   </div>
 
                   <div className="p-3">
-                    <p className="label-xs mb-2 px-1">Effective LLM implementation</p>
-                    <div className="rounded-xl border border-[var(--border-focus)] bg-[var(--primary-soft)] px-3 py-2.5 text-[13px] font-medium text-[var(--primary)]">
-                      {currentImplementation || 'Unavailable'}
+                    <p className="label-xs mb-2 px-1">{t('runtime.effectiveImplementation')}</p>
+                    <div
+                      dir={currentImplementation ? 'ltr' : undefined}
+                      className="rounded-xl border border-[var(--border-focus)] bg-[var(--primary-soft)] px-3 py-2.5 text-[13px] font-medium text-[var(--primary)] text-start"
+                    >
+                      {currentImplementation || t('common.unavailable')}
                     </div>
                     <p className="mt-2 px-1 text-xs text-[var(--fg-soft)]">
-                      Deployment-owned; changes require a service restart.
+                      {t('runtime.restartNote')}
                     </p>
                   </div>
                 </div>
@@ -327,8 +353,8 @@ export default function Header({ activeTab, setActiveTab }) {
           <button
             type="button"
             onClick={logout}
-            aria-label="Sign out"
-            title="Sign out"
+            aria-label={t('session.signOut')}
+            title={t('session.signOut')}
             className={iconButtonClass}
           >
             <LogOut size={16} />

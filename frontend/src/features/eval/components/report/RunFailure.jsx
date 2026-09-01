@@ -3,6 +3,7 @@
 import { AlertTriangle, Download, RotateCcw } from 'lucide-react'
 import Button from '@/components/ui/Button'
 import { Callout, Disclosure } from './primitives'
+import { useI18n } from '@/i18n'
 
 /**
  * What went wrong, in the order somebody acting on it needs to read it.
@@ -18,6 +19,7 @@ import { Callout, Disclosure } from './primitives'
  * thing as no offer at all.
  */
 export default function RunFailure({ failure, onRetry, onDownload, busy }) {
+  const { t } = useI18n()
   if (!failure) return null
   const tone = failure.status === 'partial' ? 'warning' : 'danger'
 
@@ -25,16 +27,16 @@ export default function RunFailure({ failure, onRetry, onDownload, busy }) {
     <Callout tone={tone} icon={AlertTriangle} title={failure.title}>
       <dl className="grid gap-2">
         <div>
-          <dt className="label-xs">What happened</dt>
+          <dt className="label-xs">{t('evalReport.whatHappened')}</dt>
           <dd>{failure.happened}</dd>
         </div>
         <div>
-          <dt className="label-xs">Impact</dt>
+          <dt className="label-xs">{t('evalReport.impact')}</dt>
           <dd>{failure.impact}</dd>
         </div>
         {failure.cause && (
           <div>
-            <dt className="label-xs">Likely cause</dt>
+            <dt className="label-xs">{t('evalReport.likelyCause')}</dt>
             <dd>{failure.cause}</dd>
           </div>
         )}
@@ -50,7 +52,7 @@ export default function RunFailure({ failure, onRetry, onDownload, busy }) {
               onClick={onRetry}
               leftIcon={<RotateCcw size={13} />}
             >
-              Retry run
+              {t('evalReport.retryRun')}
             </Button>
           )}
           {failure.actions.includes('download') && (
@@ -61,7 +63,7 @@ export default function RunFailure({ failure, onRetry, onDownload, busy }) {
               onClick={() => onDownload()}
               leftIcon={<Download size={13} />}
             >
-              Download Diagnostic ZIP
+              {t('evalReport.download')}
             </Button>
           )}
         </div>
@@ -69,8 +71,14 @@ export default function RunFailure({ failure, onRetry, onDownload, busy }) {
 
       {failure.technical && (
         <div className="mt-2">
-          <Disclosure title="Technical details" summary="The error exactly as the service reported it.">
-            <p className="font-mono text-[12px] break-words">{failure.technical}</p>
+          <Disclosure
+            title={t('evalReport.technicalDetails')}
+            summary={t('evalReport.technicalSummary')}
+          >
+            {/* The service's own error text: never translated, never reordered. */}
+            <p dir="ltr" className="font-mono text-[12px] break-words text-left [unicode-bidi:isolate]">
+              {failure.technical}
+            </p>
           </Disclosure>
         </div>
       )}

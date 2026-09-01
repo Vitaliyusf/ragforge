@@ -6,6 +6,7 @@ import { motion } from 'framer-motion'
 import { Plus, Pencil, Trash2, MessageSquare, Loader2, AlertCircle, Search } from 'lucide-react'
 import Button from '@/components/ui/Button'
 import { formatChatDate } from '@/lib/formatting/datetime'
+import { useI18n } from '@/i18n'
 
 export default function ChatSidebar({
   chats,
@@ -21,6 +22,7 @@ export default function ChatSidebar({
   onDeleteChat,
   onLoadChats,
 }) {
+  const { t } = useI18n()
   const [query, setQuery] = useState('')
   const filteredChats = useMemo(() => {
     const normalizedQuery = query.trim().toLocaleLowerCase()
@@ -41,31 +43,35 @@ export default function ChatSidebar({
           size="sm"
           className="w-full justify-center"
           leftIcon={<Plus size={14} />}
-          aria-label="New chat"
+          aria-label={t('chat.newChat')}
         >
-          New conversation
+          {t('chat.newConversation')}
         </Button>
 
         <label className="relative block">
           <Search
             size={13}
-            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2"
+            className="pointer-events-none absolute start-3 top-1/2 -translate-y-1/2"
             style={{ color: 'var(--fg-soft)' }}
           />
-          <span className="sr-only">Search conversations</span>
+          <span className="sr-only">{t('chat.search')}</span>
+          {/* `dir="auto"` on the query itself: a reader in a Hebrew shell may
+              still be searching for an English chat title, and forcing the
+              field RTL would put their caret on the wrong side of it. */}
           <input
             type="search"
+            dir="auto"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search conversations"
-            className="h-9 w-full rounded-xl border bg-transparent pl-9 pr-3 text-[13px] text-[var(--fg)] outline-hidden transition-all placeholder:text-[var(--fg-soft)] focus:border-[var(--border-focus)] focus:ring-2 focus:ring-[var(--ring)]"
+            placeholder={t('chat.search')}
+            className="h-9 w-full rounded-xl border bg-transparent ps-9 pe-3 text-[13px] text-[var(--fg)] outline-hidden transition-all placeholder:text-[var(--fg-soft)] focus:border-[var(--border-focus)] focus:ring-2 focus:ring-[var(--ring)]"
             style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}
           />
         </label>
       </div>
 
       <div className="flex shrink-0 items-center justify-between px-3 pb-1 pt-3">
-        <span className="label-xs">Recent chats</span>
+        <span className="label-xs">{t('chat.recent')}</span>
         {!chatsLoading && (
           <span className="text-xs tabular-nums text-[var(--fg-soft)]">{filteredChats.length}</span>
         )}
@@ -84,7 +90,7 @@ export default function ChatSidebar({
               <AlertCircle size={18} />
             </span>
             <p className="text-[13px] leading-relaxed text-[var(--fg-muted)]">{chatsError}</p>
-            <Button onClick={onLoadChats} variant="secondary" size="xs">Try again</Button>
+            <Button onClick={onLoadChats} variant="secondary" size="xs">{t('common.tryAgain')}</Button>
           </div>
         ) : chats.length === 0 ? (
           <div className="flex flex-col items-center gap-3 px-3 py-10 text-center">
@@ -95,21 +101,21 @@ export default function ChatSidebar({
               <MessageSquare size={19} />
             </span>
             <div>
-              <p className="text-[13px] font-medium text-[var(--fg)]">No conversations yet</p>
+              <p className="text-[13px] font-medium text-[var(--fg)]">{t('chat.noConversations')}</p>
               <p className="mt-1 text-xs leading-relaxed text-[var(--fg-soft)]">
-                Start a chat and it will appear here.
+                {t('chat.noConversationsHint')}
               </p>
             </div>
           </div>
         ) : filteredChats.length === 0 ? (
           <div className="px-4 py-8 text-center">
-            <p className="text-[13px] font-medium text-[var(--fg)]">No matching chats</p>
+            <p className="text-[13px] font-medium text-[var(--fg)]">{t('chat.noMatching')}</p>
             <button
               type="button"
               onClick={() => setQuery('')}
               className="mt-2 text-xs font-medium text-[var(--primary)] hover:underline"
             >
-              Clear search
+              {t('chat.clearSearch')}
             </button>
           </div>
         ) : (
@@ -138,6 +144,7 @@ export default function ChatSidebar({
 }
 
 function ChatItem({ chat, isActive, isDeleting, isGeneratingTitle, onSelect, onRename, onDelete, index }) {
+  const { locale, isRTL, t } = useI18n()
   const [draftTitle, setDraftTitle] = useState(null)
   const isEditing = draftTitle != null
 
@@ -154,7 +161,7 @@ function ChatItem({ chat, isActive, isDeleting, isGeneratingTitle, onSelect, onR
           autoFocus
           dir="auto"
           value={draftTitle}
-          aria-label={`Rename ${chat.title}`}
+          aria-label={t('chat.renameChat', { title: chat.title })}
           onChange={(event) => setDraftTitle(event.target.value)}
           onBlur={commitRename}
           onKeyDown={(event) => {
@@ -177,7 +184,7 @@ function ChatItem({ chat, isActive, isDeleting, isGeneratingTitle, onSelect, onR
   return (
     <motion.div
       layout
-      initial={{ opacity: 0, x: -6 }}
+      initial={{ opacity: 0, x: isRTL ? 6 : -6 }}
       animate={{ opacity: isDeleting ? 0.5 : 1, x: 0 }}
       transition={{ delay: Math.min(index, 8) * 0.025 }}
       className="group relative mb-1 flex cursor-pointer items-center gap-2 rounded-xl border px-2.5 py-2.5 outline-hidden transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
@@ -194,7 +201,7 @@ function ChatItem({ chat, isActive, isDeleting, isGeneratingTitle, onSelect, onR
       }}
       role="button"
       tabIndex={0}
-      aria-label={`Select chat: ${chat.title}`}
+      aria-label={t('chat.selectChat', { title: chat.title })}
     >
       <span
         className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
@@ -217,7 +224,7 @@ function ChatItem({ chat, isActive, isDeleting, isGeneratingTitle, onSelect, onR
           {chat.title}
         </span>
         <span className="mt-0.5 block text-xs text-[var(--fg-soft)]">
-          {formatChatDate(chat.updated_at)}
+          {formatChatDate(chat.updated_at, locale)}
         </span>
       </div>
 
@@ -229,7 +236,7 @@ function ChatItem({ chat, isActive, isDeleting, isGeneratingTitle, onSelect, onR
             setDraftTitle(chat.title || '')
           }}
           className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-[var(--fg-soft)] opacity-0 transition-all hover:bg-[var(--surface-hover)] hover:text-[var(--fg)] focus-visible:opacity-100 focus-visible:outline-hidden group-hover:opacity-100"
-          aria-label={`Rename ${chat.title}`}
+          aria-label={t('chat.renameChat', { title: chat.title })}
         >
           <Pencil size={12} />
         </button>
@@ -240,7 +247,7 @@ function ChatItem({ chat, isActive, isDeleting, isGeneratingTitle, onSelect, onR
         onClick={onDelete}
         disabled={isDeleting}
         className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-[var(--fg-soft)] opacity-0 transition-all hover:bg-[var(--danger-soft)] hover:text-[var(--danger)] focus-visible:opacity-100 focus-visible:outline-hidden group-hover:opacity-100"
-        aria-label={`Delete ${chat.title}`}
+        aria-label={t('chat.deleteChat', { title: chat.title })}
       >
         {isDeleting ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
       </button>
