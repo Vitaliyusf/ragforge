@@ -13,7 +13,9 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import metricsService from '@/features/metrics/services/metricsService'
-import { PROFILES_BY_ID, PHASE_SHORT_LABELS } from '@/features/eval/evalProfiles'
+import { PROFILES_BY_ID, PHASE_SHORT_LABEL_KEYS } from '@/features/eval/evalProfiles'
+import { DEFAULT_LOCALE } from '@/i18n/locale'
+import { translate } from '@/i18n/translate'
 import { ACTIVITY_FEATURES, IDLE_ACTIVITY, isActiveState, mapBenchmarkStatus } from '../activityModel'
 import { useActivity, useLiveActivitySource } from '../ActivityContext'
 
@@ -48,8 +50,14 @@ function benchmarkProgress(benchmark) {
 function benchmarkLabel(benchmark) {
   const phases = Array.isArray(benchmark?.phases) ? benchmark.phases : []
   const active = phases.find((phase) => phase.status === 'running')
-  if (active?.name && PHASE_SHORT_LABELS[active.name]) return PHASE_SHORT_LABELS[active.name]
-  return PROFILES_BY_ID[benchmark?.profile]?.label || benchmark?.profile || undefined
+  // Published as bounded text on the activity entry, which the nav renders
+  // verbatim beside its own translated feature name.
+  if (active?.name && PHASE_SHORT_LABEL_KEYS[active.name]) {
+    return translate(DEFAULT_LOCALE, PHASE_SHORT_LABEL_KEYS[active.name])
+  }
+  const profile = PROFILES_BY_ID[benchmark?.profile]
+  if (profile?.labelKey) return translate(DEFAULT_LOCALE, profile.labelKey)
+  return benchmark?.profile || undefined
 }
 
 export function benchmarkActivity(benchmark) {

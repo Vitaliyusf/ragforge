@@ -15,9 +15,16 @@
  *   filter over the lines the services still hold, not a trace store lookup,
  *   and their `title` says exactly that. There is no trace-store contract
  *   behind them to pretend otherwise with.
+ *
+ * Each descriptor carries both the canonical English `label`/`title` and the
+ * `labelKey`/`titleKey` that render them in the reader's language. This module
+ * is pure — it has no React context and therefore no locale — so the component
+ * that draws the button is what resolves the keys.
  */
 
-import { PRODUCT_LABELS, serviceLabel } from '@/lib/terminology'
+import { serviceLabel } from '@/lib/terminology'
+import { DEFAULT_LOCALE } from '@/i18n/locale'
+import { translate } from '@/i18n/translate'
 
 /** Services whose output the log route will serve. Mirrors `log_services`. */
 export const LOG_SERVICES = Object.freeze([
@@ -64,9 +71,7 @@ export function isUsableIdentifier(value) {
   return text !== '' && !PLACEHOLDER_ID.test(text)
 }
 
-const LOG_SEARCH_CAVEAT =
-  'Searches the log lines the selected services still hold. An event older ' +
-  'than that window is no longer in the buffer to find.'
+const LOG_SEARCH_CAVEAT = translate(DEFAULT_LOCALE, 'deepLink.logsCaveat')
 
 /**
  * Open the log stream filtered to one correlation identifier.
@@ -84,8 +89,14 @@ export function logsLinkForCorrelation({ id, kindLabel = 'trace', services } = {
   return {
     kind: DEEP_LINK_KIND.LOGS,
     destination: 'logs',
-    label: `Find in ${PRODUCT_LABELS.logs}`,
-    title: `Filters ${PRODUCT_LABELS.logs} to lines mentioning this ${kindLabel} id. ${LOG_SEARCH_CAVEAT}`,
+    label: translate(DEFAULT_LOCALE, 'deepLink.findInLogs'),
+    labelKey: 'deepLink.findInLogs',
+    title: translate(DEFAULT_LOCALE, 'deepLink.findInLogsTitle', {
+      kind: kindLabel,
+      caveat: LOG_SEARCH_CAVEAT,
+    }),
+    titleKey: 'deepLink.findInLogsTitle',
+    titleVars: { kind: kindLabel, caveatKey: 'deepLink.logsCaveat' },
     logs: {
       textFilter: text,
       services: scoped.length ? scoped : [...LOG_SERVICES],
@@ -109,8 +120,12 @@ export function logsLinkForService(service) {
   return {
     kind: DEEP_LINK_KIND.LOGS,
     destination: 'logs',
-    label: `View ${PRODUCT_LABELS.logs}`,
-    title: `Opens ${PRODUCT_LABELS.logs} for ${serviceLabel(service)}, filtered to errors and warnings.`,
+    label: translate(DEFAULT_LOCALE, 'deepLink.viewLogs'),
+    labelKey: 'deepLink.viewLogs',
+    title: translate(DEFAULT_LOCALE, 'deepLink.viewLogsTitle', { service: serviceLabel(service) }),
+    titleKey: 'deepLink.viewLogsTitle',
+    // Service display names are canonical and stay English in both locales.
+    titleVars: { service: serviceLabel(service) },
     logs: {
       textFilter: '',
       services: [service],
@@ -134,8 +149,10 @@ export function conversationLink(conversationId) {
   return {
     kind: DEEP_LINK_KIND.CONVERSATION,
     destination: 'chat',
-    label: `Open in ${PRODUCT_LABELS.chat}`,
-    title: 'Opens the conversation this turn was recorded in.',
+    label: translate(DEFAULT_LOCALE, 'deepLink.openInChat'),
+    labelKey: 'deepLink.openInChat',
+    title: translate(DEFAULT_LOCALE, 'deepLink.openInChatTitle'),
+    titleKey: 'deepLink.openInChatTitle',
     route: `/chat/${encodeURIComponent(id)}`,
   }
 }
@@ -153,10 +170,13 @@ export function documentLink(fileId, filename = null) {
   return {
     kind: DEEP_LINK_KIND.DOCUMENT,
     destination: 'files',
-    label: `Open in ${PRODUCT_LABELS.knowledge}`,
+    label: translate(DEFAULT_LOCALE, 'deepLink.openInKnowledge'),
+    labelKey: 'deepLink.openInKnowledge',
     title: filename
-      ? `Opens ${PRODUCT_LABELS.knowledge} filtered to ${filename}.`
-      : `Opens ${PRODUCT_LABELS.knowledge} filtered to this document.`,
+      ? translate(DEFAULT_LOCALE, 'deepLink.openInKnowledgeNamedTitle', { filename })
+      : translate(DEFAULT_LOCALE, 'deepLink.openInKnowledgeTitle'),
+    titleKey: filename ? 'deepLink.openInKnowledgeNamedTitle' : 'deepLink.openInKnowledgeTitle',
+    ...(filename ? { titleVars: { filename } } : {}),
     intent: { kind: DEEP_LINK_KIND.DOCUMENT, query: id },
   }
 }

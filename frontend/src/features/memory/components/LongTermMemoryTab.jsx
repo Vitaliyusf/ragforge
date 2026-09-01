@@ -16,12 +16,14 @@ import { ConfirmModal } from '@/components/ui/Modal'
 import { cn } from '@/lib/utils'
 import AddMemoryForm from './AddMemoryForm'
 import MemoryCard from './MemoryCard'
+import { useI18n } from '@/i18n'
 import { CATEGORY_OPTIONS } from './memoryConfig'
 
 /** Enough of the memory to recognise which one is about to go. */
 const truncate = (text = '') => (text.length > 80 ? `${text.slice(0, 80)}…` : text)
 
 export default function LongTermMemoryTab() {
+  const { t } = useI18n()
   const [memories, setMemories]         = useState([])
   const [loading, setLoading]           = useState(false)
   const [showAddForm, setShowAddForm]   = useState(false)
@@ -54,14 +56,14 @@ export default function LongTermMemoryTab() {
     try {
       await memoryService.createMemory(content, category)
       if (!await loadMemories()) {
-        throw new Error('The memory may have been saved, but the canonical list could not be refreshed.')
+        throw new Error(t('memory.refreshFailed'))
       }
       setShowAddForm(false)
-      notifySuccess('Memory saved')
+      notifySuccess(t('memory.saved'))
     } catch (err) {
-      notifyError('Could not save memory', {
+      notifyError(t('memory.saveFailed'), {
         error: err,
-        description: 'Your draft is still here. Check the details and try again.',
+        description: t('memory.saveFailedDetail'),
         onRetry: () => handleAdd(content, category),
       })
       throw err
@@ -71,7 +73,7 @@ export default function LongTermMemoryTab() {
   const handleEdit = async (id, content) => {
     await memoryService.updateMemory(id, content)
     await loadMemories()
-    notifySuccess('Memory updated')
+    notifySuccess(t('memory.updated'))
   }
 
   const handleDeleteClick = (memory) => setDeleteModal({ open: true, memory })
@@ -83,16 +85,16 @@ export default function LongTermMemoryTab() {
     try {
       const result = await memoryService.deleteMemory(memory.id)
       if (result?.status && !['success', 'deleted'].includes(result.status)) {
-        throw new Error(result.message || 'The memory service could not complete the deletion.')
+        throw new Error(result.message || t('memory.serviceIncomplete'))
       }
       if (!await loadMemories()) {
-        throw new Error('The delete was sent, but the canonical list could not be refreshed.')
+        throw new Error(t('memory.deleteRefreshFailed'))
       }
-      notifySuccess('Memory deleted')
+      notifySuccess(t('memory.deleted'))
     } catch (err) {
-      notifyError('Delete failed', {
+      notifyError(t('memory.deleteFailed'), {
         error: err,
-        description: 'The memory remains visible. Retry when the service is available.',
+        description: t('memory.deleteFailedDetail'),
         onRetry: handleConfirmDelete,
       })
     } finally {
@@ -105,8 +107,8 @@ export default function LongTermMemoryTab() {
     <div className="min-h-0 flex-1 overflow-y-auto px-3 py-4 md:px-6 md:py-5">
       <div className="max-w-2xl mx-auto">
         <PageHeader
-          title="Long-Term Memory"
-          description={`${memories.length} memor${memories.length === 1 ? 'y' : 'ies'} stored`}
+          title={t('memory.title')}
+          description={t('memory.storedCount', { count: memories.length })}
           icon={Brain}
           actions={
             <Button
@@ -115,7 +117,7 @@ export default function LongTermMemoryTab() {
               onClick={() => setShowAddForm(!showAddForm)}
               leftIcon={showAddForm ? <X size={13} /> : <Plus size={13} />}
             >
-              {showAddForm ? 'Cancel' : 'Add Memory'}
+              {t(showAddForm ? 'common.cancel' : 'memory.add')}
             </Button>
           }
         />
@@ -139,20 +141,24 @@ export default function LongTermMemoryTab() {
           </div>
         ) : loadError ? (
           <ErrorState
-            title="Could not load memories"
-            description="The memory service did not answer. Your stored memories are unaffected."
+            title={t('memory.loadFailed')}
+            description={t('memory.loadFailedDescription')}
             detail={loadError?.message}
-            action={<Button variant="secondary" size="sm" onClick={loadMemories}>Retry</Button>}
+            action={
+              <Button variant="secondary" size="sm" onClick={loadMemories}>
+                {t('common.retry')}
+              </Button>
+            }
           />
         ) : memories.length === 0 ? (
           <EmptyState
             icon={Brain}
-            title="No memories yet"
-            description="Long-term memories help the AI remember your preferences and context across conversations. Add your first memory to get started."
+            title={t('memory.empty')}
+            description={t('memory.emptyDescription')}
             action={
               <Button variant="primary" size="sm" onClick={() => setShowAddForm(true)}
                 leftIcon={<Plus size={13} />}>
-                Add Memory
+                {t('memory.add')}
               </Button>
             }
           />
@@ -176,13 +182,13 @@ export default function LongTermMemoryTab() {
       <ConfirmModal
         open={deleteModal.open}
         onOpenChange={open => setDeleteModal(prev => ({ ...prev, open }))}
-        title="Delete memory?"
+        title={t('memory.deleteTitle')}
         description={
           deleteModal.memory
-            ? `"${truncate(deleteModal.memory.content)}" is removed from long-term memory, so the assistant stops using it in future conversations. Past replies that already used it are unchanged. This cannot be undone.`
+            ? t('memory.deleteDescription', { excerpt: truncate(deleteModal.memory.content) })
             : ''
         }
-        confirmLabel="Delete"
+        confirmLabel={t('common.delete')}
         onConfirm={handleConfirmDelete}
         variant="danger"
         loading={deleteModal.memory ? deletingIds.has(deleteModal.memory.id) : false}

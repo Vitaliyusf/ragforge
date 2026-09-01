@@ -18,6 +18,7 @@ import {
   describeTimeRange,
   resolveDataState,
 } from './metricMeta'
+import { translate } from '@/i18n/translate'
 
 describe('describeScope', () => {
   it('reports a Prometheus figure as global even when a tenant was read', () => {
@@ -114,8 +115,17 @@ describe('describeSamples', () => {
   })
 
   it("counts in the caller's own noun", () => {
-    expect(describeSamples(1, 'turn')).toBe('1 turn')
+    // A labelled count, not a pluralised one: the same phrasing has to read
+    // correctly in Hebrew, which has no clean "1 turn / 2 turns" split.
+    expect(describeSamples(1, 'turn')).toBe('1 turns')
     expect(describeSamples(2400, 'turn')).toMatch(/turns$/)
+  })
+
+  it("counts in the reader's language when one is supplied", () => {
+    const hebrew = (key, vars) => translate('he', key, vars)
+    expect(describeSamples(2, 'turn', hebrew)).toBe('2 תורות')
+    expect(describeSamples(0, 'file', hebrew)).toBe('אין קבצים בטווח הזה')
+    expect(describeSamples(null, 'turn', hebrew)).toBe('מספר הדגימות לא דווח')
   })
 })
 

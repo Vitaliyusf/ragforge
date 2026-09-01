@@ -5,9 +5,10 @@ import { Search } from 'lucide-react'
 import Button from '@/components/ui/Button'
 import Input from '@/components/ui/Input'
 import Select, { SelectItem } from '@/components/ui/Select'
-import { EMPTY, UNSCORABLE_ITEM_NOTE, formatCount, formatPercent } from '@/features/metrics/components/metricsConfig'
+import { EMPTY, UNSCORABLE_ITEM_NOTE_KEY, formatCount, formatPercent } from '@/features/metrics/components/metricsConfig'
 import { SCORE_BANDS, failureLabel, filterItems } from '../../runReport'
 import { Cell, Note, Num, ReportTable, Row } from './primitives'
+import { useI18n } from '@/i18n'
 
 /** How many rows are rendered at once. More arrive a page at a time. */
 const PAGE = 50
@@ -22,6 +23,7 @@ const PAGE = 50
  * table always describes the whole filtered set, never the rendered page.
  */
 export default function ItemExplorer({ items = [], emptyNote }) {
+  const { t } = useI18n()
   const [search, setSearch] = useState('')
   const [failuresOnly, setFailuresOnly] = useState(false)
   const [band, setBand] = useState('all')
@@ -39,7 +41,7 @@ export default function ItemExplorer({ items = [], emptyNote }) {
   }
 
   if (!items.length) {
-    return <Note>{emptyNote || 'This run kept no per-item rows.'}</Note>
+    return <Note>{emptyNote || t('evalReport.runKeptNoItems')}</Note>
   }
 
   return (
@@ -49,8 +51,11 @@ export default function ItemExplorer({ items = [], emptyNote }) {
           size="sm"
           icon={Search}
           value={search}
-          placeholder="Search id or question"
-          aria-label="Search items"
+          placeholder={t('evalReport.searchPlaceholder')}
+          aria-label={t('evalReport.searchItems')}
+          // An item id is technical and a question may be Hebrew: the box
+          // follows whatever the reader types.
+          dir="auto"
           containerClassName="min-w-[200px] grow sm:grow-0"
           onChange={(event) => change(setSearch)(event.target.value)}
         />
@@ -58,11 +63,11 @@ export default function ItemExplorer({ items = [], emptyNote }) {
           value={band}
           onValueChange={change(setBand)}
           className="w-[180px]"
-          aria-label="Score band"
+          aria-label={t('evalReport.scoreBand')}
         >
           {SCORE_BANDS.map((option) => (
             <SelectItem key={option.id} value={option.id}>
-              {option.label}
+              {t(option.labelKey)}
             </SelectItem>
           ))}
         </Select>
@@ -72,33 +77,40 @@ export default function ItemExplorer({ items = [], emptyNote }) {
           aria-pressed={failuresOnly}
           onClick={() => change(setFailuresOnly)(!failuresOnly)}
         >
-          Failures only
+          {t('evalReport.failuresOnly')}
         </Button>
         <span className="text-[12px]" style={{ color: 'var(--fg-soft)' }}>
-          {formatCount(filtered.length)} of {formatCount(items.length)} items
+          {t('evalReport.filteredItems', {
+            shown: formatCount(filtered.length),
+            total: formatCount(items.length),
+          })}
         </span>
       </div>
 
       {filtered.length === 0 ? (
-        <Note>No item matches these filters.</Note>
+        <Note>{t('evalReport.noItemMatch')}</Note>
       ) : (
         <>
           <ReportTable
-            caption="Per-item retrieval results, worst first"
+            caption={t('evalReport.itemsCaption')}
             columns={[
-              { key: 'query', label: 'Query' },
-              { key: 'rank', label: 'First hit', align: 'right' },
+              { key: 'query', label: t('evalReport.query') },
+              { key: 'rank', label: t('evalReport.firstHit'), align: 'right' },
+              // Recall@10 is a metric name and stays canonical.
               { key: 'recall', label: 'Recall@10', align: 'right' },
-              { key: 'lost', label: 'Lost at' },
-              { key: 'expected', label: 'Expected' },
-              { key: 'retrieved', label: 'Retrieved' },
+              { key: 'lost', label: t('evalReport.lostAt') },
+              { key: 'expected', label: t('evalReport.expected') },
+              { key: 'retrieved', label: t('evalReport.retrieved') },
             ]}
           >
             {page.map((row) => (
               <Row key={row.item_id}>
+                {/* The question is the reader's own text; the item id under
+                    it is an identifier. */}
                 <th
                   scope="row"
-                  className="py-1.5 pr-3 text-left font-normal"
+                  dir="auto"
+                  className="py-1.5 pe-3 text-start font-normal"
                   style={{ color: 'var(--fg)' }}
                 >
                   {row.query}
@@ -107,23 +119,23 @@ export default function ItemExplorer({ items = [], emptyNote }) {
                   </span>
                   {row.error && (
                     <span className="text-[12px]" style={{ color: 'var(--danger)' }}>
-                      failed: {row.error}
+                      {t('evalReport.itemFailed', { error: row.error })}
                     </span>
                   )}
                   {row.skipped && !row.error && (
                     <span className="text-[12px]" style={{ color: 'var(--fg-soft)' }}>
-                      not labelled — excluded from every average
+                      {t('evalReport.notLabelled')}
                     </span>
                   )}
                   {row.unscorable && !row.error && (
                     <span className="text-[12px]" style={{ color: 'var(--warning)' }}>
-                      {UNSCORABLE_ITEM_NOTE}
+                      {t(UNSCORABLE_ITEM_NOTE_KEY)}
                     </span>
                   )}
                 </th>
                 <Num>{row.first_hit_rank ?? EMPTY}</Num>
                 <Num>{formatPercent(row.recall_at_10)}</Num>
-                <Cell>{failureLabel(row)}</Cell>
+                <Cell>{failureLabel(row, t)}</Cell>
                 <Cell className="font-mono text-[12px]" color="var(--fg-soft)">
                   {(row.expected_ids || []).join(', ') || EMPTY}
                 </Cell>
@@ -137,10 +149,13 @@ export default function ItemExplorer({ items = [], emptyNote }) {
           {filtered.length > page.length && (
             <div className="flex items-center gap-3">
               <Button variant="secondary" size="sm" onClick={() => setShown(shown + PAGE)}>
-                Show more
+                {t('evalReport.showMore')}
               </Button>
               <span className="text-[12px]" style={{ color: 'var(--fg-soft)' }}>
-                Showing {formatCount(page.length)} of {formatCount(filtered.length)} matching items.
+                {t('evalReport.showingMatching', {
+                  shown: formatCount(page.length),
+                  total: formatCount(filtered.length),
+                })}
               </span>
             </div>
           )}

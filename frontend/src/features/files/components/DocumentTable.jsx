@@ -1,6 +1,7 @@
 'use client'
 
 import { ArrowDown, ArrowUp, ChevronsUpDown } from 'lucide-react'
+import { useI18n } from '@/i18n'
 import DocumentRow from './DocumentRow'
 
 /**
@@ -10,11 +11,11 @@ import DocumentRow from './DocumentRow'
  * Actions remain.
  */
 const COLUMNS = [
-  { key: 'document', label: 'Document', sort: 'name', className: '' },
-  { key: 'type', label: 'Type / size', sort: 'size', className: 'hidden md:table-cell' },
-  { key: 'status', label: 'Status', sort: 'status', className: '' },
-  { key: 'pipeline', label: 'Pipeline', sort: null, className: 'hidden lg:table-cell' },
-  { key: 'updated', label: 'Updated', sort: 'updated', className: 'hidden md:table-cell' },
+  { key: 'document', labelKey: 'knowledge.columnDocument', sort: 'name', className: '' },
+  { key: 'type', labelKey: 'knowledge.columnType', sort: 'size', className: 'hidden md:table-cell' },
+  { key: 'status', labelKey: 'knowledge.columnStatus', sort: 'status', className: '' },
+  { key: 'pipeline', labelKey: 'knowledge.columnPipeline', sort: null, className: 'hidden lg:table-cell' },
+  { key: 'updated', labelKey: 'knowledge.columnUpdated', sort: 'updated', className: 'hidden md:table-cell' },
 ]
 
 function SortIcon({ active, direction }) {
@@ -47,6 +48,7 @@ export default function DocumentTable({
   onDelete,
   onReview,
 }) {
+  const { t } = useI18n()
   const allSelected = documents.length > 0 && documents.every((file) => selectedIds.has(file.file_id))
   const someSelected = documents.some((file) => selectedIds.has(file.file_id))
 
@@ -54,7 +56,10 @@ export default function DocumentTable({
     <div className="overflow-x-auto">
       <table className="w-full border-collapse text-start">
         <caption className="sr-only">
-          Documents, sorted by {sort}, {direction === 'asc' ? 'ascending' : 'descending'}
+          {t('knowledge.tableCaption', {
+            sort: t(COLUMNS.find((column) => column.sort === sort)?.labelKey ?? 'knowledge.sortUpdated'),
+            direction: t(direction === 'asc' ? 'knowledge.ascending' : 'knowledge.descending'),
+          })}
         </caption>
         <thead className="sticky top-0 z-10 bg-bg-elevated">
           <tr className="border-b border-border">
@@ -64,7 +69,7 @@ export default function DocumentTable({
                 checked={allSelected}
                 ref={(node) => { if (node) node.indeterminate = someSelected && !allSelected }}
                 onChange={(event) => onSelectAll(event.target.checked)}
-                aria-label="Select all documents on this page"
+                aria-label={t('knowledge.selectAll')}
                 className="h-3.5 w-3.5 cursor-pointer accent-[var(--primary)]"
               />
             </th>
@@ -83,17 +88,17 @@ export default function DocumentTable({
                       onClick={() => onSortChange(column.sort)}
                       className="inline-flex items-center gap-1 uppercase tracking-wide hover:text-fg"
                     >
-                      {column.label}
+                      {t(column.labelKey)}
                       <SortIcon active={active} direction={direction} />
                     </button>
                   ) : (
-                    column.label
+                    t(column.labelKey)
                   )}
                 </th>
               )
             })}
             <th scope="col" className="px-3 py-2 text-end text-[11px] font-semibold uppercase tracking-wide text-fg-soft">
-              Actions
+              {t('knowledge.columnActions')}
             </th>
           </tr>
         </thead>

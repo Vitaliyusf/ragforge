@@ -8,6 +8,7 @@ import {
   selectDocuments,
   summarizePipeline,
 } from './documentModel'
+import { translate } from '@/i18n/translate'
 
 const EMPTY_STAGE = {
   extraction: 'waiting',
@@ -55,7 +56,15 @@ describe('summarizePipeline', () => {
       status: 'complete',
       stage: Object.fromEntries(Object.keys(EMPTY_STAGE).map((key) => [key, 'done'])),
     })
-    expect(summarizePipeline(ready)).toEqual({ state: 'done', label: 'Indexed', stageKey: 'vector' })
+    // `labelKey` is what the cell renders; `label` is the canonical English
+    // this module is the authority on, and both must agree.
+    expect(summarizePipeline(ready)).toMatchObject({
+      state: 'done',
+      label: 'Indexed',
+      labelKey: 'pipeline.indexed',
+      stageKey: 'vector',
+    })
+    expect(translate('he', summarizePipeline(ready).labelKey)).toBe('אונדקס')
   })
 
   it('names the stage that is actually running', () => {
@@ -82,11 +91,17 @@ describe('describeFailure', () => {
     const failure = describeFailure(broken, [
       { event_type: 'stage_failed', to_status: 'error', reason: 'Embedding request timed out.' },
     ])
-    expect(failure).toEqual({
+    expect(failure).toMatchObject({
       title: 'Embedding failed',
+      titleKey: 'pipeline.stageFailed',
+      titleVars: { stageKey: 'pipeline.embedding' },
       reason: 'Embedding request timed out.',
       impact: 'This document is not searchable.',
+      impactKey: 'pipeline.notSearchable',
     })
+    expect(
+      translate('he', failure.titleKey, { stage: translate('he', failure.titleVars.stageKey) })
+    ).toBe('שלב הטמעה נכשל')
   })
 
   it('reports a missing reason as absent rather than inventing one', () => {

@@ -8,7 +8,8 @@
  * mapping, so it can be tested without a DOM.
  */
 
-import { PRODUCT_LABELS } from '@/lib/terminology'
+import { PRODUCT_LABEL_KEYS } from '@/lib/terminology'
+import { translate } from '@/i18n/translate'
 
 export const ACTIVITY_STATES = Object.freeze({
   IDLE: 'idle',
@@ -153,10 +154,10 @@ export const FILE_FAILED_STATUSES = new Set(['error', 'rejected'])
 
 /* ── Accessible status text ────────────────────────────────────────────── */
 
-const FEATURE_LABELS = {
-  [ACTIVITY_FEATURES.EVAL]: PRODUCT_LABELS.eval,
-  [ACTIVITY_FEATURES.CHAT]: PRODUCT_LABELS.chat,
-  [ACTIVITY_FEATURES.FILES]: PRODUCT_LABELS.knowledge,
+const FEATURE_LABEL_KEYS = {
+  [ACTIVITY_FEATURES.EVAL]: PRODUCT_LABEL_KEYS.eval,
+  [ACTIVITY_FEATURES.CHAT]: PRODUCT_LABEL_KEYS.chat,
+  [ACTIVITY_FEATURES.FILES]: PRODUCT_LABEL_KEYS.knowledge,
 }
 
 /**
@@ -165,38 +166,53 @@ const FEATURE_LABELS = {
  * The same string serves both: the tooltip must never be the only place the
  * status exists, or a keyboard or screen-reader user would have no way to
  * read it.
+ *
+ * `t` is injected rather than read from context because this module is pure
+ * and is imported by plain utilities as well as by components. It defaults to
+ * English so a caller without a locale still gets a sentence.
  */
-export function describeActivity(feature, entry) {
+export function describeActivity(feature, entry, t = defaultTranslate) {
   const activity = normalizeActivity(entry)
-  const name = FEATURE_LABELS[feature] || feature
+  const labelKey = FEATURE_LABEL_KEYS[feature]
+  const name = labelKey ? t(labelKey) : feature
   if (activity.state === ACTIVITY_STATES.IDLE) return name
 
-  const parts = [activity.message || DEFAULT_PHRASES[feature]?.[activity.state] || activity.state]
+  // `message` is whatever the feature published — already bounded, already in
+  // whatever words that feature chose. Only the fallback phrase is ours to
+  // translate; inventing a Hebrew rendering of a published message would be
+  // machine-translating live data.
+  const phraseKey = PHRASE_KEYS[feature]?.[activity.state]
+  const parts = [activity.message || (phraseKey ? t(phraseKey) : activity.state)]
   if (activity.progress) parts.push(`${activity.progress.completed}/${activity.progress.total}`)
   if (activity.label) parts.push(activity.label)
   return `${name} — ${parts.join(' · ')}`
 }
 
-const DEFAULT_PHRASES = {
+/** English resolution for callers that have no locale to hand (tests, SSR). */
+function defaultTranslate(key, variables) {
+  return translate('en', key, variables)
+}
+
+const PHRASE_KEYS = {
   [ACTIVITY_FEATURES.EVAL]: {
-    queued: 'benchmark queued',
-    running: 'benchmark running',
-    success: 'benchmark completed',
-    warning: 'benchmark finished partially',
-    failed: 'benchmark failed',
+    queued: 'activity.phrase.eval.queued',
+    running: 'activity.phrase.eval.running',
+    success: 'activity.phrase.eval.success',
+    warning: 'activity.phrase.eval.warning',
+    failed: 'activity.phrase.eval.failed',
   },
   [ACTIVITY_FEATURES.CHAT]: {
-    queued: 'request queued',
-    running: 'generating response',
-    success: 'response ready',
-    warning: 'response incomplete',
-    failed: 'last request failed',
+    queued: 'activity.phrase.chat.queued',
+    running: 'activity.phrase.chat.running',
+    success: 'activity.phrase.chat.success',
+    warning: 'activity.phrase.chat.warning',
+    failed: 'activity.phrase.chat.failed',
   },
   [ACTIVITY_FEATURES.FILES]: {
-    queued: 'indexing queued',
-    running: 'indexing documents',
-    success: 'indexing finished',
-    warning: 'needs review',
-    failed: 'indexing failed',
+    queued: 'activity.phrase.files.queued',
+    running: 'activity.phrase.files.running',
+    success: 'activity.phrase.files.success',
+    warning: 'activity.phrase.files.warning',
+    failed: 'activity.phrase.files.failed',
   },
 }

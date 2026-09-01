@@ -17,6 +17,7 @@ import {
   getPipelineStages,
   summarizePipeline,
 } from '../documentModel'
+import { useI18n } from '@/i18n'
 import { DocumentPipelineCell, DocumentStatusBadge } from './DocumentStatus'
 
 /** The services that touch a file between upload and index. */
@@ -32,12 +33,12 @@ function Section({ title, children }) {
 }
 
 const STAGE_STATE_TEXT = {
-  done: { label: 'Done', color: 'var(--success)' },
-  running: { label: 'Running', color: 'var(--status-live)' },
-  failed: { label: 'Failed', color: 'var(--danger)' },
-  skipped: { label: 'Skipped', color: 'var(--fg-soft)' },
-  paused: { label: 'Paused', color: 'var(--warning)' },
-  waiting: { label: 'Waiting', color: 'var(--fg-soft)' },
+  done: { labelKey: 'document.stage.done', color: 'var(--success)' },
+  running: { labelKey: 'document.stage.running', color: 'var(--status-live)' },
+  failed: { labelKey: 'document.stage.failed', color: 'var(--danger)' },
+  skipped: { labelKey: 'document.stage.skipped', color: 'var(--fg-soft)' },
+  paused: { labelKey: 'document.stage.paused', color: 'var(--warning)' },
+  waiting: { labelKey: 'document.stage.waiting', color: 'var(--fg-soft)' },
 }
 
 /** Chunk counts are only ever read off a real chunking event. */
@@ -68,6 +69,7 @@ export default function DocumentDrawer({
   isDeleting,
   requiresReview,
 }) {
+  const { locale, t } = useI18n()
   if (!file) return null
 
   const status = getDocumentStatus(file)
@@ -85,7 +87,7 @@ export default function DocumentDrawer({
       onOpenChange={onOpenChange}
       variant="drawer"
       size="lg"
-      title={file.filename || 'Document'}
+      title={file.filename || t('document.title')}
     >
       <div className="space-y-5">
         {failure ? (
@@ -93,52 +95,56 @@ export default function DocumentDrawer({
             <div className="flex items-start gap-2">
               <AlertTriangle size={15} className="mt-0.5 shrink-0 text-danger" aria-hidden="true" />
               <div className="min-w-0">
-                <p className="text-[15px] font-semibold text-danger">{failure.title}</p>
-                <p className="mt-1 text-[13px] text-fg-muted">
-                  {failure.reason || 'No failure detail was recorded for this document.'}
+                <p className="text-[15px] font-semibold text-danger">
+                  {t(failure.titleKey, { stage: t(failure.titleVars.stageKey) })}
                 </p>
-                <p className="text-[13px] text-fg-muted">{failure.impact}</p>
+                <p className="mt-1 text-[13px] text-fg-muted">
+                  {failure.reason || t('document.noFailureDetail')}
+                </p>
+                <p className="text-[13px] text-fg-muted">{t(failure.impactKey)}</p>
                 {/* No retry button: the files service exposes no operation
                     that restarts a finished ingestion run, so the only honest
                     next steps are the ones below. */}
                 <ul className="mt-3 space-y-1 text-[13px] text-fg-muted">
-                  <li>Review the Activity section for failure details.</li>
-                  <li>Retry is not currently available for this ingestion run.</li>
-                  <li>Upload the document again after correcting the issue.</li>
+                  <li>{t('document.failureStep1')}</li>
+                  <li>{t('document.failureStep2')}</li>
+                  <li>{t('document.failureStep3')}</li>
                 </ul>
               </div>
             </div>
           </div>
         ) : null}
 
-        <Section title="Overview">
+        <Section title={t('document.overview')}>
           <div className="mb-3 flex flex-wrap items-center gap-2">
             <DocumentStatusBadge file={file} size="md" />
             <DocumentPipelineCell file={file} />
           </div>
           <div className="space-y-1.5">
-            <DataRow label="Type" value={getDocumentType(file) || file.content_type || '—'} />
-            <DataRow label="Size" value={file.size ? formatFileSize(file.size) : '—'} />
+            <DataRow label={t('document.type')} value={getDocumentType(file) || file.content_type || '—'} />
+            <DataRow label={t('document.size')} value={file.size ? formatFileSize(file.size) : '—'} />
             {file.owner_display_name || file.owner_email ? (
-              <DataRow label="Owner" value={file.owner_display_name || file.owner_email} />
+              <DataRow label={t('document.owner')} value={file.owner_display_name || file.owner_email} />
             ) : null}
-            <DataRow label="Uploaded" value={formatAbsoluteDateTime(file.created_at) || '—'} />
+            <DataRow label={t('document.uploaded')} value={formatAbsoluteDateTime(file.created_at, locale) || '—'} />
             <DataRow
-              label={status === DOCUMENT_STATUSES.READY ? 'Indexed' : 'Updated'}
-              value={formatAbsoluteDateTime(file.updated_at) || '—'}
+              label={t(status === DOCUMENT_STATUSES.READY ? 'document.indexed' : 'document.updated')}
+              value={formatAbsoluteDateTime(file.updated_at, locale) || '—'}
             />
             {file.review_status && file.review_status !== 'not_required' ? (
-              <DataRow label="Review" value={String(file.review_status).replace(/_/g, ' ')} />
+              // The review status is a backend enum: its wording is the
+              // service's, not this screen's, so only the label is localized.
+              <DataRow label={t('document.review')} value={String(file.review_status).replace(/_/g, ' ')} />
             ) : null}
-            <DataRow label="Document ID" value={file.file_id} mono />
+            <DataRow label={t('document.documentId')} value={file.file_id} mono />
             {file.current_task_id ? (
-              <DataRow label="Task ID" value={file.current_task_id} mono />
+              <DataRow label={t('document.taskId')} value={file.current_task_id} mono />
             ) : null}
           </div>
         </Section>
 
         {stages.length > 0 ? (
-          <Section title="Pipeline">
+          <Section title={t('document.pipeline')}>
             <ol className="space-y-1">
               {stages.map((stage) => {
                 const presentation = STAGE_STATE_TEXT[stage.state] ?? STAGE_STATE_TEXT.waiting
@@ -150,26 +156,28 @@ export default function DocumentDrawer({
                       current ? 'bg-surface-hover' : ''
                     }`}
                   >
-                    <span className={current ? 'font-medium text-fg' : 'text-fg-muted'}>{stage.label}</span>
-                    <span style={{ color: presentation.color }}>{presentation.label}</span>
+                    <span className={current ? 'font-medium text-fg' : 'text-fg-muted'}>
+                      {t(stage.labelKey)}
+                    </span>
+                    <span style={{ color: presentation.color }}>{t(presentation.labelKey)}</span>
                   </li>
                 )
               })}
             </ol>
             <p className="mt-2 text-xs text-fg-soft">
-              Per-stage durations are not recorded by the ingestion service.
+              {t('document.noStageDurations')}
             </p>
           </Section>
         ) : null}
 
         {chunkCount != null ? (
-          <Section title="Chunks">
-            <DataRow label="Chunks created" value={String(chunkCount)} />
+          <Section title={t('document.chunks')}>
+            <DataRow label={t('document.chunksCreated')} value={String(chunkCount)} />
           </Section>
         ) : null}
 
         {summary || keywords.length > 0 ? (
-          <Section title="Content">
+          <Section title={t('document.content')}>
             {summary ? (
               <p dir="auto" className="mb-2 line-clamp-6 text-[13px] leading-relaxed text-fg-muted">
                 {summary}
@@ -191,17 +199,17 @@ export default function DocumentDrawer({
           </Section>
         ) : null}
 
-        <Section title="Activity">
+        <Section title={t('document.activity')}>
           {activity?.loading ? (
             <p className="flex items-center gap-2 text-[13px] text-fg-soft">
-              <Loader2 size={13} className="animate-spin" /> Loading activity…
+              <Loader2 size={13} className="animate-spin" /> {t('document.loadingActivity')}
             </p>
           ) : null}
           {activity?.error ? (
             <p className="text-[13px] text-danger">{activity.error}</p>
           ) : null}
           {!activity?.loading && !activity?.error && events.length === 0 ? (
-            <p className="text-[13px] text-fg-soft">No ingestion events recorded yet.</p>
+            <p className="text-[13px] text-fg-soft">{t('document.noEvents')}</p>
           ) : null}
           {events.length > 0 ? (
             <ol className="space-y-2.5">
@@ -214,7 +222,7 @@ export default function DocumentDrawer({
                     {String(event.event_type || 'event').replace(/_/g, ' ')}
                   </p>
                   <p className="text-xs text-fg-soft">
-                    {formatAbsoluteDateTime(event.created_at) || '—'}
+                    {formatAbsoluteDateTime(event.created_at, locale) || '—'}
                     {event.actor?.display_name ? ` · ${event.actor.display_name}` : ''}
                   </p>
                   {event.reason ? (
@@ -249,13 +257,13 @@ export default function DocumentDrawer({
                 onClick={() => onLoadMoreActivity(file.file_id)}
                 loading={activity.loadingMore}
               >
-                Load more
+                {t('document.loadMore')}
               </Button>
             </div>
           ) : null}
         </Section>
 
-        <Section title="Actions">
+        <Section title={t('document.actions')}>
           <div className="flex flex-wrap gap-2">
             {requiresReview ? (
               <Button
@@ -264,7 +272,7 @@ export default function DocumentDrawer({
                 onClick={() => onReview(file.file_id)}
                 leftIcon={<ShieldAlert size={13} />}
               >
-                Open review
+                {t('document.openReview')}
               </Button>
             ) : null}
             <Button
@@ -274,12 +282,11 @@ export default function DocumentDrawer({
               loading={isDeleting}
               leftIcon={<Trash2 size={13} />}
             >
-              Delete
+              {t('common.delete')}
             </Button>
           </div>
           <p className="mt-2 text-xs text-fg-soft">
-            Re-ingesting an existing document is not an operation the files service supports;
-            upload the document again to run the pipeline afresh.
+            {t('document.reingestNote')}
           </p>
         </Section>
       </div>

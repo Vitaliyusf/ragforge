@@ -1,6 +1,7 @@
 'use client'
 
 import { useMemo } from 'react'
+import { useI18n } from '@/i18n'
 
 const VIEW_W = 600
 const VIEW_H = 100
@@ -15,12 +16,14 @@ export default function Histogram({
   buckets = [],
   height = 140,
   accent = 'var(--primary)',
-  label = 'Distribution',
+  label,
   valueFormat = (value) => String(value),
   // Percentage-of-total is meaningful for a count distribution but not for
   // a bar chart of latencies, where the bars do not sum to anything.
   showShare = true,
 }) {
+  const { t } = useI18n()
+  const chartLabel = label ?? t('chart.distribution')
   const model = useMemo(() => {
     const cleaned = (buckets || [])
       .filter((bucket) => bucket && Number.isFinite(Number(bucket.count)))
@@ -53,7 +56,7 @@ export default function Histogram({
 
   if (!model) return null
 
-  const summary = `${label}. ${model.bars
+  const summary = `${chartLabel}. ${model.bars
     .map((bar) => `${bar.label}: ${valueFormat(bar.count)}`)
     .join(', ')}.`
 

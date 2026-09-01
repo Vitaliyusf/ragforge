@@ -19,25 +19,37 @@ import {
   XCircle,
 } from 'lucide-react'
 import { EMPTY, formatScore } from '@/features/metrics/components/metricsConfig'
+import { DEFAULT_LOCALE } from '@/i18n/locale'
+import { translate } from '@/i18n/translate'
+
+/**
+ * English resolution for callers with no locale.
+ *
+ * The profile ids, phase ids and status values below are the benchmark
+ * API's own and never change with the interface language; only the words
+ * beside them do. Every table therefore carries a `labelKey`, and the
+ * components resolve it at render time.
+ */
+const defaultTranslate = (key, variables) => translate(DEFAULT_LOCALE, key, variables)
 
 // One dash, one score format, for the whole app. The eval surfaces used to
 // carry their own copies of both, which is how the same MRR came to be
 // printed to two different precisions on one page.
 export { EMPTY }
 
-export const PHASE_LABELS = {
-  retrieval_base: 'Retrieval baseline',
-  retrieval_extended: 'Extended retrieval',
-  end_to_end_regular: 'End-to-end',
-  end_to_end_extended: 'Extended end-to-end',
+export const PHASE_LABEL_KEYS = {
+  retrieval_base: 'evalProfile.phase.retrievalBase',
+  retrieval_extended: 'evalProfile.phase.retrievalExtended',
+  end_to_end_regular: 'evalProfile.phase.endToEnd',
+  end_to_end_extended: 'evalProfile.phase.endToEndExtended',
 }
 
 /** Stepper-sized names. The full labels above do not fit a phase chip. */
-export const PHASE_SHORT_LABELS = {
-  retrieval_base: 'Retrieval',
-  retrieval_extended: 'Extended retrieval',
-  end_to_end_regular: 'Regular E2E',
-  end_to_end_extended: 'Extended E2E',
+export const PHASE_SHORT_LABEL_KEYS = {
+  retrieval_base: 'evalProfile.phaseShort.retrievalBase',
+  retrieval_extended: 'evalProfile.phaseShort.retrievalExtended',
+  end_to_end_regular: 'evalProfile.phaseShort.endToEnd',
+  end_to_end_extended: 'evalProfile.phaseShort.endToEndExtended',
 }
 
 /**
@@ -48,25 +60,40 @@ export const PHASE_SHORT_LABELS = {
  * profiles that run extended end-to-end phases say so before they start.
  */
 export const PROFILES = [
-  { id: 'quick_retrieval', label: 'Quick Retrieval', phases: ['retrieval_base'], cost: 'Fast' },
-  { id: 'smoke_quality', label: 'Smoke Quality', phases: ['end_to_end_regular'], cost: 'Moderate' },
+  {
+    id: 'quick_retrieval',
+    labelKey: 'evalProfile.quickRetrieval',
+    phases: ['retrieval_base'],
+    cost: 'Fast',
+    costKey: 'evalProfile.cost.fast',
+  },
+  {
+    id: 'smoke_quality',
+    labelKey: 'evalProfile.smokeQuality',
+    phases: ['end_to_end_regular'],
+    cost: 'Moderate',
+    costKey: 'evalProfile.cost.moderate',
+  },
   {
     id: 'full_quality',
-    label: 'Full Quality',
+    labelKey: 'evalProfile.fullQuality',
     phases: ['retrieval_base', 'end_to_end_regular'],
     cost: 'Moderate',
+    costKey: 'evalProfile.cost.moderate',
   },
   {
     id: 'extended_comparison',
-    label: 'Extended Comparison',
+    labelKey: 'evalProfile.extendedComparison',
     phases: ['end_to_end_regular', 'end_to_end_extended'],
     cost: 'Expensive',
+    costKey: 'evalProfile.cost.expensive',
   },
   {
     id: 'full_diagnostic',
-    label: 'Full Diagnostic',
+    labelKey: 'evalProfile.fullDiagnostic',
     phases: ['retrieval_base', 'end_to_end_regular', 'end_to_end_extended'],
     cost: 'Expensive',
+    costKey: 'evalProfile.cost.expensive',
   },
 ]
 
@@ -82,23 +109,24 @@ export function isExpensive(profile) {
 }
 
 /** Said before an expensive profile starts, and again in its confirmation. */
-export const EXPENSIVE_PROFILE_NOTE =
-  'Expensive: runs Regular and Extended E2E over the selected dataset.'
+export const EXPENSIVE_PROFILE_NOTE_KEY = 'evalProfile.expensiveNote'
 
-export const PROFILE_HELP =
-  'Runs a repeatable diagnostic workflow: every phase of the profile, in its safe order.'
+export const PROFILE_HELP_KEY = 'evalProfile.help'
 
-export const SINGLE_EVAL_HELP =
-  'Runs one retrieval or end-to-end eval without the benchmark workflow.'
+export const SINGLE_EVAL_HELP_KEY = 'evalProfile.singleHelp'
 
 /** The phases of a profile, as one compact line. */
-export function profilePhaseSummary(profile) {
-  return (profile?.phases || []).map((phase) => PHASE_SHORT_LABELS[phase] || phase).join(' · ')
+export function profilePhaseSummary(profile, t = defaultTranslate) {
+  return (profile?.phases || [])
+    .map((phase) => (PHASE_SHORT_LABEL_KEYS[phase] ? t(PHASE_SHORT_LABEL_KEYS[phase]) : phase))
+    .join(' · ')
 }
 
 /** The phases of a profile in full, for a confirmation dialog. */
-export function profilePhaseNames(profile) {
-  return (profile?.phases || []).map((phase) => PHASE_LABELS[phase] || phase).join(' + ')
+export function profilePhaseNames(profile, t = defaultTranslate) {
+  return (profile?.phases || [])
+    .map((phase) => (PHASE_LABEL_KEYS[phase] ? t(PHASE_LABEL_KEYS[phase]) : phase))
+    .join(' + ')
 }
 
 /** Statuses a benchmark can no longer leave, and can be exported from. */
@@ -120,12 +148,12 @@ export function isBenchmarkActive(benchmark) {
  * from red.
  */
 export const RUN_STATUS_META = {
-  queued: { label: 'Queued', variant: 'default', icon: Clock },
-  running: { label: 'Running', variant: 'accent', icon: Loader2, spin: true },
-  completed: { label: 'Completed', variant: 'success', icon: CheckCircle2 },
-  partial: { label: 'Partial', variant: 'warning', icon: AlertTriangle },
-  interrupted: { label: 'Interrupted', variant: 'warning', icon: PauseCircle },
-  failed: { label: 'Failed', variant: 'danger', icon: XCircle },
+  queued: { labelKey: 'evalStatus.queued', variant: 'default', icon: Clock },
+  running: { labelKey: 'evalStatus.running', variant: 'accent', icon: Loader2, spin: true },
+  completed: { labelKey: 'evalStatus.completed', variant: 'success', icon: CheckCircle2 },
+  partial: { labelKey: 'evalStatus.partial', variant: 'warning', icon: AlertTriangle },
+  interrupted: { labelKey: 'evalStatus.interrupted', variant: 'warning', icon: PauseCircle },
+  failed: { labelKey: 'evalStatus.failed', variant: 'danger', icon: XCircle },
 }
 
 /**
@@ -136,14 +164,14 @@ export const RUN_STATUS_META = {
  * would report a broken benchmark where none ran.
  */
 export const PHASE_STATUS_META = {
-  completed: { label: 'Completed', variant: 'success', icon: CheckCircle2 },
-  running: { label: 'Running', variant: 'accent', icon: Loader2, spin: true },
-  queued: { label: 'Queued', variant: 'default', icon: CircleDashed },
-  partial: { label: 'Partial', variant: 'warning', icon: AlertTriangle },
-  failed: { label: 'Failed', variant: 'danger', icon: XCircle },
-  interrupted: { label: 'Interrupted', variant: 'warning', icon: PauseCircle },
-  unsupported: { label: 'Not supported', variant: 'default', icon: Ban },
-  skipped: { label: 'Skipped', variant: 'default', icon: MinusCircle },
+  completed: { labelKey: 'evalStatus.completed', variant: 'success', icon: CheckCircle2 },
+  running: { labelKey: 'evalStatus.running', variant: 'accent', icon: Loader2, spin: true },
+  queued: { labelKey: 'evalStatus.queued', variant: 'default', icon: CircleDashed },
+  partial: { labelKey: 'evalStatus.partial', variant: 'warning', icon: AlertTriangle },
+  failed: { labelKey: 'evalStatus.failed', variant: 'danger', icon: XCircle },
+  interrupted: { labelKey: 'evalStatus.interrupted', variant: 'warning', icon: PauseCircle },
+  unsupported: { labelKey: 'evalStatus.unsupported', variant: 'default', icon: Ban },
+  skipped: { labelKey: 'evalStatus.skipped', variant: 'default', icon: MinusCircle },
 }
 
 function humanize(value) {
@@ -152,26 +180,31 @@ function humanize(value) {
   return text.charAt(0).toUpperCase() + text.slice(1)
 }
 
-/** Never undefined: an unknown status still renders as its own word. */
-export function statusMeta(status) {
-  return (
-    RUN_STATUS_META[status] || { label: humanize(status), variant: 'default', icon: CircleDashed }
-  )
+/**
+ * Never undefined: an unknown status still renders as its own word.
+ *
+ * A status the backend adds but this build has no wording for falls back to
+ * the humanised raw value — untranslated, because guessing a Hebrew name for
+ * an unknown state would be inventing one.
+ */
+export function statusMeta(status, t = defaultTranslate) {
+  const entry = RUN_STATUS_META[status]
+  if (!entry) return { label: humanize(status), variant: 'default', icon: CircleDashed }
+  return { ...entry, label: t(entry.labelKey) }
 }
 
-export function phaseStatusMeta(status) {
-  return (
-    PHASE_STATUS_META[status] || { label: humanize(status), variant: 'default', icon: CircleDashed }
-  )
+export function phaseStatusMeta(status, t = defaultTranslate) {
+  const entry = PHASE_STATUS_META[status]
+  if (!entry) return { label: humanize(status), variant: 'default', icon: CircleDashed }
+  return { ...entry, label: t(entry.labelKey) }
 }
 
 /** What a terminal run means, in words, beside its colour. */
-export const TERMINAL_NOTES = {
-  completed: 'Every executable phase finished. The archive holds the per-phase evidence.',
-  partial: 'Some phases did not finish. The results below cover only the phases that did.',
-  interrupted:
-    'The run stopped before finishing. Progress up to that point is saved on the server.',
-  failed: 'The run stopped after an error. Phases that completed before it are still exportable.',
+export const TERMINAL_NOTE_KEYS = {
+  completed: 'evalStatus.note.completed',
+  partial: 'evalStatus.note.partial',
+  interrupted: 'evalStatus.note.interrupted',
+  failed: 'evalStatus.note.failed',
 }
 
 // ---------------------------------------------------------------------------

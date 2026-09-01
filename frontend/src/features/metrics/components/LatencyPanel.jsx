@@ -19,6 +19,7 @@ import {
   formatSeconds,
   labelFor,
 } from './metricsConfig'
+import { useI18n } from '@/i18n'
 
 const PERCENTILES = ['p50', 'p95', 'p99']
 
@@ -44,18 +45,20 @@ function toRows(map, labels) {
  * must not blank the MongoDB-backed figures rendered beside it.
  */
 function PromWidget({ promAvailable, children }) {
+  const { t } = useI18n()
   if (promAvailable) return children
   return (
     <EmptyState
       icon={AlertTriangle}
       size="sm"
-      title={PROM_UNAVAILABLE.title}
-      description={PROM_UNAVAILABLE.description}
+      title={t(PROM_UNAVAILABLE.titleKey)}
+      description={t(PROM_UNAVAILABLE.descriptionKey)}
     />
   )
 }
 
 function PercentileTable({ title, byPercentile }) {
+  const { t } = useI18n()
   const modes = Array.from(
     new Set(PERCENTILES.flatMap((p) => Object.keys(byPercentile?.[p] || {})))
   )
@@ -65,20 +68,22 @@ function PercentileTable({ title, byPercentile }) {
       <caption className="sr-only">{title}</caption>
       <thead>
         <tr style={{ color: 'var(--fg-muted)' }}>
-          <th scope="col" className="py-1.5 text-left font-medium">Answer mode</th>
+          {/* The header is copy and follows the interface direction; the
+              percentile names are metric identifiers and stay as written. */}
+          <th scope="col" className="py-1.5 text-start font-medium">{t('latency.answerMode')}</th>
           {PERCENTILES.map((p) => (
-            <th key={p} scope="col" className="py-1.5 text-right font-medium">{p}</th>
+            <th key={p} scope="col" className="py-1.5 text-end font-medium">{p}</th>
           ))}
         </tr>
       </thead>
       <tbody>
         {modes.map((mode) => (
           <tr key={mode} className="border-t" style={{ borderColor: 'var(--border)' }}>
-            <th scope="row" className="py-1.5 text-left font-normal" style={{ color: 'var(--fg)' }}>
-              {mode || 'default'}
+            <th scope="row" className="py-1.5 text-start font-normal" style={{ color: 'var(--fg)' }}>
+              {mode || t('latency.defaultMode')}
             </th>
             {PERCENTILES.map((p) => (
-              <td key={p} className="py-1.5 text-right tabular-nums" style={{ color: 'var(--fg-muted)' }}>
+              <td key={p} className="py-1.5 text-end tabular-nums" style={{ color: 'var(--fg-muted)' }}>
                 {formatSeconds(byPercentile?.[p]?.[mode])}
               </td>
             ))}
@@ -90,15 +95,16 @@ function PercentileTable({ title, byPercentile }) {
 }
 
 export default function LatencyPanel({ data, loading, error, promAvailable = true, onRetry }) {
+  const { t } = useI18n()
   if (loading && !data) return <TabSkeleton />
 
   if (error) {
     return (
       <EmptyState
         icon={AlertTriangle}
-        title="Could not load latency metrics"
+        title={t('latency.loadFailed')}
         description={error}
-        action={onRetry ? <Button onClick={onRetry}>Retry</Button> : undefined}
+        action={onRetry ? <Button onClick={onRetry}>{t('common.retry')}</Button> : undefined}
       />
     )
   }
@@ -107,8 +113,8 @@ export default function LatencyPanel({ data, loading, error, promAvailable = tru
     return (
       <EmptyState
         icon={BarChart3}
-        title="No latency data"
-        description="No turns were recorded in this window."
+        title={t('latency.noData')}
+        description={t('latency.noDataDescription')}
       />
     )
   }
@@ -128,15 +134,15 @@ export default function LatencyPanel({ data, loading, error, promAvailable = tru
       {/* MongoDB-backed. These stay put when Prometheus is down. */}
       <Card>
         <CardHeader
-          title="Recorded turns"
-          description="Per-turn facts from the metrics store, scoped to this tenant."
+          title={t('latency.recordedTurns')}
+          description={t('latency.recordedTurnsDescription')}
         />
         <dl className="grid grid-cols-2 gap-4 sm:grid-cols-4">
           {[
-            ['Turns', data.turns ?? EMPTY],
-            ['Mean latency', formatMs(data.mean_latency_ms)],
-            ['Mean TTFT', formatMs(data.mean_ttft_ms)],
-            ['Error rate', formatPercent(data.error_rate)],
+            [t('latency.turns'), data.turns ?? EMPTY],
+            [t('latency.meanLatency'), formatMs(data.mean_latency_ms)],
+            [t('latency.meanTtft'), formatMs(data.mean_ttft_ms)],
+            [t('latency.errorRate'), formatPercent(data.error_rate)],
           ].map(([label, value]) => (
             <div key={label}>
               <dt className="label-xs">{label}</dt>
@@ -150,12 +156,12 @@ export default function LatencyPanel({ data, loading, error, promAvailable = tru
 
       <Card>
         <CardHeader
-          title="Latency over time"
-          description="Turn latency and time-to-first-token, p95. The API publishes a range series for p95 only; p50 and p99 are shown as current values below."
+          title={t('latency.overTime')}
+          description={t('latency.overTimeDescription')}
         />
         <PromWidget promAvailable={promAvailable}>
           <TimeSeries
-            label="Turn latency and TTFT, p95, over the window"
+            label={t('latency.overTimeChart')}
             height={200}
             yFormat={formatSeconds}
             series={[
@@ -167,10 +173,13 @@ export default function LatencyPanel({ data, loading, error, promAvailable = tru
       </Card>
 
       <Card>
-        <CardHeader title="Throughput over time" description="Requests per second." />
+          <CardHeader
+            title={t('latency.throughputOverTime')}
+            description={t('latency.requestsPerSecond')}
+          />
         <PromWidget promAvailable={promAvailable}>
           <TimeSeries
-            label="Requests per second over the window"
+            label={t('latency.throughputChart')}
             height={160}
             yFormat={formatRate}
             series={[
@@ -182,25 +191,34 @@ export default function LatencyPanel({ data, loading, error, promAvailable = tru
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
         <Card>
-          <CardHeader title="Turn latency percentiles" description="Current values by answer mode." />
+          <CardHeader
+            title={t('latency.turnPercentiles')}
+            description={t('latency.currentByMode')}
+          />
           <PromWidget promAvailable={promAvailable}>
-            <PercentileTable title="Turn latency percentiles" byPercentile={data.turn_latency_seconds} />
+            <PercentileTable title={t('latency.turnPercentiles')} byPercentile={data.turn_latency_seconds} />
           </PromWidget>
         </Card>
 
         <Card>
-          <CardHeader title="TTFT percentiles" description="Current values by answer mode." />
+          <CardHeader
+            title={t('latency.ttftPercentiles')}
+            description={t('latency.currentByMode')}
+          />
           <PromWidget promAvailable={promAvailable}>
-            <PercentileTable title="TTFT percentiles" byPercentile={data.ttft_seconds} />
+            <PercentileTable title={t('latency.ttftPercentiles')} byPercentile={data.ttft_seconds} />
           </PromWidget>
         </Card>
       </div>
 
       <Card>
-        <CardHeader title="Where a turn's time goes" description="p95 per stage." />
+        <CardHeader
+          title={t('latency.stageBreakdown')}
+          description={t('latency.stageBreakdownDescription')}
+        />
         <PromWidget promAvailable={promAvailable}>
           <StageBreakdown
-            label="Stage p95 breakdown"
+            label={t('latency.stageChart')}
             stages={stages}
             valueFormat={formatSeconds}
           />
@@ -209,34 +227,36 @@ export default function LatencyPanel({ data, loading, error, promAvailable = tru
 
       <Card>
         <CardHeader
-          title="By service"
-          description="HTTP percentiles and request rate. The API exposes no per-service error rate, so that column is omitted rather than approximated."
+          title={t('latency.byService')}
+          description={t('latency.byServiceDescription')}
         />
         <PromWidget promAvailable={promAvailable}>
           {services.length ? (
             <table className="w-full text-[13px]">
-              <caption className="sr-only">HTTP latency and request rate per service</caption>
+              <caption className="sr-only">{t('latency.byServiceCaption')}</caption>
               <thead>
                 <tr style={{ color: 'var(--fg-muted)' }}>
-                  <th scope="col" className="py-1.5 text-left font-medium">Service</th>
-                  <th scope="col" className="py-1.5 text-right font-medium">p95</th>
-                  <th scope="col" className="py-1.5 text-right font-medium">p99</th>
-                  <th scope="col" className="py-1.5 text-right font-medium">RPS</th>
+                  {/* p95, p99 and RPS are metric identifiers, not copy. */}
+                  <th scope="col" className="py-1.5 text-start font-medium">{t('latency.service')}</th>
+                  <th scope="col" className="py-1.5 text-end font-medium">p95</th>
+                  <th scope="col" className="py-1.5 text-end font-medium">p99</th>
+                  <th scope="col" className="py-1.5 text-end font-medium">RPS</th>
                 </tr>
               </thead>
               <tbody>
                 {services.map((service) => (
                   <tr key={service} className="border-t" style={{ borderColor: 'var(--border)' }}>
-                    <th scope="row" className="py-1.5 text-left font-normal" style={{ color: 'var(--fg)' }}>
+                    {/* Service display names are canonical English. */}
+                    <th scope="row" dir="ltr" className="py-1.5 text-start font-normal [unicode-bidi:isolate]" style={{ color: 'var(--fg)' }}>
                       {labelFor(SERVICE_LABELS, service)}
                     </th>
-                    <td className="py-1.5 text-right tabular-nums" style={{ color: 'var(--fg-muted)' }}>
+                    <td className="py-1.5 text-end tabular-nums" style={{ color: 'var(--fg-muted)' }}>
                       {formatSeconds(data.http_p95_seconds?.[service])}
                     </td>
-                    <td className="py-1.5 text-right tabular-nums" style={{ color: 'var(--fg-muted)' }}>
+                    <td className="py-1.5 text-end tabular-nums" style={{ color: 'var(--fg-muted)' }}>
                       {formatSeconds(data.http_p99_seconds?.[service])}
                     </td>
-                    <td className="py-1.5 text-right tabular-nums" style={{ color: 'var(--fg-muted)' }}>
+                    <td className="py-1.5 text-end tabular-nums" style={{ color: 'var(--fg-muted)' }}>
                       {formatRate(data.http_request_rate?.[service])}
                     </td>
                   </tr>
@@ -248,10 +268,13 @@ export default function LatencyPanel({ data, loading, error, promAvailable = tru
       </Card>
 
       <Card>
-        <CardHeader title="RPC round-trips" description="p95 by downstream service." />
+          <CardHeader
+            title={t('latency.rpcRoundTrips')}
+            description={t('latency.rpcDescription')}
+          />
         <PromWidget promAvailable={promAvailable}>
           <Histogram
-            label="RPC round-trip p95 by downstream"
+            label={t('latency.rpcChart')}
             accent="var(--info)"
             valueFormat={formatSeconds}
             showShare={false}

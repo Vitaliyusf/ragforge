@@ -1,6 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
+import { useI18n } from '@/i18n'
 
 const VIEW_W = 600
 const GRIDLINES = 4
@@ -22,8 +23,12 @@ export default function TimeSeries({
   series = [],
   height = 180,
   yFormat = (value) => String(value),
-  label = 'Time series',
+  label,
 }) {
+  const { t } = useI18n()
+  // The accessible name falls back to a generic one so a caller that
+  // supplies none still announces something in the reader's language.
+  const chartLabel = label ?? t('chart.timeSeries')
   const [hover, setHover] = useState(null)
 
   const model = useMemo(() => {
@@ -90,7 +95,7 @@ export default function TimeSeries({
     })
   }
 
-  const summary = `${label}. ${model.lines.map((l) => l.name).join(', ')}.`
+  const summary = `${chartLabel}. ${model.lines.map((l) => l.name).join(', ')}.`
 
   return (
     <div className="w-full">

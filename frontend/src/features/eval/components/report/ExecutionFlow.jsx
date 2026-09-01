@@ -3,6 +3,7 @@
 import { ChevronRight, HelpCircle } from 'lucide-react'
 import { resolveTone } from '@/components/status/statusTone'
 import { phaseStatusMeta } from '../../evalProfiles'
+import { useI18n } from '@/i18n'
 
 /**
  * The run as a causal chain: validation, then each phase, in the order the
@@ -15,13 +16,17 @@ import { phaseStatusMeta } from '../../evalProfiles'
  * this deployment cannot execute reads "Not supported" for the same reason.
  */
 export default function ExecutionFlow({ stages = [] }) {
+  const { t } = useI18n()
   if (!stages.length) return null
+
+  // A stage nobody measured. Muted, and never dressed as a pass or a failure.
+  const unknownMeta = { label: t('evalReport.notVerified'), variant: 'default', icon: HelpCircle }
 
   return (
     <div>
-      <ol className="flex flex-wrap items-center gap-x-1 gap-y-2" aria-label="Execution flow">
+      <ol className="flex flex-wrap items-center gap-x-1 gap-y-2" aria-label={t('evalReport.executionFlow')}>
         {stages.map((stage, index) => {
-          const meta = stage.status === 'unknown' ? UNKNOWN_META : phaseStatusMeta(stage.status)
+          const meta = stage.status === 'unknown' ? unknownMeta : phaseStatusMeta(stage.status, t)
           const Icon = meta.icon
           const tone = resolveTone(meta.variant)
           return (
@@ -64,6 +69,3 @@ export default function ExecutionFlow({ stages = [] }) {
     </div>
   )
 }
-
-/** A stage nobody measured. Muted, and never dressed as a pass or a failure. */
-const UNKNOWN_META = { label: 'Not verified', variant: 'default', icon: HelpCircle }

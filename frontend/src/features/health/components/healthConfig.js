@@ -22,10 +22,11 @@ export const STATUS_CONFIG = {
   unknown:   { iconColor: 'var(--fg-soft)', bg: 'var(--surface-hover)',border: 'var(--border)',         icon: CircleDot     },
 }
 
+/** The breaker states the gateway reports, and how each one reads. */
 export const CB_STATE = {
-  closed:    { label: 'Closed',    variant: 'success' },
-  open:      { label: 'Open',      variant: 'danger'  },
-  half_open: { label: 'Half-Open', variant: 'warning' },
+  closed:    { labelKey: 'health.breaker.closed',   variant: 'success' },
+  open:      { labelKey: 'health.breaker.open',     variant: 'danger'  },
+  half_open: { labelKey: 'health.breaker.halfOpen', variant: 'warning' },
 }
 
 export { SERVICE_LABELS }

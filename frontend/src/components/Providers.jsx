@@ -5,7 +5,9 @@ import { useEffect } from 'react'
 import dynamic from 'next/dynamic'
 import { Provider, useDispatch } from 'react-redux'
 import { ThemeProvider } from 'next-themes'
+import { Toaster } from 'sonner'
 import { store } from '@/store'
+import { I18nProvider, useI18n } from '@/i18n'
 import { AuthProvider, LoginForm, useAuth } from '@/features/auth'
 import fileService from '@/features/files/services/fileService'
 import { setFiles } from '@/store/slices/filesSlice'
@@ -47,8 +49,9 @@ function FilePrefetcher() {
 
 function AuthenticatedApplication({ children }) {
   const { isAuthenticated, loading, isAdmin } = useAuth()
+  const { t } = useI18n()
   if (loading) {
-    return <div className="min-h-screen bg-bg-primary" aria-label="Loading session" />
+    return <div className="min-h-screen bg-bg-primary" aria-label={t('session.loading')} />
   }
   if (!isAuthenticated) return <LoginForm />
   return (
@@ -68,7 +71,47 @@ function AuthenticatedApplication({ children }) {
   )
 }
 
-export function Providers({ children }) {
+/**
+ * Toasts follow the interface locale, not the server's first guess.
+ *
+ * They are anchored to the logical *end* of the top edge — top-right in
+ * English, top-left in Hebrew — because a notification that appears on the
+ * side the reader's eye is leaving is a notification they miss.
+ */
+function LocalizedToaster() {
+  const { direction, isRTL } = useI18n()
+  return (
+    <Toaster
+      position={isRTL ? 'top-left' : 'top-right'}
+      dir={direction}
+      richColors
+      closeButton
+      toastOptions={{
+        classNames: {
+          toast:   '!border',
+          success: '!border-success',
+          error:   '!border-danger',
+        },
+        style: {
+          background: 'var(--surface-elevated)',
+          border:     '1px solid var(--border)',
+          color:      'var(--fg)',
+        },
+      }}
+    />
+  )
+}
+
+/**
+ * Provider order is load-bearing.
+ *
+ * I18n sits *above* AuthProvider so the language control works on the sign-in
+ * form too — a reader who cannot read the form cannot sign in to reach the
+ * setting that would fix it. It sits below ThemeProvider so the two
+ * preferences stay independent: switching language never touches the theme,
+ * and switching theme never touches the language.
+ */
+export function Providers({ children, initialLocale }) {
   return (
     <Provider store={store}>
       <ThemeProvider
@@ -77,9 +120,12 @@ export function Providers({ children }) {
         enableSystem
         disableTransitionOnChange={false}
       >
-        <AuthProvider>
-          <AuthenticatedApplication>{children}</AuthenticatedApplication>
-        </AuthProvider>
+        <I18nProvider initialLocale={initialLocale}>
+          <AuthProvider>
+            <AuthenticatedApplication>{children}</AuthenticatedApplication>
+          </AuthProvider>
+          <LocalizedToaster />
+        </I18nProvider>
       </ThemeProvider>
     </Provider>
   )

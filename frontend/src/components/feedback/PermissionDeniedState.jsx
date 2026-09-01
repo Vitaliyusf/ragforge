@@ -2,6 +2,7 @@
 
 import { Lock } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useI18n } from '@/i18n'
 
 /**
  * "This exists, you just cannot see it."
@@ -11,11 +12,12 @@ import { cn } from '@/lib/utils'
  * stops the user retrying a request that will never succeed.
  */
 export default function PermissionDeniedState({
-  title = 'You do not have access to this',
-  description = 'Ask an administrator to grant your account access.',
+  title,
+  description,
   action,
   className = '',
 }) {
+  const { t } = useI18n()
   return (
     <div
       role="status"
@@ -28,10 +30,10 @@ export default function PermissionDeniedState({
       <Lock size={22} aria-hidden="true" style={{ color: 'var(--fg-soft)' }} className="shrink-0" />
       <div className="space-y-1.5 max-w-sm">
         <p className="font-semibold text-[15px]" style={{ color: 'var(--fg)' }}>
-          {title}
+          {title ?? t('error.noAccessTitle')}
         </p>
         <p className="text-[13px] leading-relaxed" style={{ color: 'var(--fg-muted)' }}>
-          {description}
+          {description ?? t('error.noAccessDescription')}
         </p>
       </div>
       {action && <div className="mt-1">{action}</div>}

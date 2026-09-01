@@ -3,6 +3,7 @@
 import { AlertTriangle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { ltrIsolateProps } from '@/lib/accessibility/direction'
+import { useI18n } from '@/i18n'
 
 /**
  * A failure the user may be able to do something about.
@@ -15,12 +16,13 @@ import { ltrIsolateProps } from '@/lib/accessibility/direction'
  * name — and is isolated LTR so it stays readable inside RTL copy.
  */
 export default function ErrorState({
-  title = 'Something went wrong',
+  title,
   description,
   detail,
   action,
   className = '',
 }) {
+  const { t } = useI18n()
   const isolate = ltrIsolateProps()
 
   return (
@@ -35,7 +37,7 @@ export default function ErrorState({
       <AlertTriangle size={22} aria-hidden="true" style={{ color: 'var(--danger)' }} className="shrink-0" />
       <div className="space-y-1.5 max-w-sm">
         <p className="font-semibold text-[15px]" style={{ color: 'var(--fg)' }}>
-          {title}
+          {title ?? t('error.somethingWentWrong')}
         </p>
         {description && (
           <p className="text-[13px] leading-relaxed" style={{ color: 'var(--fg-muted)' }}>

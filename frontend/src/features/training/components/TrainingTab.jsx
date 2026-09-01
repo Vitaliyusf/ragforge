@@ -25,6 +25,7 @@ import ProgressBar from '@/components/ui/ProgressBar'
 import { ConfirmModal } from '@/components/ui/Modal'
 import { notifyError } from '@/lib/notify'
 import { useTraining } from '../hooks/useTraining'
+import { useI18n } from '@/i18n'
 
 const STATUS_STYLES = {
   queued: 'text-info bg-info-soft',
@@ -37,6 +38,7 @@ const STATUS_STYLES = {
 }
 
 function DatasetUploadForm({ onUpload }) {
+  const { t } = useI18n()
   const fileRef = useRef(null)
   const [name, setName] = useState('')
   const [format, setFormat] = useState('instruction')
@@ -80,10 +82,10 @@ function DatasetUploadForm({ onUpload }) {
       >
         <Upload size={24} className="mx-auto mb-2 text-text-muted" />
         <p className="text-[15px] text-text-secondary mb-1">
-          Drag & drop a JSONL or CSV file
+          {t('training.dropHint')}
         </p>
         <p className="text-[13px] text-text-muted mb-3">
-          or click to browse
+          {t('training.browseHint')}
         </p>
         <input
           ref={fileRef}
@@ -97,7 +99,9 @@ function DatasetUploadForm({ onUpload }) {
           type="text"
           value={name}
           onChange={(e) => setName(e.target.value)}
-          placeholder="Dataset name..."
+          placeholder={t('training.datasetName')}
+          aria-label={t('training.datasetName')}
+          dir="auto"
           className="px-3 py-2 rounded-lg bg-bg-tertiary border border-border text-[15px] text-text-primary placeholder:text-text-muted focus:outline-hidden focus:ring-2 focus:ring-accent"
         />
         <select
@@ -105,8 +109,8 @@ function DatasetUploadForm({ onUpload }) {
           onChange={(e) => setFormat(e.target.value)}
           className="px-3 py-2 rounded-lg bg-bg-tertiary border border-border text-[15px] text-text-primary focus:outline-hidden focus:ring-2 focus:ring-accent"
         >
-          <option value="instruction">Instruction (instruction/input/output)</option>
-          <option value="conversational">Conversational (messages)</option>
+          <option value="instruction">{t('training.formatInstruction')}</option>
+          <option value="conversational">{t('training.formatConversational')}</option>
         </select>
       </div>
       <Button
@@ -117,13 +121,14 @@ function DatasetUploadForm({ onUpload }) {
         className="w-full gap-1.5"
       >
         {uploading ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
-        {uploading ? 'Uploading...' : 'Upload Dataset'}
+        {t(uploading ? 'upload.uploading' : 'training.uploadDataset')}
       </Button>
     </div>
   )
 }
 
 function TrainingConfigForm({ onStart, disabled }) {
+  const { t } = useI18n()
   const [datasetId, setDatasetId] = useState('')
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [config, setConfig] = useState({
@@ -143,7 +148,9 @@ function TrainingConfigForm({ onStart, disabled }) {
         type="text"
         value={datasetId}
         onChange={(e) => setDatasetId(e.target.value)}
-        placeholder="Dataset ID to train on..."
+        placeholder={t('training.datasetId')}
+        aria-label={t('training.datasetId')}
+        dir="ltr"
         className="w-full px-3 py-2 rounded-lg bg-bg-tertiary border border-border text-[15px] text-text-primary placeholder:text-text-muted focus:outline-hidden focus:ring-2 focus:ring-accent"
       />
 
@@ -152,22 +159,24 @@ function TrainingConfigForm({ onStart, disabled }) {
         className="flex items-center gap-1.5 text-[13px] text-text-secondary hover:text-text-primary transition-colors"
       >
         <Settings2 size={12} />
-        Advanced Config
+        {t('training.advancedConfig')}
         {showAdvanced ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
       </button>
 
       {showAdvanced && (
         <div className="grid grid-cols-2 gap-2 p-3 rounded-lg border border-border">
           {[
-            { key: 'lora_r', label: 'LoRA Rank', type: 'number' },
-            { key: 'lora_alpha', label: 'LoRA Alpha', type: 'number' },
-            { key: 'learning_rate', label: 'Learning Rate', type: 'number', step: '0.0001' },
-            { key: 'num_epochs', label: 'Epochs', type: 'number' },
-            { key: 'batch_size', label: 'Batch Size', type: 'number' },
-            { key: 'max_seq_length', label: 'Max Seq Length', type: 'number' },
-          ].map(({ key, label, type, step }) => (
+            { key: 'lora_r', labelKey: 'training.loraRank', type: 'number' },
+            { key: 'lora_alpha', labelKey: 'training.loraAlpha', type: 'number' },
+            { key: 'learning_rate', labelKey: 'training.learningRate', type: 'number', step: '0.0001' },
+            { key: 'num_epochs', labelKey: 'training.epochs', type: 'number' },
+            { key: 'batch_size', labelKey: 'training.batchSize', type: 'number' },
+            { key: 'max_seq_length', labelKey: 'training.maxSeqLength', type: 'number' },
+          ].map(({ key, labelKey, type, step }) => (
             <div key={key}>
-              <label className="text-xs text-text-muted">{label}</label>
+              {/* Numeric hyperparameters stay LTR: they are values an
+                  operator copies between runs. */}
+              <label className="text-xs text-text-muted">{t(labelKey)}</label>
               <input
                 type={type}
                 value={config[key]}
@@ -188,13 +197,14 @@ function TrainingConfigForm({ onStart, disabled }) {
         className="w-full gap-1.5"
       >
         <Play size={14} />
-        Start Training
+        {t('training.start')}
       </Button>
     </div>
   )
 }
 
 function JobProgressBar({ job }) {
+  const { t } = useI18n()
   const progress = job.progress || {}
   const pct = progress.total_steps > 0
     ? Math.round((progress.current_step / progress.total_steps) * 100)
@@ -206,26 +216,26 @@ function JobProgressBar({ job }) {
         <div className="flex items-center gap-2">
           <Loader2 size={14} className="text-primary animate-spin" />
           <span className="text-[15px] font-medium text-text-primary">
-            Training in Progress
+            {t('training.inProgress')}
           </span>
         </div>
       </div>
-      <ProgressBar value={pct} thickness="md" className="mb-2" aria-label="Training progress" />
+      <ProgressBar value={pct} thickness="md" className="mb-2" aria-label={t('training.progressLabel')} />
       <div className="grid grid-cols-4 gap-2 text-xs">
         <div>
-          <span className="text-text-muted">Step</span>
+          <span className="text-text-muted">{t('training.step')}</span>
           <div className="font-mono text-text-primary">{progress.current_step || 0}/{progress.total_steps || '?'}</div>
         </div>
         <div>
-          <span className="text-text-muted">Epoch</span>
+          <span className="text-text-muted">{t('training.epoch')}</span>
           <div className="font-mono text-text-primary">{(progress.current_epoch || 0).toFixed(1)}</div>
         </div>
         <div>
-          <span className="text-text-muted">Loss</span>
+          <span className="text-text-muted">{t('training.loss')}</span>
           <div className="font-mono text-text-primary">{progress.loss != null ? progress.loss.toFixed(4) : '-'}</div>
         </div>
         <div>
-          <span className="text-text-muted">ETA</span>
+          <span className="text-text-muted">{t('training.eta')}</span>
           <div className="font-mono text-text-primary">
             {progress.eta_seconds != null ? `${Math.round(progress.eta_seconds)}s` : '-'}
           </div>
@@ -236,6 +246,7 @@ function JobProgressBar({ job }) {
 }
 
 export default function TrainingTab() {
+  const { t } = useI18n()
   const {
     datasets,
     jobs,
@@ -259,14 +270,17 @@ export default function TrainingTab() {
     try {
       await action()
     } catch (err) {
-      notifyError(`${label} failed`, { error: err, onRetry: () => runAction(label, action) })
+      notifyError(t('training.actionFailed', { action: label }), {
+        error: err,
+        onRetry: () => runAction(label, action),
+      })
     }
   }
 
   const confirmDelete = async () => {
     if (!pendingDelete) return
     const { kind, id, name } = pendingDelete
-    await runAction(`Deleting ${name}`, () =>
+    await runAction(t('training.deletingNamed', { name }), () =>
       kind === 'dataset' ? deleteDataset(id) : deleteAdapter(id))
     setPendingDelete(null)
   }
@@ -281,21 +295,19 @@ export default function TrainingTab() {
             <Cpu size={20} className="text-primary" />
           </div>
           <div>
-            <h2 className="text-xl font-bold text-text-primary">QLoRA Fine-Tuning</h2>
-            <p className="text-[13px] text-text-muted">
-              4-bit quantized LoRA adapter training
-            </p>
+            <h2 className="text-xl font-bold text-text-primary">{t('training.title')}</h2>
+            <p className="text-[13px] text-text-muted">{t('training.subtitle')}</p>
           </div>
         </div>
         <Button variant="secondary" size="sm" onClick={refresh} className="gap-1.5">
           <RefreshCw size={14} />
-          Refresh
+          {t('common.refresh')}
         </Button>
       </div>
 
       {error && (
         <div className="p-3 rounded-lg bg-danger-soft border border-danger text-danger text-[15px]">
-          <AlertTriangle size={14} className="inline mr-2" />
+          <AlertTriangle size={14} className="inline me-2" />
           {error}
         </div>
       )}
@@ -304,9 +316,9 @@ export default function TrainingTab() {
       {activeJob && activeJob.status === 'training' && (
         <div className="space-y-2">
           <JobProgressBar job={activeJob} />
-          <Button variant="secondary" size="sm" onClick={() => runAction('Cancelling the job', () => cancelJob(activeJob.job_id))} className="gap-1.5">
+          <Button variant="secondary" size="sm" onClick={() => runAction(t('training.cancellingJob'), () => cancelJob(activeJob.job_id))} className="gap-1.5">
             <Square size={14} />
-            Cancel Training
+            {t('training.cancel')}
           </Button>
         </div>
       )}
@@ -316,7 +328,7 @@ export default function TrainingTab() {
         <Card variant="glass" className="p-4">
           <div className="flex items-center gap-2 mb-4">
             <Database size={16} className="text-text-secondary" />
-            <h3 className="text-[15px] font-semibold text-text-primary">Datasets</h3>
+            <h3 className="text-[15px] font-semibold text-text-primary">{t('training.datasets')}</h3>
             <span className="text-xs text-text-muted">({datasets.length})</span>
           </div>
           <DatasetUploadForm onUpload={uploadDataset} />
@@ -337,7 +349,7 @@ export default function TrainingTab() {
                     <button
                       type="button"
                       onClick={() => setPendingDelete({ kind: 'dataset', id: ds.dataset_id, name: ds.name || 'this dataset' })}
-                      aria-label={`Delete dataset ${ds.name || ds.dataset_id}`}
+                      aria-label={t('training.deleteDatasetLabel', { name: ds.name || ds.dataset_id })}
                       className="flex h-7 w-7 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-danger-soft hover:text-danger"
                     >
                       <Trash2 size={13} />
@@ -353,10 +365,10 @@ export default function TrainingTab() {
         <Card variant="glass" className="p-4">
           <div className="flex items-center gap-2 mb-4">
             <Play size={16} className="text-text-secondary" />
-            <h3 className="text-[15px] font-semibold text-text-primary">Start Training</h3>
+            <h3 className="text-[15px] font-semibold text-text-primary">{t('training.start')}</h3>
           </div>
           <TrainingConfigForm
-            onStart={(id, cfg) => runAction('Starting training', () => startTraining(id, cfg))}
+            onStart={(id, cfg) => runAction(t('training.startingTraining'), () => startTraining(id, cfg))}
             disabled={!!activeJob}
           />
         </Card>
@@ -367,11 +379,11 @@ export default function TrainingTab() {
         <Card variant="glass" className="p-4">
           <div className="flex items-center gap-2 mb-4">
             <Clock size={16} className="text-text-secondary" />
-            <h3 className="text-[15px] font-semibold text-text-primary">Job History</h3>
+            <h3 className="text-[15px] font-semibold text-text-primary">{t('training.jobHistory')}</h3>
             <span className="text-xs text-text-muted">({jobs.length})</span>
           </div>
           {jobs.length === 0 ? (
-            <div className="text-center py-6 text-text-muted text-[15px]">No training jobs yet</div>
+            <div className="text-center py-6 text-text-muted text-[15px]">{t('training.noJobs')}</div>
           ) : (
             <div className="space-y-2 max-h-64 overflow-y-auto">
               {jobs.map((job) => (
@@ -383,7 +395,11 @@ export default function TrainingTab() {
                   </div>
                   {job.progress?.loss != null && (
                     <div className="text-xs text-text-secondary">
-                      Loss: {job.progress.loss.toFixed(4)} | Steps: {job.progress.current_step}/{job.progress.total_steps}
+                      {t('training.jobStats', {
+                        loss: job.progress.loss.toFixed(4),
+                        current: job.progress.current_step,
+                        total: job.progress.total_steps,
+                      })}
                     </div>
                   )}
                   {job.error_message && (
@@ -399,11 +415,11 @@ export default function TrainingTab() {
         <Card variant="glass" className="p-4">
           <div className="flex items-center gap-2 mb-4">
             <Layers size={16} className="text-text-secondary" />
-            <h3 className="text-[15px] font-semibold text-text-primary">LoRA Adapters</h3>
+            <h3 className="text-[15px] font-semibold text-text-primary">{t('training.adapters')}</h3>
             <span className="text-xs text-text-muted">({adapters.length})</span>
           </div>
           {adapters.length === 0 ? (
-            <div className="text-center py-6 text-text-muted text-[15px]">No adapters yet</div>
+            <div className="text-center py-6 text-text-muted text-[15px]">{t('training.noAdapters')}</div>
           ) : (
             <div className="space-y-2 max-h-64 overflow-y-auto">
               {adapters.map((adapter) => (
@@ -415,12 +431,14 @@ export default function TrainingTab() {
                     <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${
                       adapter.loaded ? 'text-success bg-success-soft' : 'text-text-muted bg-bg-tertiary'
                     }`}>
-                      {adapter.loaded ? 'Loaded' : 'Available'}
+                      {t(adapter.loaded ? 'training.loaded' : 'training.available')}
                     </span>
                     <button
                       type="button"
-                      onClick={() => setPendingDelete({ kind: 'adapter', id: adapter.adapter_id, name: adapter.name || 'this adapter' })}
-                      aria-label={`Delete adapter ${adapter.name || adapter.adapter_id}`}
+                      onClick={() => setPendingDelete({ kind: 'adapter', id: adapter.adapter_id, name: adapter.name || t('training.thisAdapter') })}
+                      aria-label={t('training.deleteAdapterLabel', {
+                        name: adapter.name || adapter.adapter_id,
+                      })}
                       className="flex h-7 w-7 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-danger-soft hover:text-danger"
                     >
                       <Trash2 size={13} />
@@ -437,16 +455,18 @@ export default function TrainingTab() {
       <ConfirmModal
         open={Boolean(pendingDelete)}
         onOpenChange={(open) => { if (!open) setPendingDelete(null) }}
-        title={pendingDelete?.kind === 'adapter' ? 'Delete adapter?' : 'Delete dataset?'}
+        title={t(pendingDelete?.kind === 'adapter'
+          ? 'training.deleteAdapterTitle'
+          : 'training.deleteDatasetTitle')}
         description={
           pendingDelete
-            ? pendingDelete.kind === 'adapter'
-              ? `"${pendingDelete.name}" and its weights are removed. Any runtime currently serving this adapter keeps it until it is restarted; new loads will fail. This cannot be undone.`
-              : `"${pendingDelete.name}" and its training examples are removed. Adapters already trained from it are unaffected. This cannot be undone.`
+            ? t(pendingDelete.kind === 'adapter'
+                ? 'training.deleteAdapterDescription'
+                : 'training.deleteDatasetDescription', { name: pendingDelete.name })
             : ''
         }
-        confirmLabel="Delete"
-        cancelLabel="Cancel"
+        confirmLabel={t('common.delete')}
+        cancelLabel={t('common.cancel')}
         onConfirm={confirmDelete}
         variant="danger"
       />

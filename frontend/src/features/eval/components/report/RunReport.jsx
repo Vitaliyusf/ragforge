@@ -9,18 +9,18 @@ import StatCard from '@/components/ui/StatCard'
 import Tabs, { TabPanel } from '@/components/ui/Tabs'
 import TimeSeries from '@/features/metrics/components/charts/TimeSeries'
 import {
-  CONFIG_DIFF_NOTE,
+  CONFIG_DIFF_NOTE_KEY,
   EVAL_HISTORY_K,
-  FAILURE_ATTRIBUTION_NOTE,
-  FILE_MATCH_NOTE,
-  LABELS_VERIFIED_NOTE,
-  MATCH_MODE_LABELS,
+  FAILURE_ATTRIBUTION_NOTE_KEY,
+  FILE_MATCH_NOTE_KEY,
+  LABELS_VERIFIED_NOTE_KEY,
+  MATCH_MODE_LABEL_KEYS,
   formatCount,
   formatMs,
   formatPercent,
-  labelFor,
+  translatedLabelFor,
 } from '@/features/metrics/components/metricsConfig'
-import { TERMINAL_NOTES } from '../../evalProfiles'
+import { TERMINAL_NOTE_KEYS } from '../../evalProfiles'
 import {
   buildComparison,
   diffSnapshots,
@@ -42,6 +42,7 @@ import {
   ScoresAtK,
 } from './sections'
 import { Fact, Note } from './primitives'
+import { useI18n } from '@/i18n'
 
 /**
  * One run, as a report rather than a wall of cards.
@@ -65,6 +66,7 @@ export default function RunReport({
   onDownload,
   onRetry,
 }) {
+  const { t } = useI18n()
   const [tab, setTab] = useState('overview')
 
   const failure = useMemo(
@@ -79,14 +81,15 @@ export default function RunReport({
             // question twice on the one screen a reader is scanning fastest.
             retryable: Boolean(onRetry) && report.terminal,
             exportable: false,
+            t,
           })
         : null,
-    [report, onRetry, onDownload]
+    [report, onRetry, onDownload, t]
   )
 
   const comparison = useMemo(
-    () => (report?.kind === 'benchmark' ? buildComparison(report.raw, history) : null),
-    [report, history]
+    () => (report?.kind === 'benchmark' ? buildComparison(report.raw, history, t) : null),
+    [report, history, t]
   )
 
   const configDiff = useMemo(
@@ -105,7 +108,7 @@ export default function RunReport({
   if (!report) return null
 
   const status = report.statusMeta
-  const tabs = tabsFor(report)
+  const tabs = tabsFor(report, t)
 
   return (
     <Card>
@@ -120,15 +123,14 @@ export default function RunReport({
           // interrupted or finished partially says so once, in the failure
           // block below, rather than twice in two different wordings.
           !failure &&
-          TERMINAL_NOTES[report.status] && (
+          TERMINAL_NOTE_KEYS[report.status] && (
             <span className="text-[13px]" style={{ color: 'var(--fg-muted)' }}>
-              {TERMINAL_NOTES[report.status]}
+              {t(TERMINAL_NOTE_KEYS[report.status])}
             </span>
           )
         ) : (
           <span className="text-[13px]" style={{ color: 'var(--fg-muted)' }}>
-            Safe to leave this page. The run continues on the server and progress is saved
-            automatically.
+            {t('evalReport.safeToLeave')}
           </span>
         )}
       </div>
@@ -176,13 +178,13 @@ export default function RunReport({
       )}
 
       <div className="mt-5">
-        <Tabs tabs={tabs} value={tab} onChange={setTab} label={`${report.label} run report`} />
+        <Tabs tabs={tabs} value={tab} onChange={setTab} label={t('evalReport.tabsLabel', { name: report.label })} />
 
         {tab === 'overview' && (
           <TabPanel id="overview">
             <div className="flex flex-col gap-4">
               <DatasetProvenance run={report.raw} dataset={dataset} />
-              {report.labelValidation?.checked && <Note>{LABELS_VERIFIED_NOTE}</Note>}
+              {report.labelValidation?.checked && <Note>{t(LABELS_VERIFIED_NOTE_KEY)}</Note>}
               {report.kind === 'benchmark' ? (
                 <ComparisonPanel comparison={comparison} />
               ) : (
@@ -207,7 +209,7 @@ export default function RunReport({
                   <AnswerQualityDetail quality={measurement.results.answer_quality} />
                 ) : (
                   <Note>
-                    This phase generated no answers, so there is nothing for the judge to score.
+                    {t('evalReport.noAnswers')}
                   </Note>
                 )
               }
@@ -218,7 +220,7 @@ export default function RunReport({
         {tab === 'failures' && (
           <TabPanel id="failures">
             <p className="mb-3 text-[12px]" style={{ color: 'var(--fg-soft)' }}>
-              {FAILURE_ATTRIBUTION_NOTE}
+              {t(FAILURE_ATTRIBUTION_NOTE_KEY)}
             </p>
             <Measurements
               report={report}
@@ -227,8 +229,7 @@ export default function RunReport({
                   <FailureAttribution attribution={measurement.results.failure_attribution} />
                 ) : (
                   <Note>
-                    No item in this phase could be attributed to a stage. A run from before
-                    attribution existed records none rather than claiming zero failures.
+                    {t('evalReport.noAttribution')}
                   </Note>
                 )
               }
@@ -248,10 +249,10 @@ export default function RunReport({
               {configDiff.length > 0 && (
                 <div>
                   <h4 className="text-[13px] font-medium" style={{ color: 'var(--warning)' }}>
-                    Configuration changed between runs
+                    {t('evalReport.configChanged')}
                   </h4>
                   <p className="mb-2 mt-0.5 text-[12px]" style={{ color: 'var(--fg-soft)' }}>
-                    {CONFIG_DIFF_NOTE}
+                    {t(CONFIG_DIFF_NOTE_KEY)}
                   </p>
                   <ConfigDiff diff={configDiff} unobserved={runs[0]?.config_snapshot?.unobserved} />
                 </div>
@@ -273,25 +274,30 @@ export default function RunReport({
  * name belongs is what made the old panel unreadable at a glance.
  */
 function RunHeader({ report, busy, onDownload }) {
+  const { t } = useI18n()
   const { dataset } = report
   return (
     <div className="flex flex-wrap items-start justify-between gap-3">
       <div className="min-w-0">
         <h3 className="text-[15px] font-semibold" style={{ color: 'var(--fg)' }}>
           {report.label}
-          <span className="ml-2 text-[13px] font-normal" style={{ color: 'var(--fg-soft)' }}>
+          <span className="ms-2 text-[13px] font-normal" style={{ color: 'var(--fg-soft)' }}>
             {report.kindLabel}
           </span>
         </h3>
         <p className="mt-0.5 text-[13px]" style={{ color: 'var(--fg-muted)' }}>
           {dataset.name}
           {dataset.version ? ` · v${dataset.version}` : ''}
-          {dataset.itemCount != null ? ` · ${formatCount(dataset.itemCount)} items` : ''}
-          {` · started ${report.startedLabel}`}
+          {dataset.itemCount != null
+            ? ` · ${t('evalReport.itemsSuffix', { count: formatCount(dataset.itemCount) })}`
+            : ''}
+          {` · ${t('evalReport.startedSuffix', { time: report.startedLabel })}`}
           {` · ${report.duration}`}
         </p>
         <p className="mt-1 text-[12px]" style={{ color: 'var(--fg-soft)' }}>
-          {report.idLabel} <code className="tabular-nums">{report.id}</code>
+          {report.idLabel}{' '}
+          {/* A run id is an identifier a reader may quote in a bug report. */}
+          <code dir="ltr" className="tabular-nums [unicode-bidi:isolate]">{report.id}</code>
         </p>
       </div>
       <div className="flex shrink-0 flex-wrap gap-2">
@@ -312,24 +318,24 @@ function RunHeader({ report, busy, onDownload }) {
 }
 
 /** Which tabs this run can fill, with the counts that matter on them. */
-function tabsFor(report) {
+function tabsFor(report, t) {
   const failed = report.primary?.results?.items_failed
   return [
-    { id: 'overview', label: 'Overview' },
-    { id: 'retrieval', label: 'Retrieval' },
-    { id: 'quality', label: 'Quality' },
+    { id: 'overview', label: t('evalReport.tab.overview') },
+    { id: 'retrieval', label: t('evalReport.tab.retrieval') },
+    { id: 'quality', label: t('evalReport.tab.quality') },
     {
       id: 'failures',
-      label: 'Failures',
+      label: t('evalReport.tab.failures'),
       badge: failed > 0 ? formatCount(failed) : null,
       tone: failed > 0 ? 'danger' : undefined,
     },
     {
       id: 'items',
-      label: 'Items',
+      label: t('evalReport.tab.items'),
       badge: report.items?.length ? formatCount(report.items.length) : null,
     },
-    { id: 'configuration', label: 'Configuration' },
+    { id: 'configuration', label: t('evalReport.tab.configuration') },
   ]
 }
 
@@ -341,8 +347,9 @@ function tabsFor(report) {
  * no measurement anyone performed.
  */
 function Measurements({ report, render }) {
+  const { t } = useI18n()
   if (!report.measurements.length) {
-    return <Note>This run has not measured anything yet.</Note>
+    return <Note>{t('evalReport.nothingMeasured')}</Note>
   }
   if (report.measurements.length === 1) return render(report.measurements[0])
   return (
@@ -361,22 +368,25 @@ function Measurements({ report, render }) {
 
 /** Scores at every cutoff, plus the latency the run can actually evidence. */
 function Retrieval({ measurement, matchMode }) {
+  const { t } = useI18n()
   const latency = latencySummary(measurement.items)
   return (
     <div className="flex flex-col gap-3">
       <p className="text-[12px]" style={{ color: 'var(--fg-soft)' }}>
         {matchMode === 'file_id'
-          ? FILE_MATCH_NOTE
-          : `${labelFor(MATCH_MODE_LABELS, matchMode || 'chunk_id')} matching against the labelled ids.`}
+          ? t(FILE_MATCH_NOTE_KEY)
+          : t('evalReport.matchModeNote', {
+              mode: translatedLabelFor(MATCH_MODE_LABEL_KEYS, matchMode || 'chunk_id', t),
+            })}
       </p>
       <ScoresAtK results={measurement.results} />
       <dl className="flex flex-wrap gap-6 text-[13px]">
-        <Fact label="Mean latency" value={formatMs(measurement.results?.mean_latency_ms)} />
-        <Fact label="Latency p50" value={formatMs(latency.p50)} />
-        <Fact label="Latency p95" value={formatMs(latency.p95)} />
+        <Fact label={t('evalReport.meanLatency')} value={formatMs(measurement.results?.mean_latency_ms)} />
+        <Fact label={t('evalReport.latencyP50')} value={formatMs(latency.p50)} />
+        <Fact label={t('evalReport.latencyP95')} value={formatMs(latency.p95)} />
         <Fact
-          label="Latency sample"
-          value={latency.sample ? formatCount(latency.sample) : 'no per-item rows'}
+          label={t('evalReport.latencySample')}
+          value={latency.sample ? formatCount(latency.sample) : t('evalReport.noPerItemRows')}
         />
       </dl>
     </div>
@@ -385,13 +395,14 @@ function Retrieval({ measurement, matchMode }) {
 
 /** The item view, or the reason this kind of run does not carry one. */
 function ItemsTab({ report }) {
+  const { t } = useI18n()
   return (
     <ItemExplorer
       items={report.items || []}
       emptyNote={
         report.kind === 'benchmark'
-          ? 'A benchmark keeps its per-item rows in the diagnostic archive rather than in the record this page polls. Download the archive to inspect them.'
-          : 'This run kept no per-item rows.'
+          ? t('evalReport.benchmarkItemsNote')
+          : t('evalReport.runKeptNoItems')
       }
     />
   )
@@ -417,13 +428,14 @@ function historySeries(runs) {
 }
 
 function RecallTrend({ series }) {
+  const { t } = useI18n()
   if (!series.length) {
-    return <Note>Two completed runs are needed before a trend can be drawn.</Note>
+    return <Note>{t('evalReport.noTrend')}</Note>
   }
   return (
     <TimeSeries
       series={series}
-      label={`Recall@${EVAL_HISTORY_K} by run`}
+      label={t('evalReport.recallByRun', { k: EVAL_HISTORY_K })}
       yFormat={(value) => formatPercent(value)}
     />
   )

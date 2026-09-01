@@ -2,6 +2,9 @@
 
 import { Activity, Gauge, Search, ShieldCheck, Workflow } from 'lucide-react'
 import { SERVICE_LABELS } from '@/lib/terminology'
+import { intlLocale } from '@/lib/formatting/datetime'
+import { DEFAULT_LOCALE } from '@/i18n/locale'
+import { translate } from '@/i18n/translate'
 
 /** Shown wherever the API returned null — "not measured", not "zero". */
 export const EMPTY = '—'
@@ -15,11 +18,11 @@ export const EMPTY = '—'
  * its own rather than a sixth entry in this list.
  */
 export const METRICS_SECTIONS = [
-  { id: 'overview', label: 'Overview', icon: Gauge },
-  { id: 'latency', label: 'Latency', icon: Activity },
-  { id: 'retrieval', label: 'Retrieval', icon: Search },
-  { id: 'quality', label: 'Quality', icon: ShieldCheck },
-  { id: 'pipeline', label: 'Pipeline', icon: Workflow },
+  { id: 'overview', labelKey: 'metrics.section.overview', icon: Gauge },
+  { id: 'latency', labelKey: 'metrics.section.latency', icon: Activity },
+  { id: 'retrieval', labelKey: 'metrics.section.retrieval', icon: Search },
+  { id: 'quality', labelKey: 'metrics.section.quality', icon: ShieldCheck },
+  { id: 'pipeline', labelKey: 'metrics.section.pipeline', icon: Workflow },
 ]
 
 /**
@@ -45,10 +48,10 @@ export const SECTION_SAMPLES = {
 export const PROMETHEUS_SECTIONS = new Set(['overview', 'latency', 'retrieval', 'pipeline'])
 
 export const WINDOW_OPTIONS = [
-  { value: '1h', label: 'Last hour' },
-  { value: '24h', label: 'Last 24 hours' },
-  { value: '7d', label: 'Last 7 days' },
-  { value: '30d', label: 'Last 30 days' },
+  { value: '1h', labelKey: 'metrics.window.1h' },
+  { value: '24h', labelKey: 'metrics.window.24h' },
+  { value: '7d', labelKey: 'metrics.window.7d' },
+  { value: '30d', labelKey: 'metrics.window.30d' },
 ]
 
 export const DEFAULT_WINDOW = '24h'
@@ -108,10 +111,10 @@ export function formatCost(usd) {
   return `$${Number(usd).toFixed(2)}`
 }
 
-export function formatTimestamp(date) {
+export function formatTimestamp(date, locale) {
   if (!date) return EMPTY
   const parsed = date instanceof Date ? date : new Date(date)
-  return Number.isNaN(parsed.getTime()) ? EMPTY : parsed.toLocaleTimeString()
+  return Number.isNaN(parsed.getTime()) ? EMPTY : parsed.toLocaleTimeString(intlLocale(locale))
 }
 
 // ---------------------------------------------------------------------------
@@ -154,6 +157,17 @@ export function scoreVariant(value) {
 
 // ---------------------------------------------------------------------------
 // Labels
+//
+// Two kinds live below, and only one of them is copy.
+//
+//   * Chrome — section names, window ranges, verdict and confidence words —
+//     carries a `labelKey` and is translated.
+//   * Metric and stage *names* — METRIC_LABELS, STAGE_LABELS,
+//     FUNNEL_STEP_LABELS, EVAL_METRIC_LABELS, CONFIG_SNAPSHOT_LABELS — stay
+//     canonical English. They name Prometheus series, pipeline stages and
+//     stored config keys that an operator correlates against dashboards,
+//     alert rules and the backend's own field names; translating "TTFT p95"
+//     or "nDCG@10" would break that correspondence and help nobody.
 // ---------------------------------------------------------------------------
 
 export const STAGE_LABELS = {
@@ -177,22 +191,22 @@ export const FUNNEL_STEP_LABELS = {
   indexed: 'Indexed',
 }
 
-export const FILTER_REASON_LABELS = {
-  retrieval_not_allowed: 'Retrieval not allowed',
-  review_removed: 'Removed in review',
+export const FILTER_REASON_LABEL_KEYS = {
+  retrieval_not_allowed: 'metrics.filterReason.notAllowed',
+  review_removed: 'metrics.filterReason.reviewRemoved',
 }
 
-export const CONFIDENCE_LABELS = {
-  high: 'High',
-  medium: 'Medium',
-  low: 'Low',
+export const CONFIDENCE_LABEL_KEYS = {
+  high: 'metrics.confidence.high',
+  medium: 'metrics.confidence.medium',
+  low: 'metrics.confidence.low',
 }
 
 /** The judge's claim-level hallucination verdicts. */
-export const HALLUCINATION_VERDICT_LABELS = {
-  none: 'None',
-  minor: 'Minor',
-  severe: 'Severe',
+export const HALLUCINATION_VERDICT_LABEL_KEYS = {
+  none: 'metrics.verdict.none',
+  minor: 'metrics.verdict.minor',
+  severe: 'metrics.verdict.severe',
 }
 
 export const HALLUCINATION_VERDICT_VARIANTS = {
@@ -205,6 +219,18 @@ export const HALLUCINATION_VERDICT_VARIANTS = {
 export function labelFor(map, key) {
   if (!key) return 'Unknown'
   return map[key] || String(key).replace(/_/g, ' ')
+}
+
+/**
+ * The same fallback, for the tables that hold translation keys.
+ *
+ * A key the backend added but this build has no wording for reads as its
+ * own raw name rather than as a guessed translation.
+ */
+export function translatedLabelFor(keyMap, key, t) {
+  if (!key) return t('common.unknown')
+  const messageKey = keyMap[key]
+  return messageKey ? t(messageKey) : String(key).replace(/_/g, ' ')
 }
 
 export const METRIC_LABELS = {
@@ -247,38 +273,16 @@ export const METRIC_LABELS = {
 }
 
 /**
- * Shown when a window contains turns from both before and after the phase-6
- * deploy. The two hallucination measures count different populations, so the
- * panel shows both and says so rather than averaging them into one figure
- * that describes neither.
- */
-export const MIXED_HALLUCINATION_NOTE =
-  'Some turns in this window predate claim-level judging and carry no ' +
-  'verdict. The two rates below count different turns and must not be ' +
-  'compared or combined.'
-
-/** Shown beside citation precision, whose denominator excludes some answers. */
-export const CITATION_DENOMINATOR_NOTE =
-  'An answer that cited nothing has no precision to measure and is excluded ' +
-  'rather than scored zero, so this mean can cover far fewer answers than ' +
-  'the window holds.'
-
-/**
  * Shown beside any figure Prometheus supplies: these carry no tenant label.
  * Owned by the shared trust contract so Health and Metrics cannot describe
  * the same scope two ways.
  */
 export { PLATFORM_SCOPE_NOTE } from '@/lib/observability/metricMeta'
 
-/** Every cost on the tab is an estimate from a static price table. */
-export const COST_ESTIMATE_NOTE =
-  'Estimated from the configured per-token price table, not billed amounts.'
-
 /** Message shown wherever a Prometheus-backed widget cannot be drawn. */
 export const PROM_UNAVAILABLE = {
-  title: 'Metrics store unavailable',
-  description:
-    'Prometheus is not reachable, so live time-series widgets are hidden. Stored per-turn metrics are unaffected.',
+  titleKey: 'metrics.storeUnavailable',
+  descriptionKey: 'metrics.storeUnavailableDescription',
 }
 
 // ---------------------------------------------------------------------------
@@ -296,10 +300,10 @@ export const EVAL_K_VALUES = [1, 3, 5, 10, 20]
  *  enough that a real ranking change still moves it. */
 export const EVAL_HISTORY_K = '5'
 
-export const RUN_STATUS_LABELS = {
-  running: 'Running',
-  completed: 'Completed',
-  failed: 'Failed',
+export const RUN_STATUS_LABEL_KEYS = {
+  running: 'eval.runStatus.running',
+  completed: 'eval.runStatus.completed',
+  failed: 'eval.runStatus.failed',
 }
 
 export const RUN_STATUS_VARIANTS = {
@@ -355,23 +359,19 @@ export const CONFIG_SNAPSHOT_LABELS = {
   min_similarity_threshold: 'Min similarity (legacy flag)',
 }
 
-export const EVAL_MODE_LABELS = {
-  retrieval: 'Retrieval only',
-  end_to_end: 'End-to-end',
+export const EVAL_MODE_LABEL_KEYS = {
+  retrieval: 'eval.mode.retrieval',
+  end_to_end: 'eval.mode.endToEnd',
 }
 
 /** Said plainly before an end-to-end run, which is the one that spends money. */
-export const EVAL_MODE_HELP = {
-  retrieval:
-    'Runs retrieval only. No model is called, so the run is free and finishes in seconds.',
-  end_to_end:
-    'Generates and judges an answer for every item. This calls the model twice per item and takes minutes, not seconds.',
+export const EVAL_MODE_HELP_KEYS = {
+  retrieval: 'eval.modeHelp.retrieval',
+  end_to_end: 'eval.modeHelp.endToEnd',
 }
 
 /** Shown when the estimate covers a model with no configured price. */
-export const UNPRICED_MODEL_NOTE =
-  'This model has no configured price, so the estimate is $0.00 because ' +
-  'nothing here is priced — not because the run is free.'
+export const UNPRICED_MODEL_NOTE_KEY = 'evalSingle.unpricedNote'
 
 export const EVAL_ANSWER_METRIC_LABELS = {
   groundedness: 'Mean groundedness',
@@ -405,72 +405,62 @@ export const FAILURE_CATEGORY_ORDER = [
   'unclassified',
 ]
 
-export const FAILURE_CATEGORY_LABELS = {
-  index: 'Index returned nothing',
-  retrieval: 'Never a candidate',
-  pass_two: 'Second pass skipped',
-  ranking: 'Ranked out of the context',
-  context: 'Retrieved, then barred',
-  completeness: 'Only partly retrieved',
-  generation: 'No answer generated',
-  grounding: 'Answer not grounded',
-  stale_labels: 'Label no longer in the index',
-  pipeline_error: 'Item errored',
-  unclassified: 'Not enough evidence',
+export const FAILURE_CATEGORY_LABEL_KEYS = {
+  index: 'evalFailure.index',
+  retrieval: 'evalFailure.retrieval',
+  pass_two: 'evalFailure.passTwo',
+  ranking: 'evalFailure.ranking',
+  context: 'evalFailure.context',
+  completeness: 'evalFailure.completeness',
+  generation: 'evalFailure.generation',
+  grounding: 'evalFailure.grounding',
+  stale_labels: 'evalFailure.staleLabels',
+  pipeline_error: 'evalFailure.pipelineError',
+  unclassified: 'evalFailure.unclassified',
 }
 
 /** What each category means, and therefore which knob it points at. */
-export const FAILURE_CATEGORY_HELP = {
-  index: 'Every retrieval step came back empty — nothing was there to rank.',
-  retrieval: 'Candidates came back, but the labelled chunk was never one of them.',
-  pass_two: 'The second retrieval pass that could have found it was skipped.',
-  ranking: 'It was a candidate and the merge, rerank or depth cap dropped it.',
-  context: 'It was retrieved and then refused — removed in review, or not retrieval-allowed.',
-  completeness: 'Some labelled ids landed and some did not.',
-  generation: 'The context was right and the model produced no answer.',
-  grounding: 'The context was right and the answer was not supported by it.',
-  stale_labels: 'The label names a chunk the index no longer holds. Not a retrieval miss.',
-  pipeline_error: 'The item raised before it finished. Says nothing about retrieval quality.',
-  unclassified: 'No trace, a truncated candidate list, or an answer the judge never scored.',
+export const FAILURE_CATEGORY_HELP_KEYS = {
+  index: 'evalFailureHelp.index',
+  retrieval: 'evalFailureHelp.retrieval',
+  pass_two: 'evalFailureHelp.passTwo',
+  ranking: 'evalFailureHelp.ranking',
+  context: 'evalFailureHelp.context',
+  completeness: 'evalFailureHelp.completeness',
+  generation: 'evalFailureHelp.generation',
+  grounding: 'evalFailureHelp.grounding',
+  stale_labels: 'evalFailureHelp.staleLabels',
+  pipeline_error: 'evalFailureHelp.pipelineError',
+  unclassified: 'evalFailureHelp.unclassified',
 }
 
 /** Shown above the attribution table. */
-export const FAILURE_ATTRIBUTION_NOTE =
-  'Each item is attributed to one stage, from its own recorded trace — no ' +
-  'model is asked where a query failed. Items whose evidence does not ' +
-  'support any category are counted as unclassified rather than guessed at.'
+export const FAILURE_ATTRIBUTION_NOTE_KEY = 'evalNote.failureAttribution'
 
 /** Shown when a run scored items but attributed none of them to a failure. */
-export const NO_FAILURES_NOTE =
-  'Every scored item retrieved its labelled chunks, so there is nothing to attribute.'
+export const NO_FAILURES_NOTE_KEY = 'evalNote.noFailures'
 
-export const MATCH_MODE_LABELS = {
-  chunk_id: 'Chunk-level',
-  file_id: 'File-level',
-  mixed: 'Mixed',
+export const MATCH_MODE_LABEL_KEYS = {
+  chunk_id: 'evalMatchMode.chunk',
+  file_id: 'evalMatchMode.file',
+  mixed: 'evalMatchMode.mixed',
 }
 
 /** Shown whenever the two most recent runs ran under different settings. */
-export const CONFIG_DIFF_NOTE =
-  'These runs used different retrieval settings, so the difference between ' +
-  'their scores is not a measure of retrieval quality alone.'
+export const CONFIG_DIFF_NOTE_KEY = 'evalNote.configDiff'
 
 /** Shown for snapshot fields the rag service cannot observe. */
-export const UNOBSERVED_NOTE =
-  'Not captured — the rag service cannot see this setting, so two runs ' +
-  'cannot be compared on it.'
+export const UNOBSERVED_NOTE_KEY = 'evalNote.unobserved'
 
 /** Shown beside file-level runs, which score more generously than chunk-level. */
-export const FILE_MATCH_NOTE =
-  'Scored at file level: any chunk from a relevant file counts as a hit, ' +
-  'which reads higher than chunk-level matching on the same retrieval.'
+export const FILE_MATCH_NOTE_KEY = 'evalNote.fileMatch'
 
 /** The empty state's explainer. A golden set is hand-built, and saying so is
  *  more useful than a button that implies otherwise. */
-export const GOLDEN_SET_HELP = [
-  'Pick 20–50 real questions your users actually ask.',
-  'For each one, open the documents and record the chunk ids that genuinely answer it.',
-  'Upload them as JSON. Re-run after any retrieval change to see the effect.',
+export const GOLDEN_SET_HELP_KEYS = [
+  'eval.goldenSetStep1',
+  'eval.goldenSetStep2',
+  'eval.goldenSetStep3',
 ]
 
 /** How many hex characters of a dataset fingerprint the UI shows. */
@@ -489,14 +479,10 @@ export function formatFingerprint(sha) {
 }
 
 /** Shown for a run recorded before datasets carried a version. */
-export const UNVERSIONED_RUN_NOTE =
-  'This run predates dataset versioning, so which labels it scored was ' +
-  'never recorded. It cannot be compared against a versioned run.'
+export const UNVERSIONED_RUN_NOTE_KEY = 'evalNote.unversionedRun'
 
 /** Shown when the dataset has been edited since the displayed run. */
-export const DATASET_DRIFT_NOTE =
-  'The dataset has been edited since this run: a new run would score a ' +
-  'different set of labels, so the two are not directly comparable.'
+export const DATASET_DRIFT_NOTE_KEY = 'evalNote.datasetDrift'
 
 // ---------------------------------------------------------------------------
 // Golden-set label validation
@@ -510,43 +496,41 @@ export const DATASET_DRIFT_NOTE =
  * retriever could have done would have found it. They look identical on a
  * recall chart and mean opposite things about the system.
  */
-export const STALE_LABEL_NOTE =
-  'These items are not retrieval misses. The chunks their labels name are ' +
-  'no longer in the index, so no retriever could have returned them. ' +
-  'Re-label the dataset against the current index before comparing scores.'
+export const STALE_LABEL_NOTE_KEY = 'evalNote.staleLabel'
 
 /** Shown for labels that still exist but retrieval is not allowed to return. */
-export const UNRETRIEVABLE_LABEL_NOTE =
-  'These labels still exist but are excluded from retrieval — removed in ' +
-  'review, or not retrieval-allowed. They are unreachable for a different ' +
-  'reason than a deleted label, and need a different fix.'
+export const UNRETRIEVABLE_LABEL_NOTE_KEY = 'evalNote.unretrievableLabel'
 
 /** Shown when a run scored without its labels having been verified. */
-export const UNCHECKED_LABELS_NOTE =
-  'This run scored without checking its labels against the live index, so a ' +
-  'label deleted by reindexing would read here as a retrieval miss.'
+export const UNCHECKED_LABELS_NOTE_KEY = 'evalNote.uncheckedLabels'
 
 /** Why a run's labels were not verified. Keyed by the stored `reason`. */
-export const LABEL_CHECK_REASONS = {
-  disabled: 'Label verification is switched off for this deployment.',
-  no_labels: 'This run had no labelled ids to verify.',
-  unavailable: 'The vector store could not be reached to verify them.',
+export const LABEL_CHECK_REASON_KEYS = {
+  disabled: 'evalNote.checkReason.disabled',
+  no_labels: 'evalNote.checkReason.noLabels',
+  unavailable: 'evalNote.checkReason.unavailable',
 }
 
 /** Shown on the per-item row of an item excluded for stale labels. */
-export const UNSCORABLE_ITEM_NOTE = 'benchmark label no longer exists — not a retrieval miss'
+export const UNSCORABLE_ITEM_NOTE_KEY = 'evalNote.unscorableItem'
 
 /** Confirmation that a run's ground truth was checked and held up. */
-export const LABELS_VERIFIED_NOTE =
-  'Every labelled id was found in the live index, so no score below is a ' +
-  'missing label in disguise.'
+export const LABELS_VERIFIED_NOTE_KEY = 'evalNote.labelsVerified'
 
 /** How many affected ids one warning card lists before it stops. */
 export const MAX_STALE_IDS_SHOWN = 12
 
-/** Render a boolean setting as a word rather than "true"/"false". */
-export function formatSetting(value) {
+/**
+ * Render a boolean setting as a word rather than "true"/"false".
+ *
+ * Any other value is a configuration value — a model id, a number, a
+ * strategy name — and is shown exactly as stored.
+ */
+export function formatSetting(value, t) {
   if (value === null || value === undefined || value === '') return EMPTY
-  if (typeof value === 'boolean') return value ? 'On' : 'Off'
+  if (typeof value === 'boolean') {
+    const key = value ? 'evalReport.on' : 'evalReport.off'
+    return t ? t(key) : translate(DEFAULT_LOCALE, key)
+  }
   return String(value)
 }

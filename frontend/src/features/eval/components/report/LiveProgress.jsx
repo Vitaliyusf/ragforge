@@ -2,8 +2,9 @@
 
 import ProgressBar from '@/components/ui/ProgressBar'
 import { EMPTY } from '@/features/metrics/components/metricsConfig'
-import { PHASE_LABELS, STALL_SECONDS, ageSeconds, formatAge, formatElapsed } from '../../evalProfiles'
+import { PHASE_LABEL_KEYS, STALL_SECONDS, ageSeconds, formatAge, formatElapsed } from '../../evalProfiles'
 import { Fact } from './primitives'
+import { useI18n } from '@/i18n'
 
 /**
  * Item-level progress for the phase that is executing.
@@ -15,6 +16,7 @@ import { Fact } from './primitives'
  * than guessing at one.
  */
 export default function LiveProgress({ phase, itemsPerPhase }) {
+  const { t } = useI18n()
   if (!phase) return null
   const progress = phase.item_progress || {}
   const total = Number(itemsPerPhase ?? 0)
@@ -22,7 +24,7 @@ export default function LiveProgress({ phase, itemsPerPhase }) {
   const percent = total ? Math.round((completed / total) * 100) : null
   const elapsed = formatElapsed(progress.phase_started_at)
   const staleSeconds = ageSeconds(progress.last_progress_at)
-  const label = PHASE_LABELS[phase.name] || phase.name
+  const label = PHASE_LABEL_KEYS[phase.name] ? t(PHASE_LABEL_KEYS[phase.name]) : phase.name
 
   return (
     <div
@@ -32,7 +34,8 @@ export default function LiveProgress({ phase, itemsPerPhase }) {
       <div className="flex flex-wrap items-baseline justify-between gap-2 text-[13px]">
         <span className="font-medium">{label}</span>
         <span className="tabular-nums" style={{ color: 'var(--fg-muted)' }}>
-          {completed} / {total || EMPTY} items{percent !== null ? ` · ${percent}%` : ''}
+          {t('evalReport.itemsOfTotal', { completed, total: total || EMPTY })}
+          {percent !== null ? ` · ${percent}%` : ''}
         </span>
       </div>
 
@@ -40,24 +43,26 @@ export default function LiveProgress({ phase, itemsPerPhase }) {
         className="mt-2"
         value={percent}
         color="var(--primary)"
-        aria-label={`${label} item progress`}
+        aria-label={t('evalReport.itemProgress', { name: label })}
       />
 
       <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1 text-[13px] sm:grid-cols-4">
-        <Fact label="Successful" value={progress.items_succeeded ?? 0} />
-        <Fact label="Guardrail blocked" value={progress.items_guardrail_blocked ?? 0} />
-        <Fact label="Failed" value={progress.items_failed ?? 0} />
-        <Fact label="In flight" value={progress.items_in_flight ?? 0} />
+        <Fact label={t('evalReport.successful')} value={progress.items_succeeded ?? 0} />
+        <Fact label={t('evalReport.guardrailBlocked')} value={progress.items_guardrail_blocked ?? 0} />
+        <Fact label={t('evalReport.failedItems')} value={progress.items_failed ?? 0} />
+        <Fact label={t('evalReport.inFlight')} value={progress.items_in_flight ?? 0} />
       </dl>
 
       <p className="mt-3 text-[12px]" style={{ color: 'var(--fg-soft)' }}>
-        Elapsed {elapsed || EMPTY}
-        {staleSeconds !== null ? ` · last progress ${formatAge(staleSeconds)} ago` : ''}
+        {t('evalReport.elapsed', { duration: elapsed || EMPTY })}
+        {staleSeconds !== null
+          ? ` · ${t('evalReport.lastProgress', { age: formatAge(staleSeconds) })}`
+          : ''}
       </p>
 
       {staleSeconds !== null && staleSeconds >= STALL_SECONDS && (
         <p className="mt-1 text-[12px]" style={{ color: 'var(--warning)' }}>
-          Possible stall: no benchmark item has completed for {formatAge(staleSeconds)}.
+          {t('evalReport.possibleStall', { age: formatAge(staleSeconds) })}
         </p>
       )}
     </div>

@@ -5,6 +5,7 @@ import { File, FileSpreadsheet, FileText, Image, Loader2, ShieldAlert, Trash2 } 
 import { formatFileSize } from '@/lib/formatting/bytes'
 import { formatAbsoluteDateTime, formatRelativeTime } from '@/lib/formatting/datetime'
 import { DOCUMENT_STATUSES, getDocumentStatus, getDocumentType } from '../documentModel'
+import { useI18n } from '@/i18n'
 import { DocumentPipelineCell, DocumentStatusBadge } from './DocumentStatus'
 
 function getFileTypeIcon(contentType, filename) {
@@ -38,11 +39,12 @@ function DocumentRow({
   onDelete,
   onReview,
 }) {
+  const { locale, t } = useI18n()
   const Icon = getFileTypeIcon(file.content_type, file.filename)
   const status = getDocumentStatus(file)
   const type = getDocumentType(file)
   const updated = file.updated_at || file.created_at
-  const relative = formatRelativeTime(updated)
+  const relative = formatRelativeTime(updated, new Date(), locale)
   const failed = status === DOCUMENT_STATUSES.FAILED
 
   return (
@@ -60,7 +62,9 @@ function DocumentRow({
           type="checkbox"
           checked={selected}
           onChange={(event) => onSelectChange(file.file_id, event.target.checked)}
-          aria-label={`Select ${file.filename || 'document'}`}
+          aria-label={t('knowledge.selectDocument', {
+            name: file.filename || t('knowledge.unknownDocument'),
+          })}
           className="h-3.5 w-3.5 cursor-pointer accent-[var(--primary)]"
         />
       </td>
@@ -73,11 +77,11 @@ function DocumentRow({
             onClick={(event) => { event.stopPropagation(); onOpen(file.file_id) }}
             // The full name is the accessible name and the hover title, so a
             // truncated one is never the only copy the reader can reach.
-            title={file.filename || 'Unknown document'}
+            title={file.filename || t('knowledge.unknownDocument')}
             dir="auto"
             className="block max-w-[38ch] truncate text-start text-[13px] font-medium text-fg hover:underline"
           >
-            {file.filename || 'Unknown document'}
+            {file.filename || t('knowledge.unknownDocument')}
           </button>
         </div>
       </td>
@@ -96,7 +100,7 @@ function DocumentRow({
 
       <td
         className="hidden whitespace-nowrap px-3 py-2.5 text-[13px] text-fg-soft md:table-cell"
-        title={formatAbsoluteDateTime(updated) || undefined}
+        title={formatAbsoluteDateTime(updated, locale) || undefined}
       >
         {relative || '—'}
       </td>
@@ -107,7 +111,9 @@ function DocumentRow({
             <button
               type="button"
               onClick={() => onReview(file.file_id)}
-              aria-label={`Review ${file.filename || 'document'}`}
+              aria-label={t('knowledge.reviewDocument', {
+                name: file.filename || t('knowledge.unknownDocument'),
+              })}
               className={`${ACTION_BUTTON} text-warning hover:text-warning`}
             >
               <ShieldAlert size={14} />
@@ -117,7 +123,9 @@ function DocumentRow({
             type="button"
             onClick={() => onDelete(file)}
             disabled={isDeleting}
-            aria-label={`Delete ${file.filename || 'document'}`}
+            aria-label={t('knowledge.deleteDocument', {
+              name: file.filename || t('knowledge.unknownDocument'),
+            })}
             className={`${ACTION_BUTTON} hover:bg-danger-soft hover:text-danger`}
           >
             {isDeleting ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}

@@ -16,17 +16,19 @@ import {
   EMPTY,
   EVAL_HISTORY_K,
   EVAL_METRIC_LABELS,
-  EVAL_MODE_LABELS,
-  FAILURE_CATEGORY_LABELS,
+  EVAL_MODE_LABEL_KEYS,
+  FAILURE_CATEGORY_LABEL_KEYS,
   formatCount,
   formatMs,
   formatPercent,
   formatScore,
   formatSetting,
-  labelFor,
+  translatedLabelFor,
 } from '@/features/metrics/components/metricsConfig'
+import { DEFAULT_LOCALE } from '@/i18n/locale'
+import { translate } from '@/i18n/translate'
 import {
-  PHASE_LABELS,
+  PHASE_LABEL_KEYS,
   PROFILES_BY_ID,
   formatDuration,
   formatRunTimestamp,
@@ -37,7 +39,10 @@ import {
 /** The stage every run begins with, before any retrieval happens. */
 export const VALIDATION_STAGE = 'dataset_validation'
 
-const VALIDATION_LABEL = 'Dataset validation'
+const VALIDATION_LABEL_KEY = 'evalModel.validation'
+
+/** English resolution for callers that hand over no translator. */
+const defaultTranslate = (key, variables) => translate(DEFAULT_LOCALE, key, variables)
 
 /** Stage states that stop everything after them from running. */
 const BLOCKING_STATUSES = new Set(['failed', 'interrupted'])
@@ -91,31 +96,31 @@ export function latencySummary(rows) {
  * what makes the scores mean anything, and reporting it as passed because
  * nothing objected is the one claim this stage must not make.
  */
-export function validationStage(validation) {
+export function validationStage(validation, t = defaultTranslate) {
   if (!validation) {
     return {
       key: VALIDATION_STAGE,
-      label: VALIDATION_LABEL,
+      label: t(VALIDATION_LABEL_KEY),
       status: 'unknown',
-      note: 'This run recorded no label check.',
+      note: t('evalModel.noLabelCheck'),
     }
   }
   if (!validation.checked) {
     return {
       key: VALIDATION_STAGE,
-      label: VALIDATION_LABEL,
+      label: t(VALIDATION_LABEL_KEY),
       status: 'unknown',
-      note: 'The labels behind this run were never verified against the index.',
+      note: t('evalModel.labelsNeverVerified'),
     }
   }
   const stale = (validation.stale_label_count || 0) + (validation.unretrievable_label_count || 0)
   return {
     key: VALIDATION_STAGE,
-    label: VALIDATION_LABEL,
+    label: t(VALIDATION_LABEL_KEY),
     status: stale ? 'partial' : 'completed',
     note: stale
-      ? `${formatCount(stale)} labels are no longer in the index.`
-      : 'Every label was found in the live index.',
+      ? t('evalModel.staleLabels', { count: formatCount(stale) })
+      : t('evalModel.everyLabelFound'),
   }
 }
 
@@ -128,14 +133,17 @@ export function validationStage(validation) {
  * choice somebody made: skipped is not failed, and a reader who cannot tell
  * the two apart will go and debug the wrong thing.
  */
-export function executionFlow(stages) {
+export function executionFlow(stages, t = defaultTranslate) {
   let blocker = null
   return (stages || []).map((stage) => {
     const next = { ...stage }
     if (blocker && NOT_RUN_STATUSES.has(stage.status)) {
       next.status = 'skipped'
       next.blockedBy = blocker.label
-      next.note = `Not run: ${blocker.label} ${blocker.status === 'failed' ? 'failed' : 'stopped'} first.`
+      next.note = t(
+        blocker.status === 'failed' ? 'evalModel.notRunFailed' : 'evalModel.notRunStopped',
+        { stage: blocker.label }
+      )
     }
     if (!blocker && BLOCKING_STATUSES.has(stage.status)) blocker = stage
     return next
@@ -143,15 +151,15 @@ export function executionFlow(stages) {
 }
 
 /** A benchmark's phases as flow stages, with the validation stage in front. */
-function benchmarkStages(benchmark, validation) {
+function benchmarkStages(benchmark, validation, t = defaultTranslate) {
   const phases = (benchmark?.phases || []).map((phase) => ({
     key: phase.name,
-    label: PHASE_LABELS[phase.name] || phase.name,
+    label: PHASE_LABEL_KEYS[phase.name] ? t(PHASE_LABEL_KEYS[phase.name]) : phase.name,
     status: phase.status,
     note: phase.reason || phase.error || null,
     results: phase.results || null,
   }))
-  return executionFlow([validationStage(validation), ...phases])
+  return executionFlow([validationStage(validation, t), ...phases], t)
 }
 
 // ---------------------------------------------------------------------------
@@ -164,12 +172,12 @@ function benchmarkStages(benchmark, validation) {
  * A phase with no results is not a measurement: it contributes no numbers,
  * and listing it would put an empty tab body on the page.
  */
-function benchmarkMeasurements(benchmark) {
+function benchmarkMeasurements(benchmark, t = defaultTranslate) {
   return (benchmark?.phases || [])
     .filter((phase) => phase.results && ['completed', 'partial'].includes(phase.status))
     .map((phase) => ({
       key: phase.name,
-      label: PHASE_LABELS[phase.name] || phase.name,
+      label: PHASE_LABEL_KEYS[phase.name] ? t(PHASE_LABEL_KEYS[phase.name]) : phase.name,
       status: phase.status,
       results: phase.results,
       items: [],
@@ -187,7 +195,7 @@ function benchmarkMeasurements(benchmark) {
  * over three hundred are the same number and different evidence. An absent
  * measurement is a dash — never a zero, which is a result.
  */
-export function kpiSummary(measurement) {
+export function kpiSummary(measurement, t = defaultTranslate) {
   if (!measurement?.results) return []
   const results = measurement.results
   const quality = results.answer_quality
@@ -199,7 +207,7 @@ export function kpiSummary(measurement) {
       key: 'mrr',
       label: EVAL_METRIC_LABELS.mrr,
       value: formatScore(results.mrr),
-      subLabel: `mean reciprocal rank over ${formatCount(scored)} scored items`,
+      subLabel: t('evalModel.mrrSubLabel', { count: formatCount(scored) }),
     },
     {
       key: 'recall',
@@ -215,7 +223,9 @@ export function kpiSummary(measurement) {
     },
     {
       key: 'latency',
-      label: latency.p95 === null ? EVAL_METRIC_LABELS.mean_latency_ms : 'Latency p95',
+      label: latency.p95 === null
+        ? EVAL_METRIC_LABELS.mean_latency_ms
+        : t('evalModel.latencyP95'),
       value: latency.p95 === null ? formatMs(results.mean_latency_ms) : formatMs(latency.p95),
       subLabel:
         latency.p95 === null
@@ -224,7 +234,7 @@ export function kpiSummary(measurement) {
     },
     {
       key: 'failures',
-      label: 'Failed items',
+      label: t('evalModel.failedItems'),
       value: formatCount(results.items_failed),
       variant: results.items_failed > 0 ? 'danger' : 'default',
       subLabel: `${formatCount(results.items_skipped)} unlabelled, ${formatCount(
@@ -236,7 +246,7 @@ export function kpiSummary(measurement) {
   if (quality) {
     cards.push({
       key: 'groundedness',
-      label: 'Groundedness',
+      label: t('evalModel.groundedness'),
       value: formatScore(quality.groundedness?.mean),
       subLabel: `${formatCount(quality.items_judged)} judged, ${formatCount(
         quality.items_unjudged
@@ -250,21 +260,21 @@ export function kpiSummary(measurement) {
 // Failure explanation
 // ---------------------------------------------------------------------------
 
-const FAILURE_COPY = {
+const FAILURE_COPY_KEYS = {
   failed: {
-    title: 'The run stopped after an error',
-    happened: 'The run stopped while executing, and no single stage recorded the error.',
-    impact: 'Phases that had already finished are still measured; nothing after the error ran.',
+    title: 'evalModel.errorTitle',
+    happened: 'evalModel.errorHappened',
+    impact: 'evalModel.errorImpact',
   },
   interrupted: {
-    title: 'The run was interrupted before it finished',
-    happened: 'The run was stopped from outside rather than by an error of its own.',
-    impact: 'Progress up to the interruption is saved. The remaining phases were never executed.',
+    title: 'evalModel.interruptedTitle',
+    happened: 'evalModel.interruptedHappened',
+    impact: 'evalModel.interruptedImpact',
   },
   partial: {
-    title: 'Some phases did not finish',
-    happened: 'At least one phase ended without producing a full set of results.',
-    impact: 'The figures below cover only the phases that completed.',
+    title: 'evalModel.partialTitle',
+    happened: 'evalModel.partialHappened',
+    impact: 'evalModel.partialImpact',
   },
 }
 
@@ -276,17 +286,19 @@ const FAILURE_COPY = {
  * guess: a wrong cause costs more debugging time than an absent one.
  */
 const CAUSE_PATTERNS = [
-  [/timed? ?out|timeout/i, 'A downstream call exceeded its deadline. The service was reachable but slow.'],
-  [/unavailable|refused|connect|unreachable/i, 'A dependency the run needs was not reachable while it executed.'],
-  [/unauthori[sz]ed|forbidden|permission|denied/i, 'The run was refused by a dependency on authorization, not on data.'],
-  [/rate.?limit|quota|429/i, 'A provider rate limit or quota was reached during the run.'],
-  [/no items|empty|has no/i, 'The dataset carried nothing this phase could score.'],
+  [/timed? ?out|timeout/i, 'evalModel.cause.timeout'],
+  [/unavailable|refused|connect|unreachable/i, 'evalModel.cause.unavailable'],
+  [/unauthori[sz]ed|forbidden|permission|denied/i, 'evalModel.cause.unauthorized'],
+  [/rate.?limit|quota|429/i, 'evalModel.cause.rateLimit'],
+  [/no items|empty|has no/i, 'evalModel.cause.empty'],
 ]
 
-function likelyCause(error) {
+// The patterns match the *English* error text the services write, which is
+// backend output and is never translated; only the explanation is.
+function likelyCause(error, t = defaultTranslate) {
   const text = String(error || '')
   const match = CAUSE_PATTERNS.find(([pattern]) => pattern.test(text))
-  return match ? match[1] : null
+  return match ? t(match[1]) : null
 }
 
 /**
@@ -297,8 +309,15 @@ function likelyCause(error) {
  * button that opens nothing is worse than no button, because it costs a
  * click and a rebuilt expectation before it teaches the same thing.
  */
-export function explainFailure({ status, error, stages = [], retryable = false, exportable = false }) {
-  const copy = FAILURE_COPY[status]
+export function explainFailure({
+  status,
+  error,
+  stages = [],
+  retryable = false,
+  exportable = false,
+  t = defaultTranslate,
+}) {
+  const copy = FAILURE_COPY_KEYS[status]
   if (!copy) return null
   const failedStage = stages.find((stage) => BLOCKING_STATUSES.has(stage.status))
   const blocked = stages.filter((stage) => stage.blockedBy)
@@ -306,16 +325,22 @@ export function explainFailure({ status, error, stages = [], retryable = false, 
   if (retryable) actions.push('retry')
   if (exportable) actions.push('download')
 
+  const impact = t(copy.impact)
   return {
     status,
-    title: copy.title,
+    title: t(copy.title),
     happened: failedStage
-      ? `${failedStage.label} ${failedStage.status === 'failed' ? 'failed' : 'stopped'} while the run was executing.`
-      : copy.happened,
+      ? t(failedStage.status === 'failed' ? 'evalModel.stageFailed' : 'evalModel.stageStopped', {
+          stage: failedStage.label,
+        })
+      : t(copy.happened),
     impact: blocked.length
-      ? `${copy.impact} ${blocked.map((stage) => stage.label).join(', ')} never ran.`
-      : copy.impact,
-    cause: likelyCause(error || failedStage?.note),
+      ? t('evalModel.blockedNeverRan', {
+          impact,
+          stages: blocked.map((stage) => stage.label).join(', '),
+        })
+      : impact,
+    cause: likelyCause(error || failedStage?.note, t),
     actions,
     technical: error || failedStage?.note || null,
   }
@@ -337,16 +362,16 @@ const PROVENANCE_GROUPS = {
 }
 
 /** Human names for the provenance paths above, which are not snapshot keys. */
-const PROVENANCE_LABELS = {
-  dataset_id: 'Dataset',
-  dataset_version: 'Dataset version',
-  dataset_sha256: 'Dataset fingerprint',
-  'manifest.dataset.phases': 'Phases',
-  'manifest.chunking': 'Chunking',
-  'manifest.vector_store': 'Vector store',
-  'manifest.embedding': 'Embedding',
+const PROVENANCE_LABEL_KEYS = {
+  dataset_id: 'evalModel.provenance.datasetId',
+  dataset_version: 'evalModel.provenance.datasetVersion',
+  dataset_sha256: 'evalModel.provenance.datasetFingerprint',
+  'manifest.dataset.phases': 'evalModel.provenance.phases',
+  'manifest.chunking': 'evalModel.provenance.chunking',
+  'manifest.vector_store': 'evalModel.provenance.vectorStore',
+  'manifest.embedding': 'evalModel.provenance.embedding',
   'manifest.llm': 'LLM',
-  'manifest.retrieval': 'Retrieval',
+  'manifest.retrieval': 'evalModel.provenance.retrieval',
 }
 
 /**
@@ -377,7 +402,7 @@ function same(left, right) {
  * match: two runs that both failed to record their embedding model have not
  * been shown to share one.
  */
-export function compatibility(baseline, candidate) {
+export function compatibility(baseline, candidate, t = defaultTranslate) {
   const warnings = []
   Object.entries(PROVENANCE_GROUPS).forEach(([category, paths]) =>
     paths.forEach((field) => {
@@ -387,7 +412,7 @@ export function compatibility(baseline, candidate) {
         warnings.push({
           category,
           field,
-          label: labelFor(PROVENANCE_LABELS, field),
+          label: translatedLabelFor(PROVENANCE_LABEL_KEYS, field, t),
           baseline: left,
           candidate: right,
           kind: left == null || right == null ? 'unknown' : 'mismatch',
@@ -450,14 +475,14 @@ export function deltaTone(metric, absolute) {
   return improved ? 'success' : 'danger'
 }
 
-function comparisonRows(baseline, candidate) {
+function comparisonRows(baseline, candidate, t = defaultTranslate) {
   const baselinePhases = Object.fromEntries(
     (baseline.phases || []).map((phase) => [phase.name, phase])
   )
   return (candidate.phases || []).flatMap((phase) => {
     const previous = baselinePhases[phase.name]
     if (!previous) return []
-    const label = PHASE_LABELS[phase.name] || phase.name
+    const label = PHASE_LABEL_KEYS[phase.name] ? t(PHASE_LABEL_KEYS[phase.name]) : phase.name
     return [
       {
         key: `${phase.name}.mrr`,
@@ -471,7 +496,7 @@ function comparisonRows(baseline, candidate) {
       {
         key: `${phase.name}.latency`,
         metric: 'latency',
-        label: `${label} — mean latency`,
+        label: t('evalModel.phaseMeanLatency', { phase: label }),
         baseline: previous.results?.mean_latency_ms,
         candidate: phase.results?.mean_latency_ms,
         format: formatMs,
@@ -491,13 +516,13 @@ function comparisonRows(baseline, candidate) {
  * a regression or an improvement; it is a category error, and the report
  * says so above the table rather than in a footnote under it.
  */
-export function buildComparison(candidate, history = []) {
+export function buildComparison(candidate, history = [], t = defaultTranslate) {
   if (!candidate?.benchmark_id) return null
   const baseline = selectBaseline(candidate, history)
   if (!baseline) {
     return { baseline: null, comparable: false, changes: [], rows: [], reason: 'no-baseline' }
   }
-  const { compatible, warnings } = compatibility(baseline, candidate)
+  const { compatible, warnings } = compatibility(baseline, candidate, t)
   return {
     baseline,
     comparable: compatible,
@@ -506,7 +531,7 @@ export function buildComparison(candidate, history = []) {
       baselineText: formatProvenanceValue(warning.baseline),
       candidateText: formatProvenanceValue(warning.candidate),
     })),
-    rows: comparisonRows(baseline, candidate).map((row) => {
+    rows: comparisonRows(baseline, candidate, t).map((row) => {
       const delta = deltaOf(row.baseline, row.candidate)
       return {
         ...row,
@@ -552,17 +577,17 @@ export function diffSnapshots(current, previous) {
  * inventing a stage for an item that has none would be the one thing this
  * table must not do.
  */
-export function failureLabel(row) {
+export function failureLabel(row, t = defaultTranslate) {
   const category = row?.failure_attribution?.category
   if (!category || category === 'none' || category === 'not_applicable') return EMPTY
-  return labelFor(FAILURE_CATEGORY_LABELS, category)
+  return translatedLabelFor(FAILURE_CATEGORY_LABEL_KEYS, category, t)
 }
 
 export const SCORE_BANDS = [
-  { id: 'all', label: 'Any result' },
-  { id: 'strong', label: 'Hit at rank 1' },
-  { id: 'weak', label: 'Hit below rank 1' },
-  { id: 'miss', label: 'No labelled hit' },
+  { id: 'all', labelKey: 'evalModel.band.all' },
+  { id: 'strong', labelKey: 'evalModel.band.strong' },
+  { id: 'weak', labelKey: 'evalModel.band.weak' },
+  { id: 'miss', labelKey: 'evalModel.band.miss' },
 ]
 
 /** Where an item's first labelled hit landed, as a band. */
@@ -623,11 +648,11 @@ export function filterItems(rows, { search = '', failuresOnly = false, band = 'a
  * benchmark id stays as technical metadata. Nobody recognises their run by
  * a UUID; they recognise it by which profile they started and when.
  */
-export function benchmarkReport(benchmark, dataset) {
+export function benchmarkReport(benchmark, dataset, t = defaultTranslate) {
   if (!benchmark?.benchmark_id) return null
   const validation = benchmark.label_validation || null
-  const stages = benchmarkStages(benchmark, validation)
-  const measurements = benchmarkMeasurements(benchmark)
+  const stages = benchmarkStages(benchmark, validation, t)
+  const measurements = benchmarkMeasurements(benchmark, t)
   const primary = measurements[measurements.length - 1] || null
   const terminal = isTerminal(benchmark)
   const progress = benchmark.progress || {}
@@ -635,17 +660,19 @@ export function benchmarkReport(benchmark, dataset) {
   return {
     kind: 'benchmark',
     id: benchmark.benchmark_id,
-    idLabel: 'Benchmark id',
-    label: PROFILES_BY_ID[benchmark.profile]?.label || benchmark.profile || 'Benchmark',
-    kindLabel: 'Benchmark',
+    idLabel: t('evalModel.benchmarkId'),
+    label: (PROFILES_BY_ID[benchmark.profile]?.labelKey
+      ? t(PROFILES_BY_ID[benchmark.profile].labelKey)
+      : null) || benchmark.profile || t('evalModel.benchmark'),
+    kindLabel: t('evalModel.benchmark'),
     status: benchmark.status,
-    statusMeta: statusMeta(benchmark.status),
+    statusMeta: statusMeta(benchmark.status, t),
     terminal,
     startedAt: benchmark.started_at || benchmark.created_at,
     startedLabel: formatRunTimestamp(benchmark.started_at || benchmark.created_at),
     duration: formatDuration(benchmark.started_at || benchmark.created_at, benchmark.finished_at),
     dataset: {
-      name: benchmark.dataset_name || dataset?.name || 'Golden set',
+      name: benchmark.dataset_name || dataset?.name || t('evalModel.goldenSet'),
       version: benchmark.dataset_version ?? dataset?.dataset_version ?? null,
       sha: benchmark.dataset_sha256 || null,
       itemCount: progress.items_per_phase ?? dataset?.item_count ?? null,
@@ -653,7 +680,7 @@ export function benchmarkReport(benchmark, dataset) {
     stages,
     measurements,
     primary,
-    kpis: kpiSummary(primary),
+    kpis: kpiSummary(primary, t),
     quality: primary?.results?.answer_quality || null,
     attribution: primary?.results?.failure_attribution || null,
     configSnapshot: benchmark.config_snapshot || null,
@@ -672,44 +699,44 @@ export function benchmarkReport(benchmark, dataset) {
  * per-item rows: the benchmark keeps its items in the diagnostic archive,
  * not in the record the page polls.
  */
-export function evaluationReport(run, dataset) {
+export function evaluationReport(run, dataset, t = defaultTranslate) {
   if (!run?.run_id) return null
   const validation = run.label_validation || null
   const results = run.results || {}
   const measurement = Object.keys(results).length
     ? {
         key: run.mode || 'retrieval',
-        label: labelFor(EVAL_MODE_LABELS, run.mode || 'retrieval'),
+        label: t(EVAL_MODE_LABEL_KEYS[run.mode || 'retrieval'] || 'eval.mode.retrieval'),
         status: run.status,
         results,
         items: run.per_item || [],
       }
     : null
   const stages = executionFlow([
-    validationStage(validation),
+    validationStage(validation, t),
     {
       key: run.mode || 'retrieval',
-      label: labelFor(EVAL_MODE_LABELS, run.mode || 'retrieval'),
+      label: t(EVAL_MODE_LABEL_KEYS[run.mode || 'retrieval'] || 'eval.mode.retrieval'),
       status: run.status,
       note: run.error || null,
       results,
     },
-  ])
+  ], t)
 
   return {
     kind: 'evaluation',
     id: run.run_id,
-    idLabel: 'Run id',
-    label: labelFor(EVAL_MODE_LABELS, run.mode || 'retrieval'),
-    kindLabel: 'Single evaluation',
+    idLabel: t('evalModel.runId'),
+    label: t(EVAL_MODE_LABEL_KEYS[run.mode || 'retrieval'] || 'eval.mode.retrieval'),
+    kindLabel: t('evalModel.singleEvaluation'),
     status: run.status,
-    statusMeta: statusMeta(run.status),
+    statusMeta: statusMeta(run.status, t),
     terminal: ['completed', 'failed'].includes(run.status),
     startedAt: run.started_at,
     startedLabel: formatRunTimestamp(run.started_at),
     duration: formatDuration(run.started_at, run.finished_at),
     dataset: {
-      name: dataset?.name || 'Golden set',
+      name: dataset?.name || t('evalModel.goldenSet'),
       version: run.dataset_version ?? null,
       sha: run.dataset_sha256 || null,
       itemCount: results.items_evaluated ?? dataset?.item_count ?? null,

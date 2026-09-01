@@ -7,7 +7,7 @@ import EmptyState from '@/components/feedback/EmptyState'
 import PageHeader from '@/components/ui/PageHeader'
 import TabSkeleton from '@/components/ui/TabSkeleton'
 import GoldenSetImporter from '@/features/metrics/components/benchmark/GoldenSetImporter'
-import { GOLDEN_SET_HELP } from '@/features/metrics/components/metricsConfig'
+import { GOLDEN_SET_HELP_KEYS } from '@/features/metrics/components/metricsConfig'
 import { useBenchmarkRuns } from '@/features/metrics/hooks/useBenchmarkRuns'
 import { useEvalActivityPublisher } from '@/features/activity/sources/EvalActivityProvider'
 import { useEvalRuns } from '@/features/metrics/hooks/useEvalRuns'
@@ -18,6 +18,7 @@ import RunReport from './report/RunReport'
 import EvalSetupCard from './EvalSetupCard'
 import RunBenchmarkCard from './RunBenchmarkCard'
 import SingleEvaluation from './SingleEvaluation'
+import { useI18n } from '@/i18n'
 
 /**
  * The Eval workspace.
@@ -29,6 +30,7 @@ import SingleEvaluation from './SingleEvaluation'
  * before — with one primary action on it.
  */
 export default function EvalTab() {
+  const { t } = useI18n()
   const {
     datasets,
     datasetId,
@@ -67,8 +69,11 @@ export default function EvalTab() {
   // Both run kinds render through the same report. They are two different
   // runs, so they get one report each rather than one merged view that would
   // have to average a benchmark phase with an ad-hoc evaluation.
-  const benchmarkView = useMemo(() => benchmarkReport(benchmark, dataset), [benchmark, dataset])
-  const evaluationView = useMemo(() => evaluationReport(run, dataset), [run, dataset])
+  const benchmarkView = useMemo(
+    () => benchmarkReport(benchmark, dataset, t),
+    [benchmark, dataset, t]
+  )
+  const evaluationView = useMemo(() => evaluationReport(run, dataset, t), [run, dataset, t])
 
   const importer = (
     <GoldenSetImporter
@@ -97,8 +102,8 @@ export default function EvalTab() {
       <div className="mx-auto flex w-full max-w-7xl flex-col gap-4 px-3 py-4 [&>*]:shrink-0 md:px-6 md:py-5">
         <PageHeader
           className="mb-2"
-          title="Eval"
-          description="Golden sets, benchmark profiles and quality diagnostics"
+          title={t('nav.eval')}
+          description={t('eval.subtitle')}
           icon={FlaskConical}
           actions={
             <Button
@@ -108,7 +113,7 @@ export default function EvalTab() {
               disabled={loading}
               leftIcon={<RefreshCw size={13} className={loading ? 'animate-spin' : ''} />}
             >
-              Refresh
+              {t('common.refresh')}
             </Button>
           }
         />
@@ -117,23 +122,20 @@ export default function EvalTab() {
           <>
             <EmptyState
               icon={FlaskConical}
-              title="No golden set yet"
-              description={
-                'Live traffic can only show proxy quality. Recall and nDCG need ' +
-                'ground truth, which is a set of queries somebody labelled by hand.'
-              }
+              title={t('eval.noGoldenSet')}
+              description={t('eval.noGoldenSetDescription')}
               action={
                 <div className="flex flex-col items-center gap-4">
                   <ol
-                    className="max-w-md list-decimal space-y-1 pl-5 text-left text-[13px]"
+                    className="max-w-md list-decimal space-y-1 ps-5 text-start text-[13px]"
                     style={{ color: 'var(--fg-muted)' }}
                   >
-                    {GOLDEN_SET_HELP.map((step) => (
-                      <li key={step}>{step}</li>
+                    {GOLDEN_SET_HELP_KEYS.map((step) => (
+                      <li key={step}>{t(step)}</li>
                     ))}
                   </ol>
                   <Button onClick={() => setImportOpen(true)} leftIcon={<Upload size={14} />}>
-                    Import a dataset
+                    {t('eval.importDataset')}
                   </Button>
                 </div>
               }
@@ -157,7 +159,7 @@ export default function EvalTab() {
                   {error || benchmarkError}
                 </span>
                 <Button variant="secondary" size="sm" onClick={refresh}>
-                  Retry
+                  {t('common.retry')}
                 </Button>
               </div>
             )}

@@ -5,6 +5,7 @@ import { motion } from 'framer-motion'
 import { Copy, Info, Sparkles } from 'lucide-react'
 import { formatMessageTime } from '@/lib/formatting/datetime'
 import { bidiTextProps } from '@/lib/accessibility/direction'
+import { useI18n } from '@/i18n'
 import { buildAnswerQuality } from '@/features/chat/utils/answerQuality'
 import AnswerQualitySummary from './AnswerQualitySummary'
 import AnswerSources from './AnswerSources'
@@ -43,6 +44,15 @@ function IconAction({ label, icon: Icon, onClick }) {
  * sources, quality, feedback, the actions — is one quiet footer beneath it.
  * Identifiers, prompts, model slugs and evaluator payloads are deliberately
  * absent; they belong to the Developer Inspector behind the info control.
+ *
+ * Two directions live here at once and must not be confused. The *speaker
+ * geometry* follows the messaging convention every reader already knows —
+ * outgoing on the right, the answer as the full-width reading surface — and
+ * stays put in Hebrew, so the column is pinned with `dir="ltr"` on the
+ * wrapper rather than left to mirror. The *text* inside follows its own
+ * content: a Hebrew answer reads RTL inside an English shell, an English
+ * answer reads LTR inside a Hebrew one, and neither is forced to the
+ * interface locale.
  */
 const MessageBubble = React.memo(function MessageBubble({
   message,
@@ -52,6 +62,9 @@ const MessageBubble = React.memo(function MessageBubble({
   canInspect,
   onAnswerFeedback,
 }) {
+  const { locale, t } = useI18n()
+  // The persisted sender value is a stored contract and is never rewritten;
+  // only what the reader sees beside the message is localized.
   const isUser = message.sender === 'You' || message.sender === 'User'
   const isStreaming = Boolean(message.isLoading)
   const rawText = (message.text || '').trimStart()
@@ -71,7 +84,7 @@ const MessageBubble = React.memo(function MessageBubble({
   )
 
   const bidi = bidiTextProps(answer)
-  const time = message.timestamp ? formatMessageTime(message.timestamp) : null
+  const time = message.timestamp ? formatMessageTime(message.timestamp, locale) : null
 
   if (isUser) {
     return (
@@ -79,6 +92,11 @@ const MessageBubble = React.memo(function MessageBubble({
         initial={{ opacity: 0, y: 6 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.2 }}
+        // `dir="ltr"` on the wrapper only, so "items-end" resolves to the
+        // right in both locales: outgoing messages sit on the right in
+        // Hebrew too, which is what every messaging client the reader
+        // already uses does. The bubble below re-declares its own direction.
+        dir="ltr"
         className="flex flex-col items-end"
       >
         <div
@@ -93,11 +111,14 @@ const MessageBubble = React.memo(function MessageBubble({
         >
           {answer}
         </div>
-        <div className="mt-1 flex items-center gap-1.5 pe-1 text-xs text-[var(--fg-soft)]">
-          <span>You</span>
+        <div
+          dir={bidi.dir === 'rtl' ? 'rtl' : 'ltr'}
+          className="mt-1 flex items-center gap-1.5 pe-1 text-xs text-[var(--fg-soft)]"
+        >
+          <span>{t('chat.you')}</span>
           {time ? <span>{time}</span> : null}
           {canInspect ? (
-            <IconAction label="Open developer inspector" icon={Info} onClick={() => onOpenInspector(message)} />
+            <IconAction label={t('chat.openInspector')} icon={Info} onClick={() => onOpenInspector(message)} />
           ) : null}
         </div>
       </motion.div>
@@ -120,7 +141,9 @@ const MessageBubble = React.memo(function MessageBubble({
 
       <div className="min-w-0 flex-1">
         <div className="mb-1.5 flex items-center gap-2 text-xs text-[var(--fg-soft)]">
-          <span className="font-semibold text-[var(--fg-muted)]">{message.sender}</span>
+          {/* The stored sender is 'Assistant'; the reader sees it in their
+              own language, and the persisted value is untouched. */}
+          <span className="font-semibold text-[var(--fg-muted)]">{t('chat.assistant')}</span>
           {time ? <span>{time}</span> : null}
         </div>
 
@@ -157,9 +180,9 @@ const MessageBubble = React.memo(function MessageBubble({
                 onAnswerFeedback={onAnswerFeedback}
               />
               <div className="flex items-center gap-0.5">
-                {answer ? <IconAction label="Copy answer" icon={Copy} onClick={() => onCopy(answer)} /> : null}
+                {answer ? <IconAction label={t('chat.copyAnswer')} icon={Copy} onClick={() => onCopy(answer)} /> : null}
                 {canInspect ? (
-                  <IconAction label="Open developer inspector" icon={Info} onClick={() => onOpenInspector(message)} />
+                  <IconAction label={t('chat.openInspector')} icon={Info} onClick={() => onOpenInspector(message)} />
                 ) : null}
               </div>
             </div>

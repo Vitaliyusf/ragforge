@@ -127,7 +127,7 @@ it('labels user insight memories as AI/system managed without destructive action
     />,
   )
 
-  expect(screen.getByText('AI/system managed')).toBeInTheDocument()
+  expect(screen.getByText('Managed by the system')).toBeInTheDocument()
   expect(screen.queryByRole('button', { name: 'Edit memory' })).not.toBeInTheDocument()
   expect(screen.queryByRole('button', { name: 'Delete memory' })).not.toBeInTheDocument()
 })

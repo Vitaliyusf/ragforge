@@ -6,18 +6,20 @@
 import { useMemo } from 'react'
 import { Cpu } from 'lucide-react'
 import Select, { SelectItem } from '@/components/ui/Select'
+import { useI18n } from '@/i18n'
 
 export default function ModelSelector({ models, selectedModel, defaultModel, onSelectModel }) {
+  const { t } = useI18n()
   const modelOptions = useMemo(() => {
     if (models.length === 0) {
-      return [{ name: `${defaultModel} (default)`, value: defaultModel }]
+      return [{ name: t('chat.modelDefaultSuffix', { model: defaultModel }), value: defaultModel }]
     }
     return models.map((model) => {
       const name = typeof model === 'object' ? model.name || model.id || JSON.stringify(model) : String(model)
       const value = typeof model === 'object' ? model.name || model.id || String(model) : String(model)
       return { name, value }
     })
-  }, [models, defaultModel])
+  }, [models, defaultModel, t])
 
   return (
     <div className="rounded-2xl border border-border bg-bg-elevated p-3 shadow-sm">
@@ -26,8 +28,8 @@ export default function ModelSelector({ models, selectedModel, defaultModel, onS
           <Cpu size={13} />
         </span>
         <div className="min-w-0">
-          <div className="text-[13px] font-semibold text-text-primary">Response model</div>
-          <div className="text-xs text-text-muted">Used for this conversation</div>
+          <div className="text-[13px] font-semibold text-text-primary">{t('chat.responseModel')}</div>
+          <div className="text-xs text-text-muted">{t('chat.responseModelHint')}</div>
         </div>
       </div>
 
@@ -36,20 +38,22 @@ export default function ModelSelector({ models, selectedModel, defaultModel, onS
           id="model-select"
           value={String(selectedModel || defaultModel)}
           onValueChange={onSelectModel}
-          placeholder="Select model"
+          placeholder={t('chat.selectModel')}
           className="h-9 w-full text-[13px]"
-          aria-label="Select LLM model"
+          aria-label={t('chat.selectModelLabel')}
         >
+          {/* A model name is a repository identifier: it stays LTR and
+              isolated so a Hebrew menu cannot reorder its slashes and dots. */}
           {modelOptions.map((opt) => (
             <SelectItem key={opt.value} value={opt.value}>
-              {opt.name}
+              <span dir="ltr" className="inline-block [unicode-bidi:isolate]">{opt.name}</span>
             </SelectItem>
           ))}
         </Select>
 
         {models.length === 0 && (
           <p className="rounded-lg bg-warning-soft px-2.5 py-2 text-xs leading-relaxed text-warning">
-            Model list unavailable. Using {defaultModel}.
+            {t('chat.modelListUnavailable', { model: defaultModel })}
           </p>
         )}
       </div>

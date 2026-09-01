@@ -13,11 +13,20 @@ import {
   keyResult,
   statusMeta,
 } from '../evalProfiles'
+import { useI18n } from '@/i18n'
 
 /** Desktop column track. Below `md` every row collapses to stacked cells. */
 const COLUMNS = 'md:grid-cols-[130px_150px_minmax(0,1fr)_120px_90px_110px_auto]'
 
-const HEADINGS = ['Started', 'Profile', 'Dataset', 'Status', 'Duration', 'Key result', 'Actions']
+const HEADING_KEYS = [
+  'evalHistory.started',
+  'evalHistory.profile',
+  'evalHistory.dataset',
+  'evalHistory.status',
+  'evalHistory.duration',
+  'evalHistory.keyResult',
+  'evalHistory.actions',
+]
 
 /**
  * Every benchmark this dataset has recorded, one row each.
@@ -34,42 +43,48 @@ export default function BenchmarkHistoryTable({
   onSelect,
   onDownload,
 }) {
+  const { t } = useI18n()
   return (
     <Card padding="sm">
       <CardHeader
         className="mb-3"
-        title="Benchmark history"
-        description="Server-backed. Every run keeps the labels and settings it scored."
+        title={t('evalHistory.title')}
+        description={t('evalHistory.description')}
       />
 
       {history.length === 0 ? (
         <p className="text-[13px]" style={{ color: 'var(--fg-muted)' }}>
-          No benchmark runs yet. Start a benchmark to build its server-backed history.
+          {t('evalHistory.empty')}
         </p>
       ) : (
-        <div role="table" aria-label="Benchmark history">
+        <div role="table" aria-label={t('evalHistory.title')}>
           <div
             role="row"
             className={cn('hidden gap-x-4 border-b px-2 pb-2 md:grid', COLUMNS)}
             style={{ borderColor: 'var(--border)' }}
           >
-            {HEADINGS.map((heading) => (
-              <span key={heading} role="columnheader" className="label-xs">
-                {heading}
+            {HEADING_KEYS.map((headingKey) => (
+              <span key={headingKey} role="columnheader" className="label-xs">
+                {t(headingKey)}
               </span>
             ))}
           </div>
 
           {history.map((run) => {
-            const status = statusMeta(run.status)
+            const status = statusMeta(run.status, t)
             const terminal = TERMINAL_STATUSES.has(run.status)
             const current = run.benchmark_id === selectedId
             const started = formatRunTimestamp(run.created_at || run.started_at)
-            const name = run.dataset_name || run.dataset?.name || 'Golden set'
+            const name = run.dataset_name || run.dataset?.name || t('evalHistory.goldenSet')
             // Names the run in a way a person can act on: two "View" buttons
             // in a list are indistinguishable to anyone not looking at the
             // row they sit in.
-            const rowName = `${PROFILES_BY_ID[run.profile]?.label || run.profile || 'run'} started ${started}`
+            const rowName = t('evalHistory.rowName', {
+              profile: PROFILES_BY_ID[run.profile]?.labelKey
+                ? t(PROFILES_BY_ID[run.profile].labelKey)
+                : run.profile || t('evalModel.benchmark'),
+              time: started,
+            })
 
             return (
               <div
@@ -89,7 +104,9 @@ export default function BenchmarkHistoryTable({
                   {started}
                 </span>
                 <span role="cell" className="truncate" style={{ color: 'var(--fg)' }}>
-                  {PROFILES_BY_ID[run.profile]?.label || run.profile || EMPTY}
+                  {PROFILES_BY_ID[run.profile]?.labelKey
+                    ? t(PROFILES_BY_ID[run.profile].labelKey)
+                    : run.profile || EMPTY}
                 </span>
                 <span role="cell" className="truncate" style={{ color: 'var(--fg-muted)' }}>
                   {name}

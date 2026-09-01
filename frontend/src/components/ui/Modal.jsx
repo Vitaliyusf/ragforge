@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import * as Dialog from '@radix-ui/react-dialog'
 import { X, AlertTriangle } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useI18n } from '@/i18n'
 
 const MODAL_Z = 2147483647
 
@@ -30,6 +31,7 @@ export default function Modal({
   size = 'default',
   variant = 'modal',
 }) {
+  const { t } = useI18n()
   const [container, setContainer] = useState(null)
   useEffect(() => {
     setContainer(typeof document !== 'undefined' ? document.body : null)
@@ -71,7 +73,7 @@ export default function Modal({
         style={{ color: 'var(--fg-soft)' }}
         onMouseEnter={e => { e.currentTarget.style.background = 'var(--surface-hover)'; e.currentTarget.style.color = 'var(--fg)' }}
         onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--fg-soft)' }}
-        aria-label="Close"
+        aria-label={t('common.close')}
       >
         <X size={18} />
       </button>
@@ -88,7 +90,9 @@ export default function Modal({
 
         {variant === 'drawer' ? (
           <Dialog.Content
-            className="drawer-content fixed inset-y-0 right-0 flex w-full justify-end p-3"
+            // The drawer rests on the logical end of the viewport: right in
+            // English, left in Hebrew, following the shell's direction.
+            className="drawer-content fixed inset-y-0 end-0 flex w-full justify-end p-3"
             style={{ zIndex: MODAL_Z + 1 }}
             {...describedBy}
           >
@@ -147,12 +151,13 @@ export function ConfirmModal({
   onOpenChange,
   title,
   description,
-  confirmLabel = 'Confirm',
-  cancelLabel  = 'Cancel',
+  confirmLabel,
+  cancelLabel,
   onConfirm,
   variant = 'primary',
   loading = false,
 }) {
+  const { t } = useI18n()
   const handleConfirm = async () => {
     await onConfirm?.()
     onOpenChange(false)
@@ -199,7 +204,7 @@ export function ConfirmModal({
             onMouseEnter={e => e.currentTarget.style.background = 'var(--surface-active)'}
             onMouseLeave={e => e.currentTarget.style.background = 'var(--surface-hover)'}
           >
-            {cancelLabel}
+            {cancelLabel ?? t('common.cancel')}
           </button>
         </Dialog.Close>
         <button
@@ -217,7 +222,7 @@ export function ConfirmModal({
           onMouseEnter={e => e.currentTarget.style.filter = 'brightness(1.1)'}
           onMouseLeave={e => e.currentTarget.style.filter = ''}
         >
-          {loading ? 'Working…' : confirmLabel}
+          {loading ? t('ui.working') : (confirmLabel ?? t('common.confirm'))}
         </button>
       </div>
     </Modal>

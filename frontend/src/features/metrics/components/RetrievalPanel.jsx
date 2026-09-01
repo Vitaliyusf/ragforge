@@ -8,9 +8,8 @@ import TabSkeleton from '@/components/ui/TabSkeleton'
 import Histogram from './charts/Histogram'
 import {
   EMPTY,
-  FILTER_REASON_LABELS,
+  FILTER_REASON_LABEL_KEYS,
   METRIC_LABELS,
-  PLATFORM_SCOPE_NOTE,
   PROM_UNAVAILABLE,
   formatCount,
   formatDecimal,
@@ -18,8 +17,10 @@ import {
   formatScore,
   formatSeconds,
   labelFor,
+  translatedLabelFor,
   thresholdVariant,
 } from './metricsConfig'
+import { useI18n } from '@/i18n'
 
 const VARIANT_COLORS = {
   default: 'var(--fg)',
@@ -51,13 +52,14 @@ function toRows(map) {
  * must not blank the MongoDB-backed figures rendered beside it.
  */
 function PromWidget({ promAvailable, children }) {
+  const { t } = useI18n()
   if (promAvailable) return children
   return (
     <EmptyState
       icon={AlertTriangle}
       size="sm"
-      title={PROM_UNAVAILABLE.title}
-      description={PROM_UNAVAILABLE.description}
+      title={t(PROM_UNAVAILABLE.titleKey)}
+      description={t(PROM_UNAVAILABLE.descriptionKey)}
     />
   )
 }
@@ -93,15 +95,16 @@ function Stat({ label, value, hint, variant = 'default' }) {
  * answer actually used requires citations, which the app does not emit yet.
  */
 export default function RetrievalPanel({ data, loading, error, promAvailable = true, onRetry }) {
+  const { t } = useI18n()
   if (loading && !data) return <TabSkeleton />
 
   if (error) {
     return (
       <EmptyState
         icon={AlertTriangle}
-        title="Could not load retrieval metrics"
+        title={t('retrieval.loadFailed')}
         description={error}
-        action={onRetry ? <Button onClick={onRetry}>Retry</Button> : undefined}
+        action={onRetry ? <Button onClick={onRetry}>{t('common.retry')}</Button> : undefined}
       />
     )
   }
@@ -113,8 +116,8 @@ export default function RetrievalPanel({ data, loading, error, promAvailable = t
     return (
       <EmptyState
         icon={Search}
-        title="No retrieval activity"
-        description="No turns in this window reached retrieval."
+        title={t('retrieval.noActivity')}
+        description={t('retrieval.noActivityDescription')}
       />
     )
   }
@@ -129,53 +132,55 @@ export default function RetrievalPanel({ data, loading, error, promAvailable = t
     <div className="flex flex-col gap-4">
       <Card>
         <CardHeader
-          title="Retrieval"
-          description="Per-turn facts from the metrics store, scoped to this tenant."
+          title={t('retrieval.title')}
+          description={t('retrieval.perTurnDescription')}
         />
         <dl className="grid grid-cols-2 gap-4 lg:grid-cols-4">
           <Stat
             label={METRIC_LABELS.hit_rate}
             value={formatPercent(data.hit_rate)}
-            hint={`${formatCount(data.turns)} turns`}
+            hint={t('retrieval.turnsHint', { count: formatCount(data.turns) })}
           />
           <Stat
             label={METRIC_LABELS.empty_retrieval_rate}
             value={formatPercent(data.empty_retrieval_rate)}
-            hint="turns that retrieved nothing"
+            hint={t('retrieval.retrievedNothing')}
             variant={thresholdVariant(data.empty_retrieval_rate, 'empty_retrieval_rate')}
           />
           <Stat
             label={METRIC_LABELS.mean_chunk_count}
             value={formatDecimal(data.mean_chunk_count)}
-            hint="mean per turn"
+            hint={t('retrieval.meanPerTurn')}
           />
           <Stat
             label={METRIC_LABELS.vector_search_p95}
             value={promAvailable ? formatSeconds(worstVector?.value) : EMPTY}
-            hint={worstVector ? `slowest: ${worstVector.key}` : PLATFORM_SCOPE_NOTE}
+            hint={worstVector
+              ? t('retrieval.slowest', { name: worstVector.key })
+              : t('meta.platformScopeNote')}
           />
         </dl>
       </Card>
 
       <Card>
         <CardHeader
-          title="Filtered out before ranking"
-          description={`Chunks withheld by retrieval policy. ${PLATFORM_SCOPE_NOTE}`}
+          title={t('retrieval.filteredOut')}
+          description={t('retrieval.filteredOutDescription', { note: t('meta.platformScopeNote') })}
         />
         <PromWidget promAvailable={promAvailable}>
           <dl className="grid grid-cols-2 gap-4 lg:grid-cols-4">
             <Stat
               label={METRIC_LABELS.retrieval_filtered_rate}
               value={formatPercent(data.retrieval_filtered_rate)}
-              hint="of chunks reaching the policy gate"
+              hint={t('retrieval.reachingPolicyGate')}
               variant={thresholdVariant(data.retrieval_filtered_rate, 'retrieval_filtered_rate')}
             />
             {filterReasons.map((row) => (
               <Stat
                 key={row.key}
-                label={labelFor(FILTER_REASON_LABELS, row.key)}
+                label={translatedLabelFor(FILTER_REASON_LABEL_KEYS, row.key, t)}
                 value={formatDecimal(row.value)}
-                hint="chunks/sec"
+                hint={t('retrieval.chunksPerSecond')}
               />
             ))}
           </dl>
@@ -184,24 +189,26 @@ export default function RetrievalPanel({ data, loading, error, promAvailable = t
 
       <Card>
         <CardHeader
-          title="Reranker effectiveness"
-          description="Is the reranker earning its latency? Lift is how often it changed which chunk ranked first."
+          title={t('retrieval.rerankerEffectiveness')}
+          description={t('retrieval.rerankerDescription')}
         />
         <dl className="grid grid-cols-2 gap-4 lg:grid-cols-3">
           <Stat
             label={METRIC_LABELS.reranker_changed_top1_rate}
             value={formatPercent(data.reranker_changed_top1_rate)}
-            hint={`of ${formatCount(data.reranker_evaluated_turns)} reranked turns`}
+            hint={t('retrieval.ofRerankedTurns', {
+              count: formatCount(data.reranker_evaluated_turns),
+            })}
           />
           <Stat
             label={METRIC_LABELS.reranker_p95_seconds}
             value={promAvailable ? formatSeconds(data.reranker_p95_seconds) : EMPTY}
-            hint="cost of that lift"
+            hint={t('retrieval.costOfLift')}
           />
           <Stat
-            label="Mean top score"
+            label={t('retrieval.meanTopScore')}
             value={formatScore(data.mean_top_score)}
-            hint="retriever score, 0–1"
+            hint={t('retrieval.retrieverScoreRange')}
           />
         </dl>
         <div className="mt-4">
@@ -209,7 +216,7 @@ export default function RetrievalPanel({ data, loading, error, promAvailable = t
               score on this tab is 0–1 and an unlabelled 7.2 reads as broken. */}
           <PromWidget promAvailable={promAvailable}>
             <Histogram
-              label="Reranker top score per query, 0–10"
+              label={t('retrieval.rerankerHistogram')}
               accent="var(--info)"
               buckets={toBuckets(data.reranker_top_score_histogram)}
             />
@@ -219,9 +226,12 @@ export default function RetrievalPanel({ data, loading, error, promAvailable = t
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
         <Card>
-          <CardHeader title="Top-1 score distribution" description="Best chunk score per turn, 0–1." />
+          <CardHeader
+            title={t('retrieval.topScoreDistribution')}
+            description={t('retrieval.topScoreDescription')}
+          />
           <Histogram
-            label="Top chunk score per turn"
+            label={t('retrieval.topScoreChart')}
             accent="var(--primary)"
             buckets={toBuckets(data.top_score_histogram)}
           />
@@ -229,11 +239,11 @@ export default function RetrievalPanel({ data, loading, error, promAvailable = t
 
         <Card>
           <CardHeader
-            title="Chunks returned per query"
-            description="How many chunks each turn retrieved."
+            title={t('retrieval.chunksPerQuery')}
+            description={t('retrieval.chunksPerQueryDescription')}
           />
           <Histogram
-            label="Chunks returned per query"
+            label={t('retrieval.chunksPerQuery')}
             accent="var(--success)"
             buckets={toBuckets(data.chunks_per_query)}
           />
@@ -242,20 +252,21 @@ export default function RetrievalPanel({ data, loading, error, promAvailable = t
 
       <Card>
         <CardHeader
-          title="Score gap"
-          description={`Top score minus the fifth, as a proxy for how discriminative retrieval was. ${formatCount(
-            data.score_gap_turns
-          )} of ${formatCount(data.turns)} turns returned enough chunks to measure a gap.`}
+          title={t('retrieval.scoreGap')}
+          description={t('retrieval.scoreGapDescription', {
+            measured: formatCount(data.score_gap_turns),
+            total: formatCount(data.turns),
+          })}
         />
         <dl className="mb-4 grid grid-cols-2 gap-4 lg:grid-cols-4">
           <Stat
             label={METRIC_LABELS.mean_score_gap}
             value={formatScore(data.mean_score_gap)}
-            hint="wider means one clearly best chunk"
+            hint={t('retrieval.widerMeansClearer')}
           />
         </dl>
         <Histogram
-          label="Distribution of the gap between the top and fifth chunk scores"
+          label={t('retrieval.scoreGapChart')}
           accent="var(--warning)"
           buckets={toBuckets(data.score_gap_histogram)}
         />
@@ -263,38 +274,40 @@ export default function RetrievalPanel({ data, loading, error, promAvailable = t
 
       <Card>
         <CardHeader
-          title="Vector search by collection"
-          description={`Search latency p95. ${PLATFORM_SCOPE_NOTE}`}
+          title={t('retrieval.vectorByCollection')}
+          description={t('retrieval.vectorDescription', { note: t('meta.platformScopeNote') })}
         />
         <PromWidget promAvailable={promAvailable}>
           {vectorRows.length ? (
             <div className="overflow-x-auto">
               <table className="w-full text-[13px]">
-                <caption className="sr-only">Vector search p95 latency by collection</caption>
+                <caption className="sr-only">{t('retrieval.vectorCaption')}</caption>
                 <thead>
                   <tr style={{ color: 'var(--fg-muted)' }}>
-                    <th scope="col" className="py-1.5 pr-3 text-left font-medium">Collection</th>
-                    <th scope="col" className="py-1.5 pr-3 text-right font-medium">p95</th>
-                    <th scope="col" className="py-1.5 text-right font-medium">Searches/sec</th>
+                    <th scope="col" className="py-1.5 pe-3 text-start font-medium">{t('retrieval.collection')}</th>
+                    <th scope="col" className="py-1.5 pe-3 text-end font-medium">p95</th>
+                    <th scope="col" className="py-1.5 text-end font-medium">{t('retrieval.searchesPerSecond')}</th>
                   </tr>
                 </thead>
                 <tbody>
                   {vectorRows.map((row) => (
                     <tr key={row.key} className="border-t" style={{ borderColor: 'var(--border)' }}>
+                      {/* A Qdrant collection name is an identifier. */}
                       <th
                         scope="row"
-                        className="py-1.5 pr-3 text-left font-normal"
+                        dir="ltr"
+                        className="py-1.5 pe-3 text-start font-normal [unicode-bidi:isolate]"
                         style={{ color: 'var(--fg)' }}
                       >
                         {row.key || EMPTY}
                       </th>
                       <td
-                        className="py-1.5 pr-3 text-right tabular-nums"
+                        className="py-1.5 pe-3 text-end tabular-nums"
                         style={{ color: 'var(--fg-muted)' }}
                       >
                         {formatSeconds(row.value)}
                       </td>
-                      <td className="py-1.5 text-right tabular-nums" style={{ color: 'var(--fg-muted)' }}>
+                      <td className="py-1.5 text-end tabular-nums" style={{ color: 'var(--fg-muted)' }}>
                         {formatDecimal(data.vector_search_rate?.[row.key])}
                       </td>
                     </tr>
@@ -306,8 +319,8 @@ export default function RetrievalPanel({ data, loading, error, promAvailable = t
             <EmptyState
               icon={Search}
               size="sm"
-              title="No vector searches"
-              description="Prometheus recorded no vector search activity in this window."
+              title={t('retrieval.noVectorSearches')}
+              description={t('retrieval.noVectorSearchesDescription')}
             />
           )}
         </PromWidget>

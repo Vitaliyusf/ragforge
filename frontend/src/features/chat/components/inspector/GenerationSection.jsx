@@ -3,6 +3,7 @@
 import { DataCell } from '@/components/ui/DataDisplay'
 import { formatDuration } from '@/lib/formatting/datetime'
 import { RedactedBlock, Empty } from './shared'
+import { useI18n } from '@/i18n'
 
 /**
  * The generation step itself: what the model was asked, what it produced, and
@@ -13,23 +14,24 @@ import { RedactedBlock, Empty } from './shared'
  * number must never be rendered as a real one.
  */
 export default function GenerationSection({ debugPayloads = {}, traceEvents = [], revisionApplied }) {
+  const { t } = useI18n()
   const generationMs = traceEvents
     .filter((event) => typeof event.node === 'string' && event.node.startsWith('generate'))
     .reduce((total, event) => total + (Number.isFinite(event.latency) ? event.latency : 0), 0)
   const generationLatency = generationMs > 0 ? formatDuration(generationMs) : null
 
   const blocks = [
-    { label: 'System prompt', content: debugPayloads.system_prompt },
-    { label: 'User prompt', content: debugPayloads.raw_prompt },
+    { label: t('inspector.systemPrompt'), content: debugPayloads.system_prompt },
+    { label: t('inspector.userPrompt'), content: debugPayloads.raw_prompt },
     {
-      label: 'Reasoning summary',
+      label: t('inspector.reasoningSummary'),
       content: debugPayloads.visible_reasoning_summary ?? debugPayloads.visible_reasoning_steps,
     },
-    { label: 'Raw output', content: debugPayloads.raw_output },
+    { label: t('inspector.rawOutput'), content: debugPayloads.raw_output },
   ].filter((block) => block.content != null && block.content !== '')
 
   if (!blocks.length && !generationLatency && revisionApplied == null) {
-    return <Empty label="No generation data for this turn" />
+    return <Empty label={t('inspector.emptyGeneration')} />
   }
 
   return (
@@ -37,10 +39,15 @@ export default function GenerationSection({ debugPayloads = {}, traceEvents = []
       {(generationLatency || revisionApplied != null) ? (
         <div className="grid grid-cols-2 gap-2">
           {generationLatency ? (
-            <DataCell reverse center mono label="Generation time" value={generationLatency} />
+            <DataCell reverse center mono label={t('inspector.generationTime')} value={generationLatency} />
           ) : null}
           {revisionApplied != null ? (
-            <DataCell reverse center label="Revision" value={revisionApplied ? 'Applied' : 'Not applied'} />
+            <DataCell
+              reverse
+              center
+              label={t('inspector.revision')}
+              value={t(revisionApplied ? 'inspector.revisionApplied' : 'inspector.revisionNotApplied')}
+            />
           ) : null}
         </div>
       ) : null}

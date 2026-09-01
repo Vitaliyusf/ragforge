@@ -9,11 +9,9 @@ import TabSkeleton from '@/components/ui/TabSkeleton'
 import DeepLink from '@/components/observability/DeepLink'
 import { documentLink } from '@/lib/observability/deepLinks'
 import {
-  COST_ESTIMATE_NOTE,
   EMPTY,
   FUNNEL_STEP_LABELS,
   METRIC_LABELS,
-  PLATFORM_SCOPE_NOTE,
   PROM_UNAVAILABLE,
   STAGE_LABELS,
   formatCost,
@@ -24,6 +22,8 @@ import {
   labelFor,
   thresholdVariant,
 } from './metricsConfig'
+import { intlLocale } from '@/lib/formatting/datetime'
+import { useI18n } from '@/i18n'
 
 const VARIANT_COLORS = {
   default: 'var(--fg)',
@@ -47,13 +47,14 @@ function toRows(map) {
  * must not blank the MongoDB-backed figures rendered beside it.
  */
 function PromWidget({ promAvailable, children }) {
+  const { t } = useI18n()
   if (promAvailable) return children
   return (
     <EmptyState
       icon={AlertTriangle}
       size="sm"
-      title={PROM_UNAVAILABLE.title}
-      description={PROM_UNAVAILABLE.description}
+      title={t(PROM_UNAVAILABLE.titleKey)}
+      description={t(PROM_UNAVAILABLE.descriptionKey)}
     />
   )
 }
@@ -89,15 +90,17 @@ function Stat({ label, value, hint, variant = 'default' }) {
  * is labelled as one at the figure, not only in the section heading.
  */
 export default function PipelinePanel({ data, loading, error, promAvailable = true, onRetry }) {
+  const { locale, t } = useI18n()
+  const note = t('meta.platformScopeNote')
   if (loading && !data) return <TabSkeleton />
 
   if (error) {
     return (
       <EmptyState
         icon={AlertTriangle}
-        title="Could not load pipeline metrics"
+        title={t('pipelinePanel.loadFailed')}
         description={error}
-        action={onRetry ? <Button onClick={onRetry}>Retry</Button> : undefined}
+        action={onRetry ? <Button onClick={onRetry}>{t('common.retry')}</Button> : undefined}
       />
     )
   }
@@ -117,8 +120,8 @@ export default function PipelinePanel({ data, loading, error, promAvailable = tr
     return (
       <EmptyState
         icon={Workflow}
-        title="No ingestion activity"
-        description="No files were uploaded in this window, and none are stuck in processing."
+        title={t('pipelinePanel.noActivity')}
+        description={t('pipelinePanel.noActivityDescription')}
       />
     )
   }
@@ -136,10 +139,10 @@ export default function PipelinePanel({ data, loading, error, promAvailable = tr
     <div className="flex flex-col gap-4">
       <Card>
         <CardHeader
-          title="Ingestion funnel"
-          description={`Where files are lost between upload and index. ${formatCount(
-            funnelFiles
-          )} files entered this window.`}
+          title={t('pipelinePanel.funnel')}
+          description={t('pipelinePanel.funnelDescription', {
+            count: formatCount(funnelFiles),
+          })}
         />
         {steps.length ? (
           <ul className="flex flex-col gap-3">
@@ -166,9 +169,10 @@ export default function PipelinePanel({ data, loading, error, promAvailable = tr
                   value={step.share_of_uploaded == null ? null : step.share_of_uploaded * 100}
                   color="var(--primary)"
                   thickness="md"
-                  aria-label={`${labelFor(FUNNEL_STEP_LABELS, step.step)}: ${formatCount(
-                    step.count
-                  )} files`}
+                  aria-label={t('pipelinePanel.funnelStepAria', {
+                    step: labelFor(FUNNEL_STEP_LABELS, step.step),
+                    count: formatCount(step.count),
+                  })}
                 />
               </li>
             ))}
@@ -177,8 +181,8 @@ export default function PipelinePanel({ data, loading, error, promAvailable = tr
           <EmptyState
             icon={Workflow}
             size="sm"
-            title="No funnel data"
-            description="No files were uploaded in this window."
+            title={t('pipelinePanel.noFunnelData')}
+            description={t('pipelinePanel.noFunnelDataDescription')}
           />
         )}
       </Card>
@@ -186,17 +190,17 @@ export default function PipelinePanel({ data, loading, error, promAvailable = tr
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
         <Card>
           <CardHeader
-            title="Per-stage duration"
-            description={`Ingestion stage p95. ${PLATFORM_SCOPE_NOTE}`}
+            title={t('pipelinePanel.perStage')}
+            description={t('pipelinePanel.perStageDescription', { note })}
           />
           <PromWidget promAvailable={promAvailable}>
             {stageRows.length ? (
               <table className="w-full text-[13px]">
-                <caption className="sr-only">Ingestion stage p95 duration</caption>
+                <caption className="sr-only">{t('pipelinePanel.perStageCaption')}</caption>
                 <thead>
                   <tr style={{ color: 'var(--fg-muted)' }}>
-                    <th scope="col" className="py-1.5 text-left font-medium">Stage</th>
-                    <th scope="col" className="py-1.5 text-right font-medium">p95</th>
+                    <th scope="col" className="py-1.5 text-start font-medium">{t('pipelinePanel.stage')}</th>
+                    <th scope="col" className="py-1.5 text-end font-medium">p95</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -204,12 +208,12 @@ export default function PipelinePanel({ data, loading, error, promAvailable = tr
                     <tr key={row.key} className="border-t" style={{ borderColor: 'var(--border)' }}>
                       <th
                         scope="row"
-                        className="py-1.5 text-left font-normal"
+                        className="py-1.5 text-start font-normal"
                         style={{ color: 'var(--fg)' }}
                       >
                         {labelFor(STAGE_LABELS, row.key)}
                       </th>
-                      <td className="py-1.5 text-right tabular-nums" style={{ color: 'var(--fg-muted)' }}>
+                      <td className="py-1.5 text-end tabular-nums" style={{ color: 'var(--fg-muted)' }}>
                         {formatSeconds(row.value)}
                       </td>
                     </tr>
@@ -220,8 +224,8 @@ export default function PipelinePanel({ data, loading, error, promAvailable = tr
               <EmptyState
                 icon={Workflow}
                 size="sm"
-                title="No stage timings"
-                description="Prometheus recorded no ingestion stages in this window."
+                title={t('pipelinePanel.noStageTimings')}
+                description={t('pipelinePanel.noStageTimingsDescription')}
               />
             )}
           </PromWidget>
@@ -229,12 +233,16 @@ export default function PipelinePanel({ data, loading, error, promAvailable = tr
 
         <Card>
           <CardHeader
-            title="Whole-task duration"
-            description="Upload to completion, from the metrics store."
+            title={t('pipelinePanel.wholeTask')}
+            description={t('pipelinePanel.wholeTaskDescription')}
           />
           <dl className="grid grid-cols-2 gap-4">
-            <Stat label="Tasks" value={formatCount(durations.tasks)} hint="completed in window" />
-            <Stat label="Mean" value={formatSeconds(durations.mean_seconds)} />
+            <Stat
+              label={t('pipelinePanel.tasks')}
+              value={formatCount(durations.tasks)}
+              hint={t('pipelinePanel.completedInWindow')}
+            />
+            <Stat label={t('pipelinePanel.mean')} value={formatSeconds(durations.mean_seconds)} />
             <Stat label="p95" value={formatSeconds(durations.p95_seconds)} />
             <Stat label="p99" value={formatSeconds(durations.p99_seconds)} />
           </dl>
@@ -244,28 +252,32 @@ export default function PipelinePanel({ data, loading, error, promAvailable = tr
       <Card>
         <CardHeader
           title={METRIC_LABELS.stuck_files}
-          description={`Files in flight longer than ${stuck.threshold_minutes ?? EMPTY} minutes. Not window-scoped — a file stuck since last week still appears.`}
+          description={t('pipelinePanel.stuckDescription', {
+            minutes: stuck.threshold_minutes ?? EMPTY,
+          })}
         />
         {stuckCount ? (
           <>
             <dl className="mb-3 grid grid-cols-2 gap-4 lg:grid-cols-4">
               <Stat
-                label="Stuck files"
+                label={t('pipelinePanel.stuckFiles')}
                 value={formatCount(stuckCount)}
-                hint={stuck.truncated ? 'list truncated' : 'all listed below'}
+                hint={t(stuck.truncated
+                  ? 'pipelinePanel.listTruncated'
+                  : 'pipelinePanel.allListedBelow')}
                 variant={thresholdVariant(stuckCount, 'stuck_files')}
               />
             </dl>
             <div className="overflow-x-auto">
               <table className="w-full text-[13px]">
-                <caption className="sr-only">Files stuck in an in-flight status</caption>
+                <caption className="sr-only">{t('pipelinePanel.stuckCaption')}</caption>
                 <thead>
                   <tr style={{ color: 'var(--fg-muted)' }}>
-                    <th scope="col" className="py-1.5 pr-3 text-left font-medium">File</th>
-                    <th scope="col" className="py-1.5 pr-3 text-left font-medium">Status</th>
-                    <th scope="col" className="py-1.5 pr-3 text-left font-medium">Last updated</th>
-                    <th scope="col" className="py-1.5 text-left font-medium">
-                      <span className="sr-only">Open the document</span>
+                    <th scope="col" className="py-1.5 pe-3 text-start font-medium">{t('pipelinePanel.file')}</th>
+                    <th scope="col" className="py-1.5 pe-3 text-start font-medium">{t('common.status')}</th>
+                    <th scope="col" className="py-1.5 pe-3 text-start font-medium">{t('pipelinePanel.lastUpdated')}</th>
+                    <th scope="col" className="py-1.5 text-start font-medium">
+                      <span className="sr-only">{t('pipelinePanel.openDocument')}</span>
                     </th>
                   </tr>
                 </thead>
@@ -276,19 +288,24 @@ export default function PipelinePanel({ data, loading, error, promAvailable = tr
                       className="border-t"
                       style={{ borderColor: 'var(--border)' }}
                     >
+                      {/* A filename is user data and reads in its own
+                          direction; the id fallback beside it does not. */}
                       <th
                         scope="row"
-                        className="max-w-[20rem] truncate py-1.5 pr-3 text-left font-normal"
+                        dir="auto"
+                        className="max-w-[20rem] truncate py-1.5 pe-3 text-start font-normal"
                         style={{ color: 'var(--fg)' }}
                         title={file.file_id}
                       >
                         {file.filename || file.file_id || EMPTY}
                       </th>
-                      <td className="py-1.5 pr-3" style={{ color: 'var(--fg-muted)' }}>
+                      <td className="py-1.5 pe-3" style={{ color: 'var(--fg-muted)' }}>
                         {file.status || EMPTY}
                       </td>
-                      <td className="py-1.5 pr-3" style={{ color: 'var(--fg-muted)' }}>
-                        {file.updated_at ? new Date(file.updated_at).toLocaleString() : EMPTY}
+                      <td className="py-1.5 pe-3" style={{ color: 'var(--fg-muted)' }}>
+                        {file.updated_at
+                          ? new Date(file.updated_at).toLocaleString(intlLocale(locale))
+                          : EMPTY}
                       </td>
                       {/* A wedged file is only actionable where it can be
                           retried or deleted, which is Knowledge. */}
@@ -305,7 +322,7 @@ export default function PipelinePanel({ data, loading, error, promAvailable = tr
           /* The healthy case. Deliberately plain: no icon, no warning colour —
              an empty stuck-list is good news and must not look like an alert. */
           <p className="text-[13px]" style={{ color: 'var(--fg-muted)' }}>
-            Nothing has been in flight longer than {stuck.threshold_minutes ?? EMPTY} minutes.
+            {t('pipelinePanel.nothingStuck', { minutes: stuck.threshold_minutes ?? EMPTY })}
           </p>
         )}
       </Card>
@@ -313,17 +330,20 @@ export default function PipelinePanel({ data, loading, error, promAvailable = tr
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
         <Card>
           <CardHeader
-            title="Embedding throughput"
-            description={`Chunks embedded per second, and embedding latency. ${PLATFORM_SCOPE_NOTE}`}
+            title={t('pipelinePanel.embeddingThroughput')}
+            description={t('pipelinePanel.embeddingDescription', { note })}
           />
           <PromWidget promAvailable={promAvailable}>
             <dl className="grid grid-cols-2 gap-4">
               <Stat
                 label={METRIC_LABELS.embedding_chunk_rate}
                 value={formatDecimal(data.embedding_chunk_rate)}
-                hint="chunks/sec"
+                hint={t('pipelinePanel.chunksPerSecond')}
               />
-              <Stat label="Embedding p95" value={formatSeconds(data.embedding_p95_seconds)} />
+              <Stat
+                label={t('pipelinePanel.embeddingP95')}
+                value={formatSeconds(data.embedding_p95_seconds)}
+              />
             </dl>
           </PromWidget>
         </Card>
@@ -331,16 +351,16 @@ export default function PipelinePanel({ data, loading, error, promAvailable = tr
         <Card>
           <CardHeader
             title={METRIC_LABELS.vectors}
-            description={`Points per collection, and what this window added. ${PLATFORM_SCOPE_NOTE}`}
+            description={t('pipelinePanel.vectorsDescription', { note })}
           />
           {collections.length ? (
             <table className="w-full text-[13px]">
-              <caption className="sr-only">Vector count and growth by collection</caption>
+              <caption className="sr-only">{t('pipelinePanel.vectorsCaption')}</caption>
               <thead>
                 <tr style={{ color: 'var(--fg-muted)' }}>
-                  <th scope="col" className="py-1.5 pr-3 text-left font-medium">Collection</th>
-                  <th scope="col" className="py-1.5 pr-3 text-right font-medium">Vectors</th>
-                  <th scope="col" className="py-1.5 text-right font-medium">Added</th>
+                  <th scope="col" className="py-1.5 pe-3 text-start font-medium">{t('pipelinePanel.collection')}</th>
+                  <th scope="col" className="py-1.5 pe-3 text-end font-medium">{t('pipelinePanel.vectors')}</th>
+                  <th scope="col" className="py-1.5 text-end font-medium">{t('pipelinePanel.added')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -348,15 +368,16 @@ export default function PipelinePanel({ data, loading, error, promAvailable = tr
                   <tr key={row.collection} className="border-t" style={{ borderColor: 'var(--border)' }}>
                     <th
                       scope="row"
-                      className="py-1.5 pr-3 text-left font-normal"
+                      dir="ltr"
+                      className="py-1.5 pe-3 text-start font-normal [unicode-bidi:isolate]"
                       style={{ color: 'var(--fg)' }}
                     >
                       {row.collection || EMPTY}
                     </th>
-                    <td className="py-1.5 pr-3 text-right tabular-nums" style={{ color: 'var(--fg-muted)' }}>
+                    <td className="py-1.5 pe-3 text-end tabular-nums" style={{ color: 'var(--fg-muted)' }}>
                       {formatCount(row.vectors)}
                     </td>
-                    <td className="py-1.5 text-right tabular-nums" style={{ color: 'var(--fg-muted)' }}>
+                    <td className="py-1.5 text-end tabular-nums" style={{ color: 'var(--fg-muted)' }}>
                       {promAvailable ? formatCount(growth[row.collection]) : EMPTY}
                     </td>
                   </tr>
@@ -367,8 +388,8 @@ export default function PipelinePanel({ data, loading, error, promAvailable = tr
             <EmptyState
               icon={Workflow}
               size="sm"
-              title="No collection counts"
-              description="The vector service did not report collection sizes."
+              title={t('pipelinePanel.noCollectionCounts')}
+              description={t('pipelinePanel.noCollectionCountsDescription')}
             />
           )}
         </Card>
@@ -378,17 +399,17 @@ export default function PipelinePanel({ data, loading, error, promAvailable = tr
         <Card>
           <CardHeader
             title={METRIC_LABELS.kafka_consumer_lag}
-            description={`Messages a consumer group is behind. ${PLATFORM_SCOPE_NOTE}`}
+            description={t('pipelinePanel.lagDescription', { note })}
           />
           <PromWidget promAvailable={promAvailable}>
             {lagRows.length ? (
               <table className="w-full text-[13px]">
-                <caption className="sr-only">Kafka consumer lag by topic and group</caption>
+                <caption className="sr-only">{t('pipelinePanel.lagCaption')}</caption>
                 <thead>
                   <tr style={{ color: 'var(--fg-muted)' }}>
-                    <th scope="col" className="py-1.5 pr-3 text-left font-medium">Topic</th>
-                    <th scope="col" className="py-1.5 pr-3 text-left font-medium">Group</th>
-                    <th scope="col" className="py-1.5 text-right font-medium">Lag</th>
+                    <th scope="col" className="py-1.5 pe-3 text-start font-medium">{t('pipelinePanel.topic')}</th>
+                    <th scope="col" className="py-1.5 pe-3 text-start font-medium">{t('pipelinePanel.group')}</th>
+                    <th scope="col" className="py-1.5 text-end font-medium">{t('pipelinePanel.lag')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -400,16 +421,17 @@ export default function PipelinePanel({ data, loading, error, promAvailable = tr
                     >
                       <th
                         scope="row"
-                        className="py-1.5 pr-3 text-left font-normal"
+                        dir="ltr"
+                        className="py-1.5 pe-3 text-start font-normal [unicode-bidi:isolate]"
                         style={{ color: 'var(--fg)' }}
                       >
                         {row.topic || EMPTY}
                       </th>
-                      <td className="py-1.5 pr-3" style={{ color: 'var(--fg-muted)' }}>
+                      <td className="py-1.5 pe-3" style={{ color: 'var(--fg-muted)' }}>
                         {row.group || EMPTY}
                       </td>
                       <td
-                        className="py-1.5 text-right tabular-nums font-medium"
+                        className="py-1.5 text-end tabular-nums font-medium"
                         style={{ color: VARIANT_COLORS[thresholdVariant(row.value, 'kafka_consumer_lag')] }}
                       >
                         {formatCount(row.value)}
@@ -422,7 +444,7 @@ export default function PipelinePanel({ data, loading, error, promAvailable = tr
               /* No series is "no consumer has fetched yet", not a lag of zero.
                  Said plainly rather than drawn as a healthy 0. */
               <p className="text-[13px]" style={{ color: 'var(--fg-muted)' }}>
-                No consumer group has reported an offset yet.
+                {t('pipelinePanel.noOffsetReported')}
               </p>
             )}
           </PromWidget>
@@ -430,18 +452,18 @@ export default function PipelinePanel({ data, loading, error, promAvailable = tr
 
         <Card>
           <CardHeader
-            title="Dead letter queue"
-            description={`Messages failing into the DLQ, by error type. ${PLATFORM_SCOPE_NOTE}`}
+            title={t('pipelinePanel.dlq')}
+            description={t('pipelinePanel.dlqDescription', { note })}
           />
           <PromWidget promAvailable={promAvailable}>
             {dlqRows.length ? (
               <table className="w-full text-[13px]">
-                <caption className="sr-only">Dead letter queue rate by service and error type</caption>
+                <caption className="sr-only">{t('pipelinePanel.dlqCaption')}</caption>
                 <thead>
                   <tr style={{ color: 'var(--fg-muted)' }}>
-                    <th scope="col" className="py-1.5 pr-3 text-left font-medium">Service</th>
-                    <th scope="col" className="py-1.5 pr-3 text-left font-medium">Error</th>
-                    <th scope="col" className="py-1.5 text-right font-medium">Per sec</th>
+                    <th scope="col" className="py-1.5 pe-3 text-start font-medium">{t('pipelinePanel.service')}</th>
+                    <th scope="col" className="py-1.5 pe-3 text-start font-medium">{t('pipelinePanel.error')}</th>
+                    <th scope="col" className="py-1.5 text-end font-medium">{t('pipelinePanel.perSecond')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -453,16 +475,17 @@ export default function PipelinePanel({ data, loading, error, promAvailable = tr
                     >
                       <th
                         scope="row"
-                        className="py-1.5 pr-3 text-left font-normal"
+                        dir="ltr"
+                        className="py-1.5 pe-3 text-start font-normal [unicode-bidi:isolate]"
                         style={{ color: 'var(--fg)' }}
                       >
                         {row.service || EMPTY}
                       </th>
-                      <td className="py-1.5 pr-3" style={{ color: 'var(--fg-muted)' }}>
+                      <td className="py-1.5 pe-3" style={{ color: 'var(--fg-muted)' }}>
                         {row.error_type || EMPTY}
                       </td>
                       <td
-                        className="py-1.5 text-right tabular-nums"
+                        className="py-1.5 text-end tabular-nums"
                         style={{ color: 'var(--danger)' }}
                       >
                         {formatDecimal(row.value)}
@@ -473,7 +496,7 @@ export default function PipelinePanel({ data, loading, error, promAvailable = tr
               </table>
             ) : (
               <p className="text-[13px]" style={{ color: 'var(--fg-muted)' }}>
-                No messages reached the dead letter queue in this window.
+                {t('pipelinePanel.noDlq')}
               </p>
             )}
           </PromWidget>
@@ -481,58 +504,62 @@ export default function PipelinePanel({ data, loading, error, promAvailable = tr
       </div>
 
       <Card>
-        <CardHeader title="Token usage and estimated cost" description={COST_ESTIMATE_NOTE} />
+        <CardHeader
+          title={t('pipelinePanel.cost')}
+          description={t('pipelinePanel.costNote')}
+        />
         <dl className="mb-4 grid grid-cols-2 gap-4 lg:grid-cols-4">
-          <Stat label="Tokens in" value={formatCount(cost.tokens_in)} />
-          <Stat label="Tokens out" value={formatCount(cost.tokens_out)} />
+          <Stat label={t('pipelinePanel.tokensIn')} value={formatCount(cost.tokens_in)} />
+          <Stat label={t('pipelinePanel.tokensOut')} value={formatCount(cost.tokens_out)} />
           <Stat
             label={METRIC_LABELS.estimated_cost_usd}
             value={formatCost(cost.estimated_cost_usd)}
-            hint="estimate"
+            hint={t('pipelinePanel.estimate')}
           />
         </dl>
 
         {unpriced.length > 0 && (
           <p className="mb-3 text-[12px]" style={{ color: 'var(--warning)' }}>
-            No price is configured for {unpriced.join(', ')}. Their spend counts as $0.00, which
-            means unpriced, not free.
+            {t('pipelinePanel.unpricedModels', { models: unpriced.join(', ') })}
           </p>
         )}
 
         {(cost.by_model || []).length ? (
           <div className="overflow-x-auto">
             <table className="w-full text-[13px]">
-              <caption className="sr-only">Token usage and estimated cost by model</caption>
+              <caption className="sr-only">{t('pipelinePanel.costCaption')}</caption>
               <thead>
                 <tr style={{ color: 'var(--fg-muted)' }}>
-                  <th scope="col" className="py-1.5 pr-3 text-left font-medium">Model</th>
-                  <th scope="col" className="py-1.5 pr-3 text-right font-medium">Turns</th>
-                  <th scope="col" className="py-1.5 pr-3 text-right font-medium">Tokens in</th>
-                  <th scope="col" className="py-1.5 pr-3 text-right font-medium">Tokens out</th>
-                  <th scope="col" className="py-1.5 text-right font-medium">Estimated cost</th>
+                  <th scope="col" className="py-1.5 pe-3 text-start font-medium">{t('pipelinePanel.model')}</th>
+                  <th scope="col" className="py-1.5 pe-3 text-end font-medium">{t('pipelinePanel.turns')}</th>
+                  <th scope="col" className="py-1.5 pe-3 text-end font-medium">{t('pipelinePanel.tokensIn')}</th>
+                  <th scope="col" className="py-1.5 pe-3 text-end font-medium">{t('pipelinePanel.tokensOut')}</th>
+                  <th scope="col" className="py-1.5 text-end font-medium">{t('pipelinePanel.estimatedCost')}</th>
                 </tr>
               </thead>
               <tbody>
                 {cost.by_model.map((row) => (
                   <tr key={row.model || 'unknown'} className="border-t" style={{ borderColor: 'var(--border)' }}>
+                    {/* A model id is a repository slug: never reordered. */}
                     <th
                       scope="row"
-                      className="max-w-[18rem] truncate py-1.5 pr-3 text-left font-normal"
+                      dir="ltr"
+                      className="max-w-[18rem] truncate py-1.5 pe-3 text-start font-normal [unicode-bidi:isolate]"
                       style={{ color: 'var(--fg)' }}
                       title={row.model}
                     >
                       {row.model || EMPTY}
                     </th>
-                    <td className="py-1.5 pr-3 text-right tabular-nums" style={{ color: 'var(--fg-muted)' }}>
+                    <td className="py-1.5 pe-3 text-end tabular-nums" style={{ color: 'var(--fg-muted)' }}>
                       {formatCount(row.turns)}
                     </td>
-                    <td className="py-1.5 pr-3 text-right tabular-nums" style={{ color: 'var(--fg-muted)' }}>
+                    <td className="py-1.5 pe-3 text-end tabular-nums" style={{ color: 'var(--fg-muted)' }}>
                       {formatCount(row.tokens_in)}
                     </td>
-                    <td className="py-1.5 pr-3 text-right tabular-nums" style={{ color: 'var(--fg-muted)' }}>
+                    <td className="py-1.5 pe-3 text-end tabular-nums" style={{ color: 'var(--fg-muted)' }}>
                       {formatCount(row.tokens_out)}
                     </td>
-                    <td className="py-1.5 text-right tabular-nums" style={{ color: 'var(--fg-muted)' }}>
+                    <td className="py-1.5 text-end tabular-nums" style={{ color: 'var(--fg-muted)' }}>
                       {formatCost(row.estimated_cost_usd)}
                     </td>
                   </tr>
@@ -542,7 +569,7 @@ export default function PipelinePanel({ data, loading, error, promAvailable = tr
           </div>
         ) : (
           <p className="text-[13px]" style={{ color: 'var(--fg-muted)' }}>
-            No model usage was recorded in this window.
+            {t('pipelinePanel.noModelUsage')}
           </p>
         )}
 
@@ -550,8 +577,9 @@ export default function PipelinePanel({ data, loading, error, promAvailable = tr
             is the caller's own tenant and never a comparison between tenants. */}
         {(cost.by_tenant || []).length > 0 && (
           <p className="mt-3 text-[12px]" style={{ color: 'var(--fg-soft)' }}>
-            Tenant {cost.by_tenant[0].tenant_id || EMPTY} accounts for all of it —
-            this view is scoped to one tenant, so it is not a comparison.
+            {t('pipelinePanel.singleTenantNote', {
+              tenant: cost.by_tenant[0].tenant_id || EMPTY,
+            })}
           </p>
         )}
       </Card>

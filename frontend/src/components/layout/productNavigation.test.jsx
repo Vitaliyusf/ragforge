@@ -116,7 +116,9 @@ describe('one global activity control', () => {
       },
     })
     const control = screen.getByTestId('global-activity')
-    expect(control).toHaveTextContent('2 active')
+    // Phrased as a labelled count rather than "2 active": the same copy has
+    // to read naturally in Hebrew, where an English count prefix does not.
+    expect(control).toHaveTextContent('Active: 2')
     expect(screen.getByTestId('logo-activity-dot')).toHaveAttribute(
       'data-activity-state',
       'active'

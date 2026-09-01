@@ -21,6 +21,18 @@
  */
 
 import { formatCompactAge } from '@/lib/formatting/datetime'
+import { DEFAULT_LOCALE } from '@/i18n/locale'
+import { translate } from '@/i18n/translate'
+
+/**
+ * English resolution for callers with no locale to hand.
+ *
+ * This module is pure and is imported by hooks as well as by components, so
+ * the translator is injected rather than read from React context. Every
+ * describe* function takes an optional `t` and falls back to English, which
+ * is also what keeps its tests locale-free.
+ */
+const defaultTranslate = (key, variables) => translate(DEFAULT_LOCALE, key, variables)
 
 /** Which store a figure came from. They fail, and are scoped, differently. */
 export const METRIC_SOURCE = Object.freeze({
@@ -64,20 +76,17 @@ export const FRESHNESS_THRESHOLDS = Object.freeze({
   staleAfterMs: 300_000,
 })
 
-const SCOPE_LABELS = Object.freeze({
-  [METRIC_SCOPE.TENANT]: 'Tenant',
-  [METRIC_SCOPE.PLATFORM]: 'Global',
-  [METRIC_SCOPE.UNKNOWN]: 'Scope unknown',
+const SCOPE_LABEL_KEYS = Object.freeze({
+  [METRIC_SCOPE.TENANT]: 'meta.scope.tenant',
+  [METRIC_SCOPE.PLATFORM]: 'meta.scope.platform',
+  [METRIC_SCOPE.UNKNOWN]: 'meta.scope.unknown',
 })
 
 /** Shown beside any figure Prometheus supplies: these carry no tenant label. */
-export const PLATFORM_SCOPE_NOTE =
-  'Platform-wide across all tenants — this figure carries no tenant label.'
+export const PLATFORM_SCOPE_NOTE = defaultTranslate('meta.platformScopeNote')
 
 /** Shown when a response named no tenant, so nothing may claim one. */
-export const UNKNOWN_SCOPE_NOTE =
-  'The response did not name the tenant it aggregated, so this figure cannot ' +
-  'be attributed to one.'
+export const UNKNOWN_SCOPE_NOTE = defaultTranslate('meta.unknownScopeNote')
 
 /**
  * Describe the scope of one figure.
@@ -88,7 +97,7 @@ export const UNKNOWN_SCOPE_NOTE =
  * @param {?string} [options.prometheusScope] the envelope's `prometheus_scope`
  * @returns {{scope: string, label: string, detail: ?string, title: string}}
  */
-export function describeScope({ source, tenantId, prometheusScope } = {}) {
+export function describeScope({ source, tenantId, prometheusScope, t = defaultTranslate } = {}) {
   if (source === METRIC_SOURCE.PROMETHEUS) {
     // `all_tenants` is the only scope phase-1 series carry. Anything else is
     // a contract the frontend has not been taught, and guessing "tenant"
@@ -97,9 +106,9 @@ export function describeScope({ source, tenantId, prometheusScope } = {}) {
     if (!perTenant) {
       return {
         scope: METRIC_SCOPE.PLATFORM,
-        label: SCOPE_LABELS[METRIC_SCOPE.PLATFORM],
-        detail: 'all tenants',
-        title: PLATFORM_SCOPE_NOTE,
+        label: t(SCOPE_LABEL_KEYS[METRIC_SCOPE.PLATFORM]),
+        detail: t('meta.allTenants'),
+        title: t('meta.platformScopeNote'),
       }
     }
   }
@@ -107,17 +116,18 @@ export function describeScope({ source, tenantId, prometheusScope } = {}) {
   if (!tenantId) {
     return {
       scope: METRIC_SCOPE.UNKNOWN,
-      label: SCOPE_LABELS[METRIC_SCOPE.UNKNOWN],
+      label: t(SCOPE_LABEL_KEYS[METRIC_SCOPE.UNKNOWN]),
       detail: null,
-      title: UNKNOWN_SCOPE_NOTE,
+      title: t('meta.unknownScopeNote'),
     }
   }
 
   return {
     scope: METRIC_SCOPE.TENANT,
-    label: SCOPE_LABELS[METRIC_SCOPE.TENANT],
+    label: t(SCOPE_LABEL_KEYS[METRIC_SCOPE.TENANT]),
+    // The tenant id itself is a backend identifier, never translated.
     detail: tenantId,
-    title: `Scoped to tenant ${tenantId}.`,
+    title: t('meta.scopedToTenant', { tenant: tenantId }),
   }
 }
 
@@ -137,11 +147,12 @@ export function describeFreshness(generatedAt, options = {}) {
     now = Date.now(),
     delayedAfterMs = FRESHNESS_THRESHOLDS.delayedAfterMs,
     staleAfterMs = FRESHNESS_THRESHOLDS.staleAfterMs,
+    t = defaultTranslate,
   } = options
 
   const parsed = generatedAt == null || generatedAt === '' ? null : new Date(generatedAt)
   if (!parsed || Number.isNaN(parsed.getTime())) {
-    return { state: DATA_STATE.UNAVAILABLE, ageMs: null, label: 'Freshness unknown' }
+    return { state: DATA_STATE.UNAVAILABLE, ageMs: null, label: t('meta.freshnessUnknown') }
   }
 
   // A response stamped in the future is a clock skew between two machines,
@@ -150,12 +161,20 @@ export function describeFreshness(generatedAt, options = {}) {
   const age = formatCompactAge(ageMs)
 
   if (ageMs >= staleAfterMs) {
-    return { state: DATA_STATE.STALE, ageMs, label: age ? `Data stale · ${age} old` : 'Data stale' }
+    return {
+      state: DATA_STATE.STALE,
+      ageMs,
+      label: age ? t('meta.dataStaleAge', { age }) : t('meta.dataStale'),
+    }
   }
   if (ageMs >= delayedAfterMs) {
-    return { state: DATA_STATE.DELAYED, ageMs, label: age ? `Data delayed ${age}` : 'Data delayed' }
+    return {
+      state: DATA_STATE.DELAYED,
+      ageMs,
+      label: age ? t('meta.dataDelayedAge', { age }) : t('meta.dataDelayed'),
+    }
   }
-  return { state: DATA_STATE.OK, ageMs, label: 'Up to date' }
+  return { state: DATA_STATE.OK, ageMs, label: t('meta.upToDate') }
 }
 
 /**
@@ -199,24 +218,30 @@ export function resolveDataState({
  * @param {string} [noun] singular noun for one sample
  * @returns {string}
  */
-export function describeSamples(count, noun = 'sample') {
-  if (count == null || !Number.isFinite(Number(count))) return 'Sample count not reported'
+export function describeSamples(count, noun = 'sample', t = defaultTranslate) {
+  if (count == null || !Number.isFinite(Number(count))) return t('meta.sampleCountUnknown')
   const numeric = Number(count)
-  if (numeric === 0) return `No ${noun}s in this range`
-  return `${numeric.toLocaleString()} ${numeric === 1 ? noun : `${noun}s`}`
+  // A labelled count rather than a pluralised noun: Hebrew has no clean
+  // equivalent of "1 turn / 2 turns", and the phrasing works for both.
+  const nounText = t(`meta.sampleNoun.${noun}`)
+  if (numeric === 0) return t('meta.noSamples', { noun: nounText })
+  return t('meta.sampleCount', { count: numeric.toLocaleString(), noun: nounText })
 }
 
 /** Human phrasing for the selected window, used wherever a range is stated. */
-export const TIME_RANGE_LABELS = Object.freeze({
-  '1h': 'last hour',
-  '24h': 'last 24 hours',
-  '7d': 'last 7 days',
-  '30d': 'last 30 days',
+export const TIME_RANGE_LABEL_KEYS = Object.freeze({
+  '1h': 'meta.range.1h',
+  '24h': 'meta.range.24h',
+  '7d': 'meta.range.7d',
+  '30d': 'meta.range.30d',
 })
 
-export function describeTimeRange(window) {
-  if (!window) return 'range not reported'
-  return TIME_RANGE_LABELS[window] || String(window)
+export function describeTimeRange(window, t = defaultTranslate) {
+  if (!window) return t('meta.rangeNotReported')
+  // A window the frontend has not been taught is shown verbatim rather
+  // than guessed at — it is the backend's own spelling.
+  const key = TIME_RANGE_LABEL_KEYS[window]
+  return key ? t(key) : String(window)
 }
 
 /**
@@ -241,9 +266,10 @@ export function describeMetric({
   sourceAvailable = true,
   partial = false,
   now,
+  t = defaultTranslate,
 } = {}) {
-  const scope = describeScope({ source, tenantId, prometheusScope })
-  const freshness = describeFreshness(generatedAt, now == null ? {} : { now })
+  const scope = describeScope({ source, tenantId, prometheusScope, t })
+  const freshness = describeFreshness(generatedAt, now == null ? { t } : { now, t })
   const state = resolveDataState({
     loading,
     error,
@@ -252,8 +278,8 @@ export function describeMetric({
     sampleCount,
     freshness: freshness.state,
   })
-  const sampleLabel = describeSamples(sampleCount, sampleNoun)
-  const rangeLabel = describeTimeRange(window)
+  const sampleLabel = describeSamples(sampleCount, sampleNoun, t)
+  const rangeLabel = describeTimeRange(window, t)
   const scopeText = scope.detail ? `${scope.label} · ${scope.detail}` : scope.label
 
   return {

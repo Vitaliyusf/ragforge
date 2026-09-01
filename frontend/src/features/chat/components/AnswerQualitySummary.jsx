@@ -1,5 +1,7 @@
 'use client'
 
+import { useI18n } from '@/i18n'
+
 /**
  * The compact quality state that sits under every answer by default.
  *
@@ -17,19 +19,21 @@ const TONE_COLOR = {
 }
 
 export default function AnswerQualitySummary({ quality }) {
+  const { t } = useI18n()
   if (!quality) return null
 
   if (quality.kind === 'unsupported') {
     return (
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[var(--fg-soft)]">
         <span>
-          Answerability: <span className="font-medium text-[var(--fg-muted)]">{quality.answerability}</span>
+          {t('chat.answerability')}:{' '}
+          <span className="font-medium text-[var(--fg-muted)]">{t(quality.answerabilityKey)}</span>
         </span>
       </div>
     )
   }
 
-  if (!quality.parts.length) return null
+  if (!quality.partKeys?.length) return null
 
   return (
     <div className="flex items-center gap-1.5 text-xs text-[var(--fg-soft)]">
@@ -38,7 +42,7 @@ export default function AnswerQualitySummary({ quality }) {
         style={{ background: TONE_COLOR[quality.tone] || TONE_COLOR.neutral }}
         aria-hidden="true"
       />
-      <span>{quality.parts.join(' · ')}</span>
+      <span>{quality.partKeys.map((part) => t(part.key, part.vars)).join(' · ')}</span>
     </div>
   )
 }

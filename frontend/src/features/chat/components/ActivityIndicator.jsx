@@ -3,6 +3,7 @@
 import { motion } from 'framer-motion'
 import ProgressBar from '@/components/ui/ProgressBar'
 import { describeStage } from '@/features/chat/utils/activityStages'
+import { useI18n } from '@/i18n'
 
 /**
  * The live execution state for the turn currently being answered.
@@ -12,8 +13,11 @@ import { describeStage } from '@/features/chat/utils/activityStages'
  * reported — there is no simulated advance.
  */
 export default function ActivityIndicator({ status }) {
+  const { t } = useI18n()
   const stage = describeStage(status)
   if (!stage) return null
+
+  const label = t(stage.labelKey)
 
   return (
     <motion.div
@@ -33,9 +37,9 @@ export default function ActivityIndicator({ status }) {
           />
         ))}
       </span>
-      <span className="text-[13px] text-[var(--fg-muted)]">{stage.label}</span>
+      <span className="text-[13px] text-[var(--fg-muted)]">{label}</span>
       {stage.progress != null ? (
-        <ProgressBar value={stage.progress} className="w-24" aria-label={stage.label} />
+        <ProgressBar value={stage.progress} className="w-24" aria-label={label} />
       ) : null}
     </motion.div>
   )

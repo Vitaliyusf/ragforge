@@ -22,6 +22,7 @@ import {
   scoreVariant,
   thresholdVariant,
 } from './metricsConfig'
+import { useI18n } from '@/i18n'
 
 /**
  * Reduce a `{answer_mode: value}` map to the worst mode.
@@ -52,10 +53,11 @@ function modeSubLabel({ mode, modes }) {
  * arrow. Add one here the moment the envelope grows a prior-period figure.
  */
 export default function KpiHeader({ data, promAvailable = true }) {
+  const { t } = useI18n()
   const overview = data || {}
   const latencyP95 = worstByMode(overview.turn_latency_seconds?.p95)
   const ttftP95 = worstByMode(overview.ttft_p95_seconds)
-  const unavailable = promAvailable ? undefined : PROM_UNAVAILABLE.title
+  const unavailable = promAvailable ? undefined : t(PROM_UNAVAILABLE.titleKey)
 
   const cards = [
     {

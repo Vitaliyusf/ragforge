@@ -17,9 +17,14 @@
  * See `./answerSources` for that grouping, which this module shares with the
  * source chips so the two can never disagree.
  *
- * Every function is pure so the presentation can be tested without a DOM.
+ * Every function is pure so the presentation can be tested without a DOM —
+ * which is also why the words come back twice: `parts` is the canonical
+ * English, and `partKeys` is the same line as translation keys for the
+ * component that renders it. This module has no locale of its own.
  */
 
+import { DEFAULT_LOCALE } from '@/i18n/locale'
+import { translate } from '@/i18n/translate'
 import { countChunks, countDocumentSources } from './answerSources'
 
 export const REVIEW_SCORE_KEYS = ['groundedness_score', 'completeness_score', 'safety_score']
@@ -55,17 +60,17 @@ export function hasMeasuredScores(review) {
   return values.length > 0 && values.some((value) => value > 0)
 }
 
-function groundingLabel(score) {
+function groundingLabelKey(score) {
   if (!Number.isFinite(score) || score <= 0) return null
-  if (score >= 0.75) return 'Grounded'
-  if (score >= 0.5) return 'Partly grounded'
-  return 'Weakly grounded'
+  if (score >= 0.75) return 'chat.grounded'
+  if (score >= 0.5) return 'chat.partlyGrounded'
+  return 'chat.weaklyGrounded'
 }
 
-const VERDICT_LABEL = {
-  pass: 'Review passed',
-  revise: 'Review flagged revisions',
-  fail: 'Review failed',
+const VERDICT_LABEL_KEY = {
+  pass: 'chat.reviewPassed',
+  revise: 'chat.reviewRevise',
+  fail: 'chat.reviewFailed',
 }
 
 function summaryTone(verdict, groundedness) {
@@ -81,9 +86,15 @@ function summaryTone(verdict, groundedness) {
  *
  * Returns either an `unsupported` shape — which states answerability in words
  * and claims nothing about intent — or a `summary` shape whose `parts` are
- * joined with middots, e.g. `Grounded · 2 sources · Review passed`. `parts` is
- * empty when nothing was measured, and the caller renders nothing at all in
- * that case. `sourceCount` counts documents; `chunkCount` counts passages.
+ * joined with middots, e.g. `Grounded · Sources: 2 · Review passed`. `parts`
+ * is empty when nothing was measured, and the caller renders nothing at all
+ * in that case. `partKeys` carries the same line as `{key, vars}` descriptors
+ * for translation. `sourceCount` counts documents; `chunkCount` counts
+ * passages.
+ *
+ * The source count is phrased as a labelled count rather than "2 sources"
+ * because Hebrew plural agreement would otherwise need machinery that buys
+ * nothing: "מקורות: 2" reads correctly for every number.
  *
  * @param {{review?: object|null, sources?: Array|null, retrievalSummary?: object|null}} input
  */
@@ -99,8 +110,10 @@ export function buildAnswerQuality({ review, sources, retrievalSummary } = {}) {
       sourceCount: 0,
       chunkCount: 0,
       measured: false,
-      answerability: 'No supporting evidence',
+      answerability: translate(DEFAULT_LOCALE, 'chat.noSupportingEvidence'),
+      answerabilityKey: 'chat.noSupportingEvidence',
       parts: [],
+      partKeys: [],
     }
   }
 
@@ -108,10 +121,11 @@ export function buildAnswerQuality({ review, sources, retrievalSummary } = {}) {
     ? review.groundedness_score
     : null
   const verdict = review?.verdict || null
-  const parts = [
-    groundingLabel(groundedness),
-    sourceCount > 0 ? `${sourceCount} source${sourceCount === 1 ? '' : 's'}` : null,
-    VERDICT_LABEL[verdict] || null,
+  const groundingKey = groundingLabelKey(groundedness)
+  const partKeys = [
+    groundingKey ? { key: groundingKey } : null,
+    sourceCount > 0 ? { key: 'chat.sourceCount', vars: { count: sourceCount } } : null,
+    VERDICT_LABEL_KEY[verdict] ? { key: VERDICT_LABEL_KEY[verdict] } : null,
   ].filter(Boolean)
 
   return {
@@ -122,6 +136,7 @@ export function buildAnswerQuality({ review, sources, retrievalSummary } = {}) {
     verdict,
     groundedness,
     measured,
-    parts,
+    parts: partKeys.map((part) => translate(DEFAULT_LOCALE, part.key, part.vars)),
+    partKeys,
   }
 }

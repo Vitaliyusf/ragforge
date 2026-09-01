@@ -5,6 +5,7 @@ import Button from '@/components/ui/Button'
 import { DataCell } from '@/components/ui/DataDisplay'
 import { formatAbsoluteDateTime } from '@/lib/formatting/datetime'
 import { buildAnswerQuality } from '@/features/chat/utils/answerQuality'
+import { useI18n } from '@/i18n'
 
 /**
  * What this turn was and how it ended, in one screen.
@@ -24,24 +25,33 @@ export default function OverviewSection({
   feedback,
   onFlowFeedback,
 }) {
+  const { locale, t } = useI18n()
   const quality = buildAnswerQuality({ review, sources, retrievalSummary })
-  const answeredAt = formatAbsoluteDateTime(timestamp)
+  const answeredAt = formatAbsoluteDateTime(timestamp, locale)
   const flowState = feedback?.flow
 
   const cells = [
-    mode ? { label: 'Mode', value: mode === 'extended' ? 'Deep research' : 'Quick answer' } : null,
-    answeredAt ? { label: 'Answered', value: answeredAt } : null,
-    { label: 'Sources', value: quality.sourceCount },
-    { label: 'Chunks', value: quality.chunkCount },
-    Number.isFinite(answerLength) ? { label: 'Answer length', value: `${answerLength} chars` } : null,
+    mode
+      ? {
+          label: t('inspector.mode'),
+          value: t(mode === 'extended' ? 'chat.deepResearch' : 'chat.quickAnswer'),
+        }
+      : null,
+    answeredAt ? { label: t('inspector.answered'), value: answeredAt } : null,
+    { label: t('inspector.sources'), value: quality.sourceCount },
+    { label: t('inspector.chunks'), value: quality.chunkCount },
+    Number.isFinite(answerLength)
+      ? { label: t('inspector.answerLength'), value: t('inspector.chars', { count: answerLength }) }
+      : null,
   ].filter(Boolean)
 
   return (
     <div className="space-y-3">
       <div className="rounded-lg border border-border bg-bg-tertiary px-3 py-2.5 text-[13px] text-text-secondary">
         {quality.kind === 'unsupported'
-          ? `Answerability: ${quality.answerability}`
-          : (quality.parts.join(' · ') || 'No quality signal was recorded for this turn.')}
+          ? t('chat.answerabilityLine', { value: t(quality.answerabilityKey) })
+          : (quality.partKeys.map((part) => t(part.key, part.vars)).join(' · ')
+             || t('inspector.noQualitySignal'))}
       </div>
 
       <div className="grid grid-cols-2 gap-2">
@@ -52,7 +62,7 @@ export default function OverviewSection({
 
       {turnId && onFlowFeedback ? (
         <div>
-          <div className="mb-1.5 text-[13px] font-medium text-text-muted">Was this pipeline flow sensible?</div>
+          <div className="mb-1.5 text-[13px] font-medium text-text-muted">{t('inspector.flowQuestion')}</div>
           <div className="flex flex-wrap items-center gap-2">
             <Button
               variant="secondary"
@@ -61,7 +71,7 @@ export default function OverviewSection({
               onClick={() => onFlowFeedback(turnId, { category: 'flow_clear', label: 'clear' })}
               leftIcon={<GitBranch size={14} />}
             >
-              Clear flow
+              {t('inspector.flowClear')}
             </Button>
             <Button
               variant="secondary"
@@ -70,13 +80,13 @@ export default function OverviewSection({
               onClick={() => onFlowFeedback(turnId, { category: 'flow_confusing', label: 'confusing' })}
               leftIcon={<MessageSquareWarning size={14} />}
             >
-              Confusing flow
+              {t('inspector.flowConfusing')}
             </Button>
             {flowState?.status === 'sent' ? (
-              <span className="text-xs text-text-muted">Sent</span>
+              <span className="text-xs text-text-muted">{t('inspector.sent')}</span>
             ) : null}
             {flowState?.status === 'error' ? (
-              <span className="text-xs text-[var(--danger)]">{flowState.error || 'Failed'}</span>
+              <span className="text-xs text-[var(--danger)]">{flowState.error || t('common.failed')}</span>
             ) : null}
           </div>
         </div>

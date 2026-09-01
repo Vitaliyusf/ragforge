@@ -196,7 +196,7 @@ describe('ChatTab', () => {
 
     // The default surface carries a compact quality state and nothing
     // engineering-facing: no review UUID, no evaluator model slug.
-    expect(await screen.findByText(/Grounded . 1 source . Review passed/)).toBeInTheDocument()
+    expect(await screen.findByText(/Grounded · Sources: 1 · Review passed/)).toBeInTheDocument()
     expect(screen.queryByText(/review-1/i)).not.toBeInTheDocument()
     expect(screen.queryByText(/eval-model/i)).not.toBeInTheDocument()
     expect(screen.queryByText(/Citation coverage could be stronger/i)).not.toBeInTheDocument()

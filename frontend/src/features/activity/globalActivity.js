@@ -11,8 +11,10 @@
  * reported.
  */
 
-import { PRODUCT_LABELS } from '@/lib/terminology'
+import { PRODUCT_LABEL_KEYS } from '@/lib/terminology'
 import { STATUS_DOMAINS, describeStatus } from '@/components/status/statusDomains'
+import { DEFAULT_LOCALE } from '@/i18n/locale'
+import { translate } from '@/i18n/translate'
 import {
   ACTIVITY_FEATURES,
   ACTIVITY_STATES,
@@ -27,11 +29,11 @@ export const GLOBAL_ACTIVITY_STATES = Object.freeze({
   DISCONNECTED: 'disconnected',
 })
 
-/** Feature → the destination name the popover lists work under. */
-const FEATURE_LABELS = Object.freeze({
-  [ACTIVITY_FEATURES.CHAT]: PRODUCT_LABELS.chat,
-  [ACTIVITY_FEATURES.FILES]: PRODUCT_LABELS.knowledge,
-  [ACTIVITY_FEATURES.EVAL]: PRODUCT_LABELS.eval,
+/** Feature → the key naming the destination the popover lists work under. */
+const FEATURE_LABEL_KEYS = Object.freeze({
+  [ACTIVITY_FEATURES.CHAT]: PRODUCT_LABEL_KEYS.chat,
+  [ACTIVITY_FEATURES.FILES]: PRODUCT_LABEL_KEYS.knowledge,
+  [ACTIVITY_FEATURES.EVAL]: PRODUCT_LABEL_KEYS.eval,
 })
 
 /**
@@ -40,10 +42,10 @@ const FEATURE_LABELS = Object.freeze({
  * Plain nouns, because the list answers "what is running", not "what state is
  * this in" — the state is rendered beside it from the execution domain.
  */
-const FEATURE_WORK = Object.freeze({
-  [ACTIVITY_FEATURES.CHAT]: 'Answer generation',
-  [ACTIVITY_FEATURES.FILES]: 'Indexing',
-  [ACTIVITY_FEATURES.EVAL]: 'Evaluation',
+const FEATURE_WORK_KEYS = Object.freeze({
+  [ACTIVITY_FEATURES.CHAT]: 'activity.work.chat',
+  [ACTIVITY_FEATURES.FILES]: 'activity.work.files',
+  [ACTIVITY_FEATURES.EVAL]: 'activity.work.eval',
 })
 
 /** Activity state → the execution-domain state it is reported as. */
@@ -71,10 +73,13 @@ function progressText(progress) {
 /**
  * @typedef {Object} GlobalActivityItem
  * @property {string} feature       the destination id the work belongs to
- * @property {string} featureLabel  the destination's canonical name
- * @property {string} work          what is being done
- * @property {string} state         an execution-domain state
- * @property {string} stateLabel    its canonical label
+ * @property {string} featureLabel     the destination's canonical English name
+ * @property {string} featureLabelKey  the key that names it in any language
+ * @property {string} work             what is being done, canonical English
+ * @property {string} workKey          the key that names it in any language
+ * @property {string} state            an execution-domain state
+ * @property {string} stateLabel       its canonical English label
+ * @property {string} stateLabelKey    the key that names it in any language
  * @property {string} tone          its tone
  * @property {?string} detail       progress or a bounded label, when real
  */
@@ -84,15 +89,20 @@ function progressText(progress) {
  *
  * @param {Record<string, Object>} activities the activity store
  * @param {{online?: boolean}} [options] browser connectivity
- * @returns {{state: string, label: string, tone: string, activeCount: number,
+ * @returns {{state: string, label: string, labelKey: string,
+ *   labelVars?: object, tone: string, activeCount: number,
  *   items: GlobalActivityItem[]}}
+ *
+ * `label` stays the canonical English text so this module remains pure and
+ * testable without a locale; `labelKey` (plus `labelVars` where the copy
+ * carries a number) is what the header actually renders.
  */
 export function summarizeActivity(activities = {}, { online = true } = {}) {
   const items = []
   let activeCount = 0
   let failed = 0
 
-  for (const feature of Object.keys(FEATURE_LABELS)) {
+  for (const feature of Object.keys(FEATURE_LABEL_KEYS)) {
     const activity = normalizeActivity(activities[feature])
     if (activity.state === ACTIVITY_STATES.IDLE) continue
 
@@ -104,10 +114,13 @@ export function summarizeActivity(activities = {}, { online = true } = {}) {
 
     items.push({
       feature,
-      featureLabel: FEATURE_LABELS[feature],
-      work: FEATURE_WORK[feature],
+      featureLabel: translate(DEFAULT_LOCALE, FEATURE_LABEL_KEYS[feature]),
+      featureLabelKey: FEATURE_LABEL_KEYS[feature],
+      work: translate(DEFAULT_LOCALE, FEATURE_WORK_KEYS[feature]),
+      workKey: FEATURE_WORK_KEYS[feature],
       state: status.state,
       stateLabel: status.label,
+      stateLabelKey: status.labelKey,
       tone: status.tone,
       detail: progressText(activity.progress) || activity.label || null,
       rank: ITEM_ORDER.indexOf(activity.state),
@@ -123,6 +136,7 @@ export function summarizeActivity(activities = {}, { online = true } = {}) {
     return {
       state: GLOBAL_ACTIVITY_STATES.DISCONNECTED,
       label: status.label,
+      labelKey: status.labelKey,
       tone: status.tone,
       activeCount,
       items,
@@ -133,6 +147,7 @@ export function summarizeActivity(activities = {}, { online = true } = {}) {
     return {
       state: GLOBAL_ACTIVITY_STATES.DEGRADED,
       label: 'Degraded',
+      labelKey: 'activity.degraded',
       tone: 'warning',
       activeCount,
       items,
@@ -143,6 +158,8 @@ export function summarizeActivity(activities = {}, { online = true } = {}) {
     return {
       state: GLOBAL_ACTIVITY_STATES.ACTIVE,
       label: `${activeCount} active`,
+      labelKey: 'activity.activeCount',
+      labelVars: { count: activeCount },
       tone: 'live',
       activeCount,
       items,
@@ -152,6 +169,7 @@ export function summarizeActivity(activities = {}, { online = true } = {}) {
   return {
     state: GLOBAL_ACTIVITY_STATES.READY,
     label: 'Ready',
+    labelKey: 'activity.ready',
     tone: 'success',
     activeCount: 0,
     items,

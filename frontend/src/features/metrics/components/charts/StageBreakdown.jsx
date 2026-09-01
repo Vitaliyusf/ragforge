@@ -1,6 +1,7 @@
 'use client'
 
 import { useMemo } from 'react'
+import { useI18n } from '@/i18n'
 
 const VIEW_W = 100
 const VIEW_H = 10
@@ -21,8 +22,10 @@ export default function StageBreakdown({
   stages = [],
   height = 18,
   valueFormat = (value) => String(value),
-  label = 'Stage breakdown',
+  label,
 }) {
+  const { t } = useI18n()
+  const chartLabel = label ?? t('chart.stageBreakdown')
   const model = useMemo(() => {
     const cleaned = (stages || [])
       .filter((stage) => stage && Number.isFinite(Number(stage.value)) && Number(stage.value) > 0)
@@ -51,7 +54,7 @@ export default function StageBreakdown({
 
   if (!model) return null
 
-  const summary = `${label}. ${model.segments
+  const summary = `${chartLabel}. ${model.segments
     .map((segment) => `${segment.label} ${valueFormat(segment.value)}`)
     .join(', ')}.`
 

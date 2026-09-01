@@ -6,6 +6,7 @@ import { X } from 'lucide-react'
 import { notifyError } from '@/lib/notify'
 import Button from '@/components/ui/Button'
 import { cn } from '@/lib/utils'
+import { useI18n } from '@/i18n'
 import { CATEGORY_OPTIONS, MAX_CHARS } from './memoryConfig'
 
 /** Every control below suppresses the UA outline for the app ring, so the
@@ -14,6 +15,7 @@ const FOCUS_RING =
   'focus:outline-hidden focus-visible:ring-2 focus-visible:ring-[var(--ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--surface)]'
 
 function AddMemoryForm({ onAdd, onCancel }) {
+  const { t } = useI18n()
   const [content, setContent]   = useState('')
   const [category, setCategory] = useState('user_preference')
   const [loading, setLoading]   = useState(false)
@@ -34,8 +36,11 @@ function AddMemoryForm({ onAdd, onCancel }) {
   }
 
   const handleSubmit = async () => {
-    if (!content.trim()) { notifyError('Please enter memory content'); return }
-    if (content.length > MAX_CHARS) { notifyError(`Max ${MAX_CHARS} characters`); return }
+    if (!content.trim()) { notifyError(t('memory.contentRequired')); return }
+    if (content.length > MAX_CHARS) {
+      notifyError(t('memory.contentTooLong', { count: MAX_CHARS }))
+      return
+    }
     setLoading(true)
     try {
       await onAdd(content.trim(), category)
@@ -61,11 +66,11 @@ function AddMemoryForm({ onAdd, onCancel }) {
         style={{ background: 'var(--surface-elevated)', border: '1px solid var(--border)' }}
       >
         <div className="flex items-center justify-between mb-3">
-          <span className="text-[15px] font-semibold" style={{ color: 'var(--fg)' }}>New Memory</span>
+          <span className="text-[15px] font-semibold" style={{ color: 'var(--fg)' }}>{t('memory.new')}</span>
           <button
             type="button"
             onClick={onCancel}
-            aria-label="Cancel adding memory"
+            aria-label={t('memory.cancelAdd')}
             className={cn('flex h-7 w-7 items-center justify-center rounded-lg', FOCUS_RING)}
             style={{ color: 'var(--fg-soft)' }}
           >
@@ -78,10 +83,13 @@ function AddMemoryForm({ onAdd, onCancel }) {
             <textarea
               value={content}
               onChange={e => setContent(e.target.value)}
-              placeholder="Enter memory content…"
+              placeholder={t('memory.contentPlaceholder')}
               maxLength={MAX_CHARS}
               rows={3}
-              aria-label="Memory content"
+              // Memory content is the reader's own prose: it keeps its own
+              // direction rather than the interface's.
+              dir="auto"
+              aria-label={t('memory.content')}
               className={cn(
                 'w-full rounded-lg px-3 py-2.5 text-[15px] resize-none transition-colors duration-150',
                 FOCUS_RING
@@ -105,7 +113,7 @@ function AddMemoryForm({ onAdd, onCancel }) {
           </div>
 
           <div>
-            <span className="label-xs block mb-1.5" id="memory-category-label">Category</span>
+            <span className="label-xs block mb-1.5" id="memory-category-label">{t('memory.category')}</span>
             {/* One choice out of a fixed set: a radiogroup, so a screen reader
                 announces the selection and arrow keys move between options
                 instead of Tab walking every category. */}
@@ -134,16 +142,16 @@ function AddMemoryForm({ onAdd, onCancel }) {
                     border:      `1px solid ${category === opt.value ? 'var(--border-focus)' : 'transparent'}`,
                   }}
                 >
-                  {opt.label}
+                  {t(opt.labelKey)}
                 </button>
               ))}
             </div>
           </div>
 
           <div className="flex gap-2 justify-end pt-1">
-            <Button variant="ghost" size="sm" onClick={onCancel}>Cancel</Button>
+            <Button variant="ghost" size="sm" onClick={onCancel}>{t('common.cancel')}</Button>
             <Button variant="primary" size="sm" loading={loading} onClick={handleSubmit}>
-              Save Memory
+              {t('memory.save')}
             </Button>
           </div>
         </div>

@@ -1,6 +1,8 @@
 import { AlertTriangle, CheckCircle2 } from 'lucide-react'
+import { useI18n } from '@/i18n'
 
 export default function GoldenSetValidationResult({ result, error }) {
+  const { t } = useI18n()
   if (error) {
     return (
       <div role="alert" className="rounded-lg px-3 py-2 text-[13px]" style={dangerStyle}>
@@ -31,15 +33,23 @@ export default function GoldenSetValidationResult({ result, error }) {
         ) : (
           <AlertTriangle size={14} aria-hidden="true" />
         )}
-        <span>{result.valid ? 'Golden Set is valid' : 'Golden Set needs changes'}</span>
+        <span>{t(result.valid ? 'importer.valid' : 'importer.needsChanges')}</span>
       </div>
       <p className="mt-1 tabular-nums">
-        {validItems} valid · {invalidItems} invalid · {result.total_items || 0} total
+        {t('importer.itemCounts', {
+          valid: validItems,
+          invalid: invalidItems,
+          total: result.total_items || 0,
+        })}
       </p>
       {preparation && (
         <p className="mt-1 tabular-nums">
-          {preparation.ready || 0} ready · {preparation.unresolved || 0} unresolved ·{' '}
-          {preparation.ambiguous || 0} ambiguous · {preparation.unanswerable || 0} unanswerable
+          {t('importer.preparationCounts', {
+            ready: preparation.ready || 0,
+            unresolved: preparation.unresolved || 0,
+            ambiguous: preparation.ambiguous || 0,
+            unanswerable: preparation.unanswerable || 0,
+          })}
         </p>
       )}
       {preparation &&
@@ -49,21 +59,25 @@ export default function GoldenSetValidationResult({ result, error }) {
           preparation.unresolved_facts ||
           preparation.unready_files) > 0 && (
           <p className="mt-1 tabular-nums">
-            {preparation.chunk_ready || 0} chunk-ready / {preparation.file_fallback || 0} file
-            fallback / {preparation.resolved_facts || 0} facts resolved /{' '}
-            {preparation.unresolved_facts || 0} facts unresolved /{' '}
-            {preparation.unready_files || 0} files unready
+            {t('importer.resolutionCounts', {
+              chunkReady: preparation.chunk_ready || 0,
+              fileFallback: preparation.file_fallback || 0,
+              resolvedFacts: preparation.resolved_facts || 0,
+              unresolvedFacts: preparation.unresolved_facts || 0,
+              unreadyFiles: preparation.unready_files || 0,
+            })}
           </p>
         )}
+      {/* Validation messages are the server's own text. */}
       {result.errors?.length > 0 && (
-        <ul className="mt-2 list-disc space-y-1 pl-5">
+        <ul className="mt-2 list-disc space-y-1 ps-5">
           {result.errors.map((entry, index) => (
             <li key={`${entry.item_index ?? 'document'}-${index}`}>{entry.message}</li>
           ))}
         </ul>
       )}
       {result.warnings?.length > 0 && (
-        <ul className="mt-2 list-disc space-y-1 pl-5" style={{ color: 'var(--warning)' }}>
+        <ul className="mt-2 list-disc space-y-1 ps-5" style={{ color: 'var(--warning)' }}>
           {result.warnings.map((entry, index) => (
             <li key={`warning-${entry.item_index ?? 'document'}-${index}`}>{entry.message}</li>
           ))}

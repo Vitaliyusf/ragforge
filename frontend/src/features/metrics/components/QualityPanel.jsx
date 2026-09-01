@@ -10,21 +10,22 @@ import DeepLink from '@/components/observability/DeepLink'
 import { conversationLink } from '@/lib/observability/deepLinks'
 import Histogram from './charts/Histogram'
 import {
-  CITATION_DENOMINATOR_NOTE,
-  CONFIDENCE_LABELS,
+  CONFIDENCE_LABEL_KEYS,
   EMPTY,
-  HALLUCINATION_VERDICT_LABELS,
+  HALLUCINATION_VERDICT_LABEL_KEYS,
   HALLUCINATION_VERDICT_VARIANTS,
   METRIC_LABELS,
-  MIXED_HALLUCINATION_NOTE,
   formatCount,
   formatDecimal,
   formatPercent,
   formatScore,
   labelFor,
+  translatedLabelFor,
   scoreVariant,
   thresholdVariant,
 } from './metricsConfig'
+import { intlLocale } from '@/lib/formatting/datetime'
+import { useI18n } from '@/i18n'
 
 const VARIANT_COLORS = {
   default: 'var(--fg)',
@@ -75,15 +76,16 @@ function Rate({ label, value, hint, variant = 'default' }) {
  * break the one-section-one-request rule. The rate appears in the KPI row.
  */
 export default function QualityPanel({ data, loading, error, onRetry }) {
+  const { locale, t } = useI18n()
   if (loading && !data) return <TabSkeleton />
 
   if (error) {
     return (
       <EmptyState
         icon={AlertTriangle}
-        title="Could not load quality metrics"
+        title={t('quality.loadFailed')}
         description={error}
-        action={onRetry ? <Button onClick={onRetry}>Retry</Button> : undefined}
+        action={onRetry ? <Button onClick={onRetry}>{t('common.retry')}</Button> : undefined}
       />
     )
   }
@@ -92,8 +94,8 @@ export default function QualityPanel({ data, loading, error, onRetry }) {
     return (
       <EmptyState
         icon={ShieldCheck}
-        title="No quality data"
-        description="No judged turns were recorded in this window."
+        title={t('quality.noData')}
+        description={t('quality.noDataDescription')}
       />
     )
   }
@@ -111,33 +113,34 @@ export default function QualityPanel({ data, loading, error, onRetry }) {
     <div className="flex flex-col gap-4">
       <Card>
         <CardHeader
-          title="Quality rates"
-          description={`${data.scored_turns ?? 0} of ${data.turns ?? 0} turns carried a judge score.`}
+          title={t('quality.rates')}
+          description={t('quality.ratesDescription', {
+            scored: data.scored_turns ?? 0,
+            total: data.turns ?? 0,
+          })}
         />
         <dl className="grid grid-cols-2 gap-4 lg:grid-cols-4">
           <Rate
             label={METRIC_LABELS.mean_groundedness}
             value={formatScore(data.mean_groundedness)}
-            hint="judge score, 0–1"
+            hint={t('quality.judgeScoreRange')}
             variant={scoreVariant(data.mean_groundedness)}
           />
           <Rate
             label={METRIC_LABELS.hallucination_rate}
             value={formatPercent(data.hallucination_rate)}
-            hint={`Claim-level, over ${formatCount(judged)} judged ${
-              judged === 1 ? 'turn' : 'turns'
-            }`}
+            hint={t('quality.claimLevelOver', { count: formatCount(judged) })}
             variant={thresholdVariant(data.hallucination_rate, 'hallucination_rate')}
           />
           <Rate
             label={METRIC_LABELS.revision_rate}
             value={formatPercent(data.revision_rate)}
-            hint="of turns that were evaluated for revision"
+            hint={t('quality.evaluatedForRevision')}
           />
           <Rate
             label={METRIC_LABELS.guardrail_block_rate}
             value={formatPercent(data.guardrail_block_rate)}
-            hint="of turns that reached a guardrail"
+            hint={t('quality.reachedGuardrail')}
             variant={thresholdVariant(data.guardrail_block_rate, 'guardrail_block_rate')}
           />
         </dl>
@@ -145,32 +148,35 @@ export default function QualityPanel({ data, loading, error, onRetry }) {
 
       <Card>
         <CardHeader
-          title="Hallucination"
-          description="From the judge's claim analysis: how much of each answer the retrieved context did not support."
+          title={t('quality.hallucination')}
+          description={t('quality.hallucinationDescription')}
         />
         {mixedWindow && (
           <p className="mb-3 text-[12px]" style={{ color: 'var(--warning)' }}>
-            {MIXED_HALLUCINATION_NOTE}
+            {t('quality.mixedHallucinationNote')}
           </p>
         )}
         <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
           <StatCard
             label={METRIC_LABELS.hallucination_rate}
             value={formatPercent(data.hallucination_rate)}
-            subLabel={`${formatCount(judged)} judged, ${formatCount(
-              withoutVerdict
-            )} without a verdict`}
+            subLabel={t('quality.judgedWithoutVerdict', {
+              judged: formatCount(judged),
+              without: formatCount(withoutVerdict),
+            })}
             variant={thresholdVariant(data.hallucination_rate, 'hallucination_rate')}
           />
           <StatCard
             label={METRIC_LABELS.hallucination_severe_rate}
             value={formatPercent(data.hallucination_severe_rate)}
-            subLabel="answers a reader could act on wrongly"
+            subLabel={t('quality.actOnWrongly')}
           />
           <StatCard
             label={METRIC_LABELS.mean_unsupported_claims}
             value={formatDecimal(data.mean_unsupported_claims)}
-            subLabel={`over ${formatCount(data.unsupported_claim_turns)} answers`}
+            subLabel={t('quality.overAnswers', {
+              count: formatCount(data.unsupported_claim_turns),
+            })}
           />
           {showProxy && (
             <StatCard
@@ -181,20 +187,21 @@ export default function QualityPanel({ data, loading, error, onRetry }) {
               // beside it: a threshold over one score is a different claim.
               subLabel={
                 threshold != null
-                  ? `groundedness below ${formatScore(threshold)}, over ${formatCount(
-                      data.scored_turns
-                    )} scored turns`
-                  : 'threshold over the judge groundedness score'
+                  ? t('quality.proxyThreshold', {
+                      threshold: formatScore(threshold),
+                      count: formatCount(data.scored_turns),
+                    })
+                  : t('quality.proxyGeneric')
               }
             />
           )}
         </div>
         <div className="mt-4">
           <Histogram
-            label="Answers by hallucination verdict"
+            label={t('quality.verdictChart')}
             accent="var(--danger)"
             buckets={(data.hallucination_verdict_mix || []).map((row) => ({
-              label: labelFor(HALLUCINATION_VERDICT_LABELS, row?.verdict),
+              label: translatedLabelFor(HALLUCINATION_VERDICT_LABEL_KEYS, row?.verdict, t),
               count: Number(row?.count) || 0,
             }))}
           />
@@ -203,8 +210,8 @@ export default function QualityPanel({ data, loading, error, onRetry }) {
 
       <Card>
         <CardHeader
-          title="Citations"
-          description="Whether answers cite the passages that support them, and whether those citations hold up."
+          title={t('quality.citations')}
+          description={t('quality.citationsDescription')}
         />
         <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
           <StatCard
@@ -212,45 +219,49 @@ export default function QualityPanel({ data, loading, error, onRetry }) {
             value={formatPercent(data.mean_citation_precision)}
             // The excluded count travels with the mean: a precision of 100%
             // over two answers is not the same claim as one over two hundred.
-            subLabel={`over ${formatCount(data.citation_precision_turns)} answers · ${formatCount(
-              data.citation_precision_excluded
-            )} had no citations`}
+            subLabel={t('quality.precisionSubLabel', {
+              count: formatCount(data.citation_precision_turns),
+              excluded: formatCount(data.citation_precision_excluded),
+            })}
             variant={scoreVariant(data.mean_citation_precision)}
           />
           <StatCard
             label={METRIC_LABELS.mean_citation_recall}
             value={formatPercent(data.mean_citation_recall)}
-            subLabel={`over ${formatCount(data.citation_recall_turns)} answers · ${formatCount(
-              data.citation_recall_excluded
-            )} had no supportable claims`}
+            subLabel={t('quality.recallSubLabel', {
+              count: formatCount(data.citation_recall_turns),
+              excluded: formatCount(data.citation_recall_excluded),
+            })}
             variant={scoreVariant(data.mean_citation_recall)}
           />
           <StatCard
             label={METRIC_LABELS.citation_f1}
             value={formatPercent(data.citation_f1)}
-            subLabel="harmonic mean of the two means"
+            subLabel={t('quality.harmonicMean')}
           />
           <StatCard
             label={METRIC_LABELS.mean_citation_count}
             value={formatDecimal(data.mean_citation_count)}
-            subLabel={`${formatCount(data.answers_with_citations)} answers cited a source`}
+            subLabel={t('quality.citedASource', {
+              count: formatCount(data.answers_with_citations),
+            })}
           />
         </div>
         <p className="mt-3 text-[12px]" style={{ color: 'var(--fg-soft)' }}>
-          {CITATION_DENOMINATOR_NOTE}
+          {t('quality.citationDenominatorNote')}
         </p>
       </Card>
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
         {[
-          ['Groundedness', data.groundedness_histogram, 'var(--primary)'],
-          ['Completeness', data.completeness_histogram, 'var(--info)'],
-          ['Safety', data.safety_histogram, 'var(--success)'],
-        ].map(([title, rows, accent]) => (
-          <Card key={title}>
-            <CardHeader title={title} description="Score distribution, 0–1." />
+          ['eval.groundedness', data.groundedness_histogram, 'var(--primary)'],
+          ['eval.completeness', data.completeness_histogram, 'var(--info)'],
+          ['eval.safety', data.safety_histogram, 'var(--success)'],
+        ].map(([titleKey, rows, accent]) => (
+          <Card key={titleKey}>
+            <CardHeader title={t(titleKey)} description={t('quality.scoreDistribution')} />
             <Histogram
-              label={`${title} score distribution`}
+              label={t('quality.scoreDistributionChart', { name: t(titleKey) })}
               accent={accent}
               buckets={toBuckets(rows)}
             />
@@ -259,12 +270,15 @@ export default function QualityPanel({ data, loading, error, onRetry }) {
       </div>
 
       <Card>
-        <CardHeader title="Confidence mix" description="Self-reported confidence per turn." />
+        <CardHeader
+          title={t('quality.confidenceMix')}
+          description={t('quality.confidenceMixDescription')}
+        />
         <Histogram
-          label="Turns by reported confidence level"
+          label={t('quality.confidenceChart')}
           accent="var(--warning)"
           buckets={(data.confidence_mix || []).map((row) => ({
-            label: labelFor(CONFIDENCE_LABELS, row?.level),
+            label: translatedLabelFor(CONFIDENCE_LABEL_KEYS, row?.level, t),
             count: Number(row?.count) || 0,
           }))}
         />
@@ -272,25 +286,25 @@ export default function QualityPanel({ data, loading, error, onRetry }) {
 
       <Card>
         <CardHeader
-          title="Worst turns"
-          description="Lowest groundedness in this window, worst first. Identifiers, scores and claim counts only — no conversation or claim text."
+          title={t('quality.worstTurns')}
+          description={t('quality.worstTurnsDescription')}
         />
         {worstTurns.length ? (
           <div className="overflow-x-auto">
             <table className="w-full text-[13px]">
-              <caption className="sr-only">Turns with the lowest groundedness scores</caption>
+              <caption className="sr-only">{t('quality.worstTurnsCaption')}</caption>
               <thead>
                 <tr style={{ color: 'var(--fg-muted)' }}>
-                  <th scope="col" className="py-1.5 pr-3 text-left font-medium">Turn</th>
-                  <th scope="col" className="py-1.5 pr-3 text-left font-medium">Recorded</th>
-                  <th scope="col" className="py-1.5 pr-3 text-right font-medium">Groundedness</th>
-                  <th scope="col" className="py-1.5 pr-3 text-right font-medium">Completeness</th>
-                  <th scope="col" className="py-1.5 pr-3 text-right font-medium">Safety</th>
-                  <th scope="col" className="py-1.5 pr-3 text-right font-medium">Unsupported claims</th>
-                  <th scope="col" className="py-1.5 pr-3 text-left font-medium">Hallucination</th>
-                  <th scope="col" className="py-1.5 pr-3 text-left font-medium">Confidence</th>
-                  <th scope="col" className="py-1.5 text-left font-medium">
-                    <span className="sr-only">Open the conversation</span>
+                  <th scope="col" className="py-1.5 pe-3 text-start font-medium">{t('quality.turn')}</th>
+                  <th scope="col" className="py-1.5 pe-3 text-start font-medium">{t('quality.recorded')}</th>
+                  <th scope="col" className="py-1.5 pe-3 text-end font-medium">{t('eval.groundedness')}</th>
+                  <th scope="col" className="py-1.5 pe-3 text-end font-medium">{t('eval.completeness')}</th>
+                  <th scope="col" className="py-1.5 pe-3 text-end font-medium">{t('eval.safety')}</th>
+                  <th scope="col" className="py-1.5 pe-3 text-end font-medium">{t('quality.unsupportedClaims')}</th>
+                  <th scope="col" className="py-1.5 pe-3 text-start font-medium">{t('quality.hallucination')}</th>
+                  <th scope="col" className="py-1.5 pe-3 text-start font-medium">{t('quality.confidence')}</th>
+                  <th scope="col" className="py-1.5 text-start font-medium">
+                    <span className="sr-only">{t('quality.openConversation')}</span>
                   </th>
                 </tr>
               </thead>
@@ -301,36 +315,38 @@ export default function QualityPanel({ data, loading, error, onRetry }) {
                     className="border-t"
                     style={{ borderColor: 'var(--border)' }}
                   >
+                    {/* A turn id is an identifier an operator may copy. */}
                     <th
                       scope="row"
-                      className="max-w-[16rem] truncate py-1.5 pr-3 text-left font-mono text-[12px] font-normal"
+                      dir="ltr"
+                      className="max-w-[16rem] truncate py-1.5 pe-3 text-start font-mono text-[12px] font-normal [unicode-bidi:isolate]"
                       style={{ color: 'var(--fg)' }}
                       title={turn.turn_id}
                     >
                       {turn.turn_id || EMPTY}
                     </th>
-                    <td className="py-1.5 pr-3" style={{ color: 'var(--fg-muted)' }}>
-                      {turn.ts ? new Date(turn.ts).toLocaleString() : EMPTY}
+                    <td className="py-1.5 pe-3" style={{ color: 'var(--fg-muted)' }}>
+                      {turn.ts ? new Date(turn.ts).toLocaleString(intlLocale(locale)) : EMPTY}
                     </td>
                     <td
-                      className="py-1.5 pr-3 text-right tabular-nums font-medium"
+                      className="py-1.5 pe-3 text-end tabular-nums font-medium"
                       style={{ color: VARIANT_COLORS[scoreVariant(turn.groundedness)] }}
                     >
                       {formatScore(turn.groundedness)}
                     </td>
-                    <td className="py-1.5 pr-3 text-right tabular-nums" style={{ color: 'var(--fg-muted)' }}>
+                    <td className="py-1.5 pe-3 text-end tabular-nums" style={{ color: 'var(--fg-muted)' }}>
                       {formatScore(turn.completeness)}
                     </td>
-                    <td className="py-1.5 pr-3 text-right tabular-nums" style={{ color: 'var(--fg-muted)' }}>
+                    <td className="py-1.5 pe-3 text-end tabular-nums" style={{ color: 'var(--fg-muted)' }}>
                       {formatScore(turn.safety)}
                     </td>
-                    <td className="py-1.5 pr-3 text-right tabular-nums" style={{ color: 'var(--fg-muted)' }}>
+                    <td className="py-1.5 pe-3 text-end tabular-nums" style={{ color: 'var(--fg-muted)' }}>
                       {turn.unsupported_claim_count == null
                         ? EMPTY
                         : formatCount(turn.unsupported_claim_count)}
                     </td>
                     <td
-                      className="py-1.5 pr-3"
+                      className="py-1.5 pe-3"
                       style={{
                         color:
                           VARIANT_COLORS[
@@ -339,11 +355,11 @@ export default function QualityPanel({ data, loading, error, onRetry }) {
                       }}
                     >
                       {turn.hallucination_verdict
-                        ? labelFor(HALLUCINATION_VERDICT_LABELS, turn.hallucination_verdict)
+                        ? translatedLabelFor(HALLUCINATION_VERDICT_LABEL_KEYS, turn.hallucination_verdict, t)
                         : EMPTY}
                     </td>
-                    <td className="py-1.5 pr-3" style={{ color: 'var(--fg-muted)' }}>
-                      {labelFor(CONFIDENCE_LABELS, turn.confidence)}
+                    <td className="py-1.5 pe-3" style={{ color: 'var(--fg-muted)' }}>
+                      {translatedLabelFor(CONFIDENCE_LABEL_KEYS, turn.confidence, t)}
                     </td>
                     {/* The metrics store records the same conversation id the
                         chat route is keyed by, so a low score is one click
@@ -360,8 +376,8 @@ export default function QualityPanel({ data, loading, error, onRetry }) {
           <EmptyState
             icon={ShieldCheck}
             size="sm"
-            title="No scored turns"
-            description="Nothing in this window carried a groundedness score."
+            title={t('quality.noScoredTurns')}
+            description={t('quality.noScoredTurnsDescription')}
           />
         )}
       </Card>

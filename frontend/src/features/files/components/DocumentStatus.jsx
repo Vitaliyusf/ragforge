@@ -3,6 +3,7 @@
 import { CheckCircle2, CircleDashed, Loader2, PauseCircle, XCircle } from 'lucide-react'
 import StatusIndicator from '@/components/status/StatusIndicator'
 import { usePrefersReducedMotion } from '@/lib/accessibility/usePrefersReducedMotion'
+import { useI18n } from '@/i18n'
 import { getDocumentStatus, getStatusPresentation, summarizePipeline } from '../documentModel'
 
 /**
@@ -11,9 +12,10 @@ import { getDocumentStatus, getStatusPresentation, summarizePipeline } from '../
  * The pipeline detail is a separate cell, so this never repeats it.
  */
 export function DocumentStatusBadge({ file, size = 'sm' }) {
+  const { t } = useI18n()
   const status = getDocumentStatus(file)
-  const { label, tone } = getStatusPresentation(status)
-  return <StatusIndicator tone={tone} label={label} size={size} />
+  const { labelKey, tone } = getStatusPresentation(status)
+  return <StatusIndicator tone={tone} label={t(labelKey)} size={size} />
 }
 
 const PIPELINE_ICONS = {
@@ -41,6 +43,7 @@ const PIPELINE_COLORS = {
  * only a genuinely running stage is allowed to animate.
  */
 export function DocumentPipelineCell({ file }) {
+  const { t } = useI18n()
   const reducedMotion = usePrefersReducedMotion()
   const pipeline = summarizePipeline(file)
   const Icon = PIPELINE_ICONS[pipeline.state] ?? CircleDashed
@@ -53,7 +56,7 @@ export function DocumentPipelineCell({ file }) {
       data-pipeline-state={pipeline.state}
     >
       <Icon size={12} className={`shrink-0 ${spinning ? 'animate-spin' : ''}`} aria-hidden="true" />
-      {pipeline.label}
+      {t(pipeline.labelKey)}{pipeline.suffix ?? ''}
     </span>
   )
 }
