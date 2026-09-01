@@ -136,7 +136,7 @@ Every placeholder in `.env.example` must be replaced with a separately generated
 
 ### Infrastructure gates that application code does not solve
 
-- Do not promote the current frontend to production while `package-lock.json` pins `next@14.2.35`. Next.js 14 is unsupported and appears in 2026 vulnerability disclosures. Upgrade at least to the supported backport `15.5.20` (or a newer Active LTS), run `npm audit --omit=dev`, the full frontend test suite, and a production build — only then remove this gate. Blocking `Next-Action` and unexpected WebSocket upgrades in Caddy is defense-in-depth, not a substitute for the upgrade.
+- Keep the pinned Next.js release inside its supported line and treat dependency review as a deployment gate: run `npm audit --omit=dev`, the full frontend test suite, and a production build before promotion. The Caddy rules that block `Next-Action` and unexpected WebSocket upgrades are defense-in-depth, not a substitute for timely framework updates.
 - Disks, snapshots, and backups encrypted with the target environment's KMS.
 - A real secret manager instead of `.env` in production.
 - MFA or enterprise OIDC/SAML for admin accounts before internet exposure.
