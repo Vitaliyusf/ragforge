@@ -4,6 +4,7 @@ from __future__ import annotations
 import threading
 import time
 from collections import defaultdict
+from collections.abc import Callable
 
 import pytest
 
@@ -25,8 +26,10 @@ def test_producer_forwards_optional_key_without_breaking_unkeyed_topics(
 ) -> None:
     class Config:
         kafka_bootstrap_servers = "unused"
+        service_name = "test"
         kafka_max_retries = 1
         kafka_retry_delay = 0
+        kafka_consumer_timeout_ms = 1
         kafka_api_version = (0, 10, 1)
 
     class RawProducer:
@@ -68,7 +71,7 @@ def test_partition_workers_overlap_keys_preserve_key_order_and_bound_concurrency
 
     consumers = iter(Consumer(assigned) for assigned in records)
 
-    def target(consumer: Consumer):
+    def target(consumer: Consumer) -> Callable[[], None]:
         def run() -> None:
             nonlocal active, maximum
             for sequence, key in consumer.assigned:
@@ -112,7 +115,7 @@ def test_one_partition_failure_does_not_reorder_another_partition() -> None:
 
     consumers = iter(Consumer(assigned) for assigned in records)
 
-    def target(consumer: Consumer):
+    def target(consumer: Consumer) -> Callable[[], None]:
         def run() -> None:
             for sequence, key in consumer.assigned:
                 if key == "failed" and sequence == 0:
@@ -143,7 +146,7 @@ def test_close_unblocks_all_consumers_without_leaking_threads() -> None:
         def close(self) -> None:
             self.released.set()
 
-    def target(consumer: Consumer):
+    def target(consumer: Consumer) -> Callable[[], None]:
         def run() -> None:
             started.wait(timeout=1.0)
             consumer.released.wait(timeout=1.0)
