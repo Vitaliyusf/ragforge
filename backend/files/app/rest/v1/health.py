@@ -64,9 +64,9 @@ def _rabbitmq_ready() -> bool:
 
 
 def _kafka_ready() -> bool:
-    from app.main import _kafka_consumer
+    from app.main import _kafka_consumer_pool
 
-    return bool(_kafka_consumer and _kafka_consumer.is_connected())
+    return bool(_kafka_consumer_pool and _kafka_consumer_pool.is_connected())
 
 
 router = create_health_router(_mongodb_ready, _rabbitmq_ready, _kafka_ready)
