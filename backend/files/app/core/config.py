@@ -24,6 +24,12 @@ class Settings(BaseSettings):
     kafka_max_retries: int = Field(default=10, description="Kafka connection retry count")
     kafka_retry_delay: int = Field(default=2, description="Kafka retry delay in seconds")
     kafka_consumer_timeout_ms: int = Field(default=1000, description="Kafka poll timeout")
+    kafka_pipeline_consumer_workers: int = Field(
+        default=1,
+        ge=1,
+        le=32,
+        description="Bounded consumers sharing each ingestion-stage group",
+    )
     kafka_api_version: tuple[int, int, int] = (0, 10, 1)
     files_events_topic: str = Field(
         default="files.events",

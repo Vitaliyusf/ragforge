@@ -20,6 +20,7 @@ from app.db.interfaces import IVectorStore
 from app.messaging.interfaces import IProducer
 from app.schemas.vector import KafkaReplyEnvelope
 from shared.auth import attach_internal_auth_context
+from shared.kafka_base import kafka_document_key
 
 
 class BaseVectorService(ABC):
@@ -58,11 +59,13 @@ class BaseVectorService(ABC):
 
     def _send(self, topic: str, message: Dict[str, Any]) -> None:
         """Send a message without flushing (batch-safe)."""
-        self.producer.send(topic, attach_internal_auth_context(message))
+        envelope = attach_internal_auth_context(message)
+        self.producer.send(topic, envelope, key=kafka_document_key(envelope))
 
     def _send_and_flush(self, topic: str, message: Dict[str, Any]) -> None:
         """Send a message and immediately flush the producer."""
-        self.producer.send(topic, attach_internal_auth_context(message))
+        envelope = attach_internal_auth_context(message)
+        self.producer.send(topic, envelope, key=kafka_document_key(envelope))
         self.producer.flush()
 
     def _flush(self) -> None:

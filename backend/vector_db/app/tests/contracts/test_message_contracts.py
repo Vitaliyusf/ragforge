@@ -135,6 +135,9 @@ def test_canonical_upsert_command_publishes_reply_and_completion_event(
         "status": "done",
     }
     assert files_topic_two == "files.requests"
+    assert mock_producer.send.call_args_list[1].kwargs["key"] == "doc-1"
+    assert mock_producer.send.call_args_list[2].kwargs["key"] == "file-1"
+    assert mock_producer.send.call_args_list[3].kwargs["key"] == "file-1"
     assert files_message_two["action"] == "update_stage"
     assert files_message_two["payload"] == {
         "file_id": "file-1",

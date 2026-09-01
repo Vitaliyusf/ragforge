@@ -22,15 +22,17 @@ class RecordingProducer:
 
     def __init__(self):
         self.messages = []
+        self.keys = []
         self.flush_count = 0
         self.failures = {}
 
-    def send(self, topic, message):
+    def send(self, topic, message, key=None):
         failures = self.failures.get(topic, [])
         if failures:
             error = failures.pop(0)
             raise error
         self.messages.append((topic, message))
+        self.keys.append(key)
 
     def flush(self):
         self.flush_count += 1
@@ -256,6 +258,7 @@ def test_process_message_batches_and_preserves_order():
 
     assert len(upserts) == 2
     assert len(completions) == 1
+    assert producer.keys == ["doc-1", "doc-1", "doc-1", "file-1"]
 
     first_upsert = upserts[0]
     assert first_upsert["message_type"] == "command"

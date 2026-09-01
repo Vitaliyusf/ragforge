@@ -11,6 +11,7 @@ from app.db.repository import FileRepository
 from app.messaging.interfaces import IProducer
 from app.services.file_ingestion_state_machine import FileIngestionStateMachine
 from app.services.graph_types import OutboundMessage
+from shared.kafka_base import kafka_document_key
 from app.utils.common import (
     build_message_envelope,
     generate_event_id,
@@ -134,7 +135,11 @@ class FileHandlerBase:
 
     def _publish_messages(self, messages: List[OutboundMessage]) -> None:
         for outbound in messages:
-            self.producer.send(outbound.topic, outbound.message)
+            self.producer.send(
+                outbound.topic,
+                outbound.message,
+                key=kafka_document_key(outbound.message),
+            )
         if messages:
             self.producer.flush()
 

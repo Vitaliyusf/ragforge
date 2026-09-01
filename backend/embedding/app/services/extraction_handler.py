@@ -12,6 +12,7 @@ from app.extraction.factories import FileExtractorFactory
 from app.messaging.interfaces import IProducer
 from app.services.base import BaseKafkaHandlerService
 from shared.auth import attach_internal_auth_context
+from shared.kafka_base import kafka_document_key
 
 
 class ExtractionHandler(BaseKafkaHandlerService):
@@ -128,34 +129,41 @@ class ExtractionHandler(BaseKafkaHandlerService):
         request_id = request.get("request_id") or request.get("correlation_id") or uuid.uuid4().hex
         trace_id = request.get("trace_id") or request_id
         correlation_id = request.get("correlation_id") or request_id
+        message = attach_internal_auth_context({
+            "message_id": uuid.uuid4().hex,
+            "message_type": "command",
+            "action": EmbeddingAction.COMPLETE_EXTRACTION,
+            "source_service": "embedding",
+            "target_service": "files",
+            "request_id": request_id,
+            "trace_id": trace_id,
+            "correlation_id": correlation_id,
+            "timestamp": int(time.time() * 1000),
+            "payload": {
+                "file_id": request.get("file_id"),
+                "document_id": request.get("document_id") or request.get("file_id"),
+                "task_id": request.get("task_id"),
+                "extracted_text": extracted_text,
+                "diagnostics": diagnostics,
+            },
+        })
         self.producer.send(
             self.files_topic,
-            attach_internal_auth_context({
-                "message_id": uuid.uuid4().hex,
-                "message_type": "command",
-                "action": EmbeddingAction.COMPLETE_EXTRACTION,
-                "source_service": "embedding",
-                "target_service": "files",
-                "request_id": request_id,
-                "trace_id": trace_id,
-                "correlation_id": correlation_id,
-                "timestamp": int(time.time() * 1000),
-                "payload": {
-                    "file_id": request.get("file_id"),
-                    "document_id": request.get("document_id") or request.get("file_id"),
-                    "task_id": request.get("task_id"),
-                    "extracted_text": extracted_text,
-                    "diagnostics": diagnostics,
-                },
-            }),
+            message,
+            key=kafka_document_key(message),
         )
         self.producer.flush()
 
     def _update_stage(self, file_id: str, stage: str, status: str) -> None:
-        self.producer.send(self.files_topic, attach_internal_auth_context({
+        message = attach_internal_auth_context({
             "action": EmbeddingAction.UPDATE_STAGE,
             "file_id": file_id,
             "stage": stage,
             "status": status,
-        }))
+        })
+        self.producer.send(
+            self.files_topic,
+            message,
+            key=kafka_document_key(message),
+        )
         self.producer.flush()

@@ -1,4 +1,5 @@
 """Configuration management using pydantic-settings."""
+from pydantic import Field
 from pydantic_settings import BaseSettings
 from typing import Tuple
 
@@ -20,6 +21,7 @@ class Settings(BaseSettings):
     kafka_max_retries: int = 10
     kafka_retry_delay: int = 2
     kafka_consumer_timeout_ms: int = 1000
+    kafka_pipeline_consumer_workers: int = Field(default=1, ge=1, le=32)
     kafka_api_version: Tuple[int, int, int] = (0, 10, 1)
 
     # RabbitMQ configuration (gateway request/reply)

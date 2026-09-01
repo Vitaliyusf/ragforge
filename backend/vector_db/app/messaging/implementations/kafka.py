@@ -6,7 +6,7 @@ from typing import Any, Dict, Iterator, List, Optional
 
 from kafka import KafkaConsumer
 
-from shared.kafka_base import BaseKafkaProducer
+from shared.kafka_base import BaseKafkaProducer, kafka_document_key
 
 from app.messaging.interfaces import IConsumer, IProducer
 from app.core.config import Settings
@@ -26,7 +26,11 @@ class VectorDbKafkaProducer(BaseKafkaProducer, IProducer):
 
     def publish_upsert_completed(self, message: Dict[str, Any]) -> None:
         """Publish the completion event for an upsert request."""
-        self.send(self.config.kafka_upsert_completed_topic, message)
+        self.send(
+            self.config.kafka_upsert_completed_topic,
+            message,
+            key=kafka_document_key(message),
+        )
 
 
 class VectorDbKafkaConsumer(IConsumer):

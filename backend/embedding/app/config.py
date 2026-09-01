@@ -41,6 +41,11 @@ class EmbeddingConfig:
         self.kafka_max_retries: int = int(os.getenv("KAFKA_MAX_RETRIES", "10"))
         self.kafka_retry_delay: int = int(os.getenv("KAFKA_RETRY_DELAY", "2"))
         self.kafka_consumer_timeout_ms: int = int(os.getenv("KAFKA_CONSUMER_TIMEOUT_MS", "1000"))
+        self.kafka_pipeline_consumer_workers: int = int(
+            os.getenv("KAFKA_PIPELINE_CONSUMER_WORKERS", "1")
+        )
+        if not 1 <= self.kafka_pipeline_consumer_workers <= 32:
+            raise ValueError("KAFKA_PIPELINE_CONSUMER_WORKERS must be between 1 and 32")
         self.kafka_api_version: tuple = (0, 10, 1)
 
         # RabbitMQ configuration (gateway request queue)

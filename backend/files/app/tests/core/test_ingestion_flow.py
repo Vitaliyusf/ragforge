@@ -113,6 +113,7 @@ def test_start_file_ingestion_publishes_enveloped_extract_command(config):
 
     command_topic, command_message = producer.messages[0]
     assert command_topic == "embedding.requests"
+    assert producer.keys[0] == "file-2"
     assert command_message["message_type"] == "command"
     assert command_message["action"] == "extract"
     assert command_message["source_service"] == "files"

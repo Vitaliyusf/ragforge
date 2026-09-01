@@ -28,7 +28,7 @@ from __future__ import annotations
 import json
 import logging
 import time
-from typing import Any, Dict, Iterator, Optional, Tuple
+from typing import Any, Dict, Iterator, Mapping, Optional, Tuple
 
 from kafka import KafkaConsumer, KafkaProducer
 from kafka.structs import TopicPartition
@@ -36,6 +36,21 @@ from .auth import attach_internal_auth_context
 from .metrics import METRICS, observe_kafka_consumer_lag
 
 logger = logging.getLogger(__name__)
+
+
+def kafka_document_key(message: Mapping[str, Any]) -> Optional[str]:
+    """Return the ingestion ordering key carried by an event envelope.
+
+    ``document_id`` is the canonical boundary. ``file_id`` is the compatible
+    fallback for older pipeline events that predate the document field.
+    """
+    payload = message.get("payload")
+    if isinstance(payload, Mapping):
+        value = payload.get("document_id") or payload.get("file_id")
+        if value:
+            return str(value)
+    value = message.get("document_id") or message.get("file_id")
+    return str(value) if value else None
 
 
 def _broker_connected(client: Any) -> bool:
@@ -96,6 +111,7 @@ class BaseKafkaProducer:
             try:
                 self._producer = KafkaProducer(
                     bootstrap_servers=self.config.kafka_bootstrap_servers,
+                    key_serializer=lambda key: key.encode("utf-8"),
                     value_serializer=lambda v: json.dumps(v).encode("utf-8"),
                     api_version=self.config.kafka_api_version,
                 )
@@ -122,12 +138,17 @@ class BaseKafkaProducer:
     # IProducer interface
     # ------------------------------------------------------------------
 
-    def send(self, topic: str, message: Dict[str, Any]) -> None:
+    def send(
+        self,
+        topic: str,
+        message: Dict[str, Any],
+        key: Optional[str] = None,
+    ) -> None:
         """Serialize and publish a message to a Kafka topic."""
         if not self._init_producer() or self._producer is None:
             raise RuntimeError("Kafka producer not available")
         attach_internal_auth_context(message)
-        self._producer.send(topic, message)
+        self._producer.send(topic, message, key=key)
 
     def flush(self) -> None:
         """Flush any buffered messages."""
