@@ -37,7 +37,9 @@ def test_add_message_forwards_metadata_to_memory_rpc() -> None:
 
     asyncio.run(service.add_message("chat-1", request))
 
-    payload = rpc_client.send_request.await_args.args[1]
+    rpc_call = rpc_client.send_request.await_args
+    assert rpc_call is not None
+    payload = rpc_call.args[1]
     assert payload["metadata"] == {
         "turnId": "turn-1",
         "answerReview": {"verdict": "pass"},
