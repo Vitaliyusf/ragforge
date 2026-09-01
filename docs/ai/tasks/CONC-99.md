@@ -1,126 +1,54 @@
-# CONC-99 — Final concurrency/load benchmark and portfolio evidence
+# CONC-99 — Final concurrency evidence and portfolio closure
 
-**Phase:** Performance closeout  
-**Priority:** P0 closeout  
-**Branch:** `perf/concurrency-final-evidence`  
-**Depends on:** all accepted `CONC-*` tasks intended for this release
+**Phase:** Performance closeout
+
+**Priority:** P0 closeout
+
+**Branch:** `perf/concurrency-final-evidence`
+
+**Depends on:** accepted `CONC-00` through `CONC-06`, `CONC-09`, and `CONC-10`
+
+**Status:** ACCEPTED
 
 ## Goal
 
-Freeze concurrency configuration, run realistic load, identify the true saturation points, and produce defensible before/after evidence.
+Close the concurrency track with defensible engineering evidence, consolidated
+metrics, an architecture narrative, resume-safe claims, interview stories, and
+explicit limitations. This is not another optimization or benchmark sweep.
 
-Do not use this task for broad new optimization. It is an evidence and finding task.
+The canonical artifact is
+[`docs/ai/CONCURRENCY_EVIDENCE.md`](../CONCURRENCY_EVIDENCE.md).
 
-## Test profiles
+## Accepted closure boundary
 
-At minimum:
+- Core capacity and retrieval quality: **PASS**.
+- Final integrated soak: **DEFERRED / NOT BLOCKING PORTFOLIO**.
+- CrossEncoder cold-start warmup/readiness: follow-up.
+- Historical structured-output event: supporting log evidence lost.
+- `CONC-11` frontend network control: deferred for low portfolio return.
 
-### A. Chat / RAG
-- regular RAG;
-- extended RAG;
-- direct LLM;
-- concurrency 1/4/8/16 and higher only if stable.
+No completed concurrency task is reopened by this closeout. No performance,
+retrieval, broker, load, backend, frontend, or Docker benchmark is rerun.
 
-### B. Mixed AI workload
-Run a mix of:
-- live chat;
-- memory retrieval;
-- embedding query;
-- background eval/summary where supported.
+## Acceptance
 
-Prove live-traffic QoS under background pressure.
+- Every completed concurrency task has an evidence inventory entry.
+- Measurements are classified A–D and retain workload/runtime caveats.
+- Controlled benchmarks are not described as production throughput or
+  end-to-end latency.
+- Missing metrics remain missing; no numeric claim is manufactured.
+- Architecture covers I/O, model work, backpressure, ordering, and deliberate
+  horizontal-scale constraints.
+- Resume bullets, four engineering stories, rejected claims, and deferred work
+  are recorded in the canonical artifact.
 
-### C. Ingestion
-- multiple documents;
-- different sizes/chunk counts;
-- 1/4/8/16 concurrent docs as supported.
+## Validation
 
-### D. Memory scale
-- owner corpus sizes up to the scale supported by `CONC-07`.
-
-### E. Overload
-Intentionally exceed supported concurrency and prove:
-- bounded queues;
-- no unbounded memory growth;
-- typed timeout/overload behavior;
-- recovery after pressure is removed.
-
-## Required metrics
-
-Report before vs final:
-
-- throughput;
-- p50/p95/p99;
-- TTFT;
-- tokens/s;
-- queue wait;
-- broker lag;
-- executor/scheduler saturation;
-- CPU/RAM;
-- GPU utilization/memory when available;
-- timeout/error/fallback;
-- reranker success/fallback;
-- embedding batch-size distribution;
-- Qdrant operation latency;
-- Mongo examined/returned evidence where available.
-
-## Correctness/quality gates
-
-Run the authoritative relevant benchmarks unchanged.
-
-At minimum:
-- retrieval benchmark;
-- Memory 624 deterministic benchmark;
-- tenant/user leakage assertions;
-- chat/stream safety tests;
-- ingestion idempotency/order tests.
-
-Any performance improvement that materially regresses quality must be reported, not hidden.
-
-## Capacity statement
-
-Produce a concise table:
-
-```text
-workload
-supported concurrency
-saturation signal
-p95
-throughput
-primary bottleneck
-recommended runtime setting
-```
-
-Separate:
-- local demo hardware;
-- production inference/runtime assumptions.
-
-## Final artifacts
-
-- machine-readable JSON;
-- concise Markdown report;
-- before/after charts only if repository benchmark conventions support them;
-- exact config snapshot;
-- Git/source fingerprint;
-- limitations;
-- strongest measured portfolio bullets.
+Documentation/data validation only, followed by `git diff --check`. Do not run
+Retrieval220, Memory 624, Kafka/reranker/load benchmarks, service suites,
+frontend tests, or Docker builds for this closeout.
 
 ## Stop rule
 
-If the benchmark reveals a concrete blocker, create a narrowly scoped follow-up task. Do not fix it inside `CONC-99`.
-
-After evidence is captured, freeze the release candidate.
-## Validation authority
-
-This task owns the **only full authoritative validation** for the concurrency track.
-
-Run the complete affected backend/frontend suites, canonical mypy, Ruff, Docker/Compose validation, retrieval benchmark, Memory 624 benchmark, final load benchmark and `git diff --check` here — not in every earlier task.
-
-## Execution rules
-
-- Preserve unrelated work.
-- Never reset/stash/revert/clean.
-- No commit/push unless explicitly requested.
-- Freeze source before the final benchmark.
-- Fix only concrete failures found by this final evidence pass.
-- STOP after final evidence.
+After documentation validation is green, return `CONC-99 ACCEPT`. Do not start
+another optimization task. Do not commit or push.
