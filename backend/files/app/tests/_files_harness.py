@@ -23,9 +23,11 @@ class DummyProducer:
 
     def __init__(self):
         self.messages = []
+        self.keys = []
 
-    def send(self, topic, message):
+    def send(self, topic, message, key=None):
         self.messages.append((topic, message))
+        self.keys.append(key)
 
     def flush(self):
         return None

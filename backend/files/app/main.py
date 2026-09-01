@@ -6,7 +6,7 @@ dedicated modules.
 """
 import os
 from contextlib import asynccontextmanager
-from threading import Thread
+from functools import partial
 
 from fastapi import FastAPI
 
@@ -32,6 +32,7 @@ from app.db.session import (
     get_files_collection,
 )
 from shared.kafka_base import BaseKafkaProducer
+from shared.kafka_workers import KafkaConsumerWorkerPool
 from app.messaging.factories import MessageQueueFactory
 from app.messaging.implementations.rabbitmq import RabbitMQConsumerImpl
 from app.messaging.interfaces import IProducer
@@ -50,9 +51,8 @@ class _KafkaPipelineProducer(BaseKafkaProducer, IProducer):
 # ---------------------------------------------------------------------------
 _logger: ServiceLogger = None
 _kafka_producer: IProducer = None
-_kafka_consumer = None
+_kafka_consumer_pool: KafkaConsumerWorkerPool = None
 _consumer: RabbitMQConsumerImpl = None
-_consumer_thread: Thread = None
 _running = False
 _file_repository: FileRepository = None
 _file_service: FileService = None
@@ -60,7 +60,7 @@ _file_service: FileService = None
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global _logger, _kafka_producer, _kafka_consumer, _consumer, _consumer_thread
+    global _logger, _kafka_producer, _kafka_consumer_pool, _consumer
     global _file_repository, _file_service, _running
 
     # --- startup ---
@@ -92,21 +92,20 @@ async def lifespan(app: FastAPI):
 
     # Kafka remains only for the durable ingestion pipeline. This consumer
     # applies extraction and vector-index stage updates back to file records.
-    _kafka_consumer = MessageQueueFactory.create_pipeline_consumer(settings)
     _running = True
-    _consumer_thread = Thread(
-        target=run_pipeline_updates,
-        args=(
-            _kafka_consumer,
+    _kafka_consumer_pool = KafkaConsumerWorkerPool(
+        worker_count=settings.kafka_pipeline_consumer_workers,
+        consumer_factory=lambda: MessageQueueFactory.create_pipeline_consumer(settings),
+        target_factory=lambda consumer: partial(
+            run_pipeline_updates,
+            consumer,
             _file_service,
             _logger,
             settings.kafka_pipeline_updates_topic,
             lambda: _running,
         ),
-        daemon=True,
-        name="FilesPipelineConsumer",
-    )
-    _consumer_thread.start()
+        thread_name_prefix="FilesPipelineConsumer",
+    ).start()
 
     # RabbitMQ consumer for gateway requests (replaces Kafka consumer thread)
     _consumer = MessageQueueFactory.create_consumer(settings)
@@ -143,12 +142,7 @@ async def lifespan(app: FastAPI):
         await _consumer.stop()
         await executor.shutdown()
         _running = False
-        try:
-            _kafka_consumer.close()
-        except Exception:
-            pass
-        if _consumer_thread and _consumer_thread.is_alive():
-            _consumer_thread.join(timeout=10.0)
+        _kafka_consumer_pool.close(timeout=10.0)
         try:
             _kafka_producer.flush()
         except Exception:

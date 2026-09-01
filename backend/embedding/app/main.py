@@ -3,7 +3,7 @@ import asyncio
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from functools import partial
-from threading import Event, Thread
+from threading import Event
 from typing import Any
 
 from fastapi import FastAPI
@@ -32,6 +32,7 @@ from app.services.extraction_handler import ExtractionHandler
 from app.services.inference_scheduler import create_scheduler
 from shared.logging import ServiceLogger
 from shared.bounded_executor import BoundedExecutor
+from shared.kafka_workers import KafkaConsumerWorkerPool
 
 
 @dataclass
@@ -43,10 +44,8 @@ class EmbeddingRuntime:
     scheduler: Any
     rpc_consumer: Any
     rpc_producer: Any
-    extract_consumer: Any
-    job_consumer: Any
     stop_event: Event
-    threads: list[Thread]
+    consumer_pools: list[KafkaConsumerWorkerPool]
 
 
 @asynccontextmanager
@@ -60,8 +59,6 @@ async def lifespan(app: FastAPI):
         rpc_producer,
         asyncio.get_running_loop(),
     )
-    extract_consumer = MessageQueueFactory.create_consumer(config, config.extract_topic)
-    job_consumer = EmbeddingKafkaConsumer(config)
     job_producer = EmbeddingKafkaProducer(
         producer=producer,
         upsert_topic=config.vector_db_upsert_requested_topic,
@@ -92,7 +89,6 @@ async def lifespan(app: FastAPI):
         config=config,
         tracer=tracer,
     )
-    job_worker = EmbeddingJobConsumerWorker(job_consumer, job_service, logger)
     query_handler = QueryEmbeddingHandler(scheduler, logger, config)
     extraction_handler = ExtractionHandler(
         producer,
@@ -106,34 +102,36 @@ async def lifespan(app: FastAPI):
     )
 
     stop_event = Event()
-    threads = [
-        Thread(
-            target=partial(
+    job_consumer_pool = KafkaConsumerWorkerPool(
+        worker_count=config.kafka_pipeline_consumer_workers,
+        consumer_factory=lambda: EmbeddingKafkaConsumer(config),
+        target_factory=lambda consumer: partial(
                 process_embedding_job_requests,
-                job_consumer,
-                job_worker,
+                consumer,
+                EmbeddingJobConsumerWorker(consumer, job_service, logger),
                 logger,
                 config,
                 stop_event,
-            ),
-            daemon=True,
-            name="EmbeddingJobConsumer",
         ),
-        Thread(
-            target=partial(
+        thread_name_prefix="EmbeddingJobConsumer",
+    ).start()
+    extraction_consumer_pool = KafkaConsumerWorkerPool(
+        worker_count=config.kafka_pipeline_consumer_workers,
+        consumer_factory=lambda: MessageQueueFactory.create_consumer(
+            config,
+            config.extract_topic,
+        ),
+        target_factory=lambda consumer: partial(
                 process_extraction_requests,
-                extract_consumer,
+                consumer,
                 extraction_handler,
                 logger,
                 config,
                 stop_event,
-            ),
-            daemon=True,
-            name="ExtractionConsumer",
         ),
-    ]
-    for thread in threads:
-        thread.start()
+        thread_name_prefix="ExtractionConsumer",
+    ).start()
+    consumer_pools = [job_consumer_pool, extraction_consumer_pool]
 
     rpc_consumer = MessageQueueFactory.create_rabbitmq_consumer(config)
     executor = BoundedExecutor(
@@ -160,10 +158,8 @@ async def lifespan(app: FastAPI):
         scheduler=scheduler,
         rpc_consumer=rpc_consumer,
         rpc_producer=rpc_producer,
-        extract_consumer=extract_consumer,
-        job_consumer=job_consumer,
         stop_event=stop_event,
-        threads=threads,
+        consumer_pools=consumer_pools,
     )
     app.state.embedding_runtime = runtime
     logger.log(
@@ -189,19 +185,14 @@ async def lifespan(app: FastAPI):
         await rpc_consumer.stop()
         await executor.shutdown()
         await rpc_producer.close()
-        for consumer in (extract_consumer, job_consumer):
-            try:
-                consumer.close()
-            except Exception:
+        for consumer_pool in consumer_pools:
+            if not consumer_pool.close(timeout=10.0):
                 logger.log(
                     "main:shutdown",
-                    "Consumer close failed",
-                    {"consumer": type(consumer).__name__},
+                    "Kafka consumer workers did not stop before deadline",
+                    {},
                     hypothesis_id="W",
                 )
-        for thread in threads:
-            if thread.is_alive():
-                thread.join(timeout=10.0)
         if not scheduler.shutdown():
             logger.log(
                 "main:shutdown",

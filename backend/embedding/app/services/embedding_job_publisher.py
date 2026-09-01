@@ -21,6 +21,7 @@ from app.schemas.embedding_job import (
 from app.core.constants import EmbeddingAction, FileStage, FileStatus
 from app.messaging.embedding_kafka import EmbeddingKafkaProducer
 from shared.auth import attach_internal_auth_context
+from shared.kafka_base import kafka_document_key
 
 
 class EmbeddingJobPublisher:
@@ -183,24 +184,26 @@ class EmbeddingJobPublisher:
         stage: str,
         status: str,
     ) -> None:
+        message = attach_internal_auth_context({
+            "message_id": self._generate_message_id(),
+            "message_type": "command",
+            "action": EmbeddingAction.UPDATE_STAGE,
+            "source_service": "embedding",
+            "target_service": "files",
+            "request_id": request_id,
+            "trace_id": trace_id,
+            "correlation_id": correlation_id,
+            "timestamp": self._utc_now_iso(),
+            "payload": {
+                "file_id": file_id,
+                "stage": stage,
+                "status": status,
+            },
+        })
         self._producer.send(
             self._config.files_topic,
-            attach_internal_auth_context({
-                "message_id": self._generate_message_id(),
-                "message_type": "command",
-                "action": EmbeddingAction.UPDATE_STAGE,
-                "source_service": "embedding",
-                "target_service": "files",
-                "request_id": request_id,
-                "trace_id": trace_id,
-                "correlation_id": correlation_id,
-                "timestamp": self._utc_now_iso(),
-                "payload": {
-                    "file_id": file_id,
-                    "stage": stage,
-                    "status": status,
-                },
-            }),
+            message,
+            key=kafka_document_key(message),
         )
 
     def send_to_dlq(

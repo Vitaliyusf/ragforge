@@ -1,7 +1,7 @@
 """FastAPI entrypoint for the vector_db service."""
 from contextlib import asynccontextmanager
-from threading import Thread
 from typing import Optional
+from functools import partial
 
 from fastapi import FastAPI
 
@@ -16,6 +16,7 @@ from app.core.config import settings
 from app.core.exception_handlers import register_exception_handlers
 from shared.logging import ServiceLogger
 from shared.bounded_executor import BoundedExecutor
+from shared.kafka_workers import KafkaConsumerWorkerPool
 from app.db.interfaces import IVectorStore
 from app.db.session import get_vector_store
 from app.messaging.factories import MessageQueueFactory
@@ -32,11 +33,10 @@ from app.worker import process_requests
 
 _logger: Optional[ServiceLogger] = None
 _kafka_producer: Optional[VectorDbKafkaProducer] = None
-_kafka_consumer: Optional[VectorDbKafkaConsumer] = None
+_kafka_consumer_pool: Optional[KafkaConsumerWorkerPool] = None
 _rpc_consumer: Optional[RabbitMQConsumerImpl] = None
 _vector_store: Optional[IVectorStore] = None
 _vector_service: Optional[VectorService] = None
-_consumer_thread: Optional[Thread] = None
 _running: list[bool] = [False]  # mutable flag shared with worker thread
 
 
@@ -46,19 +46,12 @@ _running: list[bool] = [False]  # mutable flag shared with worker thread
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global _logger, _kafka_producer, _kafka_consumer, _rpc_consumer
-    global _vector_store, _vector_service, _consumer_thread, _running
+    global _logger, _kafka_producer, _kafka_consumer_pool, _rpc_consumer
+    global _vector_store, _vector_service, _running
 
     # --- startup ---
     _logger = ServiceLogger(settings.service_name)
     _kafka_producer = VectorDbKafkaProducer(settings)
-    _kafka_consumer = VectorDbKafkaConsumer(
-        settings,
-        [
-            settings.kafka_upsert_requested_topic,
-            settings.kafka_delete_requested_topic,
-        ],
-    )
     _vector_store = get_vector_store()
     _vector_service = VectorService(
         vector_store=_vector_store,
@@ -81,14 +74,25 @@ async def lifespan(app: FastAPI):
 
     # Start Kafka upsert/delete pipeline consumer thread
     _running[0] = True
-    _consumer_thread = Thread(
-        target=process_requests,
-        args=(_kafka_consumer, _vector_service, _logger, _running),
-        daemon=True,
-        name="VectorDBKafkaConsumer",
-    )
-    _consumer_thread.start()
-    _logger.log("main:startup", "Kafka pipeline consumer thread started")
+    _kafka_consumer_pool = KafkaConsumerWorkerPool(
+        worker_count=settings.kafka_pipeline_consumer_workers,
+        consumer_factory=lambda: VectorDbKafkaConsumer(
+            settings,
+            [
+                settings.kafka_upsert_requested_topic,
+                settings.kafka_delete_requested_topic,
+            ],
+        ),
+        target_factory=lambda consumer: partial(
+            process_requests,
+            consumer,
+            _vector_service,
+            _logger,
+            _running,
+        ),
+        thread_name_prefix="VectorDBKafkaConsumer",
+    ).start()
+    _logger.log("main:startup", "Kafka pipeline consumer workers started")
 
     # Start RabbitMQ RPC consumer
     _rpc_consumer = MessageQueueFactory.create_consumer(settings)
@@ -125,12 +129,7 @@ async def lifespan(app: FastAPI):
 
         # Stop Kafka pipeline consumer thread
         _running[0] = False
-        try:
-            _kafka_consumer.close()
-        except Exception:
-            pass
-        if _consumer_thread and _consumer_thread.is_alive():
-            _consumer_thread.join(timeout=10.0)
+        _kafka_consumer_pool.close(timeout=10.0)
         try:
             _kafka_producer.flush()
         except Exception:

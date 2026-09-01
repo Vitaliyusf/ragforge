@@ -8,6 +8,7 @@ from kafka import KafkaConsumer
 
 from app.config import EmbeddingConfig
 from app.messaging.interfaces import IProducer
+from shared.kafka_base import kafka_document_key
 
 logger = logging.getLogger(__name__)
 
@@ -22,15 +23,28 @@ class EmbeddingKafkaProducer:
 
     def publish_upsert_requested(self, message: Dict[str, Any]) -> None:
         """Publish a vector_db upsert request."""
-        self._producer.send(self._upsert_topic, message)
+        self._producer.send(
+            self._upsert_topic,
+            message,
+            key=kafka_document_key(message),
+        )
 
     def publish_job_completed(self, message: Dict[str, Any]) -> None:
         """Publish an embedding job completion event."""
-        self._producer.send(self._completed_topic, message)
+        self._producer.send(
+            self._completed_topic,
+            message,
+            key=kafka_document_key(message),
+        )
 
-    def send(self, topic: str, message: Dict[str, Any]) -> None:
+    def send(
+        self,
+        topic: str,
+        message: Dict[str, Any],
+        key: Optional[str] = None,
+    ) -> None:
         """Delegate generic send calls for shared utilities like DLQ."""
-        self._producer.send(topic, message)
+        self._producer.send(topic, message, key=key)
 
     def flush(self) -> None:
         """Flush pending producer messages."""

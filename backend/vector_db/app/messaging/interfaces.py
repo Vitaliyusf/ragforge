@@ -1,13 +1,13 @@
 """Message queue interfaces."""
 from abc import ABC, abstractmethod
-from typing import Any, Dict, Iterator
+from typing import Any, Dict, Iterator, Optional
 
 
 class IProducer(ABC):
     """Interface for message producers."""
 
     @abstractmethod
-    def send(self, topic: str, message: Dict[str, Any]) -> None:
+    def send(self, topic: str, message: Dict[str, Any], key: Optional[str] = None) -> None:
         """Send a message to a topic."""
         raise NotImplementedError
 
